@@ -1,0 +1,506 @@
+import asyncio
+import json
+import logging
+import os
+
+from utils.env_loader import firebase_admin_options, is_offline_runtime, load_backend_env
+from utils.firebase_admin_runtime import (
+    firebase_verify_only_credential,
+    install_firebase_auth_mutation_guard,
+    install_google_adc_guard,
+)
+load_backend_env()  # No-op if no env files exist (production); stage + local overrides otherwise
+_OFFLINE_RUNTIME = is_offline_runtime()
+
+from utils.offline_network_policy import install_offline_egress_guard
+
+_OFFLINE_EGRESS_POLICY = install_offline_egress_guard()
+install_google_adc_guard()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+import firebase_admin
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
+
+from database.google_credentials import prepare_google_credentials
+
+prepare_google_credentials()
+install_firebase_auth_mutation_guard()
+
+from routers import account_cutover, action_items, conversations, goals, other, speech_profile, transcribe, users
+
+if not _OFFLINE_RUNTIME:
+    from config.chat_first_e2e_fixture import is_chat_first_e2e_harness_runtime
+    from routers import (
+        chat,
+        firmware,
+        transcribe,
+        omni_relay,
+        auto_model,
+        notifications,
+        speech_profile,
+        agents,
+        users,
+        trends,
+        sync,
+        apps,
+        payment,
+        integration,
+        conversations,
+        memories,
+        api_key_management,
+        mcp,
+        mcp_sse,
+        oauth,
+        auth,
+        action_items,
+        account_cutover,
+        candidates,
+        chat_first,
+        chat_first_e2e,
+        task_integrations,
+        integrations,
+        x_connector,
+        other,
+        developer,
+        updates,
+        calendar_meetings,
+        google_calendar,
+        calendar_onboarding,
+        imports,
+        knowledge_graph,
+        wrapped,
+        folders,
+        goals,
+        workstreams,
+        announcements,
+        phone_calls,
+        agent_tools,
+        tools,
+        metrics,
+        fair_use_admin,
+        staged_tasks,
+        focus_sessions,
+        advice,
+        chat_sessions,
+        chat_generation,
+        desktop_agent_vm,
+        desktop_chat,
+        desktop_core,
+        desktop_prompts,
+        desktop_proxy,
+        desktop_realtime,
+        desktop_screen_crisp,
+        frame_requests,
+        referrals,
+        desktop_tts_updates,
+        scores,
+        stt,
+        tts,
+        memory_admin,
+        memory_product,
+        task_recommendations,
+        conversation_finalization,
+        public_shared_conversation_chat,
+        screen_frames,
+        jit_ledger_snapshot,
+        csat,
+        jit_rollout,
+        email_preferences,
+    )
+    from routers.listen.registry import proactive_message_dispatcher
+
+from utils.other.timeout import TimeoutMiddleware
+from utils.http_client import close_all_clients
+from utils.executors import (
+    drain_background_tasks,
+    log_executor_health,
+    run_blocking,
+    db_executor,
+    storage_executor,
+)
+from utils.executors import start_background_task
+from utils.other.local_storage import local_storage_root_from_env
+from utils.offline_audio_capture import recover_offline_audio_captures
+from utils.offline_route_policy import (
+    OfflineRoutePolicyMiddleware,
+    is_offline_http_route_allowed,
+    is_offline_websocket_route_allowed,
+)
+
+if not _OFFLINE_RUNTIME:
+    from services.conversation_finalization import reconcile_abandoned_byok_finalization_jobs
+    from services.conversation_finalization import reconcile_listen_finalization_jobs
+    from services.conversation_finalization import reconcile_meeting_receipts
+    from services.conversation_finalization import reconcile_stale_processing_conversations
+    from services.users.account_deletion import reconcile_pending_deletion_wipes
+    from utils.cloud_tasks import validate_account_deletion_dispatch_configuration
+    from utils.jit_rollout import close_posthog_control_plane
+    from utils.metrics import start_metrics_sidecar_server, stop_metrics_sidecar_server
+    from utils.observability import log_langsmith_status
+    from utils.subscription import validate_stripe_price_ids
+
+# Log LangSmith tracing status at startup
+if not _OFFLINE_RUNTIME:
+    log_langsmith_status()
+
+# Validate Stripe price IDs so misconfigured plans fail loud
+if not _OFFLINE_RUNTIME:
+    validate_stripe_price_ids()
+
+_auth_emulator_host = os.environ.get("FIREBASE_AUTH_EMULATOR_HOST", "").strip()
+_firebase_admin_options = firebase_admin_options()
+_verify_only_credential = firebase_verify_only_credential()
+if _verify_only_credential is not None:
+    firebase_admin.initialize_app(_verify_only_credential, options=_firebase_admin_options)
+elif _auth_emulator_host:
+    for _adc_key in ("GOOGLE_APPLICATION_CREDENTIALS", "SERVICE_ACCOUNT_JSON", "FIREBASE_AUTH_CREDENTIALS_PATH"):
+        os.environ.pop(_adc_key, None)
+    _firebase_project_id = (
+        os.environ.get("FIREBASE_AUTH_PROJECT_ID") or os.environ.get("FIREBASE_PROJECT_ID") or "demo-omi-local"
+    )
+    firebase_admin.initialize_app(options={"projectId": _firebase_project_id})  # type: ignore[reportUnknownMemberType]  # firebase_admin untyped
+elif os.environ.get("SERVICE_ACCOUNT_JSON"):
+    service_account_info = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
+    credentials = firebase_admin.credentials.Certificate(service_account_info)
+    firebase_admin.initialize_app(credentials, options=_firebase_admin_options)  # type: ignore[reportUnknownMemberType]  # firebase_admin untyped
+else:
+    firebase_admin.initialize_app(options=_firebase_admin_options)  # type: ignore[reportUnknownMemberType]  # firebase_admin untyped
+
+app = FastAPI()
+
+_local_storage_root = local_storage_root_from_env()
+if _local_storage_root is not None:
+    _local_storage_root.mkdir(parents=True, exist_ok=True)
+    app.mount('/_local/storage', StaticFiles(directory=_local_storage_root), name='local-storage')
+
+# Explicit, default-deny CORS: this API is Bearer-token authenticated (mobile/
+# desktop apps, not ambient browser cookies), so no cross-origin browser
+# caller needs to be allowed by default. CORS_ALLOWED_ORIGINS lets an operator
+# opt a specific web frontend in (comma-separated exact origins — never "*",
+# and never combined with allow_credentials, which would let any site read
+# authenticated responses for a signed-in visitor).
+_cors_allowed_origins = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()]
+if '*' in _cors_allowed_origins:
+    raise RuntimeError('CORS_ALLOWED_ORIGINS must not contain "*" — list explicit origins instead')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_allowed_origins,
+    allow_credentials=False,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+if _OFFLINE_RUNTIME:
+    _router_modules = (
+        transcribe,
+        conversations,
+        action_items,
+        account_cutover,
+        speech_profile,
+        users,
+        other,
+        goals,
+    )
+else:
+    _router_modules = (
+        transcribe,
+        omni_relay,
+        auto_model,
+        conversations,
+        public_shared_conversation_chat,
+        action_items,
+        account_cutover,
+        candidates,
+        chat_first,
+        task_integrations,
+        integrations,
+        x_connector,
+        memories,
+        chat,
+        speech_profile,
+        notifications,
+        integration,
+        agents,
+        users,
+        referrals,
+        csat,
+        email_preferences,
+        desktop_prompts,
+        conversation_finalization,
+        trends,
+        other,
+        firmware,
+        updates,
+        sync,
+        apps,
+        calendar_meetings,
+        google_calendar,
+        calendar_onboarding,
+        oauth,
+        auth,
+        payment,
+        mcp,
+        mcp_sse,
+        developer,
+        imports,
+        wrapped,
+        folders,
+        knowledge_graph,
+        goals,
+        workstreams,
+        announcements,
+        phone_calls,
+        agent_tools,
+        tools,
+        metrics,
+        fair_use_admin,
+        staged_tasks,
+        focus_sessions,
+        advice,
+        chat_sessions,
+        chat_generation,
+        scores,
+        stt,
+        tts,
+        memory_admin,
+        memory_product,
+        task_recommendations,
+        jit_ledger_snapshot,
+        jit_rollout,
+        desktop_core,
+        desktop_agent_vm,
+        desktop_chat,
+        desktop_proxy,
+        desktop_realtime,
+        desktop_screen_crisp,
+        frame_requests,
+        desktop_tts_updates,
+        screen_frames,
+    )
+
+for _router_module in _router_modules:
+    app.include_router(_router_module.router)
+
+if not _OFFLINE_RUNTIME:
+    app.include_router(api_key_management.mcp_router)
+    app.include_router(api_key_management.developer_router)
+    if is_chat_first_e2e_harness_runtime():
+        # The fixture router has its own runtime check as defense in depth. It is
+        # intentionally absent from dev/prod route tables, not merely disabled.
+        app.include_router(chat_first_e2e.router)
+
+if _OFFLINE_RUNTIME:
+    app.router.routes[:] = [
+        route
+        for route in app.router.routes
+        if (
+            is_offline_websocket_route_allowed(route.path)
+            if getattr(route, 'methods', None) is None
+            else any(is_offline_http_route_allowed(method, route.path) for method in route.methods)
+        )
+    ]
+else:
+    jit_rollout.validate_jit_rollout_contract(app)
+
+
+methods_timeout = {
+    "GET": os.environ.get('HTTP_GET_TIMEOUT'),
+    "POST": os.environ.get('HTTP_POST_TIMEOUT'),
+    "PUT": os.environ.get('HTTP_PUT_TIMEOUT'),
+    "PATCH": os.environ.get('HTTP_PATCH_TIMEOUT'),
+    "DELETE": os.environ.get('HTTP_DELETE_TIMEOUT'),
+}
+
+# The Cloud Tasks sync-job handler runs the whole pipeline inside the request,
+# so it needs a much higher cap than the default. Must stay below the job run
+# lock TTL (1800s) so a lock can never expire under a live run.
+paths_timeout = {
+    "/v2/sync-jobs/run": os.environ.get('HTTP_SYNC_JOBS_RUN_TIMEOUT', 1500),
+    "/v2/audio-merge-jobs/run": os.environ.get('HTTP_AUDIO_MERGE_RUN_TIMEOUT', 600),
+    "/v1/users/account-deletion-wipes/run": os.environ.get('HTTP_ACCOUNT_DELETION_WIPE_RUN_TIMEOUT', 1500),
+    "/v1/conversation-finalization-jobs/run": os.environ.get('HTTP_LISTEN_FINALIZATION_RUN_TIMEOUT', 1500),
+    # STT proxy: 30s slot wait + 300s parakeet client budget (get_stt_proxy_client)
+    # + headroom for auth and the multipart spool read; the default POST timeout
+    # would cut long files off mid-transcription.
+    "/v1/stt/transcribe": os.environ.get('HTTP_STT_TRANSCRIBE_TIMEOUT', 350),
+}
+
+app.add_middleware(TimeoutMiddleware, methods_timeout=methods_timeout, paths_timeout=paths_timeout)
+
+from utils.byok import BYOKMiddleware
+
+app.add_middleware(BYOKMiddleware)
+app.add_middleware(OfflineRoutePolicyMiddleware)
+
+
+@app.on_event("startup")  # type: ignore[reportDeprecated]  # FastAPI on_event still functional; lifespan migration would change app wiring
+async def startup_event():
+    if _OFFLINE_RUNTIME:
+        recovered, failed = await run_blocking(storage_executor, recover_offline_audio_captures)
+        if recovered or failed:
+            logger.info('Offline audio capture recovery completed recovered=%s failed=%s', recovered, failed)
+        logger.info(
+            'Offline startup complete egress_guard=%s routes=%d',
+            'enforced' if _OFFLINE_EGRESS_POLICY is not None else 'missing',
+            len(app.router.routes),
+        )
+        return
+    start_metrics_sidecar_server()
+    validate_account_deletion_dispatch_configuration()
+    asyncio.create_task(log_executor_health())
+    # Drain account-deletion wipes orphaned by a previous deploy/restart. Offloaded
+    # to db_executor so the blocking Firestore queries don't stall event-loop startup.
+    start_background_task(
+        run_blocking(db_executor, _drain_pending_deletion_wipes),
+        name='startup_deletion_wipe_reconcile',
+    )
+    # Periodic reconciliation ensures stale retrying claims (worker crashed) and
+    # new pending/failed wipes are retried without requiring a restart.
+    start_background_task(_periodic_deletion_wipe_reconcile(), name='periodic_deletion_wipe_reconcile')
+    start_background_task(
+        run_blocking(db_executor, _drain_listen_finalization_jobs),
+        name='startup_listen_finalization_reconcile',
+    )
+    start_background_task(
+        run_blocking(db_executor, _drain_stale_processing_conversations),
+        name='startup_stale_processing_reconcile',
+    )
+    start_background_task(
+        run_blocking(db_executor, _drain_abandoned_byok_finalization_jobs),
+        name='startup_byok_abandonment_reconcile',
+    )
+    start_background_task(
+        run_blocking(db_executor, _drain_meeting_receipts),
+        name='startup_meeting_receipt_reconcile',
+    )
+    start_background_task(_periodic_listen_finalization_reconcile(), name='periodic_listen_finalization_reconcile')
+    start_background_task(
+        proactive_message_dispatcher(),
+        name='proactive_message_dispatcher',
+    )
+
+
+def _drain_pending_deletion_wipes():
+    """Best-effort reconciliation of pending/failed account-deletion wipes on startup."""
+    try:
+        result = reconcile_pending_deletion_wipes()
+        if result.get('requeued'):
+            logger.info(f"Startup deletion-wipe reconciliation: {result}")
+    except Exception as e:
+        logger.error(f"Startup deletion-wipe reconciliation failed: {e}")
+
+
+async def _periodic_deletion_wipe_reconcile(interval_seconds: int = 300):
+    """Periodically reconcile orphaned or failed account-deletion wipes.
+
+    Runs every 5 minutes (default) so stale retrying claims and new
+    pending/failed wipes are retried without requiring a restart.
+    """
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            result = await run_blocking(db_executor, reconcile_pending_deletion_wipes)
+            if result.get('requeued'):
+                logger.info(f"Periodic deletion-wipe reconciliation: {result}")
+        except Exception as e:
+            logger.error(f"Periodic deletion-wipe reconciliation failed: {e}")
+
+
+def _drain_listen_finalization_jobs():
+    """Best-effort durable finalization recovery after a restart/deploy."""
+    try:
+        result = reconcile_listen_finalization_jobs()
+        if result.get('requeued'):
+            logger.info(f"Startup listen-finalization reconciliation: {result}")
+    except Exception as e:
+        logger.error(f"Startup listen-finalization reconciliation failed: {e}")
+
+
+def _drain_stale_processing_conversations():
+    """Best-effort recovery of bare-`processing` conversations orphaned by a sync-route crash."""
+    try:
+        result = reconcile_stale_processing_conversations()
+        if result.get('completed') or result.get('migrated'):
+            logger.info(f"Startup stale-processing reconciliation: {result}")
+    except Exception as e:
+        logger.error(f"Startup stale-processing reconciliation failed: {e}")
+
+
+def _drain_abandoned_byok_finalization_jobs():
+    """Best-effort disposition of BYOK finalization jobs no live session can claim."""
+    try:
+        result = reconcile_abandoned_byok_finalization_jobs()
+        if result.get('abandoned'):
+            logger.info(f"Startup byok-abandonment reconciliation: {result}")
+    except Exception as e:
+        logger.error(f"Startup byok-abandonment reconciliation failed: {e}")
+
+
+def _drain_meeting_receipts():
+    """Best-effort repair of missing meeting receipt intents and historical receipts."""
+    try:
+        result = reconcile_meeting_receipts()
+        if result.get('repaired') or result.get('backfilled'):
+            logger.info(f"Startup meeting-receipt reconciliation: {result}")
+    except Exception as e:
+        logger.error(f"Startup meeting-receipt reconciliation failed: {e}")
+
+
+def _listen_finalization_reconcile_interval_seconds() -> int:
+    """Periodic reconcile cadence; overridable for hermetic behavioral tests."""
+    try:
+        seconds = int(os.getenv('LISTEN_FINALIZATION_RECONCILE_INTERVAL_SECONDS', '300'))
+    except ValueError:
+        seconds = 300
+    return max(1, seconds)
+
+
+async def _periodic_listen_finalization_reconcile(interval_seconds: int | None = None):
+    """Replay stale finalization leases and publish durable backlog metrics."""
+    if interval_seconds is None:
+        interval_seconds = _listen_finalization_reconcile_interval_seconds()
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            result = await run_blocking(db_executor, reconcile_listen_finalization_jobs)
+            if result.get('requeued'):
+                logger.info(f"Periodic listen-finalization reconciliation: {result}")
+        except Exception as e:
+            logger.error(f"Periodic listen-finalization reconciliation failed: {e}")
+        try:
+            stale_result = await run_blocking(db_executor, reconcile_stale_processing_conversations)
+            if stale_result.get('completed') or stale_result.get('migrated'):
+                logger.info(f"Periodic stale-processing reconciliation: {stale_result}")
+        except Exception as e:
+            logger.error(f"Periodic stale-processing reconciliation failed: {e}")
+        try:
+            byok_result = await run_blocking(db_executor, reconcile_abandoned_byok_finalization_jobs)
+            if byok_result.get('abandoned'):
+                logger.info(f"Periodic byok-abandonment reconciliation: {byok_result}")
+        except Exception as e:
+            logger.error(f"Periodic byok-abandonment reconciliation failed: {e}")
+        try:
+            receipt_result = await run_blocking(db_executor, reconcile_meeting_receipts)
+            if receipt_result.get('repaired') or receipt_result.get('backfilled'):
+                logger.info(f"Periodic meeting-receipt reconciliation: {receipt_result}")
+        except Exception as e:
+            logger.error(f"Periodic meeting-receipt reconciliation failed: {e}")
+
+
+@app.on_event("shutdown")  # type: ignore[reportDeprecated]  # FastAPI on_event still functional; lifespan migration would change app wiring
+async def shutdown_event():
+    await drain_background_tasks(timeout=10.0)
+    await close_all_clients()
+    if not _OFFLINE_RUNTIME:
+        close_posthog_control_plane()
+        stop_metrics_sidecar_server()
+
+
+paths = ['_temp', '_samples', '_segments', '_speech_profiles']
+for path in paths:
+    if not os.path.exists(path):
+        os.makedirs(path)

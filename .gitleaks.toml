@@ -1,0 +1,313 @@
+title = "Omi Local: reviewed synthetic fixtures"
+
+[extend]
+useDefault = true
+
+# Exact values AND exact paths: a different value in the same file is still scanned.
+# These exceptions cover emulator placeholders, test-only keys, checksums and request IDs.
+
+[[rules]]
+id = "gcp-api-key"
+
+[[rules.allowlists]]
+description = "Nonfunctional demo-omi-local emulator API key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^AIzaSyDEMOOMILOCALFAKEKEY00000000000000$''']
+paths = [
+  '''(?:^|/)app/lib/firebase_options_local\.dart$''',
+  '''(?:^|/)app/setup/prebuilt/firebase_options\.dart$''',
+  '''(?:^|/)app/setup/prebuilt/google-services-local\.json$''',
+  '''(?:^|/)app/setup/prebuilt/google-services\.json$''',
+]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "CocoaPods dependency checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^d4f13a8fe0baf391b2108511793e4b479691fb73$''']
+paths = [
+  '''(?:^|/)app/ios/Podfile\.lock$''',
+]
+
+[[rules.allowlists]]
+description = "CocoaPods dependency checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^83bf106e5ac670dd3a0af27a86be6cba16a85723$''']
+paths = [
+  '''(?:^|/)app/ios/Podfile\.lock$''',
+]
+
+[[rules.allowlists]]
+description = "CocoaPods dependency checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^c4146bdfdc87329f9962babd24dae89373f49a32$''']
+paths = [
+  '''(?:^|/)app/ios/Podfile\.lock$''',
+]
+
+[[rules.allowlists]]
+description = "CocoaPods dependency checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^7087d7a4ee4bc4de019b2d0c240974ed5d89e2fd$''']
+paths = [
+  '''(?:^|/)app/ios/Podfile\.lock$''',
+]
+
+[[rules.allowlists]]
+description = "CocoaPods dependency checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^99fb010047ba3973b7026e45393f51f27ab965ae$''']
+paths = [
+  '''(?:^|/)app/ios/Podfile\.lock$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^idempotency-1$''']
+paths = [
+  '''(?:^|/)app/test/backend/task_intelligence_contract_fixture_test\.dart$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']
+paths = [
+  '''(?:^|/)backend/runtime_images\.json$''',
+  '''(?:^|/)backend/tests/unit/test_chat_async_offload\.py$''',
+  '''(?:^|/)backend/tests/unit/test_memory_maintenance_job_import\.py$''',
+  '''(?:^|/)backend/tests/unit/test_runtime_image_contracts\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^omi_ZwB2ZNqB2HHpMK6wStk7sTpavJiPTFg7gXUHnc4tFABPU6pZ2c2DKgehtfgi4RZv$''']
+paths = [
+  '''(?:^|/)backend/test\.sh$''',
+  '''(?:^|/)backend/testing/contracts/test_desktop_backend_parity\.py$''',
+  '''(?:^|/)backend/tests/integration/test_fair_use_live\.py$''',
+  '''(?:^|/)backend/tests/routers/test_imports\.py$''',
+  '''(?:^|/)backend/tests/unit/test_action_item_ids_endpoint\.py$''',
+  '''(?:^|/)backend/tests/unit/test_action_item_reminder_cancel_on_complete\.py$''',
+  '''(?:^|/)backend/tests/unit/test_action_items_conversation_list_malformed\.py$''',
+  '''(?:^|/)backend/tests/unit/test_announcement_malformed_type\.py$''',
+  '''(?:^|/)backend/tests/unit/test_app_catalog_detail_response_contract\.py$''',
+  '''(?:^|/)backend/tests/unit/test_app_usage_history_skip\.py$''',
+  '''(?:^|/)backend/tests/unit/test_app_visibility_cache_invalidation\.py$''',
+  '''(?:^|/)backend/tests/unit/test_apps_marketplace_poison_guard\.py$''',
+  '''(?:^|/)backend/tests/unit/test_apps_search_matches_description\.py$''',
+  '''(?:^|/)backend/tests/unit/test_apps_search_poison_guard\.py$''',
+  '''(?:^|/)backend/tests/unit/test_apps_search_reads_cached_public_set\.py$''',
+  '''(?:^|/)backend/tests/unit/test_byok_llm_logging\.py$''',
+  '''(?:^|/)backend/tests/unit/test_byok_llm_notifications\.py$''',
+  '''(?:^|/)backend/tests/unit/test_calendar_autolink_invalid_timestamp\.py$''',
+  '''(?:^|/)backend/tests/unit/test_calendar_meeting_item_guard\.py$''',
+  '''(?:^|/)backend/tests/unit/test_calendar_onboarding\.py$''',
+  '''(?:^|/)backend/tests/unit/test_chat_file_gateway_surface\.py$''',
+  '''(?:^|/)backend/tests/unit/test_chat_file_skip_malformed\.py$''',
+  '''(?:^|/)backend/tests/unit/test_chat_file_vision_params\.py$''',
+  '''(?:^|/)backend/tests/unit/test_conversation_structure_provider_timeout\.py$''',
+  '''(?:^|/)backend/tests/unit/test_conversation_test_prompt_provider_failure\.py$''',
+  '''(?:^|/)backend/tests/unit/test_conversations_status_filter_cap\.py$''',
+  '''(?:^|/)backend/tests/unit/test_desktop_proxy\.py$''',
+  '''(?:^|/)backend/tests/unit/test_desktop_transcribe\.py$''',
+  '''(?:^|/)backend/tests/unit/test_dev_api_action_items_poison\.py$''',
+  '''(?:^|/)backend/tests/unit/test_dev_api_conversations_poison\.py$''',
+  '''(?:^|/)backend/tests/unit/test_dev_api_folder_filters\.py$''',
+  '''(?:^|/)backend/tests/unit/test_dev_api_lock_bypass\.py$''',
+  '''(?:^|/)backend/tests/unit/test_dev_ask_endpoint\.py$''',
+  '''(?:^|/)backend/tests/unit/test_developer_from_segments_idempotency\.py$''',
+  '''(?:^|/)backend/tests/unit/test_embeddings_gateway\.py$''',
+  '''(?:^|/)backend/tests/unit/test_experience_summary_date_grounding\.py$''',
+  '''(?:^|/)backend/tests/unit/test_firestore_di_seam\.py$''',
+  '''(?:^|/)backend/tests/unit/test_firmware_specific_version\.py$''',
+  '''(?:^|/)backend/tests/unit/test_folder_conversations_malformed\.py$''',
+  '''(?:^|/)backend/tests/unit/test_goal_get_by_id\.py$''',
+  '''(?:^|/)backend/tests/unit/test_goals_advice_arg_and_clear_metric\.py$''',
+  '''(?:^|/)backend/tests/unit/test_hume_callback_malformed\.py$''',
+  '''(?:^|/)backend/tests/unit/test_import_job_status_detail_enum\.py$''',
+  '''(?:^|/)backend/tests/unit/test_import_jobs_malformed\.py$''',
+  '''(?:^|/)backend/tests/unit/test_integration_conversations_statuses_cap\.py$''',
+  '''(?:^|/)backend/tests/unit/test_integration_malformed_records\.py$''',
+  '''(?:^|/)backend/tests/unit/test_integration_notification_validation\.py$''',
+  '''(?:^|/)backend/tests/unit/test_listen_pipeline\.py$''',
+  '''(?:^|/)backend/tests/unit/test_location_maps_status_guard\.py$''',
+  '''(?:^|/)backend/tests/unit/test_lock_bypass_fixes\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_action_item_writes\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_conversations_poison\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_data_endpoints\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_profile_contact\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_search_conversations_poison\.py$''',
+  '''(?:^|/)backend/tests/unit/test_mcp_search_date_utc\.py$''',
+  '''(?:^|/)backend/tests/unit/test_memories_pagination_clamp\.py$''',
+  '''(?:^|/)backend/tests/unit/test_memories_review_item_endpoint\.py$''',
+  '''(?:^|/)backend/tests/unit/test_memory_import_route\.py$''',
+  '''(?:^|/)backend/tests/unit/test_merge_audio_chunk_copy_failure\.py$''',
+  '''(?:^|/)backend/tests/unit/test_merge_deleted_source_race\.py$''',
+  '''(?:^|/)backend/tests/unit/test_oauth_callback_uid_guard\.py$''',
+  '''(?:^|/)backend/tests/unit/test_oauth_state_atomic_consume\.py$''',
+  '''(?:^|/)backend/tests/unit/test_payment_price_id_validation\.py$''',
+  '''(?:^|/)backend/tests/unit/test_persona_delete_route_dispatch\.py$''',
+  '''(?:^|/)backend/tests/unit/test_phone_verification_created_at\.py$''',
+  '''(?:^|/)backend/tests/unit/test_rate_limit_json_failopen\.py$''',
+  '''(?:^|/)backend/tests/unit/test_report_missing_message\.py$''',
+  '''(?:^|/)backend/tests/unit/test_screen_activity_list_endpoint\.py$''',
+  '''(?:^|/)backend/tests/unit/test_screen_activity_summary_endpoint\.py$''',
+  '''(?:^|/)backend/tests/unit/test_speaker_id_pipeline\.py$''',
+  '''(?:^|/)backend/tests/unit/test_speaker_person_embedding_recovery\.py$''',
+  '''(?:^|/)backend/tests/unit/test_speech_profile_wav_decode\.py$''',
+  '''(?:^|/)backend/tests/unit/test_staged_tasks_review_controls\.py$''',
+  '''(?:^|/)backend/tests/unit/test_structured_extraction_partial_content\.py$''',
+  '''(?:^|/)backend/tests/unit/test_task_integrations_oauth_atomic\.py$''',
+  '''(?:^|/)backend/tests/unit/test_tts_request_text_bound\.py$''',
+  '''(?:^|/)backend/tests/unit/test_users_webhook_url_validation\.py$''',
+  '''(?:^|/)backend/tests/unit/test_voice_message_filename_none\.py$''',
+  '''(?:^|/)backend/tests/unit/test_workstream_router_contract\.py$''',
+  '''(?:^|/)backend/tests/unit/test_x_memory_extraction_retry\.py$''',
+  '''(?:^|/)backend/tests/unit/test_x_posts_list_endpoint\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^ZmFrZS1zZW50aW5lbC1ub3QtYS1zZWNyZXQ=$''']
+paths = [
+  '''(?:^|/)backend/tests/fixtures/deploy_status/k8s_secret\.json$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^omi_mcp_0123456789abcdef0123456789abcdef$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_api_key_listability_contract\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^omi_mcp_fedcba9876543210fedcba9876543210$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_api_key_listability_contract\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^omi_mcp_abcd\.\.\.1234$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_api_key_listability_contract\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk-test-0123456789abcdef$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_byok_fingerprint_pepper_migration\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^conversation-123$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_llm_gateway_openai_compatible\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_log_sanitizer\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^ya29xABCDEFGHIJKLMNOP1234567890$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_log_sanitizer\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^abc123def456ghij$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_log_sanitizer\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^conversation-1$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_pusher_semantic_probe\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^focus-g1-generation-4$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_workstream_core\.py$''',
+]
+
+[[rules.allowlists]]
+description = "Synthetic token used by the client secret-detector unit test"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^abcdefghijklmnopqrstuvwxyz123456$''']
+paths = ['''(?:^|/)app/test/unit/hard_secret_detector_test\.dart$''']
+
+[[rules]]
+id = "private-key"
+
+[[rules.allowlists]]
+description = "Literal not-a-real-key PEM used by a mocked unit test"
+condition = "AND"
+regexTarget = "secret"
+# The detector spans two fake PEM literals and the intervening mocked test code.
+# Match the entire exact span; any edit, including a real key insertion, is scanned again.
+regexes = ['''^-----BEGIN PRIVATE KEY-----\\nnot-a-real-key\\n-----END PRIVATE KEY-----\\n',\n                'client_email': 'firebase-probe@based-hardware\.iam\.gserviceaccount\.com',\n            \}\n        \),\n        encoding='utf-8',\n    \)\n    credentials\.chmod\(0o600\)\n    monkeypatch\.setattr\(\n        module\.subprocess,\n        'run',\n        lambda \*args, \*\*kwargs: subprocess\.CompletedProcess\(args=args, returncode=0, stdout=b'signature', stderr=b''\),\n    \)\n    monkeypatch\.setattr\(module\.time, 'time', lambda: 1_700_000_000\)\n\n    token = module\._signed_custom_token_locally\(credentials, 'based-hardware'\)\n    header_part, claims_part, signature_part = token\.split\('\.'\)\n    header = json\.loads\(base64\.urlsafe_b64decode\(header_part \+ '=' \* \(-len\(header_part\) % 4\)\)\)\n    claims = json\.loads\(base64\.urlsafe_b64decode\(claims_part \+ '=' \* \(-len\(claims_part\) % 4\)\)\)\n\n    assert header == \{'alg': 'RS256', 'kid': 'fixed-key-id', 'typ': 'JWT'\}\n    assert claims\['iss'\] == 'firebase-probe@based-hardware\.iam\.gserviceaccount\.com'\n    assert claims\['sub'\] == claims\['iss'\]\n    assert claims\['uid'\] == module\.PROBE_UID\n    assert claims\['claims'\] == \{'release_probe': True\}\n    assert claims\['exp'\] - claims\['iat'\] == module\.CUSTOM_TOKEN_TTL_SECONDS\n    assert base64\.urlsafe_b64decode\(signature_part \+ '=' \* \(-len\(signature_part\) % 4\)\) == b'signature'\n\n\ndef test_local_signer_fails_before_creating_a_key_file_when_private_modes_are_unavailable\(monkeypatch, tmp_path\):\n    module = _load_module\(\)\n    monkeypatch\.setattr\(\n        module,\n        '_read_signer_credentials',\n        lambda _path, _project: \(\n            'firebase-probe@based-hardware\.iam\.gserviceaccount\.com',\n            'fixed-key-id',\n            '-----BEGIN PRIVATE KEY-----$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_firebase_release_probe_token\.py$''',
+]
+
+[[rules]]
+id = "stripe-access-token"
+
+[[rules.allowlists]]
+description = "Synthetic unit/smoke fixture or non-authentication request identifier"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk_live_1234567890abcdef$''']
+paths = [
+  '''(?:^|/)backend/tests/unit/test_memory_redaction\.py$''',
+]
