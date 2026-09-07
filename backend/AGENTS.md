@@ -9,6 +9,8 @@ phone PCM16 at mono 16 kHz. Keep the existing route allowlist and emulator/Redis
 loopback boundaries. See `docs/NGROK.md`; `make test-offline` is the local suite.
 Ngrok profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
+Listen diagnostics likewise log only fixed connection events, close codes and
+binary frame/byte counts. Audio, private parameters and close reasons stay out.
 
 ## Setup
 

@@ -94,6 +94,44 @@ class LocalTransportAuthMiddleware:
                 await original_send(message)
 
             send = profile_send
+        if scope["type"] == "websocket" and scope.get("path") == "/v4/listen":
+            return await self._observe_listen(scope, receive, send)
+        await self._authenticate(scope, receive, send)
+
+    async def _observe_listen(self, scope, receive, send):
+        # Only fixed events, codes and byte/frame counts. Never log headers,
+        # query parameters, close reasons, identifiers or audio payloads.
+        frames = 0
+        byte_count = 0
+        logger.warning("Local Mac listen: opened")
+
+        async def observed_receive():
+            nonlocal frames, byte_count
+            message = await receive()
+            if message["type"] == "websocket.receive" and message.get("bytes") is not None:
+                frames += 1
+                byte_count += len(message["bytes"])
+                if frames == 1:
+                    logger.warning("Local Mac listen: first_binary_frame")
+            elif message["type"] == "websocket.disconnect":
+                logger.warning(
+                    "Local Mac listen: peer_closed code=%d frames=%d bytes=%d",
+                    message.get("code", 1005),
+                    frames,
+                    byte_count,
+                )
+            return message
+
+        async def observed_send(message):
+            if message["type"] == "websocket.accept":
+                logger.warning("Local Mac listen: accepted")
+            elif message["type"] == "websocket.close":
+                logger.warning("Local Mac listen: server_closed code=%d", message.get("code", 1000))
+            await send(message)
+
+        await self._authenticate(scope, observed_receive, observed_send)
+
+    async def _authenticate(self, scope, receive, send):
         try:
             scope["omi.local_uid"] = verify_local_authorization(scope.get("headers", []))
         except LocalTransportAuthError:

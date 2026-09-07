@@ -105,3 +105,40 @@ def test_pairing_diagnostics_only_include_response_status(pairing, caplog):
         assert c.get("/openapi.json").status_code == 401
     messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
     assert messages == ["Local Mac profile check: status=200", "Local Mac profile check: status=401"]
+
+
+def test_listen_diagnostics_observe_frames_and_close_without_private_content(pairing, caplog):
+    app = FastAPI()
+
+    @app.websocket("/v4/listen")
+    async def listen(ws: WebSocket):
+        await ws.accept()
+        assert await ws.receive_bytes() == b"synthetic-private-audio"
+        await ws.send_text("received")
+        await ws.receive()
+
+    app.add_middleware(LocalTransportAuthMiddleware)
+    with TestClient(app) as c:
+        with c.websocket_connect(
+            "/v4/listen?private=synthetic-private-query",
+            headers={"Authorization": f"Bearer {KEY}", "X-Private": "synthetic-private-header"},
+        ) as ws:
+            ws.send_bytes(b"synthetic-private-audio")
+            assert ws.receive_text() == "received"
+            ws.close(code=1000, reason="synthetic-private-close")
+    messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
+    assert messages == [
+        "Local Mac listen: opened",
+        "Local Mac listen: accepted",
+        "Local Mac listen: first_binary_frame",
+        "Local Mac listen: peer_closed code=1000 frames=1 bytes=23",
+    ]
+
+
+def test_listen_auth_rejection_is_observed_before_accept(pairing, caplog):
+    with client() as c:
+        with pytest.raises(WebSocketDisconnect):
+            with c.websocket_connect("/v4/listen?private=synthetic-private", headers={"Authorization": "Bearer wrong"}):
+                pass
+    messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
+    assert messages == ["Local Mac listen: opened", "Local Mac listen: server_closed code=1008"]
