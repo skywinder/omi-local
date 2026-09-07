@@ -1,4 +1,4 @@
-"""Fail-closed PCM/WAV capture for the owned offline Omi listen path."""
+"""Fail-closed PCM/WAV capture for the owned offline listen path."""
 
 from __future__ import annotations
 
@@ -23,7 +23,11 @@ SCHEMA_VERSION = 1
 OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_CHANNELS = 1
 OUTPUT_SAMPLE_WIDTH_BYTES = 2
-ALLOWED_INPUT_CODECS = frozenset({'opus', 'opus_fs320', 'pcm16'})
+INPUT_CODECS_BY_SOURCE = {'omi': frozenset({'opus', 'opus_fs320'}), 'phone': frozenset({'pcm16'})}
+
+
+def _input_format_supported(source: str, input_codec: str) -> bool:
+    return input_codec in INPUT_CODECS_BY_SOURCE.get(source, ())
 
 
 def _utc_iso(timestamp: float) -> str:
@@ -113,8 +117,8 @@ class OfflineAudioCapture:
 
     def __init__(self, *, session_id: str, input_codec: str, source: str, root: Path):
         self.session_id = _validated_session_id(session_id)
-        if input_codec not in ALLOWED_INPUT_CODECS:
-            raise ValueError(f'unsupported offline Omi input codec: {input_codec}')
+        if not _input_format_supported(source, input_codec):
+            raise ValueError('unsupported offline capture source/codec combination')
         self.input_codec = input_codec
         self.source = source
         self.started_at_timestamp = time.time()
@@ -197,16 +201,15 @@ def create_offline_audio_capture(
 
     if not is_offline_runtime():
         return None
-    if source not in {'omi', 'phone'}:
+    if source not in INPUT_CODECS_BY_SOURCE:
         return None
     if sample_rate != OUTPUT_SAMPLE_RATE or channels != OUTPUT_CHANNELS:
-        raise RuntimeError('offline Omi capture requires mono 16 kHz audio')
-    allowed = {'pcm16'} if source == 'phone' else {'opus', 'opus_fs320'}
-    if input_codec not in allowed:
+        raise RuntimeError('offline capture requires mono 16 kHz audio')
+    if not _input_format_supported(source, input_codec):
         raise RuntimeError('unsupported local audio source/codec combination')
     root = local_storage_root_from_env()
     if root is None:
-        raise RuntimeError('offline Omi capture requires validated OMI_LOCAL_STORAGE_ROOT')
+        raise RuntimeError('offline capture requires validated OMI_LOCAL_STORAGE_ROOT')
     return OfflineAudioCapture(session_id=session_id, input_codec=input_codec, source=source, root=root)
 
 
@@ -217,10 +220,10 @@ def _recover_one(pcm_part_path: Path) -> bool:
     loaded = json.loads(metadata_part_path.read_text(encoding='utf-8'))
     if not isinstance(loaded, dict) or loaded.get('schema_version') != SCHEMA_VERSION:
         raise ValueError('unsupported offline capture recovery metadata')
-    if loaded.get('session_id') != session_id or loaded.get('source') not in {'omi', 'phone'}:
+    if loaded.get('session_id') != session_id or loaded.get('source') not in INPUT_CODECS_BY_SOURCE:
         raise ValueError('offline capture recovery identity mismatch')
     input_format = loaded.get('input')
-    if not isinstance(input_format, dict) or input_format.get('codec') not in ALLOWED_INPUT_CODECS:
+    if not isinstance(input_format, dict) or not _input_format_supported(loaded['source'], input_format.get('codec')):
         raise ValueError('offline capture recovery codec mismatch')
     if input_format.get('sample_rate') != OUTPUT_SAMPLE_RATE or input_format.get('channels') != OUTPUT_CHANNELS:
         raise ValueError('offline capture recovery input format mismatch')
