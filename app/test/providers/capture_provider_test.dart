@@ -141,6 +141,26 @@ class _NullSocketCaptureProvider extends CaptureProvider {
       null;
 }
 
+class _PhoneProfileCaptured implements Exception {}
+
+class _PhoneStartProbe extends CaptureProvider {
+  Uri? requestedUri;
+
+  @override
+  Future<void> changeAudioRecordProfile({
+    required BleAudioCodec audioCodec,
+    int? sampleRate,
+    int? channels,
+    bool? isPcm,
+    String? source,
+  }) async {
+    final service = TranscriptSegmentSocketService.create(sampleRate!, audioCodec, 'en', source: source);
+    requestedUri = Uri.parse((service.socket as PureSocket).url);
+    // Stop before opening the native microphone; inspect the real wire URL.
+    throw _PhoneProfileCaptured();
+  }
+}
+
 class _CountingSocketCaptureProvider extends CaptureProvider {
   _CountingSocketCaptureProvider({super.audioCodecLoader});
 
@@ -328,6 +348,25 @@ void main() {
   // ------------------------------------------------------------------ //
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
+
+  test('initial phone microphone stream identifies its PCM16 source', () async {
+    const permissionChannel = MethodChannel('flutter.baseflow.com/permissions/methods');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      permissionChannel,
+      (call) async => {for (final permission in call.arguments as List<dynamic>) permission: 1},
+    );
+    final provider = _PhoneStartProbe();
+    try {
+      await expectLater(provider.streamRecording(), throwsA(isA<_PhoneProfileCaptured>()));
+      expect(provider.requestedUri!.queryParameters['source'], 'phone');
+      expect(provider.requestedUri!.queryParameters['codec'], 'pcm16');
+      expect(provider.requestedUri!.queryParameters['sample_rate'], '16000');
+    } finally {
+      provider.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(permissionChannel, null);
+    }
+  });
 
   test('removes segments and related state on deletion event', () {
     final provider = CaptureProvider();

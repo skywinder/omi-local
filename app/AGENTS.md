@@ -6,6 +6,8 @@ Local ngrok pairing uses `LocalMacSession` and Keychain, restored before network
 initialization. Keep HTTP/WSS credentials confined to the paired origin and block
 redirects. Local sessions do not require Firebase Auth. `make test-transport-app`
 at the repo root covers pairing, network policy, legacy auth, and the analyzer.
+Phone-microphone PCM16 must include `source=phone` on the initial listen socket
+as well as reconnects; the local capture sink uses that source to select WAV capture.
 
 ## Build Bootstrap
 

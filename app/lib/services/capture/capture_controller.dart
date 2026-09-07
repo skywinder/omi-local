@@ -1620,7 +1620,11 @@ class CaptureController extends ChangeNotifier
     }
 
     // prepare
-    await changeAudioRecordProfile(audioCodec: BleAudioCodec.pcm16, sampleRate: 16000);
+    await changeAudioRecordProfile(
+      audioCodec: BleAudioCodec.pcm16,
+      sampleRate: 16000,
+      source: ConversationSource.phone.name,
+    );
 
     // Initialize WAL for phone mic recording
     _activeSource = PhoneMicSource();

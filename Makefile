@@ -24,7 +24,7 @@ test-transport-unit:
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_mac.py
 
 test-transport-app:
-	cd app && bash test.sh test/unit/local_mac_session_test.dart test/widgets/local_mac_page_test.dart test/unit/offline_network_policy_test.dart test/unit/pure_socket_auth_test.dart test/unit/authenticated_request_401_test.dart test/unit/auth_refresh_timeout_test.dart test/unit/startup_auth_timeout_test.dart test/widgets/session_expired_reauthentication_test.dart
+	cd app && bash test.sh test/unit/local_mac_session_test.dart test/widgets/local_mac_page_test.dart test/unit/offline_network_policy_test.dart test/unit/pure_socket_auth_test.dart test/unit/authenticated_request_401_test.dart test/unit/auth_refresh_timeout_test.dart test/unit/startup_auth_timeout_test.dart test/widgets/session_expired_reauthentication_test.dart test/providers/capture_provider_test.dart
 	cd app && bash scripts/analyze_ratchet.sh
 
 test-offline:
