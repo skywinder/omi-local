@@ -10800,5 +10800,14 @@
     "pendantRecordingSyncBlocked": "Pendant ఇంకా రికార్డ్ చేస్తోంది, కాబట్టి నిల్వ చేసిన ఆడియోను బదిలీ చేయలేము. రికార్డింగ్ ఆపడానికి Pendant బటన్ నొక్కి, ఆపై మళ్లీ సింక్ చేయండి.",
     "pendantFullSyncBlocked": "Pendant నిల్వ నిండిపోయింది మరియు అది ఇంకా రికార్డింగ్ మోడ్‌లో ఉంది, కాబట్టి నిల్వ చేసిన ఆడియోను బదిలీ చేయడం సాధ్యం కాదు. రికార్డింగ్ ఆపడానికి Pendant బటన్‌ను నొక్కి, ఆపై మళ్లీ సింక్ చేయండి.",
     "conversationsNotCapturedCount": "రికార్డ్ కాలేదు ({count})",
-    "transcriptionNoAudio": "ట్రాన్స్‌క్రిప్షన్ ఆడియో స్వీకరించడం లేదు"
+    "transcriptionNoAudio": "ట్రాన్స్‌క్రిప్షన్ ఆడియో స్వీకరించడం లేదు",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

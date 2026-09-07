@@ -10800,5 +10800,14 @@
     "pendantRecordingSyncBlocked": "Pendant сè уште снима, па складираното аудио не може да се пренесе. Притиснете го копчето на Pendant за да го запрете снимањето, а потоа синхронизирајте повторно.",
     "pendantFullSyncBlocked": "Меморијата на Pendant е полна и тој сè уште е во режим на снимање, па зачуваното аудио не може да се пренесе. Притиснете го копчето на Pendant за да го запрете снимањето, а потоа синхронизирајте повторно.",
     "conversationsNotCapturedCount": "Не е снимено ({count})",
-    "transcriptionNoAudio": "Транскрипцијата не прима аудио"
+    "transcriptionNoAudio": "Транскрипцијата не прима аудио",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

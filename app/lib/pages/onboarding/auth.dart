@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:omi/pages/settings/local_mac_page.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -70,28 +71,39 @@ class _AuthComponentState extends State<AuthComponent> {
 
                     const SizedBox(height: 32),
 
-                    if (Env.isOfflineRuntime)
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          key: const ValueKey('offline-local-sign-in'),
-                          onPressed: () {
-                            HapticFeedback.mediumImpact();
-                            provider.onLocalEmulatorSignIn(widget.onSignIn);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                          ),
-                          child: Text(
-                            '${context.l10n.offline} — ${context.l10n.continueButton}',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Manrope'),
+                    if (Env.isOfflineRuntime) ...[
+                      OutlinedButton(
+                        key: const ValueKey('local-mac-open'),
+                        onPressed: () async {
+                          final connected = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute(builder: (_) => const LocalMacPage()),
+                          );
+                          if (connected == true && mounted) widget.onSignIn();
+                        },
+                        child: Text(context.l10n.localMacTitle),
+                      ),
+                      if (!Env.usesLocalTunnel)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            key: const ValueKey('offline-local-sign-in'),
+                            onPressed: () {
+                              HapticFeedback.mediumImpact();
+                              provider.onLocalEmulatorSignIn(widget.onSignIn);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                            ),
+                            child: Text(
+                              '${context.l10n.offline} — ${context.l10n.continueButton}',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Manrope'),
+                            ),
                           ),
                         ),
-                      )
-                    else ...[
+                    ] else ...[
                       // Sign in buttons
                       if (Platform.isIOS || Platform.isAndroid) ...[
                         SizedBox(

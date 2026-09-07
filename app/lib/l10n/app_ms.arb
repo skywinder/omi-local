@@ -3234,5 +3234,14 @@
     "pendantRecordingSyncBlocked": "Pendant masih merakam, jadi audio yang tersimpan tidak dapat dipindahkan. Tekan butang Pendant untuk menghentikan rakaman, kemudian segerakkan semula.",
     "pendantFullSyncBlocked": "Storan Pendant penuh dan ia masih dalam mod rakaman, jadi audio yang tersimpan tidak dapat dipindahkan. Tekan butang Pendant untuk menghentikan rakaman, kemudian segerakkan semula.",
     "conversationsNotCapturedCount": "Tidak dirakam ({count})",
-    "transcriptionNoAudio": "Transkripsi tidak menerima audio"
+    "transcriptionNoAudio": "Transkripsi tidak menerima audio",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

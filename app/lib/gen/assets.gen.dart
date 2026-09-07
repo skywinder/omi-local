@@ -492,10 +492,6 @@ abstract final class Assets {
   static const $AssetsImagesGen images = $AssetsImagesGen();
   static const $AssetsIntegrationAppLogosGen integrationAppLogos =
       $AssetsIntegrationAppLogosGen();
-  static const String shorebird = 'shorebird.yaml';
-
-  /// List of all assets
-  static List<String> get values => [shorebird];
 }
 
 class AssetGenImage {

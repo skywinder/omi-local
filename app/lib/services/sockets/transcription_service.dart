@@ -110,7 +110,8 @@ class TranscriptSegmentSocketService implements IPureSocketListener {
     this.geolocation,
     this.clientConversationId,
   }) {
-    var params = '?language=$language&sample_rate=$sampleRate&codec=$codec&uid=${SharedPreferencesUtil().uid}'
+    var params = '?language=$language&sample_rate=$sampleRate&codec=$codec'
+        '${Env.usesLocalTunnel ? '' : '&uid=${SharedPreferencesUtil().uid}'}'
         '&include_speech_profile=$includeSpeechProfile&stt_service=${SharedPreferencesUtil().transcriptionModel}'
         '&conversation_timeout=${SharedPreferencesUtil().conversationSilenceDuration}';
 

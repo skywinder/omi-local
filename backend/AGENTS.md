@@ -2,6 +2,12 @@
 
 Inherits all rules from the root `../AGENTS.md`. This file adds backend-specific development guidance.
 
+For this snapshot's ngrok mode use `scripts/local-mac.sh` from the repository
+root. Shared-key auth must run before dev/admin fallback; only its verification
+hash belongs in backend pairing state. Offline capture supports CV1 Opus and
+phone PCM16 at mono 16 kHz. Keep the existing route allowlist and emulator/Redis
+loopback boundaries. See `docs/NGROK.md`; `make test-offline` is the local suite.
+
 ## Setup
 
 Python 3.11 is required (not 3.12+ — Dockerfile pins 3.11). Backend local dev pins the exact interpreter in `.python-version` and uses `uv` for reproducible dependency sync. Also needs FFmpeg, Opus (`opuslib`), Redis (optional).

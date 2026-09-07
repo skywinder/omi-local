@@ -125,6 +125,7 @@ from utils.executors import (
 from utils.executors import start_background_task
 from utils.other.local_storage import local_storage_root_from_env
 from utils.offline_audio_capture import recover_offline_audio_captures
+from utils.local_transport_auth import LocalTransportAuthMiddleware
 from utils.offline_route_policy import (
     OfflineRoutePolicyMiddleware,
     is_offline_http_route_allowed,
@@ -335,6 +336,7 @@ from utils.byok import BYOKMiddleware
 
 app.add_middleware(BYOKMiddleware)
 app.add_middleware(OfflineRoutePolicyMiddleware)
+app.add_middleware(LocalTransportAuthMiddleware)
 
 
 @app.on_event("startup")  # type: ignore[reportDeprecated]  # FastAPI on_event still functional; lifespan migration would change app wiring

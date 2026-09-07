@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:omi/services/auth/local_mac_session.dart';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
@@ -35,13 +37,17 @@ class ConnectivityService {
   bool get isConnected => _isConnected;
   bool _isInitialized = false;
   bool _offlineRuntime = false;
+  Timer? _tunnelProbeTimer;
+  bool _probing = false;
 
   Future<void> init({bool? offlineRuntime}) async {
     if (_isInitialized) return;
     _offlineRuntime = offlineRuntime ?? Env.isOfflineRuntime;
 
     final connectivityResult = await _connectivity.checkConnectivity();
-    if (_offlineRuntime) {
+    if (Env.usesLocalTunnel) {
+      await refreshLocalTunnel();
+    } else if (_offlineRuntime) {
       _isConnected = hasLocalNetworkTransport(connectivityResult);
     } else if (connectivityResult.contains(ConnectivityResult.none)) {
       _isConnected = false;
@@ -51,16 +57,26 @@ class ConnectivityService {
     }
 
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
+    if (_offlineRuntime) {
+      _tunnelProbeTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (Env.usesLocalTunnel) unawaited(refreshLocalTunnel());
+      });
+    }
     _isInitialized = true;
   }
 
   void dispose() {
+    _tunnelProbeTimer?.cancel();
     _connectivitySubscription?.cancel();
     _internetSubscription?.cancel();
     _connectionChangeController.close();
   }
 
   void _handleConnectivityChange(List<ConnectivityResult> result) {
+    if (Env.usesLocalTunnel) {
+      unawaited(refreshLocalTunnel());
+      return;
+    }
     if (_offlineRuntime) {
       _updateConnectionState(hasLocalNetworkTransport(result));
       return;
@@ -83,6 +99,33 @@ class ConnectivityService {
       result.contains(ConnectivityResult.wifi) ||
       result.contains(ConnectivityResult.ethernet) ||
       result.contains(ConnectivityResult.vpn);
+
+  static bool hasTunnelTransport(List<ConnectivityResult> result) =>
+      hasLocalNetworkTransport(result) || result.contains(ConnectivityResult.mobile);
+
+  Future<void> refreshLocalTunnel() async {
+    if (!Env.usesLocalTunnel || _probing) return;
+    _probing = true;
+    final address = Env.apiBaseUrl;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+    try {
+      final transport = await _connectivity.checkConnectivity();
+      if (!hasTunnelTransport(transport)) {
+        _updateConnectionState(false);
+        return;
+      }
+      final request = await client.getUrl(Uri.parse(address!).resolve('v1/health')).timeout(const Duration(seconds: 3));
+      request.followRedirects = false;
+      final response = await request.close().timeout(const Duration(seconds: 3));
+      if (address == Env.apiBaseUrl)
+        _updateConnectionState(response.statusCode == 200 && LocalMacSession.instance.isSignedIn);
+    } catch (_) {
+      if (address == Env.apiBaseUrl) _updateConnectionState(false);
+    } finally {
+      client.close(force: true);
+      _probing = false;
+    }
+  }
 
   void _handleInternetStatusChange(InternetStatus status) {
     _updateConnectionState(status == InternetStatus.connected);

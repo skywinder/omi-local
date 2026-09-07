@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deterministic local-only Opus -> real /v4/listen -> WAV smoke test.
+# Synthetic CV1 Opus or phone PCM16 -> real /v4/listen -> WAV smoke test.
 # shellcheck source=_source_local_dev_env.sh
 source "$(dirname "$0")/_source_local_dev_env.sh"
 cd "$(dirname "$0")/../.."
@@ -58,28 +58,42 @@ storage_root = Path(config.child_env_for(cfg)['OMI_LOCAL_STORAGE_ROOT'])
 capture_root = storage_root / 'listen-captures'
 before = {path.name for path in capture_root.iterdir()} if capture_root.is_dir() else set()
 
-alice = next(user for user in USERS if user.uid == ALICE_USER_ID)
-auth_request = urllib.request.Request(
-    f'http://{cfg.auth_host}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-dev-harness',
-    data=json.dumps(
-        {'email': alice.email, 'password': alice.password, 'returnSecureToken': True}
-    ).encode('utf-8'),
-    headers={'Content-Type': 'application/json'},
-    method='POST',
-)
-try:
-    with urllib.request.urlopen(auth_request, timeout=10) as response:
-        auth_body = json.loads(response.read().decode('utf-8'))
-except (OSError, urllib.error.HTTPError, json.JSONDecodeError) as error:
-    fail(f'Firebase Auth emulator sign-in failed ({type(error).__name__})')
-token = auth_body.get('idToken') if isinstance(auth_body, dict) else None
-if not isinstance(token, str) or not token:
-    fail('Firebase Auth emulator returned no ID token')
+base_url = os.environ.get('OMI_AUDIO_BASE_URL', cfg.backend_url).rstrip('/')
+if cfg.local_transport == 'ngrok':
+    from dev_harness.local_mac import endpoint, pairing_data
+    if base_url != cfg.backend_url:
+        endpoint(base_url)
+    key_fd = int(os.environ['OMI_AUDIO_ACCESS_KEY_FD'])
+    with os.fdopen(key_fd) as stream:
+        token = stream.read(128).strip()
+    pairing_data(token)
+else:
+    alice = next(user for user in USERS if user.uid == ALICE_USER_ID)
+    auth_request = urllib.request.Request(
+        f'http://{cfg.auth_host}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-dev-harness',
+        data=json.dumps(
+            {'email': alice.email, 'password': alice.password, 'returnSecureToken': True}
+        ).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(auth_request, timeout=10) as response:
+            auth_body = json.loads(response.read().decode('utf-8'))
+    except (OSError, urllib.error.HTTPError, json.JSONDecodeError) as error:
+        fail(f'Firebase Auth emulator sign-in failed ({type(error).__name__})')
+    token = auth_body.get('idToken') if isinstance(auth_body, dict) else None
+    if not isinstance(token, str) or not token:
+        fail('Firebase Auth emulator returned no ID token')
 
 sample_rate = 16000
 frame_samples = 320
 frame_count = 100
 amplitude = 6000
+audio_source = os.environ.get('OMI_AUDIO_SOURCE', 'omi')
+if audio_source not in {'omi', 'phone'}:
+    fail('Unsupported synthetic audio source')
+input_codec = 'pcm16' if audio_source == 'phone' else 'opus_fs320'
 encoder = opuslib.Encoder(sample_rate, 1, opuslib.APPLICATION_AUDIO)
 packets: list[bytes] = []
 for frame_index in range(frame_count):
@@ -88,7 +102,7 @@ for frame_index in range(frame_count):
         for index in range(frame_samples)
     ]
     pcm = struct.pack(f'<{frame_samples}h', *samples)
-    packets.append(encoder.encode(pcm, frame_samples))
+    packets.append(pcm if audio_source == 'phone' else encoder.encode(pcm, frame_samples))
 
 
 async def send_audio() -> None:
@@ -96,13 +110,14 @@ async def send_audio() -> None:
         {
             'language': 'en',
             'sample_rate': sample_rate,
-            'codec': 'opus_fs320',
+            'codec': input_codec,
             'channels': 1,
             'include_speech_profile': 'false',
-            'source': 'omi',
+            'source': audio_source,
         }
     )
-    url = f'ws://{cfg.backend_host}/v4/listen?{query}'
+    socket_base = base_url.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)
+    url = f'{socket_base}/v4/listen?{query}'
     async with websockets.connect(
         url,
         extra_headers={'Authorization': f'Bearer {token}', 'X-App-Platform': 'ios'},
@@ -156,6 +171,8 @@ with wave.open(str(session_dir / 'audio.wav'), 'rb') as source:
 expected = (1, 2, sample_rate, frame_count * frame_samples)
 if actual != expected:
     fail(f'Unexpected WAV format/count: {actual!r}')
+if metadata.get('source') != audio_source or metadata.get('input', {}).get('codec') != input_codec:
+    fail('Capture source/codec metadata does not match the stream')
 if metadata.get('status') != 'completed' or metadata.get('decode_errors') != 0:
     fail('Capture metadata did not report a clean completed session')
 if metadata.get('decoded_pcm_bytes') != frame_count * frame_samples * 2:
@@ -165,5 +182,5 @@ if abs(float(metadata.get('duration_seconds', 0)) - 2.0) > 0.001:
 if (session_dir / 'audio.pcm.part').exists() or (session_dir / 'metadata.json.part').exists():
     fail('Finalized capture retained partial files')
 
-print('PASS: real offline /v4/listen produced one PCM16 mono 16 kHz WAV with metadata (2.000 s)')
+print(f'PASS: {audio_source}/{input_codec} via real /v4/listen produced a 2.000 s WAV, PCM16 mono 16 kHz, decode_errors=0')
 PY

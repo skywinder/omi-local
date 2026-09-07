@@ -2,6 +2,11 @@
 
 Inherits all rules from the root [`../AGENTS.md`](../AGENTS.md). This file adds app-specific operational guidance.
 
+Local ngrok pairing uses `LocalMacSession` and Keychain, restored before network
+initialization. Keep HTTP/WSS credentials confined to the paired origin and block
+redirects. Local sessions do not require Firebase Auth. `make test-transport-app`
+at the repo root covers pairing, network policy, legacy auth, and the analyzer.
+
 ## Build Bootstrap
 
 ### Flavors

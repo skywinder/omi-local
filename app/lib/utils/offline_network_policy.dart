@@ -24,6 +24,13 @@ final class OfflineNetworkPolicy {
 
   factory OfflineNetworkPolicy.standard() => OfflineNetworkPolicy._(offline: false, authorities: const {});
 
+  factory OfflineNetworkPolicy.tunnel(Uri uri) {
+    final api = Env.parseLocalTunnelUrl(uri.toString());
+    return OfflineNetworkPolicy._(offline: true, authorities: {
+      _AllowedAuthority(api.host, 443, secure: true, webSocketAllowed: true),
+    });
+  }
+
   factory OfflineNetworkPolicy.offline({
     required Uri apiBaseUri,
     required String authEmulatorHost,
@@ -57,13 +64,15 @@ final class OfflineNetworkPolicy {
       return;
     }
     final api = Uri.parse(Env.apiBaseUrl!);
-    final policy = OfflineNetworkPolicy.offline(
-      apiBaseUri: api,
-      authEmulatorHost: Env.firebaseAuthEmulatorHost,
-      authEmulatorPort: Env.firebaseAuthEmulatorPort,
-    );
+    final policy = Env.usesLocalTunnel
+        ? OfflineNetworkPolicy.tunnel(api)
+        : OfflineNetworkPolicy.offline(
+            apiBaseUri: api,
+            authEmulatorHost: Env.firebaseAuthEmulatorHost,
+            authEmulatorPort: Env.firebaseAuthEmulatorPort,
+          );
     _current = policy;
-    HttpOverrides.global = OfflineHttpOverrides(policy);
+    HttpOverrides.global = OfflineHttpOverrides(policy, followCurrent: true);
   }
 
   final bool offline;
@@ -137,13 +146,21 @@ final class _AllowedAuthority {
 }
 
 final class OfflineHttpOverrides extends HttpOverrides {
-  OfflineHttpOverrides(this.policy);
+  OfflineHttpOverrides(this.policy, {this.followCurrent = false});
 
   final OfflineNetworkPolicy policy;
+  final bool followCurrent;
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.findProxy = (uri) => findProxyFromEnvironment(uri, null);
+    return client;
+  }
 
   @override
   String findProxyFromEnvironment(Uri url, Map<String, String>? environment) {
-    policy.requireAllowed(url);
+    (followCurrent ? OfflineNetworkPolicy.current : policy).requireAllowed(url);
     return 'DIRECT';
   }
 }

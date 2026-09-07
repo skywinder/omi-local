@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:omi/services/auth/local_mac_session.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +11,7 @@ import 'package:omi/backend/http/clock_skew_detector.dart';
 import 'package:omi/backend/http/http_pool_manager.dart';
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/env/env.dart';
+import 'package:omi/utils/offline_network_policy.dart';
 import 'package:omi/utils/jwt_expiry.dart';
 import 'package:omi/services/account_cutover/account_cutover_runtime.dart';
 import 'package:omi/services/auth/auth_token_result.dart';
@@ -59,6 +61,10 @@ bool isTransientNetworkError(Object e) {
 }
 
 Future<String> getAuthHeader({bool expireTerminalSession = true}) async {
+  if (Env.usesLocalTunnel) {
+    if (!LocalMacSession.instance.isSignedIn) throw AuthTokenUnavailableException(const AuthTokenMissingUser());
+    return LocalMacSession.instance.authorizationFor(Uri.parse(Env.apiBaseUrl!));
+  }
   if (!AuthService.instance.isSignedIn()) {
     throw AuthTokenUnavailableException(const AuthTokenMissingUser());
   }
@@ -132,6 +138,16 @@ Future<Map<String, String>> buildHeaders({
     ...fromHeaders,
   };
 
+  if (Env.usesLocalTunnel) {
+    final target = Uri.parse(url ?? Env.apiBaseUrl!);
+    OfflineNetworkPolicy.current.requireAllowed(target);
+    if (requireAuthCheck) {
+      if (!LocalMacSession.instance.isSignedIn) throw AuthTokenUnavailableException(const AuthTokenMissingUser());
+      headers['Authorization'] = LocalMacSession.instance.authorizationFor(target);
+    }
+    return headers;
+  }
+
   if (shouldAttachAccountGenerationHeader(
     url: url,
     method: method,
@@ -167,6 +183,7 @@ String normalizeOmiApiUrlForHostMatch(String url) {
 }
 
 bool _isRequiredAuthCheck(String url) {
+  if (Env.usesLocalTunnel) return LocalMacSession.instance.permits(Uri.parse(url));
   // Agent VM endpoints always hit prod even when app uses dev
   if (url.contains('api.omi.me')) return true;
   final base = Env.apiBaseUrl;
@@ -293,6 +310,14 @@ Future<T> refreshAndReplayAfter401<T>({
   AuthService? authService,
 }) async {
   final service = authService ?? AuthService.instance;
+  if (Env.usesLocalTunnel) {
+    await disposeUnauthorizedResponse?.call(firstResponse);
+    if (firstResponse is http.BaseResponse && firstResponse.request != null) {
+      final request = firstResponse.request!;
+      await LocalMacSession.instance.rejectRequest(request.url, request.headers['authorization']);
+    }
+    return firstResponse;
+  }
   await disposeUnauthorizedResponse?.call(firstResponse);
   final refresh = await service.refreshIdToken();
   switch (refresh) {

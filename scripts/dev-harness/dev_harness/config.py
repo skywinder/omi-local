@@ -129,6 +129,7 @@ class HarnessConfig:
     typesense_port: int = TYPESENSE_PORT
     dev_bind_host: str = "127.0.0.1"
     llm_gateway_port: int = LLM_GATEWAY_PORT
+    local_transport: str = "lan"
 
     @property
     def firestore_host(self) -> str:
@@ -331,6 +332,11 @@ def load_config(repo_root: Path, env: Mapping[str, str] | None = None, *, create
     )
     ports = harness_ports_from_env(source)
     dev_bind_host = dev_bind_host_from_env(source)
+    local_transport = source.get("OMI_LOCAL_TRANSPORT", "lan")
+    if local_transport not in {"lan", "ngrok"}:
+        raise safety.SafetyError("Invalid local transport")
+    if local_transport == "ngrok" and (provider_mode != "offline" or dev_bind_host != "127.0.0.1"):
+        raise safety.SafetyError("ngrok requires offline providers and loopback binding")
     cfg = HarnessConfig(
         repo_root=repo_root.resolve(),
         instance=instance,
@@ -344,6 +350,7 @@ def load_config(repo_root: Path, env: Mapping[str, str] | None = None, *, create
         typesense_port=ports["typesense"],
         llm_gateway_port=ports["llm_gateway"],
         dev_bind_host=dev_bind_host,
+        local_transport=local_transport,
     )
     parsed = parse_secrets_file(cfg)
     if parsed.secrets.get("PROVIDER_MODE"):
@@ -361,7 +368,10 @@ def load_config(repo_root: Path, env: Mapping[str, str] | None = None, *, create
             typesense_port=cfg.typesense_port,
             llm_gateway_port=cfg.llm_gateway_port,
             dev_bind_host=cfg.dev_bind_host,
+            local_transport=cfg.local_transport,
         )
+    if cfg.local_transport == "ngrok" and cfg.provider_mode != "offline":
+        raise safety.SafetyError("ngrok requires offline providers after loading environment files")
     safety.validate_harness_runtime_config(
         project_id=cfg.project_id,
         database_id=cfg.database_id,
@@ -401,6 +411,10 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
     }
     if cfg.provider_mode == "offline":
         extra["OMI_OFFLINE_ALLOWED_ENDPOINTS"] = f"{cfg.dev_bind_host}:{cfg.backend_port}"
+    extra["OMI_LOCAL_TRANSPORT"] = cfg.local_transport
+    if cfg.local_transport == "ngrok":
+        extra["OMI_LOCAL_PAIRING_FILE"] = str(cfg.layout.state_root / "pairing.json")
+        extra["ADMIN_KEY_AUTH_ENABLED"] = "false"
     if cfg.provider_mode != "offline":
         extra.update(
             {

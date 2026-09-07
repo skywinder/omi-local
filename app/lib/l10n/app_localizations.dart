@@ -18464,6 +18464,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tap + to start recording'**
   String get tapPlusToStartRecording;
+
+  /// No description provided for @localMacTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Local Mac'**
+  String get localMacTitle;
+
+  /// No description provided for @localMacAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTPS address'**
+  String get localMacAddress;
+
+  /// No description provided for @localMacAccessKey.
+  ///
+  /// In en, this message translates to:
+  /// **'App access key'**
+  String get localMacAccessKey;
+
+  /// No description provided for @localMacConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Check and connect'**
+  String get localMacConnect;
+
+  /// No description provided for @localMacKeyRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The access key was rejected. Check the key on your Mac.'**
+  String get localMacKeyRejected;
+
+  /// No description provided for @localMacConnectionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not connect. Check the address and that your Mac and tunnel are running.'**
+  String get localMacConnectionFailed;
+
+  /// No description provided for @localMacHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.'**
+  String get localMacHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

@@ -23,7 +23,7 @@ SCHEMA_VERSION = 1
 OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_CHANNELS = 1
 OUTPUT_SAMPLE_WIDTH_BYTES = 2
-ALLOWED_INPUT_CODECS = frozenset({'opus', 'opus_fs320'})
+ALLOWED_INPUT_CODECS = frozenset({'opus', 'opus_fs320', 'pcm16'})
 
 
 def _utc_iso(timestamp: float) -> str:
@@ -73,6 +73,7 @@ def _capture_metadata(
     started_at: str,
     ended_at: str | None,
     input_codec: str,
+    source: str,
     frames_received: int,
     encoded_bytes: int,
     decoded_pcm_bytes: int,
@@ -84,7 +85,7 @@ def _capture_metadata(
         'session_id': session_id,
         'started_at': started_at,
         'ended_at': ended_at,
-        'source': 'omi',
+        'source': source,
         'input': {
             'codec': input_codec,
             'sample_rate': OUTPUT_SAMPLE_RATE,
@@ -110,11 +111,12 @@ def _capture_metadata(
 class OfflineAudioCapture:
     """Write decoded mono PCM immediately and atomically finalize a WAV session."""
 
-    def __init__(self, *, session_id: str, input_codec: str, root: Path):
+    def __init__(self, *, session_id: str, input_codec: str, source: str, root: Path):
         self.session_id = _validated_session_id(session_id)
         if input_codec not in ALLOWED_INPUT_CODECS:
             raise ValueError(f'unsupported offline Omi input codec: {input_codec}')
         self.input_codec = input_codec
+        self.source = source
         self.started_at_timestamp = time.time()
         self.started_at = _utc_iso(self.started_at_timestamp)
         self.frames_received = 0
@@ -137,6 +139,7 @@ class OfflineAudioCapture:
             started_at=self.started_at,
             ended_at=ended_at,
             input_codec=self.input_codec,
+            source=self.source,
             frames_received=self.frames_received,
             encoded_bytes=self.encoded_bytes,
             decoded_pcm_bytes=self.decoded_pcm_bytes,
@@ -182,7 +185,7 @@ class OfflineAudioCapture:
         return metadata
 
 
-def create_offline_omi_capture(
+def create_offline_audio_capture(
     *,
     session_id: str,
     source: str | None,
@@ -190,20 +193,21 @@ def create_offline_omi_capture(
     sample_rate: int,
     channels: int,
 ) -> OfflineAudioCapture | None:
-    """Create the sink only for the exact local CV1 transport contract."""
+    """Capture existing CV1 Opus and phone-mic PCM16 streams without STT."""
 
     if not is_offline_runtime():
         return None
-    if source != 'omi':
+    if source not in {'omi', 'phone'}:
         return None
     if sample_rate != OUTPUT_SAMPLE_RATE or channels != OUTPUT_CHANNELS:
         raise RuntimeError('offline Omi capture requires mono 16 kHz audio')
-    if input_codec not in ALLOWED_INPUT_CODECS:
-        raise RuntimeError('offline Omi capture requires opus or opus_fs320')
+    allowed = {'pcm16'} if source == 'phone' else {'opus', 'opus_fs320'}
+    if input_codec not in allowed:
+        raise RuntimeError('unsupported local audio source/codec combination')
     root = local_storage_root_from_env()
     if root is None:
         raise RuntimeError('offline Omi capture requires validated OMI_LOCAL_STORAGE_ROOT')
-    return OfflineAudioCapture(session_id=session_id, input_codec=input_codec, root=root)
+    return OfflineAudioCapture(session_id=session_id, input_codec=input_codec, source=source, root=root)
 
 
 def _recover_one(pcm_part_path: Path) -> bool:
@@ -213,7 +217,7 @@ def _recover_one(pcm_part_path: Path) -> bool:
     loaded = json.loads(metadata_part_path.read_text(encoding='utf-8'))
     if not isinstance(loaded, dict) or loaded.get('schema_version') != SCHEMA_VERSION:
         raise ValueError('unsupported offline capture recovery metadata')
-    if loaded.get('session_id') != session_id or loaded.get('source') != 'omi':
+    if loaded.get('session_id') != session_id or loaded.get('source') not in {'omi', 'phone'}:
         raise ValueError('offline capture recovery identity mismatch')
     input_format = loaded.get('input')
     if not isinstance(input_format, dict) or input_format.get('codec') not in ALLOWED_INPUT_CODECS:
@@ -229,6 +233,7 @@ def _recover_one(pcm_part_path: Path) -> bool:
         started_at=str(loaded.get('started_at') or ended_at),
         ended_at=ended_at,
         input_codec=str(input_format['codec']),
+        source=loaded['source'],
         frames_received=int(loaded.get('frames_received') or 0),
         encoded_bytes=int(loaded.get('encoded_bytes') or 0),
         decoded_pcm_bytes=decoded_pcm_bytes,

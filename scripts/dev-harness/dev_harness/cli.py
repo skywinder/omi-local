@@ -191,6 +191,17 @@ def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]
         return False, detail
     if service == "backend":
         return _http_ok(f"{cfg.backend_url}/v1/health")
+    if service == "ngrok":
+        from .local_mac import ngrok_port, read_config
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{ngrok_port(cfg)}/api/tunnels", timeout=2) as response:
+                data = json.load(response)
+                ready = any(t.get("public_url") == read_config(cfg)["url"] and
+                            t.get("config", {}).get("addr") == cfg.backend_url and
+                            t.get("config", {}).get("inspect") is False for t in data.get("tunnels", []))
+                return ready, "agent endpoint readiness"
+        except (OSError, ValueError, KeyError):
+            return False, "agent endpoint unavailable"
     if service == "llm-gateway":
         return _http_ok(f"{cfg.llm_gateway_url}/health")
     if service == "desktop-backend":
@@ -603,6 +614,8 @@ def _start_process(
     existing = _service_record(cfg, service)
     if existing is not None:
         healthy, detail = _service_health(cfg, service)
+        if service in {"backend", "firestore"} and existing.get("local_transport", "lan") != cfg.local_transport:
+            healthy, detail = False, "local transport configuration changed"
         if healthy:
             print(f"{service}: already recorded as running")
             return
@@ -636,6 +649,7 @@ def _start_process(
     records.append(
         {
             "service": service,
+            "local_transport": cfg.local_transport,
             "pid": proc.pid,
             "process_group": proc.pid,
             "port": port,
@@ -658,6 +672,10 @@ def _firebase_command(cfg: config.HarnessConfig) -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"Cannot load firebase.json for harness: {exc}") from exc
     emulators = payload.setdefault("emulators", {})
+    if cfg.local_transport == "ngrok":
+        emulators["ui"] = {"enabled": False}
+        emulators["hub"] = {"host": "127.0.0.1", "port": cfg.backend_port + 401}
+        emulators["logging"] = {"host": "127.0.0.1", "port": cfg.backend_port + 501}
     for name, port in (("firestore", cfg.firestore_port), ("auth", cfg.auth_port)):
         emulator = emulators.setdefault(name, {})
         # The Auth emulator is what a physical device's Firebase SDK connects to
@@ -832,7 +850,8 @@ def _start_app_services(cfg: config.HarnessConfig) -> None:
     _start_process(
         cfg,
         "backend",
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", cfg.dev_bind_host, "--port", str(cfg.backend_port)],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", cfg.dev_bind_host, "--port", str(cfg.backend_port),
+         *(["--no-access-log", "--log-level", "warning"] if cfg.local_transport == "ngrok" else [])],
         cwd=cfg.repo_root / "backend",
         log_name="backend.log",
         port=cfg.backend_port,

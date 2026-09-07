@@ -3210,5 +3210,14 @@
     "pendantRecordingSyncBlocked": "لا يزال Pendant يسجّل، لذا لا يمكن نقل الصوت المخزّن عليه. اضغط على زر Pendant لإيقاف التسجيل، ثم أعد المزامنة.",
     "pendantFullSyncBlocked": "ذاكرة Pendant ممتلئة وما زال في وضع التسجيل، لذا لا يمكن نقل الصوت المخزّن. اضغط على زر Pendant لإيقاف التسجيل، ثم أعد المزامنة.",
     "conversationsNotCapturedCount": "لم يتم التسجيل ({count})",
-    "transcriptionNoAudio": "النسخ لا يستلم الصوت"
+    "transcriptionNoAudio": "النسخ لا يستلم الصوت",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

@@ -9,6 +9,11 @@ components, upstream remotes, and `make setup`/PR automation do not apply here.
 Use the targets in this repository's Makefile. Do not recreate removed services
 or fetch/pull upstream as a prerequisite for work on this snapshot.
 
+Ngrok transport is documented in `docs/NGROK.md`. Use `scripts/local-mac.sh` for
+its owned loopback stack; never expose the LAN development backend or emulators.
+Run `make test-offline` and `make test-transport-app` before the separate final iOS
+build/attestation. STT and batch processing remain outside this transport release.
+
 - Work on one verifiable gate at a time. Run cheap prerequisites before mutations.
 - Before any iOS build record `build`, `reuse`, or `blocked` from actual inputs.
   Reuse an attested artifact when inputs are unchanged; runtime, transport, and

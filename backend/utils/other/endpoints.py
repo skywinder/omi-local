@@ -106,6 +106,14 @@ def verify_token(token: str) -> str:
     Raises:
         InvalidIdTokenError: If the token is invalid
     """
+    from utils.local_transport_auth import local_tunnel_enabled, verify_local_key, LocalTransportAuthError
+
+    if local_tunnel_enabled():
+        try:
+            return verify_local_key(token)
+        except LocalTransportAuthError as error:
+            raise InvalidIdTokenError("Invalid local access key") from error
+
     # ADMIN_KEY impersonation: token format is "<ADMIN_KEY><uid>" (kept as-is —
     # this exact concatenation is depended on by this repo's own integration
     # tests, the listen/sync test stacks, and the production
