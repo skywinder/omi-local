@@ -11,6 +11,8 @@ as well as reconnects; the local capture sink uses that source to select WAV cap
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.
+The mobile wrapper contract test stubs native build tools and the plugin overlay;
+it must run from a fresh checkout without ignored iOS generated files.
 
 ## Build Bootstrap
 
