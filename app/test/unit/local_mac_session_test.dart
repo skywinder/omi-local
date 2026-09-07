@@ -6,6 +6,8 @@ import 'package:omi/backend/preferences.dart';
 import 'package:omi/env/env.dart';
 import 'package:omi/env/dev_env.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
+import 'package:omi/services/auth_service.dart';
+import 'package:omi/services/auth/auth_token_result.dart';
 import 'package:omi/utils/offline_network_policy.dart';
 
 void main() {
@@ -94,5 +96,15 @@ void main() {
     expect(session.isSignedIn, isTrue);
     await session.rejectRequest(Uri.parse(session.address), 'Bearer $replacement');
     expect(session.isSignedIn, isFalse);
+  });
+
+  test('late Firebase expiry cannot clear the local owner', () async {
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    await session.connect(url, key);
+    await AuthService.instance.expireSession(
+      const AuthSessionExpiredEvent(reason: AuthSessionExpirationReason.missingToken),
+    );
+    expect(session.isSignedIn, isTrue);
+    expect(SharedPreferencesUtil().uid, 'alice');
   });
 }

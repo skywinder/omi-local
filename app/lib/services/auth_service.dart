@@ -418,6 +418,7 @@ class AuthService {
   Future<AuthTokenResult> _refreshIdTokenOnce(int generation, String expectedUid) async {
     try {
       final refreshed = await _tokenGateway.forceRefresh().timeout(_refreshAttemptTimeout);
+      if (Env.usesLocalTunnel) return const AuthTokenMissingUser();
       if (generation != _sessionGeneration || _tokenGateway.currentUser?.uid != expectedUid) {
         return const AuthTokenMissingUser();
       }
@@ -484,6 +485,7 @@ class AuthService {
   }
 
   Future<void> expireSession(AuthSessionExpiredEvent event) {
+    if (Env.usesLocalTunnel) return Future<void>.value();
     final inFlight = _expireSessionInFlight;
     if (_sessionExpired) return inFlight ?? Future<void>.value();
 
