@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
@@ -36,6 +37,11 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() == 'GET' and (
+        path == '/v1/conversations/{conversation_id}'
+        or re.fullmatch(r'/v1/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', path)
+    ):
+        return True
     return (method.upper(), path) in _ALLOWED_HTTP
 
 

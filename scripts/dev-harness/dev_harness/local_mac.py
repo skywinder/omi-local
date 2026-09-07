@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import cli, config, safety
+from . import cli, config, safety, local_stt
 
 
 class LocalMacError(ValueError):
@@ -294,9 +294,13 @@ def main() -> int:
             "status",
             "down",
             "audio-smoke",
+            "transcribe",
         ],
     )
+    parser.add_argument('audio', nargs='?')
     args = parser.parse_args()
+    if (args.command == 'transcribe') != (args.audio is not None):
+        parser.error('transcribe requires a WAV path; other commands take no audio argument')
     try:
         repo = Path.cwd()
         if args.command == "prepare-emulator":
@@ -315,6 +319,8 @@ def main() -> int:
             return cli.cmd_status(argparse.Namespace(write_summary=False))
         elif args.command == "down":
             return cli.cmd_down(argparse.Namespace())
+        elif args.command == "transcribe":
+            return local_stt.transcribe(cfg, args.audio)
         elif args.command == "audio-smoke":
             key = getpass.getpass("App access key (hidden): ")
             pairing_data(key)
@@ -333,11 +339,11 @@ def main() -> int:
             finally:
                 os.close(read_fd)
         return 0
-    except (ValueError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
+    except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
         message = (
             str(error)
-            if isinstance(error, LocalMacError)
+            if isinstance(error, (LocalMacError, local_stt.TranscriptionError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )
         print(f"Local Mac operation failed: {message}", file=sys.stderr)

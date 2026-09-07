@@ -20,6 +20,8 @@ dev-down:
 	bash scripts/dev-harness/dev-down.sh
 
 test-transport-unit:
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_offline_route_policy.py
+	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_stt.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_offline_audio_capture.py
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_mac.py
 
@@ -28,6 +30,8 @@ test-transport-app:
 	cd app && bash scripts/analyze_ratchet.sh
 
 test-offline:
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transcript.py
+	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider scripts/dev-harness/tests/test_local_stt.py
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider scripts/dev-harness/tests/test_local_mac.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_verify_token_admin_and_local_dev_gating.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_offline_audio_capture.py tests/unit/test_offline_network_policy.py tests/unit/test_offline_route_policy.py tests/unit/test_offline_main_surface.py tests/unit/test_offline_provider_gates.py tests/unit/test_offline_voice_message_routes.py

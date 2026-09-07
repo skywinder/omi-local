@@ -12,7 +12,8 @@ or fetch/pull upstream as a prerequisite for work on this snapshot.
 Ngrok transport is documented in `docs/NGROK.md`. Use `scripts/local-mac.sh` for
 its owned loopback stack; never expose the LAN development backend or emulators.
 Run `make test-offline` and `make test-transport-app` before the separate final iOS
-build/attestation. STT and batch processing remain outside this transport release.
+build/attestation. Finished-WAV transcription is documented in `docs/LOCAL_STT.md`;
+autonomous phone batch upload remains outside the current scope.
 For graceful harness shutdown, signal the validated supervisor once: both guards
 forward signals, so group-wide SIGINT interrupts Firebase's export-on-exit.
 

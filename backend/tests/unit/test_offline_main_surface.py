@@ -44,6 +44,14 @@ import os
 import sys
 import main
 
+fixture = {'id': 'synthetic', 'deferred': True, 'transcript_segments': [{'text': 'Synthetic fixture'}]}
+main.conversations._get_valid_conversation_by_id = lambda *args: fixture
+def forbidden(*args, **kwargs):
+    raise AssertionError('Offline detail must not enrich or dispatch first-open work')
+main.conversations._enrich_deferred_conversation = forbidden
+main.conversations._dispatch_first_open_work = forbidden
+assert main.conversations.get_conversation_by_id('synthetic', source=None, uid='synthetic') == fixture
+
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
     'routers.payment', 'routers.stt', 'routers.tts', 'routers.desktop_realtime',
@@ -75,6 +83,7 @@ print(json.dumps({
         '/v1/account/cutover/control',
         '/v1/action-items',
         '/v1/conversations',
+        '/v1/conversations/{conversation_id}',
         '/v1/goals/all',
         '/v1/health',
         '/v1/users/available-languages',
