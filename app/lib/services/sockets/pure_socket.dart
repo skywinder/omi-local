@@ -43,6 +43,7 @@ class PureSocketMessage {
 }
 
 typedef SocketHeadersProvider = Future<Map<String, String>> Function();
+typedef SocketChannelConnector = WebSocketChannel Function(Uri uri, Map<String, String> headers);
 
 class PureSocket implements IPureSocket {
   WebSocketChannel? _channel;
@@ -63,11 +64,23 @@ class PureSocket implements IPureSocket {
   String get _logUrl => Env.usesLocalTunnel ? Uri.parse(url).path : url;
   final SocketHeadersProvider _headersProvider;
   final Map<String, String> _extraHeaders;
+  final SocketChannelConnector _channelConnector;
 
-  PureSocket(this.url, {SocketHeadersProvider? headersProvider, Map<String, String> extraHeaders = const {}})
+  PureSocket(this.url,
+      {SocketHeadersProvider? headersProvider,
+      Map<String, String> extraHeaders = const {},
+      SocketChannelConnector? channelConnector})
       : _headersProvider =
             headersProvider ?? (() => buildHeaders(requireAuthCheck: true, url: url, forWebSocket: true)),
-        _extraHeaders = Map.unmodifiable(extraHeaders);
+        _extraHeaders = Map.unmodifiable(extraHeaders),
+        _channelConnector = channelConnector ?? _openChannel;
+
+  static WebSocketChannel _openChannel(Uri uri, Map<String, String> headers) => IOWebSocketChannel.connect(
+        uri,
+        headers: headers,
+        pingInterval: const Duration(seconds: 20),
+        connectTimeout: const Duration(seconds: 15),
+      );
 
   @override
   void setListener(IPureSocketListener listener) {
@@ -96,12 +109,14 @@ class PureSocket implements IPureSocket {
       return false;
     }
 
-    _channel = IOWebSocketChannel.connect(
-      url,
-      headers: headers,
-      pingInterval: const Duration(seconds: 20),
-      connectTimeout: const Duration(seconds: 15),
-    );
+    var uri = Uri.parse(url);
+    // Dart's WebSocket upgrade copies Uri.port into an HTTP(S) URI. WS(S)
+    // has no implicit Uri port, so spell it out before that conversion.
+    // Keep explicit ports unchanged; the network policy still checks them.
+    if (!uri.hasPort && (uri.scheme == 'wss' || uri.scheme == 'ws')) {
+      uri = uri.replace(port: uri.scheme == 'wss' ? 443 : 80);
+    }
+    _channel = _channelConnector(uri, headers);
     if (_channel?.ready == null) {
       return false;
     }

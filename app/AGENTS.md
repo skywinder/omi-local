@@ -8,6 +8,9 @@ redirects. Local sessions do not require Firebase Auth. `make test-transport-app
 at the repo root covers pairing, network policy, legacy auth, and the analyzer.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
+PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
+this conversion and the strict authority policy; accepting HTTP(S) port zero
+would weaken the boundary rather than fix the socket caller.
 
 ## Build Bootstrap
 

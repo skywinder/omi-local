@@ -18,6 +18,7 @@ void main() {
     final tunnel = OfflineNetworkPolicy.tunnel(Uri.parse('https://synthetic.ngrok.app/'));
     expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app/v1/health')), isTrue);
     expect(tunnel.allows(Uri.parse('wss://synthetic.ngrok.app/v4/listen')), isTrue);
+    expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app:0/v4/listen')), isFalse);
     expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app.evil.test/')), isFalse);
     expect(tunnel.allows(Uri.parse('http://127.0.0.1:9099/')), isFalse);
     expect(tunnel.allows(Uri.parse('http://synthetic.ngrok.app/')), isFalse);
