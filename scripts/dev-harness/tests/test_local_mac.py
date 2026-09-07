@@ -154,3 +154,29 @@ prepare_personal_ios_build_dir
     assert result.returncode == 0
     assert (app / 'build').is_symlink()
     assert marker.exists() == native_cache
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='Personal Team preparation uses macOS PlistBuddy')
+def test_fresh_personal_setup_creates_required_custom_config(tmp_path):
+    import os
+    import plistlib
+    import subprocess
+
+    for folder in ['ios/Flutter', 'ios/Config/Dev', 'ios/Runner']:
+        (tmp_path / folder).mkdir(parents=True)
+    for folder in ['ios/Config/Dev', 'ios/Runner']:
+        (tmp_path / folder / 'GoogleService-Info.plist').write_bytes(plistlib.dumps({'BUNDLE_ID': 'com.example.old'}))
+    setup = Path(__file__).resolve().parents[3] / 'app/setup.sh'
+    result = subprocess.run(
+        ['bash', '-c', 'source "$OMI_TEST_SETUP" >/dev/null; generate_ios_custom_config Dev omi-dev true'],
+        cwd=tmp_path,
+        capture_output=True,
+        env={**os.environ, 'OMI_TEST_SETUP': str(setup), 'OMI_PERSONAL_BUNDLE_ID': 'com.example.omi.local'},
+    )
+    assert result.returncode == 0
+    assert (tmp_path / 'ios/Flutter/Custom.xcconfig').is_file()
+    for folder in ['ios/Config/Dev', 'ios/Runner']:
+        assert (
+            plistlib.loads((tmp_path / folder / 'GoogleService-Info.plist').read_bytes())['BUNDLE_ID']
+            == 'com.example.omi.local'
+        )

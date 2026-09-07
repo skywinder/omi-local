@@ -93,6 +93,9 @@ function generate_ios_custom_config() {
     personal_id=$(personal_bundle_id) || return 1
     /usr/libexec/PlistBuddy -c "Set :BUNDLE_ID ${personal_id}" "ios/Config/${config_name}/GoogleService-Info.plist"
     /usr/libexec/PlistBuddy -c "Set :BUNDLE_ID ${personal_id}" ios/Runner/GoogleService-Info.plist
+    # Every dev xcconfig includes this file, including a fresh Personal Team
+    # checkout. The local overlay has no Google sign-in callback scheme.
+    printf '// Generated local configuration.\nGOOGLE_REVERSE_CLIENT_ID=\n' > ios/Flutter/Custom.xcconfig
     return
   fi
 
