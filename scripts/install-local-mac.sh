@@ -6,7 +6,7 @@ if [ "$(uname -s)-$(uname -m)" != Darwin-arm64 ]; then
   echo 'This installer supports macOS on Apple Silicon.' >&2
   exit 1
 fi
-for input in backend/.python-version backend/pylock.macos.toml package-lock.json; do
+for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json; do
   test -s "$input" || { echo "Missing installer input: $input" >&2; exit 1; }
 done
 export PATH="/opt/homebrew/bin:$PATH"

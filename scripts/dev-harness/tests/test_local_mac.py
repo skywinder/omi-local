@@ -189,6 +189,47 @@ def test_emulator_reuse_checks_actual_archive(monkeypatch, tmp_path):
     assert archive.stat().st_mtime_ns == before
 
 
+@pytest.mark.parametrize(
+    'input_path', ['backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json']
+)
+@pytest.mark.parametrize('empty', [False, True])
+def test_installer_rejects_missing_or_empty_inputs_before_system_changes(tmp_path, input_path, empty):
+    import os
+    import shutil
+    import subprocess
+
+    repo = tmp_path / 'repo'
+    (repo / 'scripts').mkdir(parents=True)
+    installer = Path(__file__).resolve().parents[3] / 'scripts/install-local-mac.sh'
+    shutil.copy2(installer, repo / 'scripts/install-local-mac.sh')
+    for name in ['backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json']:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('synthetic installer input')
+    missing = repo / input_path
+    if empty:
+        missing.write_text('')
+    else:
+        missing.unlink()
+    marker = tmp_path / 'system-change-attempted'
+    shell_env = tmp_path / 'shell-env'
+    shell_env.write_text(
+        '''uname() { case "$1" in -s) echo Darwin;; -m) echo arm64;; esac; }
+brew() { touch "$OMI_TEST_SYSTEM_MARKER"; return 1; }
+'''
+    )
+    result = subprocess.run(
+        ['bash', 'scripts/install-local-mac.sh'],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env={**os.environ, 'BASH_ENV': str(shell_env), 'OMI_TEST_SYSTEM_MARKER': str(marker)},
+    )
+    assert result.returncode != 0
+    assert f'Missing installer input: {input_path}' in result.stderr
+    assert not marker.exists()
+
+
 def test_wizard_preserves_pairing_on_repeat_and_address_edit(monkeypatch, tmp_path, capsys):
     from types import SimpleNamespace
     from dev_harness import local_mac
