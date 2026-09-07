@@ -13,6 +13,8 @@ Ngrok transport is documented in `docs/NGROK.md`. Use `scripts/local-mac.sh` for
 its owned loopback stack; never expose the LAN development backend or emulators.
 Run `make test-offline` and `make test-transport-app` before the separate final iOS
 build/attestation. STT and batch processing remain outside this transport release.
+For graceful harness shutdown, signal the validated supervisor once: both guards
+forward signals, so group-wide SIGINT interrupts Firebase's export-on-exit.
 
 - Work on one verifiable gate at a time. Run cheap prerequisites before mutations.
 - Before any iOS build record `build`, `reuse`, or `blocked` from actual inputs.

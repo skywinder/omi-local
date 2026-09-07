@@ -7,6 +7,8 @@ root. Shared-key auth must run before dev/admin fallback; only its verification
 hash belongs in backend pairing state. Offline capture supports CV1 Opus and
 phone PCM16 at mono 16 kHz. Keep the existing route allowlist and emulator/Redis
 loopback boundaries. See `docs/NGROK.md`; `make test-offline` is the local suite.
+Ngrok profile-check diagnostics log only the HTTP response status; never extend
+them with headers, URLs/query parameters, owner identifiers, or response bodies.
 
 ## Setup
 

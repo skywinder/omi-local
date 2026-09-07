@@ -9,11 +9,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 from pathlib import Path
 
 from utils.env_loader import is_offline_runtime
+
+logger = logging.getLogger(__name__)
 
 
 class LocalTransportAuthError(ValueError):
@@ -81,6 +84,16 @@ class LocalTransportAuthMiddleware:
             return await self.app(scope, receive, send)
         if scope["type"] == "http" and scope.get("path") == "/v1/health" and scope.get("method") in {"GET", "HEAD"}:
             return await self.app(scope, receive, send)
+        if scope["type"] == "http" and scope.get("path") == "/v1/users/profile" and scope.get("method") == "GET":
+            original_send = send
+
+            async def profile_send(message):
+                if message["type"] == "http.response.start":
+                    # Pairing diagnostics contain no headers, URL/query, owner or body.
+                    logger.warning("Local Mac profile check: status=%d", message["status"])
+                await original_send(message)
+
+            send = profile_send
         try:
             scope["omi.local_uid"] = verify_local_authorization(scope.get("headers", []))
         except LocalTransportAuthError:

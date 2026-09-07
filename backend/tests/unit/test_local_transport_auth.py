@@ -92,3 +92,16 @@ def test_existing_lan_client_remains_unchanged(monkeypatch):
     monkeypatch.setenv("OMI_LOCAL_TRANSPORT", "lan")
     with client() as c:
         assert c.get("/v1/users/profile").status_code == 200
+
+
+def test_pairing_diagnostics_only_include_response_status(pairing, caplog):
+    with client() as c:
+        accepted = c.get("/v1/users/profile?private=synthetic-private", headers={"Authorization": f"Bearer {KEY}"})
+        rejected = c.get(
+            "/v1/users/profile?private=synthetic-private", headers={"Authorization": "Bearer rejected-secret"}
+        )
+        assert accepted.status_code == 200
+        assert rejected.status_code == 401
+        assert c.get("/openapi.json").status_code == 401
+    messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
+    assert messages == ["Local Mac profile check: status=200", "Local Mac profile check: status=401"]

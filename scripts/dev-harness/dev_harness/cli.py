@@ -242,13 +242,13 @@ def _stop_single_service(cfg: config.HarnessConfig, record: dict[str, object]) -
     descendants = safety.descendant_pids(pid)
     try:
         safety.validate_owned_pid(pid, process_manifest=cfg.layout.process_manifest, service=service)
-        _signal_owned_process_group(pid, service)
+        _signal_owned_supervisor(pid, service)
     except safety.SafetyError as exc:
         print(f"{service}: not stopped before restart: {exc}")
         return
     if service == "typesense":
         _remove_stale_typesense_container(cfg)
-    deadline = time.time() + 8
+    deadline = time.time() + (30 if service == "firestore" else 8)
     while time.time() < deadline and safety.process_exists(pid):
         time.sleep(0.25)
     if safety.process_exists(pid):
@@ -1113,14 +1113,16 @@ def cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
-def _signal_owned_process_group(pid: int, service: str) -> None:
+def _signal_owned_supervisor(pid: int, service: str) -> None:
     try:
-        os.killpg(pid, signal.SIGINT)
-        print(f"{service}: sent SIGINT to process group {pid}")
+        # Both marker-bearing guards forward signals. Signalling their whole
+        # group duplicates SIGINT at Firebase and aborts its export-on-exit.
+        os.kill(pid, signal.SIGINT)
+        print(f"{service}: sent SIGINT to owned supervisor {pid}")
     except ProcessLookupError:
         return
     except PermissionError as exc:
-        raise safety.SafetyError(f"Cannot signal process group {pid}: {exc}") from exc
+        raise safety.SafetyError(f"Cannot signal owned supervisor {pid}: {exc}") from exc
 
 
 def _reap_detached_port_holders(record: dict[str, object], descendants: tuple[int, ...]) -> None:
@@ -1175,10 +1177,10 @@ def _stop_owned(cfg: config.HarnessConfig) -> None:
             continue
         try:
             safety.validate_owned_pid(pid, process_manifest=cfg.layout.process_manifest, service=service)
-            _signal_owned_process_group(pid, service)
+            _signal_owned_supervisor(pid, service)
         except safety.SafetyError as exc:
             print(f"{service}: not stopped: {exc}")
-    deadline = time.time() + 8
+    deadline = time.time() + (30 if any(r.get("service") == "firestore" for r in records) else 8)
     while time.time() < deadline and any(safety.process_exists(int(r.get("pid", -1))) for r in records):
         time.sleep(0.25)
     for record in records:

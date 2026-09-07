@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from . import cli, config, safety
 
@@ -176,6 +176,45 @@ def check_agent(cfg) -> None:
         raise LocalMacError("ngrok configuration check failed")
 
 
+def ensure_owner_profile(cfg, owner_uid: str) -> None:
+    """Check live emulator state, creating only a missing paired-owner profile."""
+    if cfg.local_transport != "ngrok" or cfg.provider_mode != "offline" or cfg.dev_bind_host != "127.0.0.1":
+        raise LocalMacError("Owner profile preparation requires the loopback ngrok stack")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", owner_uid):
+        raise LocalMacError("Invalid local owner")
+    collection = f"http://{cfg.firestore_host}/v1/projects/{cfg.project_id}/databases/{cfg.database_id}/documents/users"
+    url = collection + "/" + quote(owner_uid, safe="")
+    headers = {"Authorization": "Bearer owner", "Content-Type": "application/json"}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=5) as response:
+            if response.status == 200:
+                return
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise LocalMacError("Cannot check the local owner profile") from None
+    # A stale scenario manifest cannot prove that Firestore still has the user.
+    # Create is atomic and never overwrites an existing profile or its settings.
+    payload = {"fields": {
+        "uid": {"stringValue": owner_uid},
+        "display_name": {"stringValue": "Local Mac"},
+        "synthetic": {"booleanValue": True},
+        "local_harness": {"booleanValue": True},
+    }}
+    request = urllib.request.Request(
+        collection + "?documentId=" + quote(owner_uid, safe=""),
+        data=json.dumps(payload).encode(), headers=headers, method="POST",
+    )
+    try:
+        urllib.request.urlopen(request, timeout=5).close()
+    except urllib.error.HTTPError as error:
+        if error.code != 409:
+            raise LocalMacError("Cannot prepare the local owner profile") from None
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=5) as response:
+        if response.status != 200:
+            raise LocalMacError("Local owner profile readiness is indeterminate")
+    print("Local owner profile restored; existing data and pairing preserved")
+
+
 def up(cfg) -> int:
     data = read_config(cfg)
     check_agent(cfg)
@@ -183,11 +222,12 @@ def up(cfg) -> int:
     from utils.local_transport_auth import load_pairing
 
     os.environ["OMI_LOCAL_PAIRING_FILE"] = str(cfg.layout.state_root / "pairing.json")
-    load_pairing()
+    pairing = load_pairing()
     if cli.cmd_check(argparse.Namespace()):
         return 1
     if cli.cmd_up(argparse.Namespace()):
         return 1
+    ensure_owner_profile(cfg, pairing["owner_uid"])
     # Require actual readiness, not a process declaration.
     with urllib.request.urlopen(cfg.backend_url + "/v1/health", timeout=5) as response:
         if response.status != 200:

@@ -71,6 +71,97 @@ def test_public_startup_requires_observed_key_rejection(monkeypatch):
     assert checked == [False, True]
 
 
+def test_owner_profile_is_created_only_when_live_document_is_missing(monkeypatch):
+    import io
+    import urllib.error
+    from types import SimpleNamespace
+    from dev_harness import local_mac
+
+    cfg = SimpleNamespace(local_transport='ngrok', provider_mode='offline', dev_bind_host='127.0.0.1',
+                          firestore_host='127.0.0.1:20085', project_id='demo-omi-local', database_id='(default)')
+    saved = None
+    writes = []
+
+    class Response(io.BytesIO):
+        status = 200
+
+    def request(req, **kwargs):
+        nonlocal saved
+        assert req.get_header('Authorization') == 'Bearer owner'
+        if req.get_method() == 'POST':
+            assert saved is None
+            saved = json.loads(req.data)
+            writes.append(saved)
+        elif saved is None:
+            raise urllib.error.HTTPError(req.full_url, 404, 'Not found', {}, io.BytesIO())
+        return Response(json.dumps(saved).encode())
+
+    monkeypatch.setattr(local_mac.urllib.request, 'urlopen', request)
+    local_mac.ensure_owner_profile(cfg, 'alice')
+    assert saved['fields']['uid']['stringValue'] == 'alice'
+    saved['fields']['user_setting'] = {'stringValue': 'preserve-me'}
+    local_mac.ensure_owner_profile(cfg, 'alice')
+    assert len(writes) == 1
+    assert saved['fields']['user_setting']['stringValue'] == 'preserve-me'
+
+
+def test_owner_profile_check_fails_closed_on_emulator_failure(monkeypatch):
+    import io
+    import urllib.error
+    from types import SimpleNamespace
+    from dev_harness import local_mac
+
+    cfg = SimpleNamespace(local_transport='ngrok', provider_mode='offline', dev_bind_host='127.0.0.1',
+                          firestore_host='127.0.0.1:20085', project_id='demo-omi-local', database_id='(default)')
+    def unavailable(req, **kwargs):
+        assert req.get_method() == 'GET'
+        raise urllib.error.HTTPError(req.full_url, 503, 'Unavailable', {}, io.BytesIO())
+
+    monkeypatch.setattr(local_mac.urllib.request, 'urlopen', unavailable)
+    with pytest.raises(local_mac.LocalMacError, match='check the local owner'):
+        local_mac.ensure_owner_profile(cfg, 'alice')
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='POSIX process signal contract')
+def test_supervisor_delivers_one_graceful_signal_to_service(tmp_path):
+    import os
+    import signal
+    import subprocess
+    import time
+    from dev_harness import cli
+
+    ready, result = tmp_path / 'ready', tmp_path / 'result'
+    child = '''import json, pathlib, signal, sys, time
+count = 0
+def stop(signum, frame):
+    global count
+    count += 1
+signal.signal(signal.SIGINT, stop)
+pathlib.Path(sys.argv[1]).touch()
+while not count: time.sleep(0.01)
+time.sleep(0.3)
+pathlib.Path(sys.argv[2]).write_text(json.dumps(count))
+'''
+    env = {**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1])}
+    process = subprocess.Popen(
+        [sys.executable, '-m', 'dev_harness.supervise', '--marker', 'synthetic-signal-test', '--service', 'fixture',
+         '--', sys.executable, '-c', child, str(ready), str(result)],
+        env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists()
+        cli._signal_owned_supervisor(process.pid, 'fixture')
+        assert process.wait(timeout=5) == 0
+        assert json.loads(result.read_text()) == 1
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+
+
 def test_emulator_reuse_checks_actual_archive(monkeypatch, tmp_path):
     import hashlib
 
