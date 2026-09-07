@@ -3239,5 +3239,14 @@
     "pendantRecordingSyncBlocked": "Pendant vẫn đang ghi âm nên không thể chuyển âm thanh đã lưu. Nhấn nút trên Pendant để dừng ghi âm, sau đó đồng bộ lại.",
     "pendantFullSyncBlocked": "Bộ nhớ của Pendant đã đầy và nó vẫn đang ở chế độ ghi âm, nên không thể chuyển âm thanh đã lưu. Nhấn nút của Pendant để dừng ghi âm, sau đó đồng bộ lại.",
     "conversationsNotCapturedCount": "Không được ghi âm ({count})",
-    "transcriptionNoAudio": "Bản ghi âm không nhận được âm thanh"
+    "transcriptionNoAudio": "Bản ghi âm không nhận được âm thanh",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

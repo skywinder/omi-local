@@ -6,6 +6,7 @@ import 'package:http/io_client.dart';
 import 'package:pool/pool.dart';
 
 import 'package:omi/utils/offline_network_policy.dart';
+import 'package:omi/env/env.dart';
 
 class HttpPoolManager {
   static final HttpPoolManager instance = HttpPoolManager._();
@@ -32,6 +33,8 @@ class HttpPoolManager {
   /// retries, pool-queued requests, and multipart uploads all get a current
   /// timestamp. (#6274)
   static void stampRequestTime(http.BaseRequest request) {
+    OfflineNetworkPolicy.current.requireAllowed(request.url);
+    if (Env.usesLocalTunnel) request.followRedirects = false;
     request.headers['X-Request-Start-Time'] = (DateTime.now().millisecondsSinceEpoch / 1000).toString();
   }
 

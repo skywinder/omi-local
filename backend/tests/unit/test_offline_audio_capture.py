@@ -15,7 +15,8 @@ from utils.offline_audio_capture import (
     METADATA_PART_NAME,
     PCM_PART_NAME,
     WAV_NAME,
-    create_offline_omi_capture,
+    OfflineAudioCapture,
+    create_offline_audio_capture,
     recover_offline_audio_captures,
 )
 
@@ -38,7 +39,7 @@ def _offline_storage(tmp_path: Path):
 
 def _new_capture(tmp_path: Path, *, session_id: str | None = None):
     with _offline_storage(tmp_path):
-        return create_offline_omi_capture(
+        return create_offline_audio_capture(
             session_id=session_id or str(uuid.uuid4()),
             source='omi',
             input_codec='opus_fs320',
@@ -82,6 +83,21 @@ def test_each_capture_requires_a_unique_server_session_directory(tmp_path: Path)
     first.finalize()
 
 
+def test_phone_pcm16_is_preserved_without_transcoding(tmp_path: Path) -> None:
+    with _offline_storage(tmp_path):
+        capture = create_offline_audio_capture(
+            session_id=str(uuid.uuid4()), source='phone', input_codec='pcm16', sample_rate=16000, channels=1
+        )
+        pcm = b'\x01\x00\xff\xff' * 160
+        capture.record_decoded_frame(encoded_bytes=len(pcm), pcm=pcm)
+        metadata = capture.finalize()
+    with wave.open(str(capture.wav_path), 'rb') as wav:
+        assert wav.readframes(wav.getnframes()) == pcm
+    assert metadata['source'] == 'phone'
+    assert metadata['input']['codec'] == 'pcm16'
+    assert metadata['decode_errors'] == 0
+
+
 @pytest.mark.parametrize(
     ('source', 'codec', 'sample_rate', 'channels'),
     [
@@ -91,13 +107,13 @@ def test_each_capture_requires_a_unique_server_session_directory(tmp_path: Path)
         ('omi', 'opus', 16000, 2),
     ],
 )
-def test_capture_gate_accepts_only_offline_omi_opus_mono_16k(
+def test_capture_gate_rejects_unsupported_local_audio_formats(
     tmp_path: Path, source: str, codec: str, sample_rate: int, channels: int
 ) -> None:
     with _offline_storage(tmp_path):
-        if source != 'omi':
+        if source not in {'omi', 'phone'}:
             assert (
-                create_offline_omi_capture(
+                create_offline_audio_capture(
                     session_id=str(uuid.uuid4()),
                     source=source,
                     input_codec=codec,
@@ -108,7 +124,7 @@ def test_capture_gate_accepts_only_offline_omi_opus_mono_16k(
             )
         else:
             with pytest.raises(RuntimeError):
-                create_offline_omi_capture(
+                create_offline_audio_capture(
                     session_id=str(uuid.uuid4()),
                     source=source,
                     input_codec=codec,
@@ -120,7 +136,7 @@ def test_capture_gate_accepts_only_offline_omi_opus_mono_16k(
 def test_capture_requires_validated_owned_storage_root(tmp_path: Path) -> None:
     with patch.dict(os.environ, {'OMI_ENV_STAGE': 'offline'}, clear=True):
         with pytest.raises(RuntimeError, match='OMI_LOCAL_STORAGE_ROOT'):
-            create_offline_omi_capture(
+            create_offline_audio_capture(
                 session_id=str(uuid.uuid4()),
                 source='omi',
                 input_codec='opus',
@@ -129,12 +145,13 @@ def test_capture_requires_validated_owned_storage_root(tmp_path: Path) -> None:
             )
 
 
-def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: Path) -> None:
+@pytest.mark.parametrize(('source', 'codec'), [('omi', 'opus'), ('omi', 'opus_fs320'), ('phone', 'pcm16')])
+def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: Path, source: str, codec: str) -> None:
     with _offline_storage(tmp_path):
-        capture = create_offline_omi_capture(
+        capture = create_offline_audio_capture(
             session_id=str(uuid.uuid4()),
-            source='omi',
-            input_codec='opus',
+            source=source,
+            input_codec=codec,
             sample_rate=16000,
             channels=1,
         )
@@ -147,14 +164,56 @@ def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: P
 
     metadata = json.loads((capture.session_dir / METADATA_NAME).read_text(encoding='utf-8'))
     assert metadata['status'] == 'recovered'
+    assert metadata['source'] == source
+    assert metadata['input']['codec'] == codec
     assert metadata['decoded_pcm_bytes'] == len(pcm)
-    assert (capture.session_dir / WAV_NAME).is_file()
+    with wave.open(str(capture.session_dir / WAV_NAME), 'rb') as wav:
+        assert wav.readframes(wav.getnframes()) == pcm
     assert not (capture.session_dir / PCM_PART_NAME).exists()
+
+
+@pytest.mark.parametrize(('source', 'codec'), [('phone', 'opus'), ('phone', 'opus_fs320'), ('omi', 'pcm16')])
+def test_capture_rejects_mismatched_source_codec_before_creating_files(
+    tmp_path: Path, source: str, codec: str
+) -> None:
+    with _offline_storage(tmp_path) as root:
+        session_id = str(uuid.uuid4())
+        with pytest.raises(ValueError, match='source/codec'):
+            OfflineAudioCapture(session_id=session_id, source=source, input_codec=codec, root=root)
+        assert not root.exists()
+        with pytest.raises(RuntimeError, match='source/codec'):
+            create_offline_audio_capture(
+                session_id=session_id, source=source, input_codec=codec, sample_rate=16000, channels=1
+            )
+        assert not root.exists()
+
+
+@pytest.mark.parametrize(('source', 'codec'), [('phone', 'opus'), ('phone', 'opus_fs320'), ('omi', 'pcm16')])
+def test_recovery_rejects_mismatched_source_codec_without_changing_original_parts(
+    tmp_path: Path, source: str, codec: str
+) -> None:
+    with _offline_storage(tmp_path):
+        capture = _new_capture(tmp_path)
+        pcm = b'\x01\x00' * 320
+        capture.record_decoded_frame(encoded_bytes=18, pcm=pcm)
+        capture._pcm.close()
+        metadata = json.loads(capture.metadata_part_path.read_text())
+        metadata['source'] = source
+        metadata['input']['codec'] = codec
+        original_metadata = json.dumps(metadata).encode()
+        capture.metadata_part_path.write_bytes(original_metadata)
+
+        assert recover_offline_audio_captures() == (0, 1)
+
+    assert capture.pcm_part_path.read_bytes() == pcm
+    assert capture.metadata_part_path.read_bytes() == original_metadata
+    assert not capture.wav_path.exists()
+    assert not capture.metadata_path.exists()
 
 
 def test_recovery_ignores_stale_atomic_temporary_files(tmp_path: Path) -> None:
     with _offline_storage(tmp_path):
-        capture = create_offline_omi_capture(
+        capture = create_offline_audio_capture(
             session_id=str(uuid.uuid4()),
             source='omi',
             input_codec='opus',
@@ -175,7 +234,7 @@ def test_recovery_ignores_stale_atomic_temporary_files(tmp_path: Path) -> None:
 
 def test_failed_recovery_leaves_original_part_untouched(tmp_path: Path) -> None:
     with _offline_storage(tmp_path):
-        capture = create_offline_omi_capture(
+        capture = create_offline_audio_capture(
             session_id=str(uuid.uuid4()),
             source='omi',
             input_codec='opus',

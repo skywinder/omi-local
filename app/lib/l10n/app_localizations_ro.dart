@@ -9965,4 +9965,27 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get tapPlusToStartRecording => 'Tap + to start recording';
+
+  @override
+  String get localMacTitle => 'Local Mac';
+
+  @override
+  String get localMacAddress => 'HTTPS address';
+
+  @override
+  String get localMacAccessKey => 'App access key';
+
+  @override
+  String get localMacConnect => 'Check and connect';
+
+  @override
+  String get localMacKeyRejected => 'The access key was rejected. Check the key on your Mac.';
+
+  @override
+  String get localMacConnectionFailed =>
+      'Could not connect. Check the address and that your Mac and tunnel are running.';
+
+  @override
+  String get localMacHelp =>
+      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
 }

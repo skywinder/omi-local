@@ -14,6 +14,18 @@ void main() {
 
   tearDown(OfflineNetworkPolicy.resetForTesting);
 
+  test('tunnel policy allows only the selected HTTPS and WSS endpoint', () {
+    final tunnel = OfflineNetworkPolicy.tunnel(Uri.parse('https://synthetic.ngrok.app/'));
+    expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app/v1/health')), isTrue);
+    expect(tunnel.allows(Uri.parse('wss://synthetic.ngrok.app/v4/listen')), isTrue);
+    expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app:0/v4/listen')), isFalse);
+    expect(tunnel.allows(Uri.parse('https://synthetic.ngrok.app.evil.test/')), isFalse);
+    expect(tunnel.allows(Uri.parse('http://127.0.0.1:9099/')), isFalse);
+    expect(tunnel.allows(Uri.parse('http://synthetic.ngrok.app/')), isFalse);
+    expect(ConnectivityService.hasTunnelTransport([ConnectivityResult.mobile]), isTrue);
+    expect(ConnectivityService.hasTunnelTransport([ConnectivityResult.none]), isFalse);
+  });
+
   test('offline policy permits only the configured API and Auth authorities', () {
     expect(policy.allows(Uri.parse('http://192.168.40.8:8000/v1/health')), isTrue);
     expect(policy.allows(Uri.parse('ws://192.168.40.8:8000/v4/listen')), isTrue);

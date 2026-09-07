@@ -204,7 +204,6 @@ flutter:
     - assets/images/
     - assets/integration_app_logos/
     - assets/competitor-logos/
-    - shorebird.yaml
   fonts:
     - family: "SF Pro Display"
       fonts:

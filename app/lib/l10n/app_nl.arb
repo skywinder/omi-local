@@ -3234,5 +3234,14 @@
     "pendantRecordingSyncBlocked": "Je Pendant is nog aan het opnemen, dus de opgeslagen audio kan niet worden overgezet. Druk op de knop van de Pendant om de opname te stoppen en synchroniseer opnieuw.",
     "pendantFullSyncBlocked": "De opslag van je Pendant is vol en hij staat nog in de opnamemodus, dus de opgeslagen audio kan niet worden overgedragen. Druk op de knop van de Pendant om de opname te stoppen en synchroniseer daarna opnieuw.",
     "conversationsNotCapturedCount": "Niet opgenomen ({count})",
-    "transcriptionNoAudio": "Transcriptie ontvangt geen audio"
+    "transcriptionNoAudio": "Transcriptie ontvangt geen audio",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

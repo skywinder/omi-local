@@ -3234,5 +3234,14 @@
     "pendantRecordingSyncBlocked": "Pendant joprojām ieraksta, tāpēc saglabāto audio nevar pārsūtīt. Nospiediet Pendant pogu, lai apturētu ierakstīšanu, un pēc tam sinhronizējiet vēlreiz.",
     "pendantFullSyncBlocked": "Pendant atmiņa ir pilna, un tas joprojām ir ierakstīšanas režīmā, tāpēc saglabāto audio nevar pārsūtīt. Nospiediet Pendant pogu, lai apturētu ierakstīšanu, un pēc tam sinhronizējiet vēlreiz.",
     "conversationsNotCapturedCount": "Nav ierakstīts ({count})",
-    "transcriptionNoAudio": "Transkripcija nesaņem audio"
+    "transcriptionNoAudio": "Transkripcija nesaņem audio",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

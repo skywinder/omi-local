@@ -3330,5 +3330,14 @@
     "pendantRecordingSyncBlocked": "A Pendant még mindig felvételt készít, ezért a tárolt hang nem vihető át. Nyomd meg a Pendant gombját a felvétel leállításához, majd szinkronizálj újra.",
     "pendantFullSyncBlocked": "A Pendant tárhelye megtelt, és még mindig felvételi módban van, ezért a tárolt hang nem vihető át. Nyomja meg a Pendant gombját a felvétel leállításához, majd szinkronizáljon újra.",
     "conversationsNotCapturedCount": "Nincs rögzítve ({count})",
-    "transcriptionNoAudio": "Az átírás nem kap hangot"
+    "transcriptionNoAudio": "Az átírás nem kap hangot",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

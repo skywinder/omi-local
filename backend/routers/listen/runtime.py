@@ -69,7 +69,7 @@ from database.account_deletion_policy import account_deletion_blocks_access
 from utils.webhooks import get_audio_bytes_webhook_seconds
 from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
-from utils.offline_audio_capture import OfflineAudioCapture, create_offline_omi_capture
+from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
 from .contracts import ListenLimits, ListenRequest, ListenSessionState
@@ -721,7 +721,7 @@ class ListenSessionRuntime:
         background: List[asyncio.Task[Any]] = []
         try:
             try:
-                self.capture_sink = create_offline_omi_capture(
+                self.capture_sink = create_offline_audio_capture(
                     session_id=self.session_id,
                     source=self.request.source,
                     input_codec=getattr(self, 'original_codec', self.request.codec),

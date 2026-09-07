@@ -3256,5 +3256,14 @@
     "pendantRecordingSyncBlocked": "Pendant 仍在录音，因此无法传输已存储的音频。请按下 Pendant 的按钮停止录音，然后重新同步。",
     "pendantFullSyncBlocked": "Pendant 的存储空间已满，且仍处于录音模式，因此无法传输已存储的音频。请按下 Pendant 的按钮停止录音，然后重新同步。",
     "conversationsNotCapturedCount": "未记录 ({count})",
-    "transcriptionNoAudio": "转录未接收到音频"
+    "transcriptionNoAudio": "转录未接收到音频",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

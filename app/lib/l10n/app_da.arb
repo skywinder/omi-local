@@ -3252,5 +3252,14 @@
     "pendantRecordingSyncBlocked": "Din Pendant optager stadig, så den gemte lyd kan ikke overføres. Tryk på Pendantens knap for at stoppe optagelsen, og synkroniser igen.",
     "pendantFullSyncBlocked": "Din Pendants lager er fuldt, og den er stadig i optagetilstand, så den gemte lyd kan ikke overføres. Tryk på Pendantens knap for at stoppe optagelsen, og synkroniser derefter igen.",
     "conversationsNotCapturedCount": "Ikke optaget ({count})",
-    "transcriptionNoAudio": "Transskription modtager ikke lyd"
+    "transcriptionNoAudio": "Transskription modtager ikke lyd",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

@@ -3234,5 +3234,14 @@
     "pendantRecordingSyncBlocked": "Pendant încă înregistrează, așa că sunetul stocat nu poate fi transferat. Apasă butonul Pendant pentru a opri înregistrarea, apoi sincronizează din nou.",
     "pendantFullSyncBlocked": "Spațiul de stocare al Pendantului este plin și acesta este încă în modul de înregistrare, așa că audio-ul stocat nu poate fi transferat. Apăsați butonul Pendantului pentru a opri înregistrarea, apoi sincronizați din nou.",
     "conversationsNotCapturedCount": "Neînregistrat ({count})",
-    "transcriptionNoAudio": "Transcrierea nu primește audio"
+    "transcriptionNoAudio": "Transcrierea nu primește audio",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

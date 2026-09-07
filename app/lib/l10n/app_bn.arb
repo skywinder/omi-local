@@ -10800,5 +10800,14 @@
     "pendantRecordingSyncBlocked": "Pendant এখনও রেকর্ড করছে, তাই এর সংরক্ষিত অডিও স্থানান্তর করা যাচ্ছে না। রেকর্ডিং বন্ধ করতে Pendant-এর বোতাম টিপুন, তারপর আবার সিঙ্ক করুন।",
     "pendantFullSyncBlocked": "Pendant-এর স্টোরেজ পূর্ণ এবং এটি এখনও রেকর্ডিং মোডে আছে, তাই সংরক্ষিত অডিও স্থানান্তর করা যাচ্ছে না। রেকর্ডিং বন্ধ করতে Pendant-এর বোতাম টিপুন, তারপর আবার সিঙ্ক করুন।",
     "conversationsNotCapturedCount": "রেকর্ড করা হয়নি ({count})",
-    "transcriptionNoAudio": "ট্রান্সক্রিপশন অডিও গ্রহণ করছে না"
+    "transcriptionNoAudio": "ট্রান্সক্রিপশন অডিও গ্রহণ করছে না",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

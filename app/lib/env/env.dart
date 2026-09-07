@@ -33,11 +33,33 @@ abstract class Env {
   static late final EnvFields _instance;
   static String? _apiBaseUrlOverride;
   static bool isTestFlight = false;
+  static bool localTunnelConfigured = false;
+  static bool get usesLocalTunnel => isOfflineRuntime && localTunnelConfigured;
+
+  static Uri parseLocalTunnelUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        !uri.host.contains('.') ||
+        uri.userInfo.isNotEmpty ||
+        uri.port != 443 ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        isPrivateOrLoopbackHost(uri.host)) {
+      throw const FormatException('Enter an HTTPS server address without a path or credentials.');
+    }
+    return Uri(scheme: 'https', host: uri.host.toLowerCase(), path: '/');
+  }
 
   static AppEnvironmentProfile get profile =>
       AppEnvironmentProfile.forFlavor(productionFlavor: F.env == Environment.prod);
 
-  static OmiRuntimeMode get runtimeMode => OmiRuntimeMode.parse(_runtimeModeFromDefine);
+  static OmiRuntimeMode? _testRuntimeMode;
+  @visibleForTesting
+  static void setRuntimeModeForTesting(OmiRuntimeMode? mode) => _testRuntimeMode = mode;
+  static OmiRuntimeMode get runtimeMode => _testRuntimeMode ?? OmiRuntimeMode.parse(_runtimeModeFromDefine);
 
   static bool get isOfflineRuntime => runtimeMode == OmiRuntimeMode.offline;
 
@@ -97,6 +119,7 @@ abstract class Env {
         configuredApiBaseUrl: apiBaseUrl,
         authEmulatorHost: firebaseAuthEmulatorHost,
         testUser: localTestUser,
+        tunnel: usesLocalTunnel,
       );
     }
   }
@@ -106,9 +129,15 @@ abstract class Env {
     required String? configuredApiBaseUrl,
     required String authEmulatorHost,
     required String testUser,
+    bool tunnel = false,
   }) {
     if (configuredProfile != AppEnvironmentProfile.localDev) {
       throw StateError('Offline runtime requires OMI_APP_PROFILE=local_dev.');
+    }
+    if (tunnel) {
+      parseLocalTunnelUrl(configuredApiBaseUrl ?? '');
+      if (testUser != 'alice') throw StateError('Local tunnel requires the synthetic local owner.');
+      return;
     }
     final apiUri = Uri.tryParse((configuredApiBaseUrl ?? '').trim());
     if (apiUri == null ||
@@ -161,6 +190,10 @@ abstract class Env {
     final expected = effectiveProfile.defaultApiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
 
     if (effectiveProfile == AppEnvironmentProfile.localDev) {
+      if (usesLocalTunnel && !productionFamily) {
+        parseLocalTunnelUrl(normalized);
+        return;
+      }
       if (!_isLocalDevelopmentApi(normalized)) {
         throw StateError(
           'Profile local_dev requires a loopback or private-network API endpoint; '

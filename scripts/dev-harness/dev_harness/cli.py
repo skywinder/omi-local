@@ -191,6 +191,17 @@ def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]
         return False, detail
     if service == "backend":
         return _http_ok(f"{cfg.backend_url}/v1/health")
+    if service == "ngrok":
+        from .local_mac import ngrok_port, read_config
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{ngrok_port(cfg)}/api/tunnels", timeout=2) as response:
+                data = json.load(response)
+                ready = any(t.get("public_url") == read_config(cfg)["url"] and
+                            t.get("config", {}).get("addr") == cfg.backend_url and
+                            t.get("config", {}).get("inspect") is False for t in data.get("tunnels", []))
+                return ready, "agent endpoint readiness"
+        except (OSError, ValueError, KeyError):
+            return False, "agent endpoint unavailable"
     if service == "llm-gateway":
         return _http_ok(f"{cfg.llm_gateway_url}/health")
     if service == "desktop-backend":
@@ -231,13 +242,13 @@ def _stop_single_service(cfg: config.HarnessConfig, record: dict[str, object]) -
     descendants = safety.descendant_pids(pid)
     try:
         safety.validate_owned_pid(pid, process_manifest=cfg.layout.process_manifest, service=service)
-        _signal_owned_process_group(pid, service)
+        _signal_owned_supervisor(pid, service)
     except safety.SafetyError as exc:
         print(f"{service}: not stopped before restart: {exc}")
         return
     if service == "typesense":
         _remove_stale_typesense_container(cfg)
-    deadline = time.time() + 8
+    deadline = time.time() + (30 if service == "firestore" else 8)
     while time.time() < deadline and safety.process_exists(pid):
         time.sleep(0.25)
     if safety.process_exists(pid):
@@ -603,6 +614,8 @@ def _start_process(
     existing = _service_record(cfg, service)
     if existing is not None:
         healthy, detail = _service_health(cfg, service)
+        if service in {"backend", "firestore"} and existing.get("local_transport", "lan") != cfg.local_transport:
+            healthy, detail = False, "local transport configuration changed"
         if healthy:
             print(f"{service}: already recorded as running")
             return
@@ -636,6 +649,7 @@ def _start_process(
     records.append(
         {
             "service": service,
+            "local_transport": cfg.local_transport,
             "pid": proc.pid,
             "process_group": proc.pid,
             "port": port,
@@ -658,6 +672,10 @@ def _firebase_command(cfg: config.HarnessConfig) -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"Cannot load firebase.json for harness: {exc}") from exc
     emulators = payload.setdefault("emulators", {})
+    if cfg.local_transport == "ngrok":
+        emulators["ui"] = {"enabled": False}
+        emulators["hub"] = {"host": "127.0.0.1", "port": cfg.backend_port + 401}
+        emulators["logging"] = {"host": "127.0.0.1", "port": cfg.backend_port + 501}
     for name, port in (("firestore", cfg.firestore_port), ("auth", cfg.auth_port)):
         emulator = emulators.setdefault(name, {})
         # The Auth emulator is what a physical device's Firebase SDK connects to
@@ -832,7 +850,8 @@ def _start_app_services(cfg: config.HarnessConfig) -> None:
     _start_process(
         cfg,
         "backend",
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", cfg.dev_bind_host, "--port", str(cfg.backend_port)],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", cfg.dev_bind_host, "--port", str(cfg.backend_port),
+         *(["--no-access-log", "--log-level", "warning"] if cfg.local_transport == "ngrok" else [])],
         cwd=cfg.repo_root / "backend",
         log_name="backend.log",
         port=cfg.backend_port,
@@ -1094,14 +1113,16 @@ def cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
-def _signal_owned_process_group(pid: int, service: str) -> None:
+def _signal_owned_supervisor(pid: int, service: str) -> None:
     try:
-        os.killpg(pid, signal.SIGINT)
-        print(f"{service}: sent SIGINT to process group {pid}")
+        # Both marker-bearing guards forward signals. Signalling their whole
+        # group duplicates SIGINT at Firebase and aborts its export-on-exit.
+        os.kill(pid, signal.SIGINT)
+        print(f"{service}: sent SIGINT to owned supervisor {pid}")
     except ProcessLookupError:
         return
     except PermissionError as exc:
-        raise safety.SafetyError(f"Cannot signal process group {pid}: {exc}") from exc
+        raise safety.SafetyError(f"Cannot signal owned supervisor {pid}: {exc}") from exc
 
 
 def _reap_detached_port_holders(record: dict[str, object], descendants: tuple[int, ...]) -> None:
@@ -1156,10 +1177,10 @@ def _stop_owned(cfg: config.HarnessConfig) -> None:
             continue
         try:
             safety.validate_owned_pid(pid, process_manifest=cfg.layout.process_manifest, service=service)
-            _signal_owned_process_group(pid, service)
+            _signal_owned_supervisor(pid, service)
         except safety.SafetyError as exc:
             print(f"{service}: not stopped: {exc}")
-    deadline = time.time() + 8
+    deadline = time.time() + (30 if any(r.get("service") == "firestore" for r in records) else 8)
     while time.time() < deadline and any(safety.process_exists(int(r.get("pid", -1))) for r in records):
         time.sleep(0.25)
     for record in records:

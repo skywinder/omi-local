@@ -7,9 +7,14 @@ trap 'find "$fixture_dir" -depth -delete' EXIT
 
 mkdir -p "$fixture_dir/scripts" "$fixture_dir/ios/Runner"
 cp "$ROOT_DIR/setup.sh" "$fixture_dir/setup.sh"
-cp "$ROOT_DIR/scripts/apply_personal_ios_plugin_overlay.sh" "$fixture_dir/scripts/apply_personal_ios_plugin_overlay.sh"
 cp "$ROOT_DIR/scripts/validate_mobile_build_config.sh" "$fixture_dir/scripts/validate_mobile_build_config.sh"
-cp "$ROOT_DIR/ios/Runner/GeneratedPluginRegistrant.m" "$fixture_dir/ios/Runner/GeneratedPluginRegistrant.m"
+# Like Flutter and CocoaPods below, the native overlay is outside this wrapper
+# contract. A fresh checkout has no generated iOS registrant to copy.
+cat >"$fixture_dir/scripts/apply_personal_ios_plugin_overlay.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'native-plugin-overlay\n' >>flutter.log
+SH
 chmod +x "$fixture_dir/scripts/validate_mobile_build_config.sh"
 
 log_file="$fixture_dir/flutter.log"
@@ -46,6 +51,7 @@ log_file="$fixture_dir/flutter.log"
   prepare_personal_ios_build_dir() { :; }
 
   OMI_APPLE_TEAM_ID=ABCDEFGHIJ OMI_RUNTIME_MODE=offline run_build_ios dev
+  grep -Fx 'native-plugin-overlay' "$log_file" >/dev/null
   grep -F 'flutter run --profile --flavor dev -d TEST-DEVICE --dart-define=OMI_APP_PROFILE=local_dev --dart-define=OMI_RUNTIME_MODE=offline --dart-define=OMI_LOCAL_TEST_USER=alice' "$log_file" >/dev/null
   [[ "$(grep -F 'OMI_APP_PROFILE=local_dev' "$log_file" | tr ' ' '\n' | grep -c '^--dart-define=OMI_APP_PROFILE=')" == 1 ]]
   [[ "$(grep -F 'OMI_RUNTIME_MODE=offline' "$log_file" | tr ' ' '\n' | grep -c '^--dart-define=OMI_RUNTIME_MODE=')" == 1 ]]

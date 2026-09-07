@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:omi/services/auth/local_mac_session.dart';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -56,6 +57,8 @@ class AuthenticationProvider extends BaseProvider {
   }
 
   void _initializeAuthListeners() {
+    LocalMacSession.instance.addListener(_onLocalSessionChanged);
+    if (Env.usesLocalTunnel) return;
     // DEBUG: Log initial state
     Logger.debug(
       'DEBUG AuthProvider: Initial currentUser=${_auth.currentUser?.uid}, isAnonymous=${_auth.currentUser?.isAnonymous}',
@@ -63,6 +66,7 @@ class AuthenticationProvider extends BaseProvider {
 
     Future.microtask(() {
       _authStateSubscription = _auth.authStateChanges().distinct((p, n) => p?.uid == n?.uid).listen((User? user) {
+        if (Env.usesLocalTunnel) return;
         AuthService.instance.handleAuthUserChanged(user?.uid);
         Logger.debug(
           'DEBUG AuthProvider: authStateChanges fired - user=${user?.uid}, isAnonymous=${user?.isAnonymous}',
@@ -82,6 +86,7 @@ class AuthenticationProvider extends BaseProvider {
         notifyListeners();
       });
       _idTokenSubscription = _auth.idTokenChanges().distinct((p, n) => p?.uid == n?.uid).listen((User? user) async {
+        if (Env.usesLocalTunnel) return;
         AuthService.instance.handleAuthUserChanged(user?.uid);
         if (user == null) {
           Logger.debug('User is currently signed out or the token has been revoked!');
@@ -107,6 +112,7 @@ class AuthenticationProvider extends BaseProvider {
         notifyListeners();
       });
       _sessionExpiredSubscription = AuthService.instance.sessionExpiredEvents.listen((event) {
+        if (Env.usesLocalTunnel) return;
         _requiresReauthentication = true;
         _sessionExpirationGeneration++;
         user = null;
@@ -121,6 +127,7 @@ class AuthenticationProvider extends BaseProvider {
   }
 
   bool isSignedIn() {
+    if (Env.usesLocalTunnel) return LocalMacSession.instance.isSignedIn;
     return !_requiresReauthentication && _auth.currentUser != null && !_auth.currentUser!.isAnonymous;
   }
 
@@ -128,6 +135,7 @@ class AuthenticationProvider extends BaseProvider {
 
   @override
   void dispose() {
+    LocalMacSession.instance.removeListener(_onLocalSessionChanged);
     _authStateSubscription?.cancel();
     _idTokenSubscription?.cancel();
     _sessionExpiredSubscription?.cancel();
@@ -136,6 +144,13 @@ class AuthenticationProvider extends BaseProvider {
 
   void setLoading(bool value) {
     _loading = value;
+    notifyListeners();
+  }
+
+  void _onLocalSessionChanged() {
+    if (!Env.usesLocalTunnel) return;
+    _requiresReauthentication = !LocalMacSession.instance.isSignedIn;
+    if (_requiresReauthentication) _sessionExpirationGeneration++;
     notifyListeners();
   }
 

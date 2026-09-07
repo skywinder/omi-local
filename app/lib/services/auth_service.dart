@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:omi/services/auth/local_mac_session.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -152,7 +153,9 @@ class AuthService {
         'release_channel': Env.isTestFlight ? 'testflight' : (F.env == Environment.prod ? 'app_store' : 'dev'),
       };
 
-  bool isSignedIn() => FirebaseAuth.instance.currentUser != null && !FirebaseAuth.instance.currentUser!.isAnonymous;
+  bool isSignedIn() => Env.usesLocalTunnel
+      ? LocalMacSession.instance.isSignedIn
+      : FirebaseAuth.instance.currentUser != null && !FirebaseAuth.instance.currentUser!.isAnonymous;
 
   static const _pkceCodeVerifierLength = 64;
   static const _pkceCharset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
@@ -289,6 +292,11 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    if (Env.usesLocalTunnel) {
+      await LocalMacSession.instance.signOut();
+      _clearCachedIdentityAndAuth();
+      return;
+    }
     _invalidateRefreshes();
     _clearCachedIdentityAndAuth();
     await _tokenGateway.signOut();
@@ -323,6 +331,7 @@ class AuthService {
   /// Compatibility for sign-in/onboarding callers that only need the token.
   /// Authenticated HTTP must use [refreshIdToken] so failure classes are kept.
   Future<String?> getIdToken() async {
+    if (Env.usesLocalTunnel) return LocalMacSession.instance.accessKey;
     final result = await refreshIdToken();
     switch (result) {
       case AuthTokenSuccess(:final token):
@@ -344,6 +353,10 @@ class AuthService {
   }
 
   Future<AuthTokenResult> refreshIdToken() {
+    if (Env.usesLocalTunnel) {
+      // Firebase refresh is never part of local transport authentication.
+      return Future.value(const AuthTokenMissingUser());
+    }
     if (_sessionExpired) {
       return Future<AuthTokenResult>.value(const AuthTokenMissingUser());
     }
@@ -405,6 +418,7 @@ class AuthService {
   Future<AuthTokenResult> _refreshIdTokenOnce(int generation, String expectedUid) async {
     try {
       final refreshed = await _tokenGateway.forceRefresh().timeout(_refreshAttemptTimeout);
+      if (Env.usesLocalTunnel) return const AuthTokenMissingUser();
       if (generation != _sessionGeneration || _tokenGateway.currentUser?.uid != expectedUid) {
         return const AuthTokenMissingUser();
       }
@@ -471,6 +485,7 @@ class AuthService {
   }
 
   Future<void> expireSession(AuthSessionExpiredEvent event) {
+    if (Env.usesLocalTunnel) return Future<void>.value();
     final inFlight = _expireSessionInFlight;
     if (_sessionExpired) return inFlight ?? Future<void>.value();
 

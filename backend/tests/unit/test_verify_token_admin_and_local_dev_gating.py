@@ -98,6 +98,25 @@ def _endpoints_isolation():
 ADMIN_KEY = 'a-sufficiently-long-admin-key-value'
 
 
+def test_tunnel_never_falls_back_to_admin_or_local_dev(monkeypatch, tmp_path):
+    import hashlib
+    import json
+
+    key = "t" * 43
+    pairing = tmp_path / "pairing.json"
+    pairing.write_text(json.dumps({"version": 1, "owner_uid": "synthetic-owner", "key_sha256": hashlib.sha256(key.encode()).hexdigest()}))
+    pairing.chmod(0o600)
+    monkeypatch.setenv("OMI_ENV_STAGE", "offline")
+    monkeypatch.setenv("OMI_LOCAL_TRANSPORT", "ngrok")
+    monkeypatch.setenv("OMI_LOCAL_PAIRING_FILE", str(pairing))
+    monkeypatch.setenv("ADMIN_KEY", ADMIN_KEY)
+    monkeypatch.setenv("LOCAL_DEVELOPMENT", "true")
+    assert verify_token(key) == "synthetic-owner"
+    for invalid in ("unsigned.firebase.token", ADMIN_KEY + "owner", "wrong"):
+        with pytest.raises(InvalidIdTokenError):
+            verify_token(invalid)
+
+
 def _clear_admin_env(monkeypatch):
     monkeypatch.delenv('ADMIN_KEY', raising=False)
     monkeypatch.delenv('ADMIN_KEY_AUTH_ENABLED', raising=False)

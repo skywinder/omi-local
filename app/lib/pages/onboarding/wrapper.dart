@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:omi/env/env.dart';
 
 import 'package:omi/utils/platform/platform_manager.dart';
 import 'package:flutter/material.dart';
@@ -310,11 +311,13 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> with TickerProvid
       NameWidget(
         goNext: () {
           _goNext(); // Go to Primary Language page
-          IntercomManager.instance.updateUser(
-            FirebaseAuth.instance.currentUser!.email,
-            FirebaseAuth.instance.currentUser!.displayName,
-            FirebaseAuth.instance.currentUser!.uid,
-          );
+          if (!Env.isOfflineRuntime) {
+            IntercomManager.instance.updateUser(
+              FirebaseAuth.instance.currentUser!.email,
+              FirebaseAuth.instance.currentUser!.displayName,
+              FirebaseAuth.instance.currentUser!.uid,
+            );
+          }
           PlatformManager.instance.analytics.onboardingStepCompleted('Name');
         },
       ),

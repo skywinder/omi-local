@@ -3269,5 +3269,14 @@
     "pendantRecordingSyncBlocked": "Pendant всё ещё ведёт запись, поэтому сохранённое аудио нельзя передать. Нажмите кнопку Pendant, чтобы остановить запись, затем синхронизируйте снова.",
     "pendantFullSyncBlocked": "Память Pendant заполнена, и он всё ещё в режиме записи, поэтому сохранённое аудио нельзя передать. Нажмите кнопку Pendant, чтобы остановить запись, затем синхронизируйте снова.",
     "conversationsNotCapturedCount": "Не записано ({count})",
-    "transcriptionNoAudio": "Транскрипция не получает аудио"
+    "transcriptionNoAudio": "Транскрипция не получает аудио",
+    "localMacTitle": "Локальный Mac",
+    "localMacAddress": "HTTPS-адрес",
+    "localMacAccessKey": "Ключ доступа приложения",
+    "localMacConnect": "Проверить и подключить",
+    "localMacKeyRejected": "Ключ доступа отклонён. Проверьте ключ на Mac.",
+    "localMacConnectionFailed": "Не удалось подключиться. Проверьте адрес и убедитесь, что Mac и туннель работают.",
+    "localMacHelp": "Введите адрес и ключ приложения с Mac. Подключение остановит текущую запись. Аудио передаётся через ngrok и хранится на вашем Mac.",
+    "memoryHistoryPartial": "Показана часть истории воспоминаний.",
+    "tapPlusToStartRecording": "Нажмите +, чтобы начать запись."
 }

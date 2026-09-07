@@ -2049,7 +2049,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get memoryDeleted => 'Воспоминание удалено.';
 
   @override
-  String get memoryHistoryPartial => 'Some memory history is unavailable. Showing the history received so far.';
+  String get memoryHistoryPartial => 'Показана часть истории воспоминаний.';
 
   @override
   String get undo => 'Отменить';
@@ -9954,5 +9954,28 @@ class AppLocalizationsRu extends AppLocalizations {
   String get transcriptionNoAudio => 'Транскрипция не получает аудио';
 
   @override
-  String get tapPlusToStartRecording => 'Tap + to start recording';
+  String get tapPlusToStartRecording => 'Нажмите +, чтобы начать запись.';
+
+  @override
+  String get localMacTitle => 'Локальный Mac';
+
+  @override
+  String get localMacAddress => 'HTTPS-адрес';
+
+  @override
+  String get localMacAccessKey => 'Ключ доступа приложения';
+
+  @override
+  String get localMacConnect => 'Проверить и подключить';
+
+  @override
+  String get localMacKeyRejected => 'Ключ доступа отклонён. Проверьте ключ на Mac.';
+
+  @override
+  String get localMacConnectionFailed =>
+      'Не удалось подключиться. Проверьте адрес и убедитесь, что Mac и туннель работают.';
+
+  @override
+  String get localMacHelp =>
+      'Введите адрес и ключ приложения с Mac. Подключение остановит текущую запись. Аудио передаётся через ngrok и хранится на вашем Mac.';
 }

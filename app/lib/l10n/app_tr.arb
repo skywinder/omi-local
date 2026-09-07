@@ -3269,5 +3269,14 @@
     "pendantRecordingSyncBlocked": "Pendant hâlâ kayıt yapıyor, bu yüzden depolanan ses aktarılamıyor. Kaydı durdurmak için Pendant'ın düğmesine basın, ardından yeniden senkronize edin.",
     "pendantFullSyncBlocked": "Pendant'ın depolama alanı dolu ve hâlâ kayıt modunda olduğu için kayıtlı ses aktarılamıyor. Kaydı durdurmak için Pendant'ın düğmesine basın, ardından yeniden senkronize edin.",
     "conversationsNotCapturedCount": "Kaydedilmedi ({count})",
-    "transcriptionNoAudio": "Transkripsiyon ses almıyor"
+    "transcriptionNoAudio": "Transkripsiyon ses almıyor",
+    "localMacTitle": "Local Mac",
+    "localMacAddress": "HTTPS address",
+    "localMacAccessKey": "App access key",
+    "localMacConnect": "Check and connect",
+    "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
+    "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
+    "localMacHelp": "Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.",
+    "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
+    "tapPlusToStartRecording": "Tap + to start recording"
 }

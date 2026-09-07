@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:omi/env/env.dart';
+import 'package:omi/pages/settings/local_mac_page.dart';
 import 'package:omi/utils/platform/platform_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -475,6 +477,11 @@ class _SettingsDrawerState extends State<SettingsDrawer> {
         return Column(
           children: [
             // Profile & Notifications Section
+            if (Env.isOfflineRuntime)
+              _buildSettingsItem(
+                  title: context.l10n.localMacTitle,
+                  icon: const Icon(Icons.computer, color: Colors.white),
+                  onTap: () => routeToPage(context, const LocalMacPage())),
             _buildSectionContainer(
               children: [
                 // Wrapped 2025 - temporarily disabled

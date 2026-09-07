@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:omi/services/auth/local_mac_session.dart';
+import 'package:omi/env/env.dart';
 import 'dart:io';
 
 import 'package:web_socket_channel/io.dart';
@@ -41,6 +43,7 @@ class PureSocketMessage {
 }
 
 typedef SocketHeadersProvider = Future<Map<String, String>> Function();
+typedef SocketChannelConnector = WebSocketChannel Function(Uri uri, Map<String, String> headers);
 
 class PureSocket implements IPureSocket {
   WebSocketChannel? _channel;
@@ -58,13 +61,26 @@ class PureSocket implements IPureSocket {
   IPureSocketListener? _listener;
 
   String url;
+  String get _logUrl => Env.usesLocalTunnel ? Uri.parse(url).path : url;
   final SocketHeadersProvider _headersProvider;
   final Map<String, String> _extraHeaders;
+  final SocketChannelConnector _channelConnector;
 
-  PureSocket(this.url, {SocketHeadersProvider? headersProvider, Map<String, String> extraHeaders = const {}})
+  PureSocket(this.url,
+      {SocketHeadersProvider? headersProvider,
+      Map<String, String> extraHeaders = const {},
+      SocketChannelConnector? channelConnector})
       : _headersProvider =
             headersProvider ?? (() => buildHeaders(requireAuthCheck: true, url: url, forWebSocket: true)),
-        _extraHeaders = Map.unmodifiable(extraHeaders);
+        _extraHeaders = Map.unmodifiable(extraHeaders),
+        _channelConnector = channelConnector ?? _openChannel;
+
+  static WebSocketChannel _openChannel(Uri uri, Map<String, String> headers) => IOWebSocketChannel.connect(
+        uri,
+        headers: headers,
+        pingInterval: const Duration(seconds: 20),
+        connectTimeout: const Duration(seconds: 15),
+      );
 
   @override
   void setListener(IPureSocketListener listener) {
@@ -83,7 +99,7 @@ class PureSocket implements IPureSocket {
       Logger.debug('[Socket] $error');
       return false;
     }
-    Logger.debug("request wss $url");
+    Logger.debug("request wss $_logUrl");
     final Map<String, String> headers;
     try {
       headers = {...await _headersProvider(), ..._extraHeaders};
@@ -93,12 +109,14 @@ class PureSocket implements IPureSocket {
       return false;
     }
 
-    _channel = IOWebSocketChannel.connect(
-      url,
-      headers: headers,
-      pingInterval: const Duration(seconds: 20),
-      connectTimeout: const Duration(seconds: 15),
-    );
+    var uri = Uri.parse(url);
+    // Dart's WebSocket upgrade copies Uri.port into an HTTP(S) URI. WS(S)
+    // has no implicit Uri port, so spell it out before that conversion.
+    // Keep explicit ports unchanged; the network policy still checks them.
+    if (!uri.hasPort && (uri.scheme == 'wss' || uri.scheme == 'ws')) {
+      uri = uri.replace(port: uri.scheme == 'wss' ? 443 : 80);
+    }
+    _channel = _channelConnector(uri, headers);
     if (_channel?.ready == null) {
       return false;
     }
@@ -109,21 +127,35 @@ class PureSocket implements IPureSocket {
       await channel.ready;
     } on TimeoutException catch (e) {
       err = e;
-      DebugLogManager.logWarning('pure_socket_connect_timeout', {'url': url, 'error': e.toString()});
+      DebugLogManager.logWarning('pure_socket_connect_timeout',
+          {'url': _logUrl, 'error': Env.usesLocalTunnel ? e.runtimeType.toString() : e.toString()});
     } on SocketException catch (e) {
       err = e;
-      DebugLogManager.logWarning('pure_socket_connect_socket_error', {'url': url, 'error': e.toString()});
+      DebugLogManager.logWarning('pure_socket_connect_socket_error',
+          {'url': _logUrl, 'error': Env.usesLocalTunnel ? e.runtimeType.toString() : e.toString()});
     } on WebSocketChannelException catch (e) {
       err = e;
-      DebugLogManager.logWarning('pure_socket_connect_websocket_error', {'url': url, 'error': e.toString()});
+      DebugLogManager.logWarning('pure_socket_connect_websocket_error',
+          {'url': _logUrl, 'error': Env.usesLocalTunnel ? e.runtimeType.toString() : e.toString()});
     }
     if (err != null) {
-      Logger.debug("[Socket] Connect error: $err");
+      if (Env.usesLocalTunnel && LocalMacSession.instance.accessKey != null) {
+        final base = Uri.parse(Env.apiBaseUrl!);
+        final key = LocalMacSession.instance.accessKey!;
+        try {
+          await LocalMacSession.probeProfile(base, key);
+        } on LocalMacUnauthorized {
+          await LocalMacSession.instance.rejectRequest(base, 'Bearer $key');
+        } catch (_) {
+          // Network failure keeps the paired session for the next connection.
+        }
+      }
+      Logger.debug("[Socket] Connect error: ${Env.usesLocalTunnel ? err.runtimeType : err}");
       _status = PureSocketStatus.notConnected;
       return false;
     }
     _status = PureSocketStatus.connected;
-    DebugLogManager.logEvent('pure_socket_connected', {'url': url});
+    DebugLogManager.logEvent('pure_socket_connected', {'url': _logUrl});
     onConnected();
 
     final that = this;
@@ -153,7 +185,7 @@ class PureSocket implements IPureSocket {
 
   @override
   Future disconnect() async {
-    DebugLogManager.logEvent('pure_socket_disconnecting', {'url': url, 'current_status': _status.toString()});
+    DebugLogManager.logEvent('pure_socket_disconnecting', {'url': _logUrl, 'current_status': _status.toString()});
     if (_status == PureSocketStatus.connected) {
       // Warn: should not use await cause dead end by socket closed.
       _channel?.sink.close(socket_channel_status.normalClosure);
@@ -165,7 +197,7 @@ class PureSocket implements IPureSocket {
 
   @override
   Future stop() async {
-    DebugLogManager.logEvent('pure_socket_stopping', {'url': url});
+    DebugLogManager.logEvent('pure_socket_stopping', {'url': _logUrl});
     await disconnect();
   }
 
@@ -178,7 +210,7 @@ class PureSocket implements IPureSocket {
     DebugLogManager.logEvent('pure_socket_closed', {
       'close_code': closeCode ?? -1,
       'close_reason': closeReason,
-      'url': url,
+      'url': _logUrl,
     });
 
     _listener?.onClosed(closeCode);
@@ -208,9 +240,9 @@ class PureSocket implements IPureSocket {
   @override
   void onError(Object err, StackTrace trace) {
     _status = PureSocketStatus.disconnected;
-    Logger.debug("[Socket] Error: $err");
+    Logger.debug("[Socket] Error: ${Env.usesLocalTunnel ? err.runtimeType : err}");
 
-    DebugLogManager.logError(err, trace, 'pure_socket_error', {'url': url});
+    DebugLogManager.logError(Env.usesLocalTunnel ? err.runtimeType : err, trace, 'pure_socket_error', {'url': _logUrl});
 
     _listener?.onError(err, trace);
     PlatformManager.instance.crashReporter.reportCrash(err, trace);

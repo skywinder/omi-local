@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:omi/services/auth/local_mac_session.dart';
 import 'dart:ui';
 // trigger rebuild
 
@@ -159,6 +160,8 @@ Future _init() async {
   } else {
     Env.init(DevEnv());
   }
+  await SharedPreferencesUtil.init();
+  await LocalMacSession.instance.restore();
   Env.validateProfilePairing();
   validateApplicationStartupRouting();
   OfflineNetworkPolicy.installFromEnv();
@@ -172,7 +175,7 @@ Future _init() async {
   // Firebase
   await _ensureFirebaseApp();
 
-  if (Env.profile.usesFirebaseAuthEmulator) {
+  if (Env.profile.usesFirebaseAuthEmulator && !Env.usesLocalTunnel) {
     await FirebaseAuth.instance.useAuthEmulator(Env.firebaseAuthEmulatorHost, Env.firebaseAuthEmulatorPort);
   }
 
@@ -184,8 +187,6 @@ Future _init() async {
   if (!Env.isOfflineRuntime && PlatformManager().isFCMSupported) {
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   }
-
-  await SharedPreferencesUtil.init();
 
   // TestFlight remains a distribution/telemetry signal; production-family
   // builds always use the established production backend.
