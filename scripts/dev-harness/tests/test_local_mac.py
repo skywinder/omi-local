@@ -122,3 +122,35 @@ def test_wizard_preserves_pairing_on_repeat_and_address_edit(monkeypatch, tmp_pa
     local_mac.configure(cfg, rotate=True)
     assert json.loads((tmp_path / 'pairing.json').read_text()) == pairing_data('b' * 43)
     assert 'synthetic-token-for-unit-test' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('native_cache', [False, True])
+def test_ios_cache_move_cleans_only_existing_native_metadata(tmp_path, native_cache):
+    import os
+    import subprocess
+
+    app = tmp_path / 'app'
+    (app / 'build/test_cache').mkdir(parents=True)
+    if native_cache:
+        (app / 'build/ios').mkdir()
+    (app / 'ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage').mkdir(parents=True)
+    temporary = tmp_path / 'temp'
+    temporary.mkdir()
+    marker = tmp_path / 'native-clean-called'
+    setup = Path(__file__).resolve().parents[3] / 'app/setup.sh'
+    command = '''set -euo pipefail
+source "$OMI_TEST_SETUP" >/dev/null
+uname() { echo Darwin; }
+xattr() { return 0; }
+xcodebuild() { touch "$OMI_TEST_CALL_FILE"; }
+prepare_personal_ios_build_dir
+'''
+    result = subprocess.run(
+        ['bash', '-c', command],
+        cwd=app,
+        capture_output=True,
+        env={**os.environ, 'TMPDIR': str(temporary), 'OMI_TEST_SETUP': str(setup), 'OMI_TEST_CALL_FILE': str(marker)},
+    )
+    assert result.returncode == 0
+    assert (app / 'build').is_symlink()
+    assert marker.exists() == native_cache

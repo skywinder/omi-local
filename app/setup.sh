@@ -155,8 +155,12 @@ function prepare_personal_ios_build_dir() {
     return
   fi
 
-  local app_root build_key temp_root external_build current_target migrated
+  local app_root build_key temp_root external_build current_target migrated had_native_build
   migrated=false
+  had_native_build=false
+  if [[ -d build/ios ]]; then
+    had_native_build=true
+  fi
   app_root=$(pwd -P)
   build_key=$(printf '%s' "$app_root" | shasum -a 256 | awk '{print substr($1, 1, 12)}')
   temp_root="${TMPDIR:-/private/tmp}"
@@ -196,7 +200,7 @@ function prepare_personal_ios_build_dir() {
   # flutter clean removes the generated local Swift package before this helper
   # runs. In that state there is no package graph for xcodebuild to clean, and
   # flutter pub get below will recreate it from scratch.
-  if [[ "$migrated" == 'true' && -d ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage ]]; then
+  if [[ "$migrated" == 'true' && "$had_native_build" == 'true' && -d ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage ]]; then
     OMI_RUNTIME_MODE=offline xcodebuild \
       -workspace ios/Runner.xcworkspace \
       -scheme dev \
