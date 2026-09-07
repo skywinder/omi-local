@@ -24,6 +24,10 @@ class TranscriptionError(ValueError):
     """Diagnostics contain no transcript, user identifier or subprocess output."""
 
 
+class TranscriptionBusy(TranscriptionError):
+    """The shared inference slot is occupied; retry without counting a failure."""
+
+
 @dataclass(frozen=True)
 class EngineConfig:
     """Only the engine adapter consumes these settings; Omi receives segments.
@@ -123,8 +127,7 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
         raise TranscriptionError('Local import returned an invalid response') from None
 
 
-def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
-    """Engine adapter: completed WAV in, segments/words/language JSON out."""
+def check_model(engine: EngineConfig) -> Path:
     python = Path(engine.python).expanduser() if engine.python else Path.home() / '.venvs/whisperx/bin/python'
     if not python.is_file() or not os.access(python, os.X_OK) or shutil.which('ffmpeg') is None:
         raise TranscriptionError('Existing WhisperX Python or ffmpeg is unavailable')
@@ -133,6 +136,13 @@ def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
                            env=env, capture_output=True, timeout=60)
     if probe.returncode:
         raise TranscriptionError('WhisperX imports failed; check its existing FFmpeg library path')
+    return python
+
+
+def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
+    """Engine adapter: completed WAV in, segments/words/language JSON out."""
+    python = check_model(engine)
+    env = model_environment(engine)
     print('WhisperX: processing finished WAV locally...', flush=True)
     with tempfile.TemporaryDirectory(dir=folder, prefix='.inference-') as temporary:
         temp = Path(temporary)
@@ -154,12 +164,12 @@ def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
         return raw
 
 
-def transcribe(cfg, audio_path: str) -> int:
+def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> int:
     if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
         raise TranscriptionError('Use the paired local Mac offline stack')
     audio = Path(audio_path).expanduser().resolve()
     manifest = inspect_audio(audio)
-    engine = EngineConfig.load(cfg)
+    engine = engine or EngineConfig.load(cfg)
     manifest['profile'] = engine.profile()
     manifest['result_key'] = hashlib.sha256(
         (manifest['audio_sha256'] + json.dumps(engine.profile(), sort_keys=True)).encode()
@@ -172,7 +182,7 @@ def transcribe(cfg, audio_path: str) -> int:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise TranscriptionError('Another local transcription is running') from None
+            raise TranscriptionBusy('Another local transcription is running') from None
         folder = root / manifest['result_key']
         folder.mkdir(mode=0o700, exist_ok=True)
         manifest_path, raw_path = folder / 'manifest.json', folder / 'audio.json'

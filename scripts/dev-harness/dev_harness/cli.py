@@ -76,7 +76,7 @@ def _save_manifests(cfg: config.HarnessConfig, records: list[dict[str, object]])
     ports = [
         {"service": record["service"], "port": record["port"], "pid": record["pid"], "endpoint": record.get("endpoint")}
         for record in live
-        if "port" in record
+        if record.get("port")
     ]
     _write_json(cfg.layout.port_manifest, {"schema_version": 1, "updated_at": _now(), "ports": ports})
 
@@ -172,6 +172,10 @@ def _typesense_container_running(cfg: config.HarnessConfig) -> bool:
 
 
 def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]:
+    if service == "stt-worker":
+        from .local_stt_watch import worker_ready
+        ready = worker_ready(cfg)
+        return ready, "worker lock held" if ready else "worker not running"
     if service == "redis":
         if _port_open("127.0.0.1", cfg.redis_port):
             return True, "port-open"
@@ -262,6 +266,8 @@ def _stop_single_service(cfg: config.HarnessConfig, record: dict[str, object]) -
 
 
 def _require_port_available_or_owned(cfg: config.HarnessConfig, service: str, port: int) -> None:
+    if port == 0:  # Background services such as local STT expose no listener.
+        return
     if not _port_open("127.0.0.1", port):
         return
     record = _service_record(cfg, service)
@@ -653,7 +659,7 @@ def _start_process(
             "pid": proc.pid,
             "process_group": proc.pid,
             "port": port,
-            "endpoint": f"127.0.0.1:{port}",
+            "endpoint": f"127.0.0.1:{port}" if port else None,
             "log": str(log_path),
             "ownership_marker": marker,
             "started_at": _now(),

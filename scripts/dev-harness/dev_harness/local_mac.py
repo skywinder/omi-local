@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import cli, config, safety, local_stt
+from . import cli, config, safety, local_stt, local_stt_watch
 
 
 class LocalMacError(ValueError):
@@ -261,6 +261,7 @@ def up(cfg) -> int:
                     if response.status == 200:
                         require_auth_boundary(data["url"])
                         print("Public HTTPS health passed; run audio-smoke to verify authenticated WSS")
+                        local_stt_watch.start_if_enabled(cfg)
                         return 0
             except (OSError, urllib.error.URLError):
                 pass
@@ -295,6 +296,9 @@ def main() -> int:
             "down",
             "audio-smoke",
             "transcribe",
+            "auto-transcribe-on",
+            "auto-transcribe-off",
+            "transcription-status",
         ],
     )
     parser.add_argument('audio', nargs='?')
@@ -321,6 +325,12 @@ def main() -> int:
             return cli.cmd_down(argparse.Namespace())
         elif args.command == "transcribe":
             return local_stt.transcribe(cfg, args.audio)
+        elif args.command == "auto-transcribe-on":
+            return local_stt_watch.enable(cfg)
+        elif args.command == "auto-transcribe-off":
+            return local_stt_watch.disable(cfg)
+        elif args.command == "transcription-status":
+            return local_stt_watch.status(cfg)
         elif args.command == "audio-smoke":
             key = getpass.getpass("App access key (hidden): ")
             pairing_data(key)

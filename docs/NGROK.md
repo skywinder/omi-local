@@ -21,6 +21,11 @@ bash scripts/local-mac.sh up
 bash scripts/local-mac.sh status
 ```
 
+После подготовки локальной модели включите
+[автоматическую обработку новых записей](LOCAL_STT.md):
+`bash scripts/local-mac.sh auto-transcribe-on`. При последующих `up` обработчик
+запускается вместе с сервисами; модель и очередь остаются на Mac.
+
 Установщик рассчитан на macOS с Apple Silicon. Он переиспользует зависимости,
 недостающие системные пакеты устанавливает через Homebrew. Python 3.11.15 и
 backend-пакеты закреплены в репозитории, Firebase CLI — в `package-lock.json`.
