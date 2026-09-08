@@ -15,6 +15,48 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dev_harness import stt_install as install
 from dev_harness import local_stt
+from dev_harness import local_whisperkit as kit, whisperkit_install
+
+
+def test_whisperkit_receipt_rejects_changed_assets_and_binary(tmp_path, monkeypatch):
+    binary = tmp_path / 'bin/whisperkit-cli'
+    binary.parent.mkdir()
+    binary.write_bytes(b'synthetic binary')
+    binary.chmod(0o700)
+    model = tmp_path / 'model.bin'
+    model.write_bytes(b'synthetic model')
+    monkeypatch.setattr(kit, 'recipe', lambda: {'assets': [{'path': 'model.bin'}]})
+    receipt = {'revision': kit.revision(), 'executable_sha256': install.digest(binary),
+               'files': {name: [(tmp_path / name).stat().st_size, (tmp_path / name).stat().st_mtime_ns]
+                         for name in ('model.bin', 'bin/whisperkit-cli')}}
+    (tmp_path / 'ready.json').write_text(json.dumps(receipt))
+    assert kit.installed(tmp_path) == binary
+    before = kit.runtime_revision(tmp_path)
+    receipt['executable_sha256'] = '0' * 64
+    (tmp_path / 'ready.json').write_text(json.dumps(receipt))
+    assert kit.runtime_revision(tmp_path) != before
+    with pytest.raises(kit.WhisperKitError):
+        kit.installed(tmp_path)
+    receipt['executable_sha256'] = install.digest(binary)
+    (tmp_path / 'ready.json').write_text(json.dumps(receipt))
+    model.write_bytes(b'changed')
+    with pytest.raises(kit.WhisperKitError):
+        kit.installed(tmp_path)
+
+
+def test_whisperkit_old_swift_blocks_before_installation(tmp_path, monkeypatch):
+    monkeypatch.setattr(whisperkit_install.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(whisperkit_install.platform, 'machine', lambda: 'arm64')
+    monkeypatch.setattr(whisperkit_install.platform, 'mac_ver', lambda: ('14.0', '', ''))
+    monkeypatch.setattr(whisperkit_install.shutil, 'which', lambda _: '/fixture/tool')
+    commands = []
+    def process(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout='Apple Swift version 5.9')
+    monkeypatch.setattr(whisperkit_install.subprocess, 'run', process)
+    with pytest.raises(kit.WhisperKitError, match='5.10'):
+        whisperkit_install.install(tmp_path / 'uncreated')
+    assert len(commands) == 1 and not (tmp_path / 'uncreated').exists()
 
 
 def asset(blob, path='model.bin'):

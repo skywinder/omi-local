@@ -86,7 +86,8 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
     if not isinstance(result_key, str) or not re.fullmatch(r'[0-9a-f]{64}', result_key):
         raise ValueError('Invalid result key')
     conversation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
-    provider = {'whisperx': 'whisperx-local', 'parakeet-mlx': 'parakeet-mlx-local'}[manifest['profile']['engine']]
+    provider = {'whisperx': 'whisperx-local', 'parakeet-mlx': 'parakeet-mlx-local',
+                'whisperkit': 'whisperkit-local'}[manifest['profile']['engine']]
     segments = normalize_segments(raw, duration, conversation_id, provider)
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,

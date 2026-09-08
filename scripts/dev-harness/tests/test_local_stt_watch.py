@@ -128,9 +128,8 @@ def test_retry_after_runtime_upgrade_records_actual_version_and_keeps_model_sett
     old = local_stt.EngineConfig(runtime_revision='old', python='/old/python', diarization_model='none')
     worker.jobs[key] = {'state': 'pending', 'attempts': 1, 'retry_at': 0, 'profile': old.profile()}
     worker.save()
-    current = local_stt.EngineConfig(runtime_revision='new', python='/new/python',
-                                    batch_size=2, diarization_model='none')
-    monkeypatch.setattr(local_stt.EngineConfig, 'load', lambda _: current)
+    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps({
+        'runtime_revision': 'new', 'python': '/new/python', 'batch_size': 2, 'diarization_model': 'none'}))
     used = []
     monkeypatch.setattr(local_stt, 'transcribe', lambda *a, engine: used.append(engine) or 0)
     worker.tick(61)

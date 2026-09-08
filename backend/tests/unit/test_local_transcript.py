@@ -32,12 +32,13 @@ def test_existing_wire_format_case_times_speakers_and_stable_identity():
     assert build_conversation(raw(), alternative).id != conversation.id
 
 
-def test_parakeet_provenance_uses_same_mobile_contract():
+@pytest.mark.parametrize('engine,provider', [('parakeet-mlx', 'parakeet-mlx-local'),
+                                           ('whisperkit', 'whisperkit-local')])
+def test_alternative_engine_provenance_uses_same_mobile_contract(engine, provider):
     data = manifest()
-    data['profile'] = {'engine': 'parakeet-mlx', 'model': 'mlx-community/parakeet-tdt-0.6b-v3',
-                       'device': 'gpu', 'compute_type': 'float32'}
+    data['profile'] = {'engine': engine, 'model': 'synthetic-model'}
     conversation = build_conversation(raw(), data)
-    assert all(s.stt_provider == 'parakeet-mlx-local' for s in conversation.transcript_segments)
+    assert all(s.stt_provider == provider for s in conversation.transcript_segments)
     assert conversation.external_data['local_transcript']['profile'] == data['profile']
     assert conversation.status == 'completed' and conversation.uses_custom_stt
 

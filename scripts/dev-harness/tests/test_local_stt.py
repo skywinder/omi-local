@@ -8,7 +8,65 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dev_harness import local_stt, local_parakeet
+from dev_harness import local_stt, local_parakeet, local_whisperkit
+
+
+def test_whisperkit_report_is_offline_and_keeps_words(tmp_path, monkeypatch):
+    audio = tmp_path / 'audio.wav'
+    audio.write_bytes(b'synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'synthetic-secret')
+    monkeypatch.setattr(local_whisperkit.shutil, 'which', lambda _: '/usr/bin/sandbox-exec')
+    def process(command, **kwargs):
+        assert command[:3] == ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)']
+        assert '--model-path' in command and '--download-tokenizer-path' in command
+        assert command[command.index('--concurrent-worker-count') + 1] == '1'
+        assert kwargs['capture_output'] and 'OPENAI_API_KEY' not in kwargs['env']
+        (tmp_path / 'audio.json').write_text(json.dumps({'language': 'ru', 'segments': [{
+            'text': ' Проверка.', 'start': 0.1, 'end': 0.8,
+            'words': [{'word': ' Проверка.', 'start': 0.1, 'end': 0.8, 'probability': 0.9}]}]}))
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(local_whisperkit.subprocess, 'run', process)
+    raw = local_whisperkit.transcribe(tmp_path, audio, tmp_path, 'ru', 1)
+    segment = raw['segments'][0]
+    assert segment['text'] == 'Проверка.' and segment['speaker'] == 'SPEAKER_00'
+    assert segment['words'][0]['score'] == 0.9 and segment['words'][0]['end'] == 0.8
+
+
+def test_whisperkit_failure_has_no_transcript_and_does_not_fall_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_whisperkit.shutil, 'which', lambda _: '/usr/bin/sandbox-exec')
+    monkeypatch.setattr(local_whisperkit.subprocess, 'run', lambda *a, **kw:
+                        SimpleNamespace(returncode=1, stdout=b'private synthetic speech'))
+    with pytest.raises(local_whisperkit.WhisperKitError, match='original WAV retained') as error:
+        local_whisperkit.transcribe(tmp_path, tmp_path / 'audio.wav', tmp_path, 'ru', 1)
+    assert 'private' not in str(error.value)
+    monkeypatch.setattr(local_whisperkit.shutil, 'which', lambda _: None)
+    with pytest.raises(local_whisperkit.WhisperKitError, match='sandbox-exec'):
+        local_whisperkit.transcribe(tmp_path, tmp_path / 'audio.wav', tmp_path, 'ru', 1)
+
+
+@pytest.mark.parametrize('end', [float('nan'), 3, -1, True])
+def test_whisperkit_rejects_invalid_timestamps(end):
+    with pytest.raises(local_whisperkit.WhisperKitError):
+        local_whisperkit.normalize({'language': 'ru', 'segments': [
+            {'text': 'Synthetic', 'start': 0.1, 'end': end}]}, 1)
+
+
+def test_pinned_queue_profile_does_not_inherit_another_engine_runtime(tmp_path):
+    settings = cfg(tmp_path)
+    settings.repo_root = tmp_path
+    path = settings.layout.state_root / 'stt-engine.json'
+    path.write_text(json.dumps({'engine': 'whisperkit', 'language': 'ru'}))
+    current = local_stt.EngineConfig.load(settings)
+    assert current.assets_path == str(tmp_path / '.local/whisperkit')
+    assert current.profile()['engine'] == 'whisperkit'
+    assert 'compute_type' not in current.profile()
+    legacy = local_stt.EngineConfig(engine='whisperx', diarization_model='none')
+    old_job = local_stt.EngineConfig.load(settings, profile=legacy.profile())
+    assert old_job.engine == 'whisperx' and not old_job.assets_path
+    path.write_text(json.dumps({'engine': 'whisperx', 'python': '/old/python', 'diarization_model': 'none'}))
+    retried = local_stt.EngineConfig.load(settings, profile=current.profile())
+    assert retried.engine == 'whisperkit' and not retried.python
+    assert retried.assets_path == current.assets_path
 
 
 def audio_file(tmp_path):

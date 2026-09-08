@@ -10,7 +10,6 @@ import signal
 import sys
 import time
 from collections import Counter
-from dataclasses import replace
 from pathlib import Path
 
 from . import config, local_stt, safety
@@ -187,7 +186,7 @@ class Worker:
                     # Legacy WhisperX jobs always ran diarization; do not inherit
                     # a later temporary single-speaker setting on their retries.
                     profile.setdefault('diarization_model', local_stt.EngineConfig().diarization_model)
-                engine = replace(local_stt.EngineConfig.load(self.cfg), **profile)
+                engine = local_stt.EngineConfig.load(self.cfg, profile=profile)
                 job['profile'] = engine.profile()
                 result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
                 if result != 0:
