@@ -16,6 +16,9 @@ this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.
 The mobile wrapper contract test stubs native build tools and the plugin overlay;
 it must run from a fresh checkout without ignored iOS generated files.
+The local iOS wrapper selects supported physical devices without a model allowlist.
+Signing is supplied by `OMI_APPLE_TEAM_ID`; `OMI_DEV_HOST` is optional for ngrok
+pairing. Check tools and destination before generating configuration or building.
 
 ## Build Bootstrap
 
@@ -35,7 +38,7 @@ it must run from a fresh checkout without ignored iOS generated files.
 
 ### Setup Sequence
 ```bash
-bash setup.sh ios    # or: bash setup.sh android
+bash setup.sh ios personal    # or: bash setup.sh android
 ```
 This handles: pub get, build_runner, gen-l10n, and flavor configuration.
 

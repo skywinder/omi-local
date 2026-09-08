@@ -60,15 +60,21 @@ BETA_API_BASE_URL="${OMI_BETA_API_BASE_URL:-https://api.omiapi.com/}"
 ######################################
 function generate_device_suffix() {
   # Use hostname or a hash of it as suffix
-  HOSTNAME=$(hostname -s | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
-  echo "${HOSTNAME}"
+  local host_name suffix
+  host_name=$(hostname -s)
+  suffix=$(printf '%s' "$host_name" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]')
+  # A non-Latin computer name must still produce a valid bundle identifier.
+  if [[ -z "$suffix" ]]; then
+    suffix=$(printf '%s' "$host_name" | shasum -a 256 | awk '{print substr($1, 1, 12)}')
+  fi
+  echo "$suffix"
 }
 
 function personal_bundle_id() {
   local suffix bundle_id
   suffix=$(generate_device_suffix)
   bundle_id="${OMI_PERSONAL_BUNDLE_ID:-com.omi.local.${suffix}}"
-  if [[ ! "$bundle_id" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ || "$bundle_id" != *.* ]]; then
+  if [[ ! "$bundle_id" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\.[A-Za-z0-9][A-Za-z0-9-]*)+$ ]]; then
     echo "ERROR: OMI_PERSONAL_BUNDLE_ID must be a reverse-DNS-style bundle identifier." >&2
     return 1
   fi
@@ -480,10 +486,8 @@ function check_ios_prerequisites() {
   fi
 }
 
-# Picks the iOS destination `flutter run -d` should target, instead of leaving
-# Flutter to fall back to whatever else it finds (macOS desktop, on a machine
-# with no simulator runtime and only a wirelessly-paired phone visible) and
-# reporting an error about a platform the developer never asked for.
+# Select a connected physical iOS device. Model names and device identifiers
+# belong to this Mac's discovery result, never to a repository allowlist.
 function select_ios_device() {
   local devices_json
   devices_json=$(flutter devices --machine 2>/dev/null) || {
@@ -492,7 +496,10 @@ function select_ios_device() {
   }
 
   local ios_devices
-  ios_devices=$(echo "$devices_json" | jq -c '[.[] | select(.targetPlatform == "ios")]')
+  ios_devices=$(echo "$devices_json" | jq -ce '[.[] | select(.targetPlatform == "ios" and .emulator == false and .isSupported != false)]') || {
+    echo "ERROR: Could not read the connected iOS device list." >&2
+    return 1
+  }
   local count
   count=$(echo "$ios_devices" | jq 'length')
 
@@ -500,7 +507,7 @@ function select_ios_device() {
     local requested_device
     requested_device=$(echo "$ios_devices" | jq -r --arg id "$OMI_IOS_DEVICE_ID" '.[] | select(.id == $id) | .id')
     if [[ -z "$requested_device" ]]; then
-      echo "❌ OMI_IOS_DEVICE_ID does not identify a currently available iOS destination." >&2
+      echo "❌ OMI_IOS_DEVICE_ID does not identify a currently available physical iOS device." >&2
       return 1
     fi
     echo "$requested_device"
@@ -508,8 +515,8 @@ function select_ios_device() {
   fi
 
   if [[ "$count" -eq 0 ]]; then
-    echo "❌ No iOS device or simulator found." >&2
-    echo "   Boot a simulator (open -a Simulator) or connect a physical device, then retry." >&2
+    echo "❌ No supported physical iPhone found." >&2
+    echo "   Connect and unlock the iPhone, trust this Mac and enable Developer Mode, then retry." >&2
     return 1
   fi
 
@@ -523,13 +530,13 @@ function select_ios_device() {
   while IFS= read -r line; do
     i=$((i + 1))
     echo "   $i) $line" >&2
-  done < <(echo "$ios_devices" | jq -r '.[] | "\(.name) (\(.id))"')
+  done < <(echo "$ios_devices" | jq -r '.[] | "\(.sdk // "iOS") · \(.connectionInterface // "connected")"')
 
   # Never block on read without a TTY, or a non-interactive run (CI, nested
   # automation) hangs indefinitely instead of failing with a usable message.
   if [[ ! -t 0 ]]; then
     echo "   ❌ No terminal available to choose a device." >&2
-    echo "      Disconnect the extras, or boot only the simulator you want, and re-run." >&2
+    echo "      Disconnect the extras or set OMI_IOS_DEVICE_ID, then retry." >&2
     return 1
   fi
 
@@ -541,34 +548,6 @@ function select_ios_device() {
   fi
   echo "❌ Invalid selection." >&2
   return 1
-}
-
-# True if $1 is the id of a physical iOS device rather than a simulator, per
-# `flutter devices --machine`'s own "emulator" field.
-function _ios_device_is_physical() {
-  local device_id="$1"
-  local devices_json
-  devices_json=$(flutter devices --machine 2>/dev/null) || return 1
-  local emulator
-  emulator=$(echo "$devices_json" | jq -r --arg id "$device_id" '.[] | select(.id == $id) | .emulator')
-  [[ "$emulator" == "false" ]]
-}
-
-function _ios_device_is_iphone_17_pro() {
-  local device_id="$1"
-  local device_file marketing_name
-  device_file=$(mktemp "${TMPDIR:-/private/tmp}/omi-personal-device.XXXXXX") || return 1
-  if ! xcrun devicectl list devices --json-output "$device_file" >/dev/null 2>&1; then
-    rm -f "$device_file"
-    return 1
-  fi
-  marketing_name=$(jq -r --arg id "$device_id" '
-    .result.devices[]
-    | select(.identifier == $id or .hardwareProperties.udid == $id)
-    | .hardwareProperties.marketingName
-  ' "$device_file")
-  rm -f "$device_file"
-  [[ "$marketing_name" == 'iPhone 17 Pro' ]]
 }
 
 # #########
@@ -599,7 +578,6 @@ function run_build_ios() {
       ;;
   esac
   validate_flutter_profile_arg "$profile" "$@" || return 1
-  prepare_mobile_build_env "$flavor" "$api_base_url" offline || return 1
   local flutter_args=(
     "--dart-define=OMI_APP_PROFILE=$profile"
     "--dart-define=OMI_RUNTIME_MODE=offline"
@@ -627,14 +605,12 @@ function run_build_ios() {
   check_ios_prerequisites || return 1
   local device_id
   device_id=$(select_ios_device) || return 1
-  if ! _ios_device_is_physical "$device_id" || ! _ios_device_is_iphone_17_pro "$device_id"; then
-    echo "ERROR: this validation branch may run only on the connected physical iPhone 17 Pro." >&2
-    return 1
-  fi
-  if [[ -z "${OMI_DEV_HOST:-}" ]]; then
-    echo "ERROR: set OMI_DEV_HOST to this Mac's private LAN address for the physical iPhone." >&2
-    return 1
-  fi
+  personal_bundle_id >/dev/null || return 1
+  write_personal_team_config \
+    && prepare_mobile_build_env "$flavor" "$api_base_url" offline \
+    && setup_firebase \
+    && bash scripts/generate_ios_dev_info_plist.sh ios/Runner/Info.plist ios/Runner/Info-Dev.plist personal \
+    && generate_ios_custom_config Dev omi-dev true || return 1
   prepare_personal_ios_build_dir || return 1
   flutter pub get \
     && bash scripts/apply_personal_ios_plugin_overlay.sh \
@@ -649,12 +625,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 case "${1}" in
   ios)
     if [[ "${2:-}" == "personal" && -z "${3:-}" ]]; then
-      write_personal_team_config \
-        && OMI_RUNTIME_MODE=offline prepare_mobile_build_env dev "$LOCAL_API_BASE_URL" offline \
-        && setup_firebase \
-        && bash scripts/generate_ios_dev_info_plist.sh ios/Runner/Info.plist ios/Runner/Info-Dev.plist personal \
-        && generate_ios_custom_config Dev omi-dev true \
-        && OMI_RUNTIME_MODE=offline run_build_ios dev \
+      OMI_RUNTIME_MODE=offline run_build_ios dev \
           --dart-define=OMI_API_BASE_URL="$LOCAL_API_BASE_URL" \
           --dart-define=OMI_FIREBASE_AUTH_EMULATOR_HOST="$LOCAL_DEV_HOST"
     else

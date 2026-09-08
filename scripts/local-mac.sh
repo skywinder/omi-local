@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/macos-runtime.sh
+omi_require_apple_silicon "$PWD/scripts/local-mac.sh" "$@"
 if [ "${1:-}" = install ]; then
   exec bash scripts/install-local-mac.sh
 fi

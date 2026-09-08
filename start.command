@@ -12,10 +12,8 @@ if [[ "${1:-}" != '' && "${1:-}" != --check ]]; then
   echo 'Используйте ./start.command или ./start.command --check' >&2
   exit 1
 fi
-if [[ "$(uname -s)-$(uname -m)" != Darwin-arm64 ]]; then
-  echo 'Этот запуск рассчитан на Mac с Apple Silicon.' >&2
-  exit 1
-fi
+source scripts/macos-runtime.sh
+omi_require_apple_silicon "$PWD/start.command" "$@"
 for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json firebase.json web-local/index.html; do
   [[ -s "$input" ]] || { echo "Не хватает файла проекта: $input" >&2; exit 1; }
 done

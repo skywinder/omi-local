@@ -2,10 +2,8 @@
 # Backend/runtime only. App generation and iOS builds are separate operations.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ "$(uname -s)-$(uname -m)" != Darwin-arm64 ]; then
-  echo 'This installer supports macOS on Apple Silicon.' >&2
-  exit 1
-fi
+source scripts/macos-runtime.sh
+omi_require_apple_silicon "$PWD/scripts/install-local-mac.sh" "$@"
 for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json; do
   test -s "$input" || { echo "Missing installer input: $input" >&2; exit 1; }
 done

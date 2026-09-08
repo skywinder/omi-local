@@ -73,3 +73,42 @@ def test_first_pairing_shows_box_once_and_repeat_preserves_hash(monkeypatch, tmp
     assert (tmp_path / 'pairing.json').read_bytes() == saved
     assert 'x' * 43 not in output.getvalue()
     assert 'Домен: https://example.ngrok.app' in output.getvalue()
+
+
+@pytest.mark.parametrize('system, architecture, translated, accepted, reexec', [
+    ('Darwin', 'arm64', '0', True, False),
+    ('Darwin', 'x86_64', '1', True, True),
+    ('Darwin', 'x86_64', '0', False, False),
+    ('Linux', 'aarch64', '0', False, False),
+])
+def test_mac_entry_accepts_native_or_translated_apple_silicon(
+    system, architecture, translated, accepted, reexec,
+):
+    import subprocess
+
+    helper = Path(__file__).resolve().parents[2] / 'macos-runtime.sh'
+    result = subprocess.run([
+        'bash', '-c', '''
+        set -euo pipefail
+        source "$1"
+        platform_name=$2
+        platform_arch=$3
+        translated=$4
+        uname() { if [[ "$1" == -s ]]; then echo "$platform_name"; else echo "$platform_arch"; fi; }
+        sysctl() { echo "$translated"; }
+        exec() { printf '<%s>\\n' "$@"; exit 0; }
+        omi_require_apple_silicon '/tmp/Другой Mac/start.command' --check
+        echo native
+        ''', 'test', str(helper), system, architecture, translated,
+    ], text=True, capture_output=True)
+    assert (result.returncode == 0) == accepted
+    if reexec:
+        assert result.stdout.splitlines() == [
+            '</usr/bin/arch>', '<-arm64>', '</bin/bash>',
+            '</tmp/Другой Mac/start.command>', '<--check>',
+        ]
+    elif accepted:
+        assert result.stdout.strip() == 'native'
+    else:
+        assert 'Apple Silicon' in result.stderr
+        assert not result.stdout
