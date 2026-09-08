@@ -19,6 +19,10 @@
 Установщик использует Homebrew. Python 3.11.15 и зависимости закреплены в
 `backend/.python-version` и `backend/pylock.macos.toml`, Firebase CLI — в `package-lock.json`.
 Flutter, Xcode, CocoaPods и модели готовятся отдельно.
+Вывод установки сохраняется в `.local/install.log`; файл доступен только владельцу
+и не входит в Git. Запросы Homebrew остаются видны в терминале, ввод ключей не записывается.
+Пути Homebrew определяются автоматически. Для отдельного кеша Firebase можно задать
+`FIREBASE_EMULATORS_PATH` перед установкой и запуском.
 
 Backend — `127.0.0.1:20000`, аудиотека — `127.0.0.1:20001`, диагностика ngrok —
 `127.0.0.1:16040`. Эмуляторы и аудиотека не открываются через туннель.
@@ -44,8 +48,9 @@ Backend требует ключ приложения, кроме `/v1/health`; �
 }
 ```
 
-Оба движка поддерживают `python` и `library_path`; проверенный каталог FFmpeg —
-`/opt/homebrew/opt/ffmpeg@7/lib`. Модели ASR, alignment для WhisperX и, при включении,
+Оба движка поддерживают `python` и `library_path`. Библиотеки FFmpeg ищутся автоматически;
+проверенному окружению WhisperX нужен FFmpeg 7. Учитываются настройки кеша
+`HF_HOME`, `HF_HUB_CACHE` и `TORCH_HOME`. Модели ASR, alignment для WhisperX и, при включении,
 pyannote с вложенными моделями должны быть скачаны заранее.
 
 Очередь и результаты: `.local/dev-harness/ngrok/services/local-transcripts/`.

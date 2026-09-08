@@ -65,11 +65,11 @@ fi
 
 export OMI_ENV_STAGE="$_stage"
 
-# Firebase emulators require JDK 21+ on PATH (Homebrew keg-only install).
-for _java_home in /opt/homebrew/opt/openjdk@21 /opt/homebrew/opt/openjdk@17; do
-  if [ -x "$_java_home/bin/java" ]; then
+# Firebase emulators require JDK 21+; do not replace it with the old JDK 17.
+if command -v brew >/dev/null 2>&1; then
+  _java_home="$(brew --prefix openjdk@21 2>/dev/null)" || _java_home=''
+  if [ -n "$_java_home" ] && [ -x "$_java_home/bin/java" ]; then
     export JAVA_HOME="$_java_home"
     export PATH="$_java_home/bin:$PATH"
-    break
   fi
-done
+fi

@@ -14,3 +14,17 @@ omi_require_apple_silicon() {
   echo 'Этот запуск рассчитан на Mac с Apple Silicon.' >&2
   return 1
 }
+
+# Prefer the native default installation, otherwise use the brew on PATH.
+omi_macos_path() {
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+  fi
+  local brew_prefix
+  if command -v brew >/dev/null 2>&1; then
+    brew_prefix=$(brew --prefix) || return 1
+    export PATH="$PWD/node_modules/.bin:$brew_prefix/opt/node@22/bin:$brew_prefix/opt/openjdk@21/bin:$brew_prefix/bin:$PATH"
+  else
+    export PATH="$PWD/node_modules/.bin:$PATH"
+  fi
+}

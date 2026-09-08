@@ -34,7 +34,7 @@ def test_import_retry_reuses_finished_engine_output_and_model_change_is_separate
     python.chmod(0o700)
     profile_path = settings.layout.state_root / 'stt-engine.json'
     profile_path.write_text(json.dumps({'python': str(python)}))
-    monkeypatch.setattr(local_stt.shutil, 'which', lambda _: '/test/ffmpeg')
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda tool: '/test/ffmpeg' if tool == 'ffmpeg' else None)
     calls = []
     def process(command, **kwargs):
         calls.append(command)
@@ -77,9 +77,17 @@ def test_model_process_does_not_receive_backend_or_provider_credentials(monkeypa
     monkeypatch.setenv('OPENAI_API_KEY', 'synthetic-secret')
     monkeypatch.setenv('HF_TOKEN', 'synthetic-secret')
     monkeypatch.setenv('OMI_LOCAL_PAIRING_FILE', '/private/example')
+    monkeypatch.setenv('HF_HOME', '/tmp/models')
+    monkeypatch.setenv('HF_HUB_CACHE', '/tmp/hub')
+    monkeypatch.setenv('TORCH_HOME', '/tmp/torch')
+    monkeypatch.setenv('HF_HUB_OFFLINE', '0')
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda _: None)
     env = local_stt.model_environment(local_stt.EngineConfig())
     assert not {'OPENAI_API_KEY', 'HF_TOKEN', 'OMI_LOCAL_PAIRING_FILE'} & env.keys()
     assert env['HF_HUB_OFFLINE'] == '1'
+    assert env['HF_HOME'] == '/tmp/models'
+    assert env['HF_HUB_CACHE'] == '/tmp/hub'
+    assert env['TORCH_HOME'] == '/tmp/torch'
 
 
 def test_completed_capture_with_stale_metadata_is_accepted_but_active_pcm_is_not(tmp_path):
@@ -119,6 +127,7 @@ def test_parakeet_failed_process_never_imports_or_writes_raw_result(tmp_path, mo
     settings = cfg(tmp_path)
     (settings.layout.state_root / 'stt-engine.json').write_text(json.dumps({'engine': 'parakeet-mlx'}))
     monkeypatch.setattr(local_stt, 'check_model', lambda _: Path('/fixture/python'))
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda _: None)
     monkeypatch.setattr(local_stt.subprocess, 'run', lambda *a, **k: SimpleNamespace(returncode=1))
     imports = []
     monkeypatch.setattr(local_stt, 'backend_step', lambda _cfg, folder=None: imports.append(folder) or {})
@@ -135,6 +144,7 @@ def test_whisperx_diarization_mode_controls_cli_speakers_and_cache_identity(tmp_
     (settings.layout.state_root / 'stt-engine.json').write_text(json.dumps({'diarization_model': diarization}))
     engine = local_stt.EngineConfig.load(settings)
     monkeypatch.setattr(local_stt, 'check_model', lambda _: Path('/fixture/python'))
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda _: None)
     commands = []
     def process(command, **kwargs):
         commands.append(command)
@@ -173,3 +183,28 @@ def test_parakeet_subwords_preserve_text_and_actual_speaker_boundaries():
     assert all(w['speaker'] == 'SPEAKER_00' for w in words)
     with pytest.raises(ValueError):
         local_parakeet.timed_words([SimpleNamespace(text='bad', start=0, end=float('nan'))], 2)
+
+
+@pytest.mark.parametrize('explicit', [False, True])
+def test_model_finds_ffmpeg_in_another_prefix_or_respects_override(tmp_path, monkeypatch, explicit):
+    prefix = tmp_path / 'Other Brew' / 'ffmpeg@7'
+    libraries = prefix / 'lib'
+    libraries.mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda name: '/test/brew' if name == 'brew' else None)
+    def find(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout=str(prefix) + '\n')
+    monkeypatch.setattr(local_stt.subprocess, 'run', find)
+    engine = local_stt.EngineConfig(library_path=str(libraries) if explicit else '')
+    assert local_stt.model_environment(engine)['DYLD_LIBRARY_PATH'] == str(libraries)
+    assert calls == ([] if explicit else [['/test/brew', '--prefix', 'ffmpeg@7']])
+
+
+def test_model_uses_libraries_next_to_ffmpeg_when_no_brew(tmp_path, monkeypatch):
+    binary = tmp_path / 'ffmpeg/bin/ffmpeg'
+    binary.parent.mkdir(parents=True)
+    binary.write_text('fixture')
+    (binary.parent.parent / 'lib').mkdir()
+    monkeypatch.setattr(local_stt.shutil, 'which', lambda name: str(binary) if name == 'ffmpeg' else None)
+    assert local_stt.ffmpeg_library_path(local_stt.EngineConfig()) == str(binary.parent.parent / 'lib')

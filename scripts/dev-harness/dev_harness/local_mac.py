@@ -135,7 +135,8 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
 def prepare_emulator(repo: Path) -> None:
     meta_path = repo / "node_modules/firebase-tools/lib/emulator/downloadableEmulatorInfo.json"
     meta = json.loads(meta_path.read_text())["firestore"]
-    target = Path.home() / ".cache/firebase/emulators" / meta["downloadPathRelativeToCacheDir"]
+    cache_dir = Path(os.environ.get("FIREBASE_EMULATORS_PATH") or Path.home() / ".cache/firebase/emulators")
+    target = cache_dir / meta["downloadPathRelativeToCacheDir"]
 
     def valid(path):
         return (

@@ -17,7 +17,7 @@ omi_require_apple_silicon "$PWD/start.command" "$@"
 for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json firebase.json web-local/index.html; do
   [[ -s "$input" ]] || { echo "Не хватает файла проекта: $input" >&2; exit 1; }
 done
-export PATH="$PWD/node_modules/.bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/opt/openjdk@21/bin:/opt/homebrew/bin:$PATH"
+omi_macos_path
 if [[ "${1:-}" == --check ]]; then
   exec bash scripts/local-mac.sh setup-check
 fi
@@ -40,8 +40,9 @@ fi
 if [[ "$needs_install" == 1 ]]; then
   echo 'Подготавливаем недостающие зависимости. Первый запуск может занять несколько минут.'
   echo 'Если система запросит пароль Mac, введите его в этом терминале.'
-  if ! bash scripts/install-local-mac.sh >/dev/null 2>&1; then
-    printf '\nПодготовка остановлена. Для диагностики: bash scripts/local-mac.sh install\n' >&2
+  if ! bash scripts/install-local-mac.sh --quiet; then
+    printf '\nПодготовка остановлена.\n' >&2
+    [[ ! -f .local/install.log ]] || echo 'Лог: .local/install.log' >&2
     exit 1
   fi
 fi

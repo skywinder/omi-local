@@ -43,7 +43,7 @@ class EngineConfig:
     compute_type: str = 'float32'
     batch_size: int = 1
     python: str = ''
-    library_path: str = '/opt/homebrew/opt/ffmpeg@7/lib'
+    library_path: str = ''
     device: str = 'cpu'
     chunk_duration: int = 60
     overlap_duration: int = 5
@@ -123,10 +123,30 @@ def inspect_audio(path: Path) -> dict:
     return {'version': 1, 'audio_sha256': digest, 'duration_seconds': duration, 'started_at': started, 'source': source}
 
 
+def ffmpeg_library_path(engine: EngineConfig) -> str:
+    if engine.library_path:
+        return str(Path(engine.library_path).expanduser())
+    # The existing WhisperX/TorchCodec combination needs FFmpeg 7 libraries.
+    # Find their installed location without fixing it to one Homebrew prefix.
+    if brew := shutil.which('brew'):
+        found = subprocess.run([brew, '--prefix', 'ffmpeg@7'], capture_output=True, text=True, timeout=10)
+        if found.returncode == 0 and found.stdout.strip():
+            libraries = Path(found.stdout.strip()) / 'lib'
+            if libraries.is_dir():
+                return str(libraries)
+    if ffmpeg := shutil.which('ffmpeg'):
+        libraries = Path(ffmpeg).resolve().parent.parent / 'lib'
+        if libraries.is_dir():
+            return str(libraries)
+    return ''
+
+
 def model_environment(engine: EngineConfig) -> dict[str, str]:
-    env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG') if key in os.environ}
+    cache_keys = ('HF_HOME', 'HF_HUB_CACHE', 'TRANSFORMERS_CACHE', 'TORCH_HOME', 'XDG_CACHE_HOME')
+    env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG', *cache_keys) if key in os.environ}
+    if libraries := ffmpeg_library_path(engine):
+        env['DYLD_LIBRARY_PATH'] = libraries
     env.update({
-        'DYLD_LIBRARY_PATH': engine.library_path,
         'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
         'PYANNOTE_METRICS_ENABLED': '0', 'DO_NOT_TRACK': '1', 'TOKENIZERS_PARALLELISM': 'false',
     })

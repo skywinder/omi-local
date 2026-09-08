@@ -112,3 +112,121 @@ def test_mac_entry_accepts_native_or_translated_apple_silicon(
     else:
         assert 'Apple Silicon' in result.stderr
         assert not result.stdout
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_quiet_installer_keeps_private_log_and_stops_on_failure(tmp_path, failed):
+    import os
+    import shutil
+    import subprocess
+
+    root = Path(__file__).resolve().parents[3]
+    repo = tmp_path / 'project with spaces'
+    (repo / 'scripts').mkdir(parents=True)
+    for name in ('install-local-mac.sh', 'macos-runtime.sh'):
+        shutil.copy2(root / 'scripts' / name, repo / 'scripts' / name)
+    for name in ('backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json'):
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('fixture')
+    sync = repo / 'backend/scripts/sync-python-deps.sh'
+    sync.parent.mkdir()
+    sync.write_text('echo dependency-output\necho dependency-diagnostic >&2\nexit ' + ('9' if failed else '0'))
+    python = repo / 'backend/.venv/bin/python'
+    python.parent.mkdir(parents=True)
+    python.write_text('#!/bin/bash\necho emulator-prepared\n')
+    python.chmod(0o700)
+    (repo / 'scripts/local-mac.sh').write_text('echo runtime-checked\n')
+    prefix = tmp_path / 'Other Brew'
+    shell_env = tmp_path / 'shell-env'
+    shell_env.write_text('''
+    uname() { case "$1" in -s) echo Darwin;; -m) echo arm64;; esac; }
+    brew() { if [[ "$1" == --prefix ]]; then echo "$OMI_TEST_PREFIX"; fi; }
+    ngrok() { :; }
+    npm() { mkdir -p node_modules; echo npm-output; }
+    ''')
+    result = subprocess.run(
+        ['bash', 'scripts/install-local-mac.sh', '--quiet'], cwd=repo,
+        env={**os.environ, 'BASH_ENV': str(shell_env), 'OMI_TEST_PREFIX': str(prefix)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == (9 if failed else 0)
+    assert result.stdout == result.stderr == ''
+    log = repo / '.local/install.log'
+    assert log.stat().st_mode & 0o777 == 0o600
+    text = log.read_text()
+    assert 'dependency-output' in text and 'dependency-diagnostic' in text
+    assert f'Installation exit status: {result.returncode}' in text
+    assert ('runtime-checked' in text) != failed
+    assert ('npm-output' in text) != failed
+
+
+def test_mac_runtime_discovers_homebrew_prefix(tmp_path):
+    import os
+    import subprocess
+
+    helper = Path(__file__).resolve().parents[2] / 'macos-runtime.sh'
+    prefix = tmp_path / 'Other Brew'
+    for directory, name in [('opt/node@22/bin', 'node'), ('opt/openjdk@21/bin', 'java')]:
+        binary = prefix / directory / name
+        binary.parent.mkdir(parents=True)
+        binary.write_text('#!/bin/bash\nexit 0\n')
+        binary.chmod(0o700)
+    result = subprocess.run([
+        'bash', '-c', '''
+        set -euo pipefail
+        source "$1"
+        brew() { echo "$OMI_TEST_PREFIX"; }
+        omi_macos_path
+        command -v node
+        command -v java
+        ''', 'test', str(helper),
+    ], env={**os.environ, 'OMI_TEST_PREFIX': str(prefix)}, capture_output=True, text=True, check=True)
+    assert result.stdout.splitlines() == [str(prefix / 'opt/node@22/bin/node'), str(prefix / 'opt/openjdk@21/bin/java')]
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS terminal recorder')
+def test_homebrew_terminal_logging_keeps_tty_and_exit_status(tmp_path):
+    import os
+    import subprocess
+
+    log = tmp_path / 'install.log'
+    log.touch(mode=0o600)
+    result = subprocess.run([
+        '/usr/bin/script', '-q', '-a', str(log), '/bin/bash', '-c',
+        '[[ -t 0 && -t 1 ]] || exit 8; printf "bootstrap-prompt\\n"; exit 7',
+    ], stdin=subprocess.DEVNULL, capture_output=True, timeout=10,
+       env={**os.environ, 'TERM': 'dumb'})
+    assert result.returncode == 7
+    assert b'bootstrap-prompt' in result.stdout
+    assert 'bootstrap-prompt' in log.read_text()
+    assert log.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("found", [False, True])
+def test_lan_environment_finds_jdk_in_another_brew_prefix(tmp_path, found):
+    import os
+    import shutil
+    import subprocess
+
+    root = Path(__file__).resolve().parents[3]
+    loader = tmp_path / 'repo/scripts/dev-harness/_source_local_dev_env.sh'
+    loader.parent.mkdir(parents=True)
+    shutil.copy2(root / 'scripts/dev-harness/_source_local_dev_env.sh', loader)
+    jdk = tmp_path / 'Other Brew/openjdk@21'
+    java = jdk / 'bin/java'
+    java.parent.mkdir(parents=True)
+    java.write_text('#!/bin/bash\nexit 0\n')
+    java.chmod(0o700)
+    result = subprocess.run([
+        'bash', '-c', '''
+        set -euo pipefail
+        brew() { [[ "$*" == '--prefix openjdk@21' ]] || exit 2; [[ "$OMI_TEST_FOUND" == 1 ]] || return 1; echo "$OMI_TEST_JDK"; }
+        source "$1"
+        command -v java
+        ''', 'test', str(loader),
+    ], env={**os.environ, 'OMI_TEST_JDK': str(jdk), 'OMI_ENV_STAGE': 'offline',
+            'OMI_TEST_FOUND': '1' if found else '0',
+            'PATH': os.environ['PATH'] if found else str(java.parent) + os.pathsep + os.environ['PATH']},
+       capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == str(java)
