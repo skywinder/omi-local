@@ -74,7 +74,8 @@ def test_opt_in_skips_archive_and_existing_capture_waits_for_finalization_then_p
     assert watch.queue_path(cfg).stat().st_mode & 0o777 == 0o600
 
 
-def test_import_outage_keeps_json_and_pins_model_across_restart(setup, monkeypatch):
+@pytest.mark.parametrize('new_settings', [{'model': 'small'}, {'model': 'small', 'diarization_model': 'none'}])
+def test_import_outage_keeps_json_and_pins_model_across_restart(setup, monkeypatch, new_settings):
     cfg, calls, documents, backend = setup
     watch.enable(cfg)
     capture(cfg, 'first')
@@ -86,7 +87,7 @@ def test_import_outage_keeps_json_and_pins_model_across_restart(setup, monkeypat
     worker = watch.Worker(cfg)
     worker.tick(0)
     assert calls == ['large-v3-turbo'] and not documents
-    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps({'model': 'small'}))
+    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps(new_settings))
     monkeypatch.setattr(local_stt, 'backend_step', backend)
     worker = watch.Worker(cfg)
     worker.tick(59)

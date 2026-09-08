@@ -129,6 +129,33 @@ def test_parakeet_failed_process_never_imports_or_writes_raw_result(tmp_path, mo
     assert not list(settings.layout.services_dir.glob('local-transcripts/*/audio.json'))
 
 
+@pytest.mark.parametrize('diarization', ['none', 'pyannote/speaker-diarization-community-1'])
+def test_whisperx_diarization_mode_controls_cli_speakers_and_cache_identity(tmp_path, monkeypatch, diarization):
+    settings = cfg(tmp_path)
+    (settings.layout.state_root / 'stt-engine.json').write_text(json.dumps({'diarization_model': diarization}))
+    engine = local_stt.EngineConfig.load(settings)
+    monkeypatch.setattr(local_stt, 'check_model', lambda _: Path('/fixture/python'))
+    commands = []
+    def process(command, **kwargs):
+        commands.append(command)
+        output = Path(command[command.index('--output_dir') + 1])
+        (output / 'audio.json').write_text(json.dumps({
+            'segments': [{'text': 'Fixture', 'start': 0, 'end': 1,
+                          'words': [{'word': 'Fixture', 'start': 0, 'end': 1}]}]}))
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(local_stt.subprocess, 'run', process)
+    audio = audio_file(tmp_path)
+    raw = local_stt.run_whisperx(engine, audio, tmp_path, local_stt.inspect_audio(audio))
+    assert ('--diarize' in commands[0]) == (diarization != 'none')
+    if diarization == 'none':
+        assert raw['segments'][0]['speaker'] == 'SPEAKER_00'
+        assert raw['segments'][0]['words'][0]['speaker'] == 'SPEAKER_00'
+        assert engine.profile()['diarization_model'] == 'none'
+        assert engine.profile() != local_stt.EngineConfig().profile()
+    else:
+        assert engine.profile() == local_stt.EngineConfig().profile()
+
+
 def test_parakeet_subwords_preserve_text_and_actual_speaker_boundaries():
     tokens = [SimpleNamespace(text=' Про', start=0.0, end=0.2),
               SimpleNamespace(text='верка.', start=0.2, end=0.6),

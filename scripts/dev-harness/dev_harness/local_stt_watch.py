@@ -165,7 +165,12 @@ class Worker:
             self.save()
             try:
                 # Execution paths can be repaired; result/model identity stays pinned.
-                engine = replace(local_stt.EngineConfig.load(self.cfg), **job['profile'])
+                profile = dict(job['profile'])
+                if profile['engine'] == 'whisperx':
+                    # Legacy WhisperX jobs always ran diarization; do not inherit
+                    # a later temporary single-speaker setting on their retries.
+                    profile.setdefault('diarization_model', local_stt.EngineConfig().diarization_model)
+                engine = replace(local_stt.EngineConfig.load(self.cfg), **profile)
                 result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
                 if result != 0:
                     raise local_stt.TranscriptionError('Local transcription failed')

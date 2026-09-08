@@ -67,15 +67,18 @@ class EngineConfig:
                     or type(engine.overlap_duration) is not int or not 1 <= engine.overlap_duration < engine.chunk_duration
                     or engine.diarization_model not in {'pyannote/speaker-diarization-community-1', 'none'}):
                 raise TranscriptionError('Parakeet requires GPU/float32/auto language and bounded overlapping chunks')
-        elif engine.language == 'auto' or engine.device != 'cpu':
-            raise TranscriptionError('WhisperX requires CPU and an explicit language')
+        elif (engine.language == 'auto' or engine.device != 'cpu'
+              or engine.diarization_model not in {'pyannote/speaker-diarization-community-1', 'none'}):
+            raise TranscriptionError('WhisperX requires CPU, explicit language and a supported diarization mode')
         return engine
 
     def profile(self):
         excluded = {'python', 'library_path'}
         if self.engine == 'whisperx':
             # Preserve existing result keys and pinned queue entries exactly.
-            excluded.update({'device', 'chunk_duration', 'overlap_duration', 'diarization_model'})
+            excluded.update({'device', 'chunk_duration', 'overlap_duration'})
+            if self.diarization_model != 'none':
+                excluded.add('diarization_model')
         return {key: value for key, value in asdict(self).items() if key not in excluded}
 
 
@@ -207,13 +210,20 @@ def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
         command = [str(python), '-m', 'whisperx', str(temp / 'audio.wav'), '--model', engine.model,
                    '--language', engine.language, '--device', 'cpu', '--compute_type', engine.compute_type,
                    '--batch_size', str(engine.batch_size),
-                   '--diarize', '--model_cache_only', 'True', '--output_format', 'json', '--output_dir', temporary]
+                   '--model_cache_only', 'True', '--output_format', 'json', '--output_dir', temporary]
+        if engine.diarization_model != 'none':
+            command.append('--diarize')
         outcome = subprocess.run(command, env=env, capture_output=True, timeout=3600)
         if outcome.returncode or not (temp / 'audio.json').is_file():
             raise TranscriptionError('WhisperX failed; original WAV retained, no conversation created')
         raw = json.loads((temp / 'audio.json').read_text())
         if not isinstance(raw, dict) or not raw.get('segments'):
             raise TranscriptionError('No speech segments returned; no conversation created')
+        if engine.diarization_model == 'none':
+            for segment in raw['segments']:
+                segment['speaker'] = 'SPEAKER_00'
+                for word in segment.get('words', []):
+                    word['speaker'] = 'SPEAKER_00'
         return raw
 
 
