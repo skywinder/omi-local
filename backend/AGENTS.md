@@ -17,6 +17,10 @@ Finished-WAV STT uses a separate existing ML environment via `local-mac.sh trans
 The trusted-host importer creates transcript-only Conversations through the lifecycle
 owner; offline detail reads must never dispatch first-open work. Model settings and
 the adapter contract are in `docs/LOCAL_STT.md`; do not add ML imports to backend.
+The loopback web library deletes through `scripts/delete_local_recording.py`,
+which verifies the paired owner and exact WAV/result provenance before deleting
+local transcript-only Conversations. The STT lock serializes deletion and import;
+the tunnel route allowlist is unchanged. See `docs/START.md` for refresh semantics.
 
 ## Setup
 

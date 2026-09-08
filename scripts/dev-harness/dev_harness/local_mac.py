@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import cli, config, safety, local_stt, local_stt_watch
+from . import cli, config, safety, local_stt, local_stt_watch, local_library
 
 
 class LocalMacError(ValueError):
@@ -81,6 +81,8 @@ def read_config(cfg) -> dict:
 
 
 def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
+    from .local_setup import show_frame
+
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise LocalMacError("Configure requires a local interactive terminal; credentials must not enter logs")
     current = cfg.layout.state_root / "ngrok.json"
@@ -88,8 +90,8 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
         raise LocalMacError("Stop this local stack before changing its connection")
     if not current.exists() or edit:
         existing = read_config(cfg)["url"] if current.exists() else ""
-        url = endpoint(input(f"ngrok HTTPS address [{existing}]: ").strip() or existing)
-        token = getpass.getpass("ngrok agent authtoken (hidden; blank reuses local configuration): ").strip()
+        url = endpoint(input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
+        token = getpass.getpass("Authtoken ngrok (скрыт; Enter — использовать сохранённый): ").strip()
         if not token:
             import yaml
 
@@ -117,16 +119,17 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
         private_json(current, {"url": url})
     pairing = cfg.layout.state_root / "pairing.json"
     if pairing.exists() and not rotate:
-        print("Existing pairing preserved. Use rotate-key to replace the app key.")
+        show_frame('ДЛЯ ПРИЛОЖЕНИЯ НА IPHONE', ['Домен: ' + read_config(cfg)['url'],
+                   'Ключ: прежний, сохранённый в приложении'])
         return
     if cli._service_record(cfg, "backend") or cli._service_record(cfg, "ngrok"):
         raise LocalMacError("Stop this local stack before replacing its pairing key")
     key = secrets.token_urlsafe(32)
     private_json(pairing, pairing_data(key))
     # Deliberate one-time terminal provisioning. Never written to files or logs.
-    print("Copy this one-time app key into Local Mac on your iPhone:")
-    print(key)
-    print("The backend retained only its hash. The ngrok authtoken is a different credential.")
+    show_frame('ДЛЯ ПРИЛОЖЕНИЯ НА IPHONE', ['Домен: ' + read_config(cfg)['url'], 'Ключ:  ' + key])
+    print('Введите домен и ключ в разделе «Локальный Mac» на iPhone.')
+    print('Ключ показан один раз. На Mac хранится только его проверочный хеш.')
 
 
 def prepare_emulator(repo: Path) -> None:
@@ -299,6 +302,9 @@ def main() -> int:
             "auto-transcribe-on",
             "auto-transcribe-off",
             "transcription-status",
+            "library",
+            "start",
+            "setup-check",
         ],
     )
     parser.add_argument('audio', nargs='?')
@@ -321,6 +327,20 @@ def main() -> int:
             return up(cfg)
         elif args.command == "status":
             return cli.cmd_status(argparse.Namespace(write_summary=False))
+        elif args.command == "library":
+            local_library.start(cfg)
+            print(local_library.url(cfg))
+        elif args.command in {"start", "setup-check"}:
+            from . import local_setup
+            try:
+                if args.command == "setup-check":
+                    local_setup.check(cfg)
+                    print('Готовность Mac: проверено. Изменений не внесено.')
+                    return 0
+                return local_setup.run(cfg)
+            except local_setup.SetupError as error:
+                print(str(error), file=sys.stderr)
+                return 1
         elif args.command == "down":
             return cli.cmd_down(argparse.Namespace())
         elif args.command == "transcribe":
