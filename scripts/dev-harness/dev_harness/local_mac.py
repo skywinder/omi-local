@@ -90,6 +90,8 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
         raise LocalMacError("Stop this local stack before changing its connection")
     if not current.exists() or edit:
         existing = read_config(cfg)["url"] if current.exists() else ""
+        print('Ngrok: https://dashboard.ngrok.com — адрес в Domains, токен в Your Authtoken.')
+        print('Если аккаунта ещё нет: docs/NGROK.md')
         url = endpoint(input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
         token = getpass.getpass("Authtoken ngrok (скрыт; Enter — использовать сохранённый): ").strip()
         if not token:

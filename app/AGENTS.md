@@ -19,6 +19,9 @@ it must run from a fresh checkout without ignored iOS generated files.
 The local iOS wrapper selects supported physical devices without a model allowlist.
 Signing is supplied by `OMI_APPLE_TEAM_ID`; `OMI_DEV_HOST` is optional for ngrok
 pairing. Check tools and destination before generating configuration or building.
+`../start.command --iphone-check` runs the same guided tools/signing/device checks
+without generating configuration or building. Retries must re-observe the failed
+stage; keep certificate subjects and device identifiers in memory only.
 
 ## Build Bootstrap
 

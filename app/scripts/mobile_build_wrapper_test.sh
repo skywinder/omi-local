@@ -17,6 +17,7 @@ done
   source ./setup.sh >/dev/null
   flutter() { echo 'Flutter 3.44.5'; }
   xcodebuild() { echo 'Xcode 26.6'; }
+  xcrun() { echo "$fixture_dir"; }
   pod() { printf '%s' "$fixture_pod_version"; return "$fixture_pod_exit"; }
   for fixture_pod_version in '' 1.15.0; do
     fixture_pod_exit=0
@@ -54,6 +55,8 @@ done
   pod() { record pod "$@"; }
   dart() { record dart "$@"; }
   check_ios_prerequisites() { :; }
+  check_ios_signing() { :; }
+  check_ios_phone() { OMI_SELECTED_IOS_DEVICE=$(select_ios_device); }
   prepare_personal_ios_build_dir() { record build-directory; }
   setup_firebase() { record firebase-config; }
   generate_ios_custom_config() { record ios-config "$@"; }

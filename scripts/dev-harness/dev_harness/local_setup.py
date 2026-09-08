@@ -63,9 +63,9 @@ def run(cfg, *, open_browser=True):
             raise SetupError('Запуск остановлен. Диагностика: bash scripts/local-mac.sh check')
         local_library.start(cfg)
     print()
-    show_frame('АУДИОТЕКА НА MAC', [local_library.url(cfg)])
-    print('Готово. Терминал можно закрыть.')
-    print('Открыть аудиотеку в следующий раз: omiloc')
+    print('Сервисы Mac запущены. Терминал можно закрыть.')
+    show_frame('ОТКРЫТЬ АУДИОТЕКУ', ['omiloc', local_library.url(cfg)])
+    print('Приложение на iPhone: docs/LOCAL_SETUP.md')
     if local_stt_watch.worker_ready(cfg):
         print('Новые записи распознаются автоматически.')
     else:

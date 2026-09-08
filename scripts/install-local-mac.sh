@@ -38,35 +38,65 @@ finish_install() {
 }
 trap finish_install EXIT
 run_step() {
+  local status=0
   if [[ "$quiet" == true ]]; then
-    "$@" >>"$install_log" 2>&1
+    "$@" >>"$install_log" 2>&1 || status=$?
   else
-    "$@" 2>&1 | tee -a "$install_log"
+    "$@" 2>&1 | tee -a "$install_log" || status=$?
   fi
+  if [[ "$status" != 0 ]]; then
+    echo "Не удалось: $install_stage. $install_remedy" >&2
+    echo 'Подробности: .local/install.log' >&2
+  fi
+  return "$status"
 }
 omi_macos_path
+install_stage='подготовить Homebrew'
+install_remedy='Проверьте интернет и установку инструментов Xcode: xcode-select --install.'
 if ! command -v brew >/dev/null 2>&1; then
+  echo 'Устанавливаем Homebrew. Следуйте его запросам в этом терминале.'
   installer_file="$(mktemp -t omi-homebrew)"
   run_step curl --fail --location --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$installer_file"
   # Preserve the terminal and record output; do not enable input recording (-k).
-  /usr/bin/script -q -a "$install_log" /bin/bash "$installer_file"
+  /usr/bin/script -q -a "$install_log" /bin/bash "$installer_file" || {
+    echo 'Homebrew не установлен. Завершите его подготовку: https://brew.sh' >&2
+    exit 1
+  }
   omi_macos_path
 fi
 for formula in uv node@22 openjdk@21 redis opus ffmpeg jq; do
-  if ! brew list --versions "$formula" >/dev/null 2>&1; then run_step brew install "$formula"; fi
+  if ! brew list --versions "$formula" >/dev/null 2>&1; then
+    install_stage="установить $formula"
+    install_remedy="Проверьте интернет; для повтора: brew install $formula."
+    echo "Устанавливаем $formula…"
+    run_step brew install "$formula"
+  fi
 done
-if ! command -v ngrok >/dev/null 2>&1; then run_step brew install --cask ngrok; fi
+if ! command -v ngrok >/dev/null 2>&1; then
+  install_stage='установить ngrok'
+  install_remedy='Повтор вручную: brew install --cask ngrok.'
+  echo 'Устанавливаем ngrok…'
+  run_step brew install --cask ngrok
+fi
 omi_macos_path
+echo 'Готовим зависимости приложения на Mac…'
+install_stage='подготовить Python'
+install_remedy='Проверьте интернет и свободное место, затем повторите запуск.'
 run_step bash backend/scripts/sync-python-deps.sh
 # npm ci is skipped only when the complete install was attested to these inputs.
 npm_inputs="$(shasum -a 256 package.json package-lock.json)"
 if [ ! -f node_modules/.omi-install-inputs ] || [ "$(cat node_modules/.omi-install-inputs)" != "$npm_inputs" ]; then
+  install_stage='подготовить Firebase CLI'
   rm -f node_modules/.omi-install-inputs
   run_step npm ci --no-audit --no-fund
   printf '%s\n' "$npm_inputs" > node_modules/.omi-install-inputs
 fi
 export PYTHON="$PWD/backend/.venv/bin/python"
+install_stage='загрузить эмулятор Firebase'
 PYTHONPATH=scripts/dev-harness run_step "$PYTHON" -m dev_harness.local_mac prepare-emulator
+echo 'Проверяем готовность сервисов Mac…'
+install_stage='проверить сервисы Mac'
+install_remedy='Диагностика: bash scripts/local-mac.sh check.'
 run_step bash scripts/local-mac.sh check
 [[ "$install_inputs" == "$(omi_install_fingerprint)" ]] || { echo 'Installer inputs changed; run installation again.' >&2; exit 1; }
 ready_file=$(mktemp .local/install.ready.XXXXXX)

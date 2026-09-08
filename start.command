@@ -5,11 +5,11 @@ umask 077
 cd "$(dirname "$0")"
 
 if [[ "${1:-}" == --help ]]; then
-  printf 'omiloc — запуск на Mac\n\n  ./start.command          Подготовить и запустить\n  ./start.command --check  Только проверить готовность\n\nПояснения: docs/START.md\n'
+  printf 'omiloc — запуск на Mac\n\n  ./start.command                 Подготовить и запустить\n  ./start.command --check         Проверить сервисы Mac\n  ./start.command --iphone-check  Проверить подготовку к установке на iPhone\n\nПояснения: docs/START.md\n'
   exit 0
 fi
-if [[ "${1:-}" != '' && "${1:-}" != --check ]]; then
-  echo 'Используйте ./start.command или ./start.command --check' >&2
+if [[ "${1:-}" != '' && "${1:-}" != --check && "${1:-}" != --iphone-check ]]; then
+  echo 'Доступные команды: ./start.command --help' >&2
   exit 1
 fi
 source scripts/macos-runtime.sh
@@ -18,6 +18,10 @@ for input in backend/.python-version backend/pylock.macos.toml package.json pack
   [[ -s "$input" ]] || { echo "Не хватает файла проекта: $input" >&2; exit 1; }
 done
 omi_macos_path
+if [[ "${1:-}" == --iphone-check ]]; then
+  cd app
+  exec bash setup.sh ios personal --check
+fi
 if [[ "${1:-}" == --check ]]; then
   exec bash scripts/local-mac.sh setup-check
 fi
@@ -41,10 +45,13 @@ fi
 if [[ "$needs_install" == 1 ]]; then
   echo 'Подготавливаем недостающие зависимости. Первый запуск может занять несколько минут.'
   echo 'Если система запросит пароль Mac, введите его в этом терминале.'
-  if ! bash scripts/install-local-mac.sh --quiet; then
+  until bash scripts/install-local-mac.sh --quiet; do
     printf '\nПодготовка остановлена.\n' >&2
     [[ ! -f .local/install.log ]] || echo 'Лог: .local/install.log' >&2
-    exit 1
-  fi
+    echo 'Исправьте причину по подсказке выше. Пояснения: docs/START.md' >&2
+    read -r -p 'Enter — повторить проверку и установку; q — выйти: ' retry || exit 1
+    [[ "$retry" != q && "$retry" != Q ]] || exit 1
+    omi_macos_path
+  done
 fi
 exec bash scripts/local-mac.sh start

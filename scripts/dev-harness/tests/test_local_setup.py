@@ -45,7 +45,9 @@ def test_start_uses_existing_lifecycle_and_prints_short_result(monkeypatch):
     assert events == ['check', 'install', 'configure', 'up', 'library', 'open']
     assert 'http://127.0.0.1:20001' in output.getvalue()
     assert '┌' in output.getvalue() and 'Терминал можно закрыть' in output.getvalue()
-    assert len(output.getvalue().splitlines()) < 18
+    assert '│  omiloc' in output.getvalue()
+    assert 'Приложение на iPhone: docs/LOCAL_SETUP.md' in output.getvalue()
+    assert len(output.getvalue().splitlines()) < 20
 
 
 def test_start_refuses_noninteractive_secret_output(monkeypatch):
@@ -152,7 +154,15 @@ def test_quiet_installer_keeps_private_log_and_stops_on_failure(tmp_path, failed
         capture_output=True, text=True,
     )
     assert result.returncode == (9 if failed else 0)
-    assert result.stdout == result.stderr == ''
+    assert 'dependency-output' not in result.stdout + result.stderr
+    assert 'dependency-diagnostic' not in result.stdout + result.stderr
+    assert len((result.stdout + result.stderr).splitlines()) <= 4
+    if failed:
+        assert 'Не удалось: подготовить Python' in result.stderr
+        assert '.local/install.log' in result.stderr
+    else:
+        assert 'Проверяем готовность сервисов Mac' in result.stdout
+        assert not result.stderr
     log = repo / '.local/install.log'
     assert log.stat().st_mode & 0o777 == 0o600
     text = log.read_text()

@@ -66,6 +66,8 @@ def start(repo, env):
                                    stdin=slave, stdout=slave, stderr=slave)
         os.close(slave)
         slave = None
+        # A failed interactive setup now offers retry; choose exit for this test.
+        os.write(master, b'q\n')
         return process.wait(timeout=15)
     finally:
         os.close(master)
@@ -122,3 +124,39 @@ def test_second_installer_does_not_invalidate_an_active_install(installation):
         assert 'уже выполняется' in blocked.stderr
         assert not events.exists()
         assert ready.read_text() == 'existing completed installation'
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS terminal and native lockf')
+def test_start_waits_then_retries_installation_and_checks_before_launch(installation):
+    import pty
+    import select
+    import time
+
+    repo, env, events = installation
+    (repo / 'backend/scripts/sync-python-deps.sh').write_text('''
+echo sync >> "$OMI_TEST_EVENTS"
+if [[ ! -f .local/retry-allowed ]]; then exit 9; fi
+''')
+    master, slave = pty.openpty()
+    process = subprocess.Popen(['bash', 'start.command'], cwd=repo, env=env,
+                               stdin=slave, stdout=slave, stderr=slave)
+    os.close(slave)
+    output = b''
+    try:
+        deadline = time.monotonic() + 10
+        while 'q — выйти: '.encode() not in output and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                output += os.read(master, 65536)
+        assert 'повторить проверку и установку'.encode() in output
+        assert not (repo / '.local/install.ready').exists()
+        assert 'start' not in events.read_text().splitlines()
+        (repo / '.local/retry-allowed').touch()
+        os.write(master, b'\n')
+        assert process.wait(timeout=10) == 0
+        assert (repo / '.local/install.ready').is_file()
+        assert events.read_text().splitlines() == ['sync', 'sync', 'npm', 'emulator', 'check', 'start']
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        os.close(master)

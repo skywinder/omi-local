@@ -18,7 +18,9 @@
 
 Установщик использует Homebrew. Python 3.11.15 и зависимости закреплены в
 `backend/.python-version` и `backend/pylock.macos.toml`, Firebase CLI — в `package-lock.json`.
-Flutter, Xcode и CocoaPods готовятся отдельно; для моделей есть `scripts/install-local-stt.sh`.
+Flutter, Xcode и CocoaPods готовятся по [инструкции iPhone](LOCAL_SETUP.md);
+`start.command --iphone-check` проверяет инструменты, подпись и телефон без сборки.
+Для моделей есть `scripts/install-local-stt.sh`.
 Проверка Java требует версию 21 или новее; iOS-проверка отклоняет неработающий CocoaPods.
 Вывод установки сохраняется в `.local/install.log`; файл доступен только владельцу
 и не входит в Git. Запросы Homebrew остаются видны в терминале, ввод ключей не записывается.
@@ -84,22 +86,3 @@ WhisperX 3.8.6/CPU/float32/batch 1 использует отдельный Pytho
 ручной повтор. При потере состояния эмулятора он восстановит разговор из сохранённого
 JSON. После изменения кода адаптера дождитесь окончания обработки и перезапустите
 её через `auto-transcribe-off` / `auto-transcribe-on`.
-
-## Локальная сеть
-
-Прежний LAN-режим работает без TLS в доверенной сети. Подготовка:
-
-```bash
-bash backend/scripts/sync-python-deps.sh
-npm ci
-export PATH="$PWD/node_modules/.bin:$PATH"
-export PYTHON="$PWD/backend/.venv/bin/python"
-export PROVIDER_MODE=offline
-export OMI_DEV_HOST="<LAN-адрес Mac>"
-make dev-check
-```
-
-После успешной проверки: `make dev-up`, `make dev-status`, `make dev-audio-smoke`.
-Остановка — `make dev-down`. Backend использует порт 8000, Auth — 9099.
-Адрес Mac должен совпадать со встроенным в LAN-сборку приложения.
-Не открывайте эти сервисы в интернет.
