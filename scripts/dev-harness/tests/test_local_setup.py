@@ -185,6 +185,31 @@ def test_mac_runtime_discovers_homebrew_prefix(tmp_path):
     assert result.stdout.splitlines() == [str(prefix / 'opt/node@22/bin/node'), str(prefix / 'opt/openjdk@21/bin/java')]
 
 
+@pytest.mark.parametrize('version, status, accepted', [
+    ('openjdk version "17.0.1"', 0, False),
+    ('java version "1.8.0_451"', 0, False),
+    ('openjdk version "21.0.6"', 0, True),
+    ('openjdk version "25-ea"', 0, True),
+    ('', 0, False),
+    ('openjdk version "21.0.6"', 1, False),
+])
+def test_mac_entry_requires_firebase_supported_java(version, status, accepted):
+    import subprocess
+
+    helper = Path(__file__).resolve().parents[2] / 'macos-runtime.sh'
+    result = subprocess.run([
+        'bash', '-c', '''
+        source "$1"
+        version=$2
+        status=$3
+        java() { printf '%s\\n' "$version" >&2; return "$status"; }
+        omi_java_ready
+        ''', 'test', str(helper), version, str(status),
+    ], capture_output=True, text=True)
+    assert (result.returncode == 0) == accepted
+    assert result.stdout == result.stderr == ''
+
+
 @pytest.mark.skipif(sys.platform != 'darwin', reason='macOS terminal recorder')
 def test_homebrew_terminal_logging_keeps_tty_and_exit_status(tmp_path):
     import os

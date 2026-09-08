@@ -14,6 +14,30 @@ done
 
 (
   cd "$fixture_dir"
+  source ./setup.sh >/dev/null
+  flutter() { echo 'Flutter 3.44.5'; }
+  xcodebuild() { echo 'Xcode 26.6'; }
+  pod() { printf '%s' "$fixture_pod_version"; return "$fixture_pod_exit"; }
+  for fixture_pod_version in '' 1.15.0; do
+    fixture_pod_exit=0
+    if check_ios_prerequisites >prerequisites.out 2>&1; then
+      echo 'FAIL: unavailable or outdated CocoaPods passed preflight' >&2
+      exit 1
+    fi
+    grep 'CocoaPods' prerequisites.out >/dev/null
+  done
+  fixture_pod_version=1.16.2
+  fixture_pod_exit=1
+  if check_ios_prerequisites >prerequisites.out 2>&1; then
+    echo 'FAIL: failed CocoaPods invocation passed preflight' >&2
+    exit 1
+  fi
+  fixture_pod_exit=0
+  check_ios_prerequisites
+)
+
+(
+  cd "$fixture_dir"
   unset OMI_DEV_HOST OMI_LOCAL_API_BASE_URL OMI_IOS_DEVICE_ID OMI_PERSONAL_BUNDLE_ID OMI_LOCAL_TEST_USER
   source ./setup.sh >/dev/null
   log_file="$fixture_dir/flutter.log"

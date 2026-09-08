@@ -28,3 +28,11 @@ omi_macos_path() {
     export PATH="$PWD/node_modules/.bin:$PATH"
   fi
 }
+
+# The pinned Firebase CLI requires Java 21; macOS also ships a nonfunctional stub.
+omi_java_ready() {
+  local version_output version_pattern='version "([0-9]+)'
+  version_output=$(java -Duser.language=en -version 2>&1) || return 1
+  [[ "$version_output" =~ $version_pattern ]] || return 1
+  (( ${BASH_REMATCH[1]} >= 21 ))
+}

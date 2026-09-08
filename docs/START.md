@@ -44,6 +44,8 @@
 
 - `omiloc` не найден: `./omiloc --install`, затем откройте новое окно Terminal.
 - `start.command` не открывается: `bash start.command`.
+- Подготовка была прервана или зависимости повреждены: выполните
+  `bash scripts/install-local-mac.sh`, затем снова `./start.command`.
 - Проверить готовность: `./start.command --check`.
 - Остановить сервисы, сохранив данные: `bash scripts/local-mac.sh down`.
 - Заменить потерянный ключ: после остановки выполните `bash scripts/local-mac.sh rotate-key`,

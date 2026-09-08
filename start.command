@@ -31,7 +31,7 @@ needs_install=0
 for tool in uv node java redis-server ffmpeg ngrok jq; do
   command -v "$tool" >/dev/null 2>&1 || needs_install=1
 done
-java -version >/dev/null 2>&1 || needs_install=1
+omi_java_ready || needs_install=1
 if command -v brew >/dev/null 2>&1; then
   brew list --versions opus >/dev/null 2>&1 || needs_install=1
 else

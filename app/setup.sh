@@ -463,12 +463,13 @@ function check_ios_prerequisites() {
   fi
 
   if ! command -v pod &>/dev/null; then
-    missing+=("CocoaPods (v1.16.2 or later) — install with: sudo gem install cocoapods")
+    missing+=("CocoaPods (v1.16.2 or later) — install with: brew install cocoapods")
   else
     local pod_version
-    pod_version=$(pod --version 2>/dev/null)
-    if [[ -n "$pod_version" ]] && ! _version_at_least "$pod_version" "1.16.2"; then
-      missing+=("CocoaPods ${pod_version} found, but v1.16.2 or later is required — update with: brew upgrade cocoapods (Homebrew) or sudo gem install cocoapods (gem)")
+    if ! pod_version=$(pod --version 2>/dev/null) || [[ ! "$pod_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      missing+=("CocoaPods is on PATH but not usable — run pod --version for details; Homebrew install: brew install cocoapods")
+    elif ! _version_at_least "$pod_version" "1.16.2"; then
+      missing+=("CocoaPods ${pod_version} found, but v1.16.2 or later is required — update with: brew upgrade cocoapods")
     fi
   fi
 
