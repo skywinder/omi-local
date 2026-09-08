@@ -82,7 +82,7 @@ def main():
         return 0
     except (ValueError, OSError, RuntimeError, safety.SafetyError, subprocess.SubprocessError) as error:
         message = str(error) if isinstance(error, LauncherError) else (
-            'Не удалось открыть аудиотеку. Проверьте настройку: ./start.command --check')
+            'Не удалось открыть аудиотеку. Из папки проекта выполните: ./start.command --check')
         print(message, file=sys.stderr)
         return 1
 

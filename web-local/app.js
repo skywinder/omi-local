@@ -88,7 +88,7 @@ async function select(id) {
     $('seek').value = 0;
     audio.src = `/api/recordings/${id}/audio`;
     audio.playbackRate = Number($('speed').value);
-    if (record.decode_warning) message('В записи есть ошибки декодирования — возможны пропуски звука.');
+    if (record.decode_warning) message('В записи возможны пропуски звука.');
     renderTranscript(record);
   } catch {
     if (request !== state.request) return;
@@ -136,7 +136,7 @@ async function refresh() {
     }
     if (!recordings.length) renderList();
   } catch {
-    $('connection').textContent = 'Нет связи с библиотекой. Запустите Omi на Mac и обновите список.';
+    $('connection').textContent = 'Нет связи с аудиотекой. Выполните omiloc в Terminal и обновите список.';
     $('connection').hidden = false;
     if (!state.records.length) $('recordings').replaceChildren(node('p', 'empty-list', 'Ожидаем подключения…'));
   } finally { state.loading = false; $('refresh').disabled = false; }
