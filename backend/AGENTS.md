@@ -13,6 +13,10 @@ Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
+Finished-WAV STT uses a separate existing ML environment via `local-mac.sh transcribe`.
+The trusted-host importer creates transcript-only Conversations through the lifecycle
+owner; offline detail reads must never dispatch first-open work. Model settings and
+the adapter contract are in `docs/LOCAL_STT.md`; do not add ML imports to backend.
 
 ## Setup
 

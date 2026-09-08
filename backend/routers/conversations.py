@@ -101,6 +101,7 @@ from utils.retrieval.tools.calendar_tools import get_google_calendar_event
 from utils.retrieval.tools.google_utils import refresh_google_token
 from utils.conversations.location import resolve_geolocation
 from utils.observability.fallback import record_fallback
+from utils.env_loader import is_offline_runtime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -621,7 +622,8 @@ def get_conversations(
 ):
     if start_date is not None and end_date is not None and _ensure_aware(start_date) > _ensure_aware(end_date):
         raise HTTPException(status_code=400, detail="start_date must be earlier than or equal to end_date")
-    logger.info(f'get_conversations {uid} {limit} {offset} {statuses} {sources} {folder_id} {starred}')
+    if not is_offline_runtime():
+        logger.info(f'get_conversations {uid} {limit} {offset} {statuses} {sources} {folder_id} {starred}')
     # force convos statuses to processing, completed on the empty filter
     if len(statuses) == 0:
         statuses = "processing,completed"
@@ -718,7 +720,8 @@ def get_conversation_by_id(
     include_discarded: bool = Query(True),
     uid: str = Depends(auth.get_current_user_uid),
 ):
-    logger.info(f'get_conversation_by_id {uid} {conversation_id}')
+    if not is_offline_runtime():
+        logger.info(f'get_conversation_by_id {uid} {conversation_id}')
     conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:
         if source != 'omi':
@@ -727,6 +730,9 @@ def get_conversation_by_id(
             )
         if conversation.get('source') != 'omi' or (not include_discarded and conversation.get('discarded', False)):
             raise HTTPException(status_code=404, detail="Conversation not found")
+    # Local transcript reads never dispatch cloud enrichment or first-open work.
+    if is_offline_runtime():
+        return conversation
     # Lazy processing: a desktop conversation stored raw (deferred) for a freemium/Neo user is
     # enriched on first open. Other conversations are returned unchanged.
     if conversation.get('deferred'):

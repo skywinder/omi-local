@@ -1,0 +1,203 @@
+import json
+import sys
+import wave
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dev_harness import local_stt, local_stt_watch as watch
+
+
+@pytest.fixture
+def setup(tmp_path, monkeypatch):
+    state = tmp_path / 'state'
+    state.mkdir()
+    cfg = SimpleNamespace(provider_mode='offline', local_transport='ngrok',
+                          layout=SimpleNamespace(state_root=state, services_dir=state / 'services'))
+    monkeypatch.setattr(watch, 'preflight', lambda *_: None)
+    monkeypatch.setattr(watch, 'start_if_enabled', lambda *a, **kw: None)
+    monkeypatch.setattr(watch, 'status', lambda *_: 0)
+    calls, documents = [], set()
+
+    def infer(engine, *_):
+        calls.append(engine.model)
+        return {'segments': [{'text': 'Synthetic fixture', 'start': 0, 'end': 1, 'speaker': 'SPEAKER_00'}]}
+
+    def backend(cfg, folder=None):
+        if folder:
+            documents.add(folder.name)  # Model the existing DB create-if-absent boundary.
+        return {'import': 'passed'}
+
+    monkeypatch.setattr(local_stt, 'run_whisperx', infer)
+    monkeypatch.setattr(local_stt, 'backend_step', backend)
+    return cfg, calls, documents, backend
+
+
+def capture(cfg, name, *, completed=True):
+    folder = cfg.layout.services_dir / 'storage' / 'listen-captures' / name
+    folder.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(folder / 'audio.wav'), 'wb') as wav:
+        wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        wav.writeframes(bytes([len(name), 0]) * 16000)
+    (folder / 'metadata.json').write_text(json.dumps({
+        'status': 'completed' if completed else 'recording', 'decode_errors': 0,
+        'duration_seconds': 1, 'source': 'phone', 'started_at': '2026-01-01T00:00:00Z',
+    }))
+    if not completed:
+        (folder / 'audio.pcm.part').touch()
+    else:
+        (folder / 'audio.pcm.part').unlink(missing_ok=True)
+    return folder
+
+
+def test_opt_in_skips_archive_and_existing_capture_waits_for_finalization_then_processes_once(setup):
+    cfg, calls, documents, _ = setup
+    capture(cfg, 'archive')
+    capture(cfg, 'previous-active', completed=False)
+    watch.enable(cfg)
+    worker = watch.Worker(cfg)
+    capture(cfg, 'previous-active')
+    capture(cfg, 'new', completed=False)
+    worker.tick(0)
+    assert not calls
+    folder = capture(cfg, 'new')
+    (folder / 'metadata.json.part').touch()  # Proven harmless stale sidecar.
+    worker.tick(1)
+    watch.Worker(cfg).tick(2)
+    assert calls == ['large-v3-turbo']
+    assert len(documents) == 1
+    assert next(iter(watch.read_queue(cfg).values()))['state'] == 'completed'
+    assert 'new' not in watch.queue_path(cfg).read_text()
+    assert watch.queue_path(cfg).stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize('new_settings', [{'model': 'small'}, {'model': 'small', 'diarization_model': 'none'}])
+def test_import_outage_keeps_json_and_pins_model_across_restart(setup, monkeypatch, new_settings):
+    cfg, calls, documents, backend = setup
+    watch.enable(cfg)
+    capture(cfg, 'first')
+    def unavailable(cfg, folder=None):
+        if folder:
+            raise local_stt.TranscriptionError('Synthetic import failure')
+        return {}
+    monkeypatch.setattr(local_stt, 'backend_step', unavailable)
+    worker = watch.Worker(cfg)
+    worker.tick(0)
+    assert calls == ['large-v3-turbo'] and not documents
+    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps(new_settings))
+    monkeypatch.setattr(local_stt, 'backend_step', backend)
+    worker = watch.Worker(cfg)
+    worker.tick(59)
+    assert not documents
+    worker.tick(61)
+    capture(cfg, 'second')
+    worker.tick(62)
+    assert calls == ['large-v3-turbo', 'small']  # Retry reused JSON, new capture uses new model.
+    assert len(documents) == 2
+    assert all(job['state'] == 'completed' for job in watch.read_queue(cfg).values())
+
+
+def test_crash_after_database_import_replays_without_second_inference_or_document(setup, monkeypatch):
+    cfg, calls, documents, _ = setup
+    watch.enable(cfg)
+    capture(cfg, 'new')
+    worker = watch.Worker(cfg)
+    save = worker.save
+    def lose_power():
+        if any(job['state'] == 'completed' for job in worker.jobs.values()):
+            raise KeyboardInterrupt  # Disk still says processing, DB already has result.
+        save()
+    monkeypatch.setattr(worker, 'save', lose_power)
+    with pytest.raises(KeyboardInterrupt):
+        worker.tick(0)
+    assert next(iter(watch.read_queue(cfg).values()))['state'] == 'processing'
+    watch.Worker(cfg).tick(1)
+    assert len(documents) == 1 and calls == ['large-v3-turbo']
+    assert next(iter(watch.read_queue(cfg).values()))['state'] == 'completed'
+
+
+def test_busy_and_interrupt_do_not_exhaust_retries_and_failures_are_bounded(setup, monkeypatch):
+    cfg, _, documents, _ = setup
+    watch.enable(cfg)
+    folder = capture(cfg, 'new')
+    worker = watch.Worker(cfg)
+    def fail(error):
+        def run(*a, **kw):
+            raise error
+        monkeypatch.setattr(local_stt, 'transcribe', run)
+    fail(local_stt.TranscriptionBusy('Synthetic contention'))
+    for now in (0, 2, 4, 6):
+        worker.tick(now)
+    assert next(iter(worker.jobs.values()))['attempts'] == 0
+    fail(KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        worker.tick(8)
+    assert next(iter(worker.jobs.values()))['state'] == 'pending'
+    assert next(iter(worker.jobs.values()))['attempts'] == 0
+    fail(local_stt.TranscriptionError('Synthetic model failure'))
+    for now in (10, 70, 190, 1000):
+        worker.tick(now)
+    job = next(iter(watch.read_queue(cfg).values()))
+    assert job['state'] == 'failed' and job['attempts'] == 3
+    assert (folder / 'audio.wav').is_file() and not documents
+
+
+def test_reenable_preserves_backlog_boundary(setup):
+    cfg, calls, _, _ = setup
+    capture(cfg, 'archive')
+    watch.enable(cfg)
+    saved = watch.settings(cfg)
+    local_stt.atomic_json(cfg.layout.state_root / 'stt-watch.json', {**saved, 'enabled': False})
+    capture(cfg, 'new')
+    watch.Worker(cfg).tick(0)
+    assert not calls
+    watch.enable(cfg)
+    assert watch.settings(cfg)['excluded'] == saved['excluded']
+    watch.Worker(cfg).tick(1)
+    assert calls == ['large-v3-turbo']
+
+
+def test_retry_delay_starts_after_processing_failure(setup, monkeypatch):
+    cfg, _, _, _ = setup
+    watch.enable(cfg)
+    capture(cfg, 'new')
+    clock = [0]
+    monkeypatch.setattr(watch.time, 'time', lambda: clock[0])
+    def long_failure(*a, **kw):
+        clock[0] = 3600
+        raise local_stt.TranscriptionError('Synthetic long failure')
+    monkeypatch.setattr(local_stt, 'transcribe', long_failure)
+    watch.Worker(cfg).tick()
+    assert next(iter(watch.read_queue(cfg).values()))['retry_at'] == 3660
+
+
+def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monkeypatch):
+    import io
+    from dev_harness import cli, local_mac
+
+    monkeypatch.setenv('PROVIDER_MODE', 'offline')
+    monkeypatch.setenv('OMI_ENV_STAGE', 'offline')
+    monkeypatch.setenv('OMI_LOCAL_TRANSPORT', 'ngrok')
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / 'backend'))
+    cfg = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3],
+                          layout=SimpleNamespace(state_root=tmp_path), backend_url='http://127.0.0.1:20000')
+    local_mac.private_json(tmp_path / 'pairing.json', local_mac.pairing_data('a' * 43))
+    monkeypatch.setattr(local_mac, 'read_config', lambda _: {'url': 'https://synthetic.ngrok.app'})
+    monkeypatch.setattr(local_mac, 'check_agent', lambda _: None)
+    monkeypatch.setattr(local_mac, 'ensure_owner_profile', lambda *a: None)
+    monkeypatch.setattr(local_mac, 'require_auth_boundary', lambda _: None)
+    monkeypatch.setattr(local_mac, 'ngrok_port', lambda _: 16040)
+    monkeypatch.setattr(cli, 'cmd_check', lambda _: 0)
+    monkeypatch.setattr(cli, 'cmd_up', lambda _: 0)
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
+    monkeypatch.setattr(cli, '_service_health', lambda *a: (True, 'ready'))
+    class Response(io.BytesIO):
+        status = 200
+    monkeypatch.setattr(local_mac.urllib.request, 'urlopen', lambda *a, **kw: Response())
+    starts = []
+    monkeypatch.setattr(watch, 'start_if_enabled', starts.append)
+    assert local_mac.up(cfg) == 0
+    assert starts == [cfg]
