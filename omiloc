@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+# Resolve the installed symlink before choosing the project directory.
+omiloc_source="${BASH_SOURCE[0]}"
+while [ -L "$omiloc_source" ]; do
+  omiloc_dir="$(cd -P "$(dirname "$omiloc_source")" && pwd)"
+  omiloc_source="$(readlink "$omiloc_source")"
+  [[ "$omiloc_source" = /* ]] || omiloc_source="$omiloc_dir/$omiloc_source"
+done
+omiloc_root="$(cd -P "$(dirname "$omiloc_source")" && pwd)"
+exec /bin/bash "$omiloc_root/scripts/local-mac.sh" launcher "$@"

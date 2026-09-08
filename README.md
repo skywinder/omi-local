@@ -25,6 +25,8 @@ Omi CV1 → приложение → ngrok → backend на Mac → WAV → тр
 iPhone в рамке и откроет локальную аудиотеку **omiloc**: записи, транскрипты,
 плеер с переходом по фразе и удаление. [Краткие пояснения](docs/START.md).
 
+После настройки: `omiloc` открывает аудиотеку из любой папки в Terminal.
+
 См. [настройку через ngrok](docs/NGROK.md) и
 [iOS-приложение и прежний LAN-режим](docs/LOCAL_SETUP.md).
 Проверенная конфигурация: Mac с Apple Silicon, iPhone 17 Pro и Omi CV1

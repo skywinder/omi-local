@@ -7,7 +7,7 @@ import shutil
 import sys
 import webbrowser
 
-from . import cli, config, local_library, local_stt_watch
+from . import cli, config, local_launcher, local_library, local_stt_watch
 
 
 class SetupError(ValueError):
@@ -39,6 +39,10 @@ def check(cfg):
         raise SetupError('Проверка зависимостей не пройдена. Диагностика: bash scripts/local-mac.sh check')
     if not all((cfg.repo_root / 'web-local' / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs')):
         raise SetupError('Не хватает файлов веб-страницы. Восстановите копию проекта.')
+    try:
+        local_launcher.install_plan(cfg.repo_root)
+    except local_launcher.LauncherError as error:
+        raise SetupError(str(error)) from error
     return 0
 
 
@@ -49,6 +53,7 @@ def run(cfg, *, open_browser=True):
         raise SetupError('Запустите ./start.command в локальном Terminal.')
     print('Проверяем готовность…', flush=True)
     check(cfg)
+    local_launcher.install(cfg.repo_root)
     cfg = config.load_config(cfg.repo_root, create_layout=True)
     # Configure remains outside redirected output: key provisioning requires a TTY.
     local_mac.configure(cfg)
@@ -60,6 +65,7 @@ def run(cfg, *, open_browser=True):
     print()
     show_frame('АУДИОТЕКА НА MAC', [local_library.url(cfg)])
     print('Готово. Терминал можно закрыть.')
+    print('Открыть аудиотеку в следующий раз: omiloc')
     if local_stt_watch.worker_ready(cfg):
         print('Новые записи распознаются автоматически.')
     else:

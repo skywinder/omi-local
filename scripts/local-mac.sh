@@ -15,4 +15,8 @@ if [ ! -x "$PYTHON" ]; then
   exit 1
 fi
 export PYTHONPATH="$PWD/scripts/dev-harness"
+if [ "${1:-}" = launcher ]; then
+  shift
+  exec "$PYTHON" -m dev_harness.local_launcher "$@"
+fi
 exec "$PYTHON" -m dev_harness.local_mac "$@"

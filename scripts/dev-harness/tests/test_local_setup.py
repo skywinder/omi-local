@@ -34,6 +34,7 @@ def test_start_uses_existing_lifecycle_and_prints_short_result(monkeypatch):
     monkeypatch.setattr(local_setup.sys, 'stdin', Terminal())
     monkeypatch.setattr(local_setup.sys, 'stdout', output)
     monkeypatch.setattr(local_setup, 'check', lambda _: events.append('check'))
+    monkeypatch.setattr(local_setup.local_launcher, 'install', lambda _: events.append('install'))
     monkeypatch.setattr(local_setup.config, 'load_config', lambda *a, **k: cfg)
     monkeypatch.setattr(local_mac, 'configure', lambda _: events.append('configure'))
     monkeypatch.setattr(local_mac, 'up', lambda _: events.append('up') or 0)
@@ -41,7 +42,7 @@ def test_start_uses_existing_lifecycle_and_prints_short_result(monkeypatch):
     monkeypatch.setattr(local_setup.local_stt_watch, 'worker_ready', lambda _: True)
     monkeypatch.setattr(local_setup.webbrowser, 'open', lambda _: events.append('open'))
     assert local_setup.run(cfg) == 0
-    assert events == ['check', 'configure', 'up', 'library', 'open']
+    assert events == ['check', 'install', 'configure', 'up', 'library', 'open']
     assert 'http://127.0.0.1:20001' in output.getvalue()
     assert '┌' in output.getvalue() and 'Терминал можно закрыть' in output.getvalue()
     assert len(output.getvalue().splitlines()) < 18
