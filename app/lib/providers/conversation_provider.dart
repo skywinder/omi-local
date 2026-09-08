@@ -727,20 +727,9 @@ class ConversationProvider extends ChangeNotifier {
     conversations = completedById.values.toList()
       ..sort((a, b) => (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt));
 
-    // Only use cache when no folder filter is applied
-    if (conversations.isEmpty && selectedFolderId == null) {
-      final activeProcessingIds = processingConversations
-          .where((conversation) => _isActiveProcessingStatus(conversation.status))
-          .map((conversation) => conversation.id)
-          .toSet();
-      conversations = _filterPendingDeletes(SharedPreferencesUtil().cachedConversations)
-          .where(
-            (conversation) =>
-                !activeProcessingIds.contains(conversation.id) && _matchesActiveConversationFilters(conversation),
-          )
-          .toList();
-    } else if (selectedFolderId == null) {
-      // Only cache when viewing all folders
+    // A successful empty page is authoritative, including external deletion of
+    // the last recording. Offline cache fallback belongs only to !result.ok.
+    if (selectedFolderId == null) {
       SharedPreferencesUtil().cachedConversations = conversations;
     }
     if (searchedConversations.isEmpty) {

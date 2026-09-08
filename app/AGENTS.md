@@ -6,6 +6,9 @@ Local ngrok pairing uses `LocalMacSession` and Keychain, restored before network
 initialization. Keep HTTP/WSS credentials confined to the paired origin and block
 redirects. Local sessions do not require Firebase Auth. `make test-transport-app`
 at the repo root covers pairing, network policy, legacy auth, and the analyzer.
+After deletion from the local web library, pull down the Conversations list to
+refresh. A successful empty server page must clear the cache; cached rows may
+be restored only after a failed request, never after a confirmed empty response.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
