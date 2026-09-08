@@ -162,7 +162,8 @@ pathlib.Path(sys.argv[2]).write_text(json.dumps(count))
             process.wait(timeout=5)
 
 
-def test_emulator_reuse_checks_actual_archive(monkeypatch, tmp_path):
+@pytest.mark.parametrize("custom_cache", [False, True])
+def test_emulator_reuse_checks_actual_archive(monkeypatch, tmp_path, custom_cache):
     import hashlib
 
     repo = tmp_path / 'repo'
@@ -181,7 +182,12 @@ def test_emulator_reuse_checks_actual_archive(monkeypatch, tmp_path):
         )
     )
     monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    archive = tmp_path / '.cache/firebase/emulators/test.jar'
+    monkeypatch.delenv('FIREBASE_EMULATORS_PATH', raising=False)
+    cache = tmp_path / '.cache/firebase/emulators'
+    if custom_cache:
+        cache = tmp_path / 'separate cache'
+        monkeypatch.setenv('FIREBASE_EMULATORS_PATH', str(cache))
+    archive = cache / 'test.jar'
     archive.parent.mkdir(parents=True)
     archive.write_bytes(content)
     before = archive.stat().st_mtime_ns
@@ -202,6 +208,7 @@ def test_installer_rejects_missing_or_empty_inputs_before_system_changes(tmp_pat
     (repo / 'scripts').mkdir(parents=True)
     installer = Path(__file__).resolve().parents[3] / 'scripts/install-local-mac.sh'
     shutil.copy2(installer, repo / 'scripts/install-local-mac.sh')
+    shutil.copy2(installer.with_name('macos-runtime.sh'), repo / 'scripts/macos-runtime.sh')
     for name in ['backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json']:
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)

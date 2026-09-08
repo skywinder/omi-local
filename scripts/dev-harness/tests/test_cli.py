@@ -79,11 +79,24 @@ def test_java_stub_that_exits_nonzero_is_not_a_runtime(monkeypatch: pytest.Monke
     assert cli._java_runtime_present() is False
 
 
-def test_java_present_when_the_binary_reports_a_version(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "version, accepted",
+    [
+        ('openjdk version "17.0.1"', False),
+        ('java version "1.8.0_451"', False),
+        ('openjdk version "21.0.6"', True),
+        ('openjdk version "25-ea"', True),
+        ("", False),
+    ],
+)
+def test_java_requires_firebase_supported_version(monkeypatch, version, accepted) -> None:
     monkeypatch.setattr(cli, "_which", lambda _name: "/usr/bin/java")
-    monkeypatch.setattr(cli.subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0))
+    monkeypatch.setattr(
+        cli.subprocess, "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="", stderr=version),
+    )
 
-    assert cli._java_runtime_present() is True
+    assert cli._java_runtime_present() is accepted
 
 
 def test_missing_java_runtime_is_reported_as_a_prerequisite(

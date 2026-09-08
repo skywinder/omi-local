@@ -6,6 +6,9 @@ Local ngrok pairing uses `LocalMacSession` and Keychain, restored before network
 initialization. Keep HTTP/WSS credentials confined to the paired origin and block
 redirects. Local sessions do not require Firebase Auth. `make test-transport-app`
 at the repo root covers pairing, network policy, legacy auth, and the analyzer.
+After deletion from the local web library, pull down the Conversations list to
+refresh. A successful empty server page must clear the cache; cached rows may
+be restored only after a failed request, never after a confirmed empty response.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
@@ -13,6 +16,12 @@ this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.
 The mobile wrapper contract test stubs native build tools and the plugin overlay;
 it must run from a fresh checkout without ignored iOS generated files.
+The local iOS wrapper selects supported physical devices without a model allowlist.
+Signing is supplied by `OMI_APPLE_TEAM_ID`; `OMI_DEV_HOST` is optional for ngrok
+pairing. Check tools and destination before generating configuration or building.
+`../start.command --iphone-check` runs the same guided tools/signing/device checks
+without generating configuration or building. Retries must re-observe the failed
+stage; keep certificate subjects and device identifiers in memory only.
 
 ## Build Bootstrap
 
@@ -32,7 +41,7 @@ it must run from a fresh checkout without ignored iOS generated files.
 
 ### Setup Sequence
 ```bash
-bash setup.sh ios    # or: bash setup.sh android
+bash setup.sh ios personal    # or: bash setup.sh android
 ```
 This handles: pub get, build_runner, gen-l10n, and flavor configuration.
 

@@ -7,6 +7,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -172,6 +173,9 @@ def _typesense_container_running(cfg: config.HarnessConfig) -> bool:
 
 
 def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]:
+    if service == "library":
+        from .local_library import ready
+        return ready(cfg), "local library readiness"
     if service == "stt-worker":
         from .local_stt_watch import worker_ready
         ready = worker_ready(cfg)
@@ -332,22 +336,17 @@ def _opus_runtime_present(cfg: config.HarnessConfig) -> bool:
 
 
 def _java_runtime_present() -> bool:
-    """Report whether a usable JVM exists, not merely whether `java` is on PATH.
-
-    macOS ships a stub at /usr/bin/java that is always present and exits 1 with
-    "Unable to locate a Java Runtime" when no JDK is installed, so a PATH lookup
-    passes on every Mac. Running the binary is the only check that distinguishes
-    the stub from a real runtime.
-    """
+    """Require the Java 21 minimum enforced by the pinned Firebase CLI."""
     if not _which("java"):
         return False
     try:
-        return (
-            subprocess.run(
-                ["java", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30
-            ).returncode
-            == 0
+        result = subprocess.run(
+            ["java", "-Duser.language=en", "-version"], capture_output=True, text=True, timeout=10
         )
+        if result.returncode:
+            return False
+        match = re.search(r'\bversion\s+"(\d+)', (result.stdout or "") + (result.stderr or ""))
+        return bool(match and int(match.group(1)) >= 21)
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -363,8 +362,8 @@ def prerequisite_report(cfg: config.HarnessConfig) -> tuple[list[str], list[str]
         )
     if not _java_runtime_present():
         missing.append(
-            "java runtime (required by the Firestore and Auth emulators; "
-            "install one with `brew install --cask temurin` or from https://adoptium.net)"
+            "java runtime 21 or later (required by Firebase emulators; "
+            "run ./start.command to prepare the Mac runtime)"
         )
     if not _which("redis-server"):
         missing.append("redis-server (required for local Redis on loopback)")

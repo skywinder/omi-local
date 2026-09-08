@@ -1,0 +1,61 @@
+--- a/whisperx/asr.py
++++ b/whisperx/asr.py
+@@ -58,10 +58,16 @@
+         )
+ 
+         encoder_output = self.encode(features)
+-        
++        prompts = [prompt.copy() for _ in range(batch_size)]
++        if options.multilingual:
++            # Match faster-whisper: select a language for each encoded chunk.
++            language_index = prompt.index(tokenizer.language)
++            for i, languages in enumerate(self.model.detect_language(encoder_output)):
++                prompts[i][language_index] = tokenizer.tokenizer.token_to_id(languages[0][0])
++
+         result = self.model.generate(
+                 encoder_output,
+-                [prompt] * batch_size,
++                prompts,
+                 beam_size=options.beam_size,
+                 patience=options.patience,
+                 length_penalty=options.length_penalty,
+@@ -390,7 +396,7 @@
+         "word_timestamps": False,
+         "prepend_punctuations": "\"'“¿([{-",
+         "append_punctuations": "\"'.。,，!！?？:：”)]}、",
+-        "multilingual": model.model.is_multilingual,
++        "multilingual": language is None and model.model.is_multilingual,
+         "suppress_numerals": False,
+         "max_new_tokens": None,
+         "clip_timestamps": None,
+--- a/whisperx/transcribe.py
++++ b/whisperx/transcribe.py
+@@ -166,10 +166,13 @@
+     if not no_align:
+         tmp_results = results
+         results = []
++        if tmp_results:
++            align_language = tmp_results[0][0].get("language", align_language)
+         align_model, align_metadata = load_align_model(
+             align_language, device, model_name=align_model, model_dir=model_dir, model_cache_only=model_cache_only
+         )
+         for result, audio_path in tmp_results:
++            result_language = result.get("language", align_language)
+             # >> Align
+             if len(tmp_results) > 1:
+                 input_audio = audio_path
+@@ -198,6 +201,7 @@
+                     print_progress=print_progress,
+                 )
+ 
++            result["language"] = result_language
+             results.append((result, audio_path))
+ 
+         # Unload align model
+@@ -234,5 +238,5 @@
+             results.append((result, input_audio_path))
+     # >> Write
+     for result, audio_path in results:
+-        result["language"] = align_language
++        result.setdefault("language", align_language)
+         writer(result, audio_path, writer_args)

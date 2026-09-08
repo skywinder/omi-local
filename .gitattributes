@@ -1,0 +1,2 @@
+# Unified diffs preserve upstream whitespace in context and removed lines.
+scripts/dev-harness/whisperx-local.patch whitespace=-blank-at-eol

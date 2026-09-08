@@ -25,30 +25,6 @@
 
 set -euo pipefail
 
-echo "👋 Yo folks! Welcome to the OMI Mobile Project - We're hiring! Join us on Discord: http://discord.omi.me"
-echo "Prerequisites (stable versions, use these or higher):"
-echo ""
-echo "Common for all developers:"
-echo "- Flutter SDK (v3.44.5)"
-echo "- Opus Codec: https://opus-codec.org"
-echo ""
-echo "For iOS Developers:"
-echo "- Xcode (v16.4)"
-echo "- CocoaPods (v1.16.2)"
-echo ""
-echo "For Android Developers:"
-echo "- Android Studio (Iguana | 2024.3)"
-echo "- Android SDK Platform (API 36)"
-echo "- JDK (v21)"
-echo "- Gradle (v8.10)"
-echo "- NDK (28.2.13676358)"
-echo ""
-echo "Usages:"
-echo "- bash setup.sh ios personal   # Personal Team, local-only iPhone build"
-echo "- bash setup.sh android"
-echo "- bash setup.sh android beta   # explicit production-data dogfood build"
-echo ""
-
 LOCAL_DEV_HOST="${OMI_DEV_HOST:-127.0.0.1}"
 LOCAL_API_BASE_URL="${OMI_LOCAL_API_BASE_URL:-http://${LOCAL_DEV_HOST}:8000/}"
 ANDROID_DEV_HOST="${OMI_ANDROID_DEV_HOST:-${OMI_DEV_HOST:-10.0.2.2}}"
@@ -60,15 +36,21 @@ BETA_API_BASE_URL="${OMI_BETA_API_BASE_URL:-https://api.omiapi.com/}"
 ######################################
 function generate_device_suffix() {
   # Use hostname or a hash of it as suffix
-  HOSTNAME=$(hostname -s | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
-  echo "${HOSTNAME}"
+  local host_name suffix
+  host_name=$(hostname -s)
+  suffix=$(printf '%s' "$host_name" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cd '[:alnum:]')
+  # A non-Latin computer name must still produce a valid bundle identifier.
+  if [[ -z "$suffix" ]]; then
+    suffix=$(printf '%s' "$host_name" | shasum -a 256 | awk '{print substr($1, 1, 12)}')
+  fi
+  echo "$suffix"
 }
 
 function personal_bundle_id() {
   local suffix bundle_id
   suffix=$(generate_device_suffix)
   bundle_id="${OMI_PERSONAL_BUNDLE_ID:-com.omi.local.${suffix}}"
-  if [[ ! "$bundle_id" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ || "$bundle_id" != *.* ]]; then
+  if [[ ! "$bundle_id" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\.[A-Za-z0-9][A-Za-z0-9-]*)+$ ]]; then
     echo "ERROR: OMI_PERSONAL_BUNDLE_ID must be a reverse-DNS-style bundle identifier." >&2
     return 1
   fi
@@ -429,61 +411,106 @@ function _version_at_least() {
 # of letting a missing/outdated tool surface as a confusing downstream failure
 # several minutes into a build.
 function check_ios_prerequisites() {
-  local missing=()
-
-  local flutter_version
-  flutter_version=$(flutter --version 2>/dev/null | grep -oE '^Flutter [0-9]+\.[0-9]+\.[0-9]+' | awk '{print $2}')
-  if [[ -z "$flutter_version" ]]; then
-    missing+=("Flutter SDK (v3.44.5 or later) — install from https://docs.flutter.dev/get-started/install")
-  elif ! _version_at_least "$flutter_version" "3.44.5"; then
-    missing+=("Flutter ${flutter_version} found, but v3.44.5 or later is required — run: flutter upgrade")
+  local version sdk
+  if ! version=$(xcodebuild -version 2>/dev/null) || ! [[ "$version" =~ Xcode[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 16.4; then
+    echo 'Нужен рабочий Xcode 16.4 или новее. Установите его из App Store и откройте.' >&2
+    echo 'Примите лицензию; в Settings → Locations → Command Line Tools выберите Xcode.' >&2
+    return 1
   fi
-
-  if ! command -v xcodebuild &>/dev/null; then
-    missing+=("Xcode (v16.4 or later) — install from the App Store, then run: sudo xcode-select --switch /Applications/Xcode.app")
-  else
-    local xcode_version
-    xcode_version=$(xcodebuild -version 2>/dev/null | awk '/^Xcode/ {print $2; exit}')
-    if [[ -z "$xcode_version" ]]; then
-      # xcodebuild is on PATH but produced no version line — an unaccepted
-      # license or missing components, not a real "Xcode is fine" signal.
-      # Left unchecked, this passes the gate silently and surfaces as a
-      # confusing failure deep into the build, exactly what this check exists
-      # to prevent.
-      missing+=("xcodebuild is on PATH but not usable (license not accepted or components missing) — run: sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch")
-    elif ! _version_at_least "$xcode_version" "16.4"; then
-      missing+=("Xcode ${xcode_version} found, but v16.4 or later is required — update via the App Store")
-    fi
+  if ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+    echo 'Завершите первый запуск Xcode: откройте его, примите лицензию и дождитесь компонентов.' >&2
+    return 1
   fi
-
-  if ! command -v pod &>/dev/null; then
-    missing+=("CocoaPods (v1.16.2 or later) — install with: sudo gem install cocoapods")
-  else
-    local pod_version
-    pod_version=$(pod --version 2>/dev/null)
-    if [[ -n "$pod_version" ]] && ! _version_at_least "$pod_version" "1.16.2"; then
-      missing+=("CocoaPods ${pod_version} found, but v1.16.2 or later is required — update with: brew upgrade cocoapods (Homebrew) or sudo gem install cocoapods (gem)")
-    fi
+  if ! sdk=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null) || [[ ! -d "$sdk" ]]; then
+    echo 'Не найден iOS SDK. В Xcode → Settings → Components установите поддержку iOS.' >&2
+    return 1
   fi
-
-  if ! command -v jq &>/dev/null; then
-    missing+=("jq (used to select an iOS build destination) — install with: brew install jq")
+  if ! version=$(flutter --version 2>/dev/null) || ! [[ "$version" =~ Flutter[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 3.44.5; then
+    echo 'Нужен Flutter 3.44.5 или новее в PATH. Установка: https://docs.flutter.dev/install' >&2
+    echo 'Для обновления: flutter upgrade. После изменения PATH откройте новый Terminal и повторите установку.' >&2
+    return 1
   fi
-
-  if [[ "${#missing[@]}" -gt 0 ]]; then
-    echo "❌ Cannot build for iOS; missing prerequisites:" >&2
-    local item
-    for item in "${missing[@]}"; do
-      echo "   - ${item}" >&2
-    done
+  if ! version=$(pod --version 2>/dev/null) || ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! _version_at_least "$version" 1.16.2; then
+    echo 'Нужен рабочий CocoaPods 1.16.2 или новее: brew install cocoapods (обновление: brew upgrade cocoapods).' >&2
+    echo 'Если Homebrew ещё не установлен, сначала запустите start.command из корня проекта.' >&2
+    return 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo 'Не найден jq: brew install jq. Homebrew подготавливается через start.command.' >&2
     return 1
   fi
 }
 
-# Picks the iOS destination `flutter run -d` should target, instead of leaving
-# Flutter to fall back to whatever else it finds (macOS desktop, on a machine
-# with no simulator runtime and only a wirelessly-paired phone visible) and
-# reporting an error about a platform the developer never asked for.
+# A retry is a fresh observation, never permission to skip a failed check.
+function ios_retry() {
+  local reply
+  while ! "$@"; do
+    if [[ ! -t 0 || ! -t 1 ]]; then
+      echo 'Проверка остановлена. Исправьте причину и запустите команду снова в Terminal.' >&2
+      return 1
+    fi
+    read -r -p 'После исправления нажмите Enter; q — выйти: ' reply || return 1
+    [[ "$reply" != q && "$reply" != Q ]] || return 1
+    # Tools installed in another terminal may be newly available on PATH.
+    hash -r
+  done
+}
+
+function check_ios_signing() {
+  local identities certificates line pem='' details fingerprint team
+  # security returns only valid signing identities (certificate + private key).
+  # Keep identities and subjects in memory; never send them to the terminal/log.
+  if ! identities=$(security find-identity -v -p codesigning 2>/dev/null); then
+    echo 'Не удалось проверить Связку ключей. Разблокируйте её и повторите проверку из Terminal.' >&2
+    return 1
+  fi
+  certificates=$(security find-certificate -a -p -c 'Apple Development' 2>/dev/null) || certificates=''
+  while IFS= read -r line; do
+    pem+="$line"$'\n'
+    if [[ "$line" == '-----END CERTIFICATE-----' ]]; then
+      details=$(printf '%s' "$pem" | openssl x509 -noout -fingerprint -sha1 -subject -nameopt sep_multiline 2>/dev/null) || details=''
+      fingerprint=$(printf '%s\n' "$details" | awk -F= '/Fingerprint=/ {gsub(":", "", $2); print toupper($2)}')
+      team=$(printf '%s\n' "$details" | sed -nE 's/^[[:space:]]*OU[[:space:]]*=[[:space:]]*([A-Z0-9]{10})[[:space:]]*$/\1/p')
+      if [[ -n "$fingerprint" && "$team" == "${OMI_APPLE_TEAM_ID:-}" && "$identities" == *"$fingerprint"* ]]; then
+        return 0
+      fi
+      pem=''
+    fi
+  done <<< "$certificates"
+  echo 'Не подтверждён действующий Apple Development с закрытым ключом для выбранной Team.' >&2
+  echo 'Разблокируйте Связку ключей. В Xcode → Settings → Accounts добавьте Apple Account.' >&2
+  echo 'Выберите Team → Manage Certificates → + → Apple Development; существующий рабочий сертификат оставьте.' >&2
+  echo 'Проверьте Team ID по полю Organizational Unit (OU) сертификата. Подробнее: docs/LOCAL_SETUP.md.' >&2
+  return 1
+}
+
+function prepare_ios_signing() {
+  local reply
+  while :; do
+    if ! [[ "${OMI_APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
+      echo 'Подпись: Xcode → Settings → Accounts → ваша Team → Manage Certificates → Apple Development.' >&2
+      echo 'Team ID: Связка ключей → Мои сертификаты → Apple Development → Organizational Unit (OU).' >&2
+      if [[ ! -t 0 || ! -t 1 ]]; then
+        echo 'Задайте OMI_APPLE_TEAM_ID или повторите запуск в Terminal; ввод Team ID будет скрыт.' >&2
+        return 1
+      fi
+      read -r -s -p 'Team ID (10 символов; q — выйти): ' OMI_APPLE_TEAM_ID || return 1
+      printf '\n' >&2
+      [[ "$OMI_APPLE_TEAM_ID" != q && "$OMI_APPLE_TEAM_ID" != Q ]] || return 1
+      continue
+    fi
+    if check_ios_signing; then
+      export OMI_APPLE_TEAM_ID
+      return 0
+    fi
+    [[ -t 0 && -t 1 ]] || return 1
+    read -r -p 'Enter — проверить снова; t — другой Team ID; q — выйти: ' reply || return 1
+    case "$reply" in q|Q) return 1 ;; t|T) unset OMI_APPLE_TEAM_ID ;; esac
+  done
+}
+
+# Select a connected physical iOS device. Model names and device identifiers
+# belong to this Mac's discovery result, never to a repository allowlist.
 function select_ios_device() {
   local devices_json
   devices_json=$(flutter devices --machine 2>/dev/null) || {
@@ -492,7 +519,10 @@ function select_ios_device() {
   }
 
   local ios_devices
-  ios_devices=$(echo "$devices_json" | jq -c '[.[] | select(.targetPlatform == "ios")]')
+  ios_devices=$(echo "$devices_json" | jq -ce '[.[] | select(.targetPlatform == "ios" and .emulator == false and .isSupported != false)]') || {
+    echo "ERROR: Could not read the connected iOS device list." >&2
+    return 1
+  }
   local count
   count=$(echo "$ios_devices" | jq 'length')
 
@@ -500,7 +530,7 @@ function select_ios_device() {
     local requested_device
     requested_device=$(echo "$ios_devices" | jq -r --arg id "$OMI_IOS_DEVICE_ID" '.[] | select(.id == $id) | .id')
     if [[ -z "$requested_device" ]]; then
-      echo "❌ OMI_IOS_DEVICE_ID does not identify a currently available iOS destination." >&2
+      echo "❌ OMI_IOS_DEVICE_ID does not identify a currently available physical iOS device." >&2
       return 1
     fi
     echo "$requested_device"
@@ -508,8 +538,8 @@ function select_ios_device() {
   fi
 
   if [[ "$count" -eq 0 ]]; then
-    echo "❌ No iOS device or simulator found." >&2
-    echo "   Boot a simulator (open -a Simulator) or connect a physical device, then retry." >&2
+    echo "❌ No supported physical iPhone found." >&2
+    echo "   Connect and unlock the iPhone, trust this Mac and enable Developer Mode, then retry." >&2
     return 1
   fi
 
@@ -523,13 +553,13 @@ function select_ios_device() {
   while IFS= read -r line; do
     i=$((i + 1))
     echo "   $i) $line" >&2
-  done < <(echo "$ios_devices" | jq -r '.[] | "\(.name) (\(.id))"')
+  done < <(echo "$ios_devices" | jq -r '.[] | "\(.sdk // "iOS") · \(.connectionInterface // "connected")"')
 
   # Never block on read without a TTY, or a non-interactive run (CI, nested
   # automation) hangs indefinitely instead of failing with a usable message.
   if [[ ! -t 0 ]]; then
     echo "   ❌ No terminal available to choose a device." >&2
-    echo "      Disconnect the extras, or boot only the simulator you want, and re-run." >&2
+    echo "      Disconnect the extras or set OMI_IOS_DEVICE_ID, then retry." >&2
     return 1
   fi
 
@@ -543,37 +573,51 @@ function select_ios_device() {
   return 1
 }
 
-# True if $1 is the id of a physical iOS device rather than a simulator, per
-# `flutter devices --machine`'s own "emulator" field.
-function _ios_device_is_physical() {
-  local device_id="$1"
-  local devices_json
-  devices_json=$(flutter devices --machine 2>/dev/null) || return 1
-  local emulator
-  emulator=$(echo "$devices_json" | jq -r --arg id "$device_id" '.[] | select(.id == $id) | .emulator')
-  [[ "$emulator" == "false" ]]
-}
-
-function _ios_device_is_iphone_17_pro() {
-  local device_id="$1"
-  local device_file marketing_name
-  device_file=$(mktemp "${TMPDIR:-/private/tmp}/omi-personal-device.XXXXXX") || return 1
-  if ! xcrun devicectl list devices --json-output "$device_file" >/dev/null 2>&1; then
-    rm -f "$device_file"
-    return 1
-  fi
-  marketing_name=$(jq -r --arg id "$device_id" '
-    .result.devices[]
-    | select(.identifier == $id or .hardwareProperties.udid == $id)
-    | .hardwareProperties.marketingName
-  ' "$device_file")
-  rm -f "$device_file"
-  [[ "$marketing_name" == 'iPhone 17 Pro' ]]
-}
-
 # #########
 # Build iOS
 # #########
+function check_ios_phone() {
+  local device_id devices device major details locked
+  device_id=$(select_ios_device) || return 1
+  # xcdevice includes old iOS releases that predate CoreDevice/Developer Mode.
+  if ! devices=$(xcrun xcdevice list --timeout 10 2>/dev/null) ||
+     ! device=$(printf '%s' "$devices" | jq -ce --arg id "$device_id" '.[] | select(.identifier == $id and .simulator == false and .platform == "com.apple.platform.iphoneos" and .available == true and .error == null)'); then
+    echo 'Xcode не подтвердил готовность телефона. Подключите и разблокируйте iPhone, подтвердите доверие Mac.' >&2
+    echo 'Откройте Xcode → Window → Devices and Simulators и дождитесь готовности. Xcode должен поддерживать iOS телефона.' >&2
+    return 1
+  fi
+  major=$(printf '%s' "$device" | jq -r '.operatingSystemVersion // ""' | cut -d. -f1)
+  if ! [[ "$major" =~ ^[0-9]+$ ]]; then
+    echo 'Не удалось определить версию iOS. Проверьте телефон в Xcode → Window → Devices and Simulators.' >&2
+    return 1
+  fi
+  if (( major >= 17 )); then
+    # Stream JSON into memory, never a file containing device/account identifiers.
+    if ! details=$(xcrun devicectl device info details --device "$device_id" --timeout 15 --json-output /dev/stdout --quiet 2>/dev/null) ||
+       ! printf '%s' "$details" | jq -e '.result.connectionProperties.pairingState == "paired" and .result.deviceProperties.developerModeStatus == "enabled" and .result.deviceProperties.ddiServicesAvailable == true' >/dev/null 2>&1; then
+      echo 'Готовность iPhone не подтверждена. Разблокируйте его, подтвердите доверие и дождитесь подготовки в Xcode.' >&2
+      echo 'На iPhone: Настройки → Конфиденциальность и безопасность → Режим разработчика; перезагрузите и подтвердите включение.' >&2
+      return 1
+    fi
+    if ! locked=$(xcrun devicectl device info lockState --device "$device_id" --timeout 15 --json-output /dev/stdout --quiet 2>/dev/null) ||
+       ! printf '%s' "$locked" | jq -e '.result.unlockedSinceBoot == true and .result.passcodeRequired == false' >/dev/null 2>&1; then
+      echo 'Не удалось подтвердить разблокировку iPhone. Разблокируйте экран и повторите проверку.' >&2
+      return 1
+    fi
+  fi
+  OMI_SELECTED_IOS_DEVICE="$device_id"
+}
+
+function prepare_ios_installation() {
+  echo 'Проверяем Xcode, iOS SDK, Flutter и CocoaPods…' >&2
+  ios_retry check_ios_prerequisites || return 1
+  echo 'Инструменты готовы. Проверяем подпись…' >&2
+  prepare_ios_signing || return 1
+  echo 'Сертификат с закрытым ключом найден. Проверяем iPhone…' >&2
+  ios_retry check_ios_phone || return 1
+  echo 'Подготовка к установке на iPhone проверена.' >&2
+}
+
 function run_build_ios() {
   local flavor="${1:-dev}"
   shift || true
@@ -583,10 +627,6 @@ function run_build_ios() {
   fi
   if [[ "${OMI_RUNTIME_MODE:-}" != 'offline' ]]; then
     echo "ERROR: the Personal Team overlay requires OMI_RUNTIME_MODE=offline; use 'bash setup.sh ios personal'." >&2
-    return 1
-  fi
-  if [[ ! "${OMI_APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
-    echo "ERROR: the Personal Team overlay requires a valid OMI_APPLE_TEAM_ID." >&2
     return 1
   fi
   local profile='local_dev'
@@ -599,7 +639,6 @@ function run_build_ios() {
       ;;
   esac
   validate_flutter_profile_arg "$profile" "$@" || return 1
-  prepare_mobile_build_env "$flavor" "$api_base_url" offline || return 1
   local flutter_args=(
     "--dart-define=OMI_APP_PROFILE=$profile"
     "--dart-define=OMI_RUNTIME_MODE=offline"
@@ -624,17 +663,14 @@ function run_build_ios() {
     fi
     flutter_args+=("$arg")
   done
-  check_ios_prerequisites || return 1
-  local device_id
-  device_id=$(select_ios_device) || return 1
-  if ! _ios_device_is_physical "$device_id" || ! _ios_device_is_iphone_17_pro "$device_id"; then
-    echo "ERROR: this validation branch may run only on the connected physical iPhone 17 Pro." >&2
-    return 1
-  fi
-  if [[ -z "${OMI_DEV_HOST:-}" ]]; then
-    echo "ERROR: set OMI_DEV_HOST to this Mac's private LAN address for the physical iPhone." >&2
-    return 1
-  fi
+  prepare_ios_installation || return 1
+  local device_id="$OMI_SELECTED_IOS_DEVICE"
+  personal_bundle_id >/dev/null || return 1
+  write_personal_team_config \
+    && prepare_mobile_build_env "$flavor" "$api_base_url" offline \
+    && setup_firebase \
+    && bash scripts/generate_ios_dev_info_plist.sh ios/Runner/Info.plist ios/Runner/Info-Dev.plist personal \
+    && generate_ios_custom_config Dev omi-dev true || return 1
   prepare_personal_ios_build_dir || return 1
   flutter pub get \
     && bash scripts/apply_personal_ios_plugin_overlay.sh \
@@ -646,15 +682,17 @@ function run_build_ios() {
 
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-case "${1}" in
+case "${1:-}" in
   ios)
-    if [[ "${2:-}" == "personal" && -z "${3:-}" ]]; then
-      write_personal_team_config \
-        && OMI_RUNTIME_MODE=offline prepare_mobile_build_env dev "$LOCAL_API_BASE_URL" offline \
-        && setup_firebase \
-        && bash scripts/generate_ios_dev_info_plist.sh ios/Runner/Info.plist ios/Runner/Info-Dev.plist personal \
-        && generate_ios_custom_config Dev omi-dev true \
-        && OMI_RUNTIME_MODE=offline run_build_ios dev \
+    cd "$(dirname "${BASH_SOURCE[0]}")"
+    source ../scripts/macos-runtime.sh
+    omi_require_apple_silicon "$PWD/setup.sh" "$@"
+    omi_macos_path
+    if [[ "${2:-}" == "personal" && "${3:-}" == --check && -z "${4:-}" ]]; then
+      prepare_ios_installation
+      echo 'Проверка завершена. Сборка и установка не запускались.'
+    elif [[ "${2:-}" == "personal" && -z "${3:-}" ]]; then
+      OMI_RUNTIME_MODE=offline run_build_ios dev \
           --dart-define=OMI_API_BASE_URL="$LOCAL_API_BASE_URL" \
           --dart-define=OMI_FIREBASE_AUTH_EMULATOR_HOST="$LOCAL_DEV_HOST"
     else

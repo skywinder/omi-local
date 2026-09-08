@@ -15,6 +15,36 @@ void main() {
     await SharedPreferencesUtil.init();
   });
 
+  test('successful empty server page clears a recording deleted outside the app and its cache', () async {
+    final stale = _conversation('deleted-on-mac', status: ConversationStatus.completed);
+    SharedPreferencesUtil().cachedConversations = [stale];
+    final provider = ConversationProvider(
+      conversationListFetcher: () async => (items: <ServerConversation>[], ok: true),
+      isSignedIn: () => true,
+    );
+    addTearDown(provider.dispose);
+    provider.conversations = [stale];
+
+    expect(await provider.fetchConversations(), isTrue);
+    expect(provider.conversations, isEmpty);
+    expect(provider.searchedConversations, isEmpty);
+    expect(SharedPreferencesUtil().cachedConversations, isEmpty);
+  });
+
+  test('failed server page still preserves offline cached recordings', () async {
+    final stale = _conversation('keep-while-offline', status: ConversationStatus.completed);
+    SharedPreferencesUtil().cachedConversations = [stale];
+    final provider = ConversationProvider(
+      conversationListFetcher: () async => (items: <ServerConversation>[], ok: false),
+      isSignedIn: () => true,
+    );
+    addTearDown(provider.dispose);
+
+    expect(await provider.fetchConversations(), isFalse);
+    expect(provider.conversations.single.id, stale.id);
+    expect(SharedPreferencesUtil().cachedConversations.single.id, stale.id);
+  });
+
   test('refresh clears the processing card for a conversation the server completed', () async {
     // Regression: the websocket ConversationEvent that clears the card was
     // missed, and the server has since completed the conversation. A refresh

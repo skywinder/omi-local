@@ -33,7 +33,7 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-uv python install "$PYTHON_VERSION"
+uv python install --no-bin "$PYTHON_VERSION"
 uv venv --allow-existing --python "$PYTHON_VERSION" "$VENV_PATH"
 uv pip sync "$LOCK_FILE" --python "$PYTHON_BIN"
 

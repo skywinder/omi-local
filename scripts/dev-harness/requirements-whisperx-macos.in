@@ -1,0 +1,2 @@
+# Runtime lock is compiled for Python 3.12 on Apple Silicon.
+whisperx==3.8.6

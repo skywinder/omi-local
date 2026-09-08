@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from . import config
+from . import config, stt_install
 
 
 class TranscriptionError(ValueError):
@@ -43,7 +43,9 @@ class EngineConfig:
     compute_type: str = 'float32'
     batch_size: int = 1
     python: str = ''
-    library_path: str = '/opt/homebrew/opt/ffmpeg@7/lib'
+    library_path: str = ''
+    assets_path: str = ''
+    runtime_revision: str = ''
     device: str = 'cpu'
     chunk_duration: int = 60
     overlap_duration: int = 5
@@ -53,6 +55,17 @@ class EngineConfig:
     def load(cls, cfg):
         path = cfg.layout.state_root / 'stt-engine.json'
         data = json.loads(path.read_text()) if path.exists() else {}
+        repo_root = getattr(cfg, 'repo_root', None)
+        managed = repo_root / '.local/stt' if repo_root is not None else None
+        standard = (not data or (data.get('model', 'large-v3-turbo') == 'large-v3-turbo'
+                                and data.get('language', 'ru') == 'ru' and data.get('diarization_model') == 'none'))
+        if (standard and data.get('engine', 'whisperx') == 'whisperx'
+                and not data.get('python') and managed is not None and managed.exists()):
+            python = stt_install.installed(managed)
+            if python is None:
+                raise TranscriptionError('Managed WhisperX is incomplete; run bash scripts/install-local-stt.sh')
+            data = {'diarization_model': 'none', **data, 'python': str(python),
+                    'assets_path': str(managed / 'assets'), 'runtime_revision': stt_install.fingerprint()}
         if data.get('engine') == 'parakeet-mlx':
             data = {'model': 'mlx-community/parakeet-tdt-0.6b-v3', 'language': 'auto', 'device': 'gpu', **data}
         engine = cls(**data)
@@ -73,7 +86,9 @@ class EngineConfig:
         return engine
 
     def profile(self):
-        excluded = {'python', 'library_path'}
+        excluded = {'python', 'library_path', 'assets_path'}
+        if not self.runtime_revision:
+            excluded.add('runtime_revision')
         if self.engine == 'whisperx':
             # Preserve existing result keys and pinned queue entries exactly.
             excluded.update({'device', 'chunk_duration', 'overlap_duration'})
@@ -123,10 +138,30 @@ def inspect_audio(path: Path) -> dict:
     return {'version': 1, 'audio_sha256': digest, 'duration_seconds': duration, 'started_at': started, 'source': source}
 
 
+def ffmpeg_library_path(engine: EngineConfig) -> str:
+    if engine.library_path:
+        return str(Path(engine.library_path).expanduser())
+    # The existing WhisperX/TorchCodec combination needs FFmpeg 7 libraries.
+    # Find their installed location without fixing it to one Homebrew prefix.
+    if brew := shutil.which('brew'):
+        found = subprocess.run([brew, '--prefix', 'ffmpeg@7'], capture_output=True, text=True, timeout=10)
+        if found.returncode == 0 and found.stdout.strip():
+            libraries = Path(found.stdout.strip()) / 'lib'
+            if libraries.is_dir():
+                return str(libraries)
+    if ffmpeg := shutil.which('ffmpeg'):
+        libraries = Path(ffmpeg).resolve().parent.parent / 'lib'
+        if libraries.is_dir():
+            return str(libraries)
+    return ''
+
+
 def model_environment(engine: EngineConfig) -> dict[str, str]:
-    env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG') if key in os.environ}
+    cache_keys = ('HF_HOME', 'HF_HUB_CACHE', 'TRANSFORMERS_CACHE', 'TORCH_HOME', 'XDG_CACHE_HOME', 'NLTK_DATA')
+    env = {key: os.environ[key] for key in ('HOME', 'PATH', 'TMPDIR', 'LANG', *cache_keys) if key in os.environ}
+    if libraries := ffmpeg_library_path(engine):
+        env['DYLD_LIBRARY_PATH'] = libraries
     env.update({
-        'DYLD_LIBRARY_PATH': engine.library_path,
         'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
         'PYANNOTE_METRICS_ENABLED': '0', 'DO_NOT_TRACK': '1', 'TOKENIZERS_PARALLELISM': 'false',
     })
@@ -164,6 +199,16 @@ def check_model(engine: EngineConfig) -> Path:
             passed = False
         if not passed:
             raise TranscriptionError('Parakeet GPU/dependency/cache preflight failed; no model downloads attempted')
+        return python
+    if engine.assets_path:
+        if (engine.model, engine.language, engine.diarization_model) != ('large-v3-turbo', 'ru', 'none'):
+            raise TranscriptionError('Managed WhisperX supplies large-v3-turbo/ru/one speaker; use an explicit Python for another prepared model')
+        command = [str(python), str(Path(__file__).with_name('local_whisperx.py')),
+                   '--quick-check', '--assets', engine.assets_path]
+        probe = subprocess.run(stt_install.offline_command(command, env),
+                               env=env, capture_output=True, timeout=60)
+        if probe.returncode:
+            raise TranscriptionError('WhisperX dependencies/assets failed verification; run bash scripts/install-local-stt.sh')
         return python
     probe = subprocess.run([str(python), '-c', 'import torchcodec, whisperx.transcribe, pyannote.audio'],
                            env=env, capture_output=True, timeout=60)
@@ -207,12 +252,16 @@ def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
         with (temp / 'audio.wav').open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['audio_sha256']:
                 raise TranscriptionError('WAV changed during preparation')
-        command = [str(python), '-m', 'whisperx', str(temp / 'audio.wav'), '--model', engine.model,
+        entrypoint = ([str(Path(__file__).with_name('local_whisperx.py')), '--assets', engine.assets_path]
+                      if engine.assets_path else ['-m', 'whisperx'])
+        command = [str(python), *entrypoint, str(temp / 'audio.wav'), '--model', engine.model,
                    '--language', engine.language, '--device', 'cpu', '--compute_type', engine.compute_type,
                    '--batch_size', str(engine.batch_size),
                    '--model_cache_only', 'True', '--output_format', 'json', '--output_dir', temporary]
         if engine.diarization_model != 'none':
             command.append('--diarize')
+        if engine.assets_path:
+            command = stt_install.offline_command(command, env)
         outcome = subprocess.run(command, env=env, capture_output=True, timeout=3600)
         if outcome.returncode or not (temp / 'audio.json').is_file():
             raise TranscriptionError('WhisperX failed; original WAV retained, no conversation created')

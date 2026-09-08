@@ -97,6 +97,7 @@ def test_private_dev_host_accepts_loopback_lan_and_tailnet_rejects_public() -> N
 def test_child_environment_strips_cloud_defaults_and_offline_provider_secrets() -> None:
     parent = {
         "PATH": "/usr/bin",
+        "FIREBASE_EMULATORS_PATH": "/tmp/separate cache",
         "HOME": "/home/dev",
         "GOOGLE_APPLICATION_CREDENTIALS": "/prod/service-account.json",
         "GOOGLE_CLOUD_PROJECT": "prod-project",
@@ -110,6 +111,7 @@ def test_child_environment_strips_cloud_defaults_and_offline_provider_secrets() 
     env = safety.build_child_env(parent, provider_mode="offline", extra={"FIRESTORE_EMULATOR_HOST": "127.0.0.1:8085"})
 
     assert env["PATH"] == "/usr/bin"
+    assert env["FIREBASE_EMULATORS_PATH"] == "/tmp/separate cache"
     assert env["OMI_VISIBLE"] == "1"
     assert env["FIREBASE_PROJECT_ID"] == "demo-omi-local"
     assert env["FIRESTORE_DATABASE_ID"] == "(default)"
