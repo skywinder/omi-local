@@ -1,4 +1,4 @@
-"""WhisperX sentence segments projected into the existing Conversation contract."""
+"""Local engine segments projected into the existing Conversation contract."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ def _time(value: object, duration: float) -> float:
     return value
 
 
-def normalize_segments(raw: dict, duration: float, conversation_id: str) -> list[TranscriptSegment]:
+def normalize_segments(raw: dict, duration: float, conversation_id: str,
+                       provider: str = 'whisperx-local') -> list[TranscriptSegment]:
     """Preserve sentence boundaries/case; split only actual word-speaker changes.
 
     Untimed words remain in the original sentence. A mixed-speaker sentence
@@ -66,7 +67,7 @@ def normalize_segments(raw: dict, duration: float, conversation_id: str) -> list
                 text=part['text'].strip(), start=start, end=end, speaker=speaker,
                 speaker_id=int(speaker.split('_')[1]) if speaker else -1,
                 is_user=False, speaker_identity_status='unknown',
-                speaker_id_scope=conversation_id, stt_provider='whisperx-local',
+                speaker_id_scope=conversation_id, stt_provider=provider,
             ))
     return result
 
@@ -85,7 +86,8 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
     if not isinstance(result_key, str) or not re.fullmatch(r'[0-9a-f]{64}', result_key):
         raise ValueError('Invalid result key')
     conversation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
-    segments = normalize_segments(raw, duration, conversation_id)
+    provider = {'whisperx': 'whisperx-local', 'parakeet-mlx': 'parakeet-mlx-local'}[manifest['profile']['engine']]
+    segments = normalize_segments(raw, duration, conversation_id, provider)
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
         finished_at=started + timedelta(seconds=duration),

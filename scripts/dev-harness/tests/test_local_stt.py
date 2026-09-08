@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dev_harness import local_stt
+from dev_harness import local_stt, local_parakeet
 
 
 def audio_file(tmp_path):
@@ -92,3 +92,57 @@ def test_completed_capture_with_stale_metadata_is_accepted_but_active_pcm_is_not
     audio.with_name('audio.pcm.part').write_bytes(b'\0\0')
     with pytest.raises(local_stt.TranscriptionError):
         local_stt.inspect_audio(audio)
+
+
+def test_parakeet_selection_dispatch_and_existing_whisper_profile_stays_compatible(tmp_path, monkeypatch):
+    settings = cfg(tmp_path)
+    assert local_stt.EngineConfig().profile() == {
+        'engine': 'whisperx', 'model': 'large-v3-turbo', 'language': 'ru', 'compute_type': 'float32', 'batch_size': 1}
+    path = settings.layout.state_root / 'stt-engine.json'
+    path.write_text(json.dumps({'engine': 'parakeet-mlx'}))
+    engine = local_stt.EngineConfig.load(settings)
+    assert engine.device == 'gpu' and engine.compute_type == 'float32' and engine.language == 'auto'
+    calls = []
+    monkeypatch.setattr(local_stt, 'run_parakeet', lambda e, *args: calls.append(e.profile()) or {
+        'segments': [{'text': 'Fixture', 'start': 0, 'end': 1}]})
+    monkeypatch.setattr(local_stt, 'backend_step', lambda *_: {'import': 'passed'})
+    local_stt.transcribe(settings, str(audio_file(tmp_path)))
+    assert calls == [engine.profile()]
+    path.write_text(json.dumps({'engine': 'parakeet-mlx', 'compute_type': 'int8'}))
+    with pytest.raises(local_stt.TranscriptionError):
+        local_stt.EngineConfig.load(settings)
+    path.write_text(json.dumps({'engine': 'parakeet-mlx', 'diarization_model': 'none'}))
+    assert local_stt.EngineConfig.load(settings).profile()['diarization_model'] == 'none'
+
+
+def test_parakeet_failed_process_never_imports_or_writes_raw_result(tmp_path, monkeypatch):
+    settings = cfg(tmp_path)
+    (settings.layout.state_root / 'stt-engine.json').write_text(json.dumps({'engine': 'parakeet-mlx'}))
+    monkeypatch.setattr(local_stt, 'check_model', lambda _: Path('/fixture/python'))
+    monkeypatch.setattr(local_stt.subprocess, 'run', lambda *a, **k: SimpleNamespace(returncode=1))
+    imports = []
+    monkeypatch.setattr(local_stt, 'backend_step', lambda _cfg, folder=None: imports.append(folder) or {})
+    audio = audio_file(tmp_path)
+    with pytest.raises(local_stt.TranscriptionError):
+        local_stt.transcribe(settings, str(audio))
+    assert imports == [None] and audio.exists()
+    assert not list(settings.layout.services_dir.glob('local-transcripts/*/audio.json'))
+
+
+def test_parakeet_subwords_preserve_text_and_actual_speaker_boundaries():
+    tokens = [SimpleNamespace(text=' Про', start=0.0, end=0.2),
+              SimpleNamespace(text='верка.', start=0.2, end=0.6),
+              SimpleNamespace(text=' Да.', start=1.0, end=1.4)]
+    words = local_parakeet.timed_words(tokens, 2)
+    assert [w['word'] for w in words] == ['Проверка.', 'Да.']
+    segments = [{'words': words}]
+    local_parakeet.assign_speakers(segments, [(0, 0.8, 'SPEAKER_00'), (0.9, 1.6, 'SPEAKER_01')])
+    assert [w['speaker'] for w in words] == ['SPEAKER_00', 'SPEAKER_01']
+    assert segments[0]['speaker'] is None
+    local_parakeet.assign_speakers(segments, [])
+    assert all(w['speaker'] is None for w in words)
+    local_parakeet.single_speaker(segments)
+    assert segments[0]['speaker'] == 'SPEAKER_00'
+    assert all(w['speaker'] == 'SPEAKER_00' for w in words)
+    with pytest.raises(ValueError):
+        local_parakeet.timed_words([SimpleNamespace(text='bad', start=0, end=float('nan'))], 2)

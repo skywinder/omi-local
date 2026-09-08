@@ -1,4 +1,4 @@
-"""One finished WAV -> existing WhisperX CLI -> paired local Conversation."""
+"""One finished WAV -> configured local engine -> paired local Conversation."""
 
 from __future__ import annotations
 
@@ -44,21 +44,39 @@ class EngineConfig:
     batch_size: int = 1
     python: str = ''
     library_path: str = '/opt/homebrew/opt/ffmpeg@7/lib'
+    device: str = 'cpu'
+    chunk_duration: int = 60
+    overlap_duration: int = 5
+    diarization_model: str = 'pyannote/speaker-diarization-community-1'
 
     @classmethod
     def load(cls, cfg):
         path = cfg.layout.state_root / 'stt-engine.json'
         data = json.loads(path.read_text()) if path.exists() else {}
+        if data.get('engine') == 'parakeet-mlx':
+            data = {'model': 'mlx-community/parakeet-tdt-0.6b-v3', 'language': 'auto', 'device': 'gpu', **data}
         engine = cls(**data)
-        if (engine.engine != 'whisperx' or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
-                or not re.fullmatch(r'[a-z]{2,3}', engine.language)
+        if (engine.engine not in {'whisperx', 'parakeet-mlx'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+                or not (re.fullmatch(r'[a-z]{2,3}', engine.language) or engine.language == 'auto')
                 or engine.compute_type not in {'float32', 'int8', 'int8_float32'}
                 or type(engine.batch_size) is not int or not 1 <= engine.batch_size <= 8):
             raise TranscriptionError('Invalid local STT engine settings')
+        if engine.engine == 'parakeet-mlx':
+            if (engine.compute_type != 'float32' or engine.device != 'gpu' or engine.language != 'auto'
+                    or type(engine.chunk_duration) is not int or not 10 <= engine.chunk_duration <= 60
+                    or type(engine.overlap_duration) is not int or not 1 <= engine.overlap_duration < engine.chunk_duration
+                    or engine.diarization_model not in {'pyannote/speaker-diarization-community-1', 'none'}):
+                raise TranscriptionError('Parakeet requires GPU/float32/auto language and bounded overlapping chunks')
+        elif engine.language == 'auto' or engine.device != 'cpu':
+            raise TranscriptionError('WhisperX requires CPU and an explicit language')
         return engine
 
     def profile(self):
-        return {key: value for key, value in asdict(self).items() if key not in {'python', 'library_path'}}
+        excluded = {'python', 'library_path'}
+        if self.engine == 'whisperx':
+            # Preserve existing result keys and pinned queue entries exactly.
+            excluded.update({'device', 'chunk_duration', 'overlap_duration', 'diarization_model'})
+        return {key: value for key, value in asdict(self).items() if key not in excluded}
 
 
 def atomic_json(path: Path, data: dict) -> None:
@@ -128,15 +146,50 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
 
 
 def check_model(engine: EngineConfig) -> Path:
-    python = Path(engine.python).expanduser() if engine.python else Path.home() / '.venvs/whisperx/bin/python'
+    default = 'parakeet_env/bin/python' if engine.engine == 'parakeet-mlx' else '.venvs/whisperx/bin/python'
+    python = Path(engine.python).expanduser() if engine.python else Path.home() / default
     if not python.is_file() or not os.access(python, os.X_OK) or shutil.which('ffmpeg') is None:
-        raise TranscriptionError('Existing WhisperX Python or ffmpeg is unavailable')
+        raise TranscriptionError('Configured local STT Python or ffmpeg is unavailable')
     env = model_environment(engine)
+    if engine.engine == 'parakeet-mlx':
+        command = [str(python), str(Path(__file__).with_name('local_parakeet.py')), '--check',
+                   '--model', engine.model, '--diarization-model', engine.diarization_model]
+        probe = subprocess.run(command, env=env, capture_output=True, text=True, timeout=90)
+        try:
+            passed = probe.returncode == 0 and json.loads(probe.stdout).get('status') == 'passed'
+        except ValueError:
+            passed = False
+        if not passed:
+            raise TranscriptionError('Parakeet GPU/dependency/cache preflight failed; no model downloads attempted')
+        return python
     probe = subprocess.run([str(python), '-c', 'import torchcodec, whisperx.transcribe, pyannote.audio'],
                            env=env, capture_output=True, timeout=60)
     if probe.returncode:
         raise TranscriptionError('WhisperX imports failed; check its existing FFmpeg library path')
     return python
+
+
+def run_parakeet(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
+    python = check_model(engine)
+    mode = 'single-speaker output' if engine.diarization_model == 'none' else 'then local diarization'
+    print(f'Parakeet-MLX: GPU/FP32 transcription, {mode}...', flush=True)
+    with tempfile.TemporaryDirectory(dir=folder, prefix='.inference-') as temporary:
+        temp = Path(temporary)
+        shutil.copyfile(audio, temp / 'audio.wav')
+        with (temp / 'audio.wav').open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != manifest['audio_sha256']:
+                raise TranscriptionError('WAV changed during preparation')
+        command = [str(python), str(Path(__file__).with_name('local_parakeet.py')),
+                   '--audio', str(temp / 'audio.wav'), '--output', str(temp / 'audio.json'),
+                   '--model', engine.model, '--diarization-model', engine.diarization_model,
+                   '--chunk-duration', str(engine.chunk_duration), '--overlap-duration', str(engine.overlap_duration)]
+        outcome = subprocess.run(command, env=model_environment(engine), capture_output=True, text=True, timeout=3600)
+        if outcome.returncode or not (temp / 'audio.json').is_file():
+            raise TranscriptionError('Parakeet/diarization failed; original WAV retained, no conversation created')
+        raw = json.loads((temp / 'audio.json').read_text())
+        if not isinstance(raw, dict) or not raw.get('segments'):
+            raise TranscriptionError('No speech segments returned; no conversation created')
+        return raw
 
 
 def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
@@ -196,9 +249,10 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         reused = raw_path.exists()
         if not reused:
             started = time.monotonic()
-            raw = run_whisperx(engine, audio, folder, manifest)
+            adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet}[engine.engine]
+            raw = adapter(engine, audio, folder, manifest)
             atomic_json(raw_path, raw)
-            print(f'WhisperX finished in {time.monotonic() - started:.1f}s; importing transcript...', flush=True)
+            print(f'Local STT finished in {time.monotonic() - started:.1f}s; importing transcript...', flush=True)
         result = backend_step(cfg, folder)
         print(json.dumps({**result, 'reused_transcript': reused}, ensure_ascii=False))
         print('Refresh Conversations in the app and open the local recording.')

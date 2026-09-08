@@ -1,0 +1,8 @@
+# Separate Apple Silicon ML environment; keep ML packages out of backend/.venv.
+# Verified together on Python 3.14.6; FP32 path does not require a bf16 mel patch.
+parakeet-mlx==0.5.2
+mlx==0.32.2
+pyannote.audio==4.0.7
+torch==2.14.0
+torchcodec==0.16.0
+numpy==2.5.3
