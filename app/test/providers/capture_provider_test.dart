@@ -349,6 +349,36 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('local CV1 needs explicit start; Stop keeps the device and blocks auto-start and mute', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final provider = _CountingSocketCaptureProvider(audioCodecLoader: (_) async => BleAudioCodec.opus);
+    addTearDown(() {
+      provider.dispose();
+      Env.setRuntimeModeForTesting(null);
+    });
+    final device = _device(id: 'synthetic-cv1', type: DeviceType.omi);
+    await provider.streamDeviceRecording(device: device);
+    expect(provider.havingRecordingDevice, isTrue);
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.openCalls, 0);
+    await provider.resumeDeviceRecording();
+    expect(provider.recordingState, RecordingState.stop);
+
+    // The real start path reaches the socket boundary; no physical BLE device in CI.
+    await provider.streamDeviceRecording(userInitiated: true);
+    expect(provider.openCalls, 1);
+    await provider.stopStreamDeviceRecording();
+    expect(provider.recordingDevice, same(device));
+    expect(provider.recordingState, RecordingState.stop);
+    await provider.streamDeviceRecording(device: device);
+    await provider.onTranscriptionSettingsChanged();
+    await provider.resumeDeviceRecording();
+    await provider.pauseDeviceRecording();
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.openCalls, 1);
+    expect(SharedPreferencesUtil().getBool('nativeBleStreamingEnabled'), isFalse);
+  });
+
   test('initial phone microphone stream identifies its PCM16 source', () async {
     const permissionChannel = MethodChannel('flutter.baseflow.com/permissions/methods');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
