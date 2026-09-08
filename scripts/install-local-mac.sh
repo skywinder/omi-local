@@ -5,7 +5,7 @@ umask 077
 cd "$(dirname "$0")/.."
 source scripts/macos-runtime.sh
 omi_require_apple_silicon "$PWD/scripts/install-local-mac.sh" "$@"
-for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json; do
+for input in backend/.python-version backend/pylock.macos.toml package.json package-lock.json firebase.json backend/scripts/sync-python-deps.sh; do
   test -s "$input" || { echo "Missing installer input: $input" >&2; exit 1; }
 done
 quiet=false
@@ -15,8 +15,16 @@ case "${1:-}" in
   *) echo 'Usage: install-local-mac.sh [--quiet]' >&2; exit 1 ;;
 esac
 # Only dependency installation is logged; pairing and keys are handled later.
-[[ ! -L .local && ! -L .local/install.log ]] || { echo 'Unsafe installer log path.' >&2; exit 1; }
+[[ ! -L .local && ! -L .local/install.log && ! -L .local/install.ready && ! -L .local/install.lock ]] || { echo 'Unsafe installer log path.' >&2; exit 1; }
 mkdir -p .local
+exec 9>.local/install.lock
+if ! lockf -s -t 0 9; then
+  echo 'Подготовка Mac уже выполняется. Дождитесь её завершения.' >&2
+  exit 1
+fi
+install_inputs=$(omi_install_fingerprint)
+# Any interruption, including SIGKILL, leaves the installation incomplete.
+rm -f .local/install.ready
 install_log="$PWD/.local/install.log"
 : >>"$install_log"
 chmod 600 "$install_log"
@@ -53,10 +61,15 @@ run_step bash backend/scripts/sync-python-deps.sh
 # npm ci is skipped only when the complete install was attested to these inputs.
 npm_inputs="$(shasum -a 256 package.json package-lock.json)"
 if [ ! -f node_modules/.omi-install-inputs ] || [ "$(cat node_modules/.omi-install-inputs)" != "$npm_inputs" ]; then
+  rm -f node_modules/.omi-install-inputs
   run_step npm ci --no-audit --no-fund
   printf '%s\n' "$npm_inputs" > node_modules/.omi-install-inputs
 fi
 export PYTHON="$PWD/backend/.venv/bin/python"
 PYTHONPATH=scripts/dev-harness run_step "$PYTHON" -m dev_harness.local_mac prepare-emulator
 run_step bash scripts/local-mac.sh check
+[[ "$install_inputs" == "$(omi_install_fingerprint)" ]] || { echo 'Installer inputs changed; run installation again.' >&2; exit 1; }
+ready_file=$(mktemp .local/install.ready.XXXXXX)
+printf '%s\n' "$install_inputs" > "$ready_file"
+mv -f "$ready_file" .local/install.ready
 if [[ "$quiet" != true ]]; then echo 'Installation checked. Log: .local/install.log'; fi

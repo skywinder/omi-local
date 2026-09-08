@@ -36,3 +36,14 @@ omi_java_ready() {
   [[ "$version_output" =~ $version_pattern ]] || return 1
   (( ${BASH_REMATCH[1]} >= 21 ))
 }
+
+omi_install_fingerprint() {
+  shasum -a 256 backend/.python-version backend/pylock.macos.toml \
+    backend/scripts/sync-python-deps.sh package.json package-lock.json firebase.json \
+    scripts/install-local-mac.sh scripts/macos-runtime.sh | shasum -a 256 | awk '{print $1}'
+}
+
+omi_install_ready() {
+  [[ -f .local/install.ready && ! -L .local/install.ready ]] || return 1
+  [[ "$(cat .local/install.ready)" == "$(omi_install_fingerprint)" ]]
+}

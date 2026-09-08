@@ -27,6 +27,7 @@ if [[ ! -t 0 || ! -t 1 ]]; then
 fi
 printf '\nomiloc\n\n'
 needs_install=0
+omi_install_ready || needs_install=1
 [[ -x backend/.venv/bin/python && -x node_modules/.bin/firebase ]] || needs_install=1
 for tool in uv node java redis-server ffmpeg ngrok jq; do
   command -v "$tool" >/dev/null 2>&1 || needs_install=1

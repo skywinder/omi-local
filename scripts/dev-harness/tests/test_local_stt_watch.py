@@ -119,6 +119,28 @@ def test_crash_after_database_import_replays_without_second_inference_or_documen
     assert next(iter(watch.read_queue(cfg).values()))['state'] == 'completed'
 
 
+def test_retry_after_runtime_upgrade_records_actual_version_and_keeps_model_settings(setup, monkeypatch):
+    cfg, _, _, _ = setup
+    watch.enable(cfg)
+    capture(cfg, 'pending')
+    key = next(iter(watch.captures(cfg)))
+    worker = watch.Worker(cfg)
+    old = local_stt.EngineConfig(runtime_revision='old', python='/old/python', diarization_model='none')
+    worker.jobs[key] = {'state': 'pending', 'attempts': 1, 'retry_at': 0, 'profile': old.profile()}
+    worker.save()
+    current = local_stt.EngineConfig(runtime_revision='new', python='/new/python',
+                                    batch_size=2, diarization_model='none')
+    monkeypatch.setattr(local_stt.EngineConfig, 'load', lambda _: current)
+    used = []
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *a, engine: used.append(engine) or 0)
+    worker.tick(61)
+    assert used[0].python == '/new/python'
+    assert used[0].runtime_revision == 'new'
+    assert used[0].batch_size == 1
+    assert used[0].profile() != old.profile()
+    assert watch.read_queue(cfg)[key]['profile'] == used[0].profile()
+
+
 def test_busy_and_interrupt_do_not_exhaust_retries_and_failures_are_bounded(setup, monkeypatch):
     cfg, _, documents, _ = setup
     watch.enable(cfg)

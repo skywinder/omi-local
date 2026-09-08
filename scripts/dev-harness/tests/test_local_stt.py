@@ -80,6 +80,7 @@ def test_model_process_does_not_receive_backend_or_provider_credentials(monkeypa
     monkeypatch.setenv('HF_HOME', '/tmp/models')
     monkeypatch.setenv('HF_HUB_CACHE', '/tmp/hub')
     monkeypatch.setenv('TORCH_HOME', '/tmp/torch')
+    monkeypatch.setenv('NLTK_DATA', '/tmp/nltk-data')
     monkeypatch.setenv('HF_HUB_OFFLINE', '0')
     monkeypatch.setattr(local_stt.shutil, 'which', lambda _: None)
     env = local_stt.model_environment(local_stt.EngineConfig())
@@ -88,6 +89,7 @@ def test_model_process_does_not_receive_backend_or_provider_credentials(monkeypa
     assert env['HF_HOME'] == '/tmp/models'
     assert env['HF_HUB_CACHE'] == '/tmp/hub'
     assert env['TORCH_HOME'] == '/tmp/torch'
+    assert env['NLTK_DATA'] == '/tmp/nltk-data'
 
 
 def test_completed_capture_with_stale_metadata_is_accepted_but_active_pcm_is_not(tmp_path):

@@ -125,7 +125,7 @@ def test_quiet_installer_keeps_private_log_and_stops_on_failure(tmp_path, failed
     (repo / 'scripts').mkdir(parents=True)
     for name in ('install-local-mac.sh', 'macos-runtime.sh'):
         shutil.copy2(root / 'scripts' / name, repo / 'scripts' / name)
-    for name in ('backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json'):
+    for name in ('backend/.python-version', 'backend/pylock.macos.toml', 'package.json', 'package-lock.json', 'firebase.json'):
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('fixture')
@@ -141,6 +141,7 @@ def test_quiet_installer_keeps_private_log_and_stops_on_failure(tmp_path, failed
     shell_env = tmp_path / 'shell-env'
     shell_env.write_text('''
     uname() { case "$1" in -s) echo Darwin;; -m) echo arm64;; esac; }
+    lockf() { :; }
     brew() { if [[ "$1" == --prefix ]]; then echo "$OMI_TEST_PREFIX"; fi; }
     ngrok() { :; }
     npm() { mkdir -p node_modules; echo npm-output; }
@@ -159,6 +160,7 @@ def test_quiet_installer_keeps_private_log_and_stops_on_failure(tmp_path, failed
     assert f'Installation exit status: {result.returncode}' in text
     assert ('runtime-checked' in text) != failed
     assert ('npm-output' in text) != failed
+    assert (repo / '.local/install.ready').is_file() != failed
 
 
 def test_mac_runtime_discovers_homebrew_prefix(tmp_path):
