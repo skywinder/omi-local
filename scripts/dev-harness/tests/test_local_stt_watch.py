@@ -160,6 +160,40 @@ def test_reenable_preserves_backlog_boundary(setup):
     assert calls == ['large-v3-turbo']
 
 
+@pytest.mark.parametrize('job_state', ['pending', 'completed', 'failed'])
+def test_deleted_recording_leaves_queue_without_retry(setup, monkeypatch, job_state):
+    cfg, _, _, _ = setup
+    watch.enable(cfg)
+    folder = capture(cfg, 'deleted')
+    key = next(iter(watch.captures(cfg)))
+    worker = watch.Worker(cfg)
+    worker.jobs[key] = {'state': job_state, 'attempts': 1, 'retry_at': 0,
+                        'profile': local_stt.EngineConfig.load(cfg).profile()}
+    worker.save()
+    # Deletion can leave a harmless sidecar directory behind.
+    (folder / 'audio.wav').unlink()
+    (folder / 'metadata.json').unlink()
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *a, **k: pytest.fail('Deleted audio retried'))
+    worker.tick(10)
+    assert worker.jobs == {} and watch.read_queue(cfg) == {}
+
+
+def test_missing_capture_root_preserves_queue(setup, monkeypatch):
+    cfg, _, _, _ = setup
+    watch.enable(cfg)
+    folder = capture(cfg, 'stored')
+    key = next(iter(watch.captures(cfg)))
+    worker = watch.Worker(cfg)
+    worker.jobs[key] = {'state': 'pending', 'attempts': 1, 'retry_at': 0,
+                        'profile': local_stt.EngineConfig.load(cfg).profile()}
+    worker.save()
+    before = watch.queue_path(cfg).read_bytes()
+    folder.parent.rename(folder.parent.with_name('temporarily-unavailable'))
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *a, **k: pytest.fail('Unavailable storage retried'))
+    worker.tick(10)
+    assert watch.queue_path(cfg).read_bytes() == before
+
+
 def test_retry_delay_starts_after_processing_failure(setup, monkeypatch):
     cfg, _, _, _ = setup
     watch.enable(cfg)

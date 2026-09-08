@@ -24,10 +24,16 @@ def settings(cfg) -> dict:
     return json.loads(path.read_text()) if path.exists() else {'enabled': False}
 
 
-def captures(cfg) -> dict[str, Path]:
+def captures(cfg, *, require_root=False) -> dict[str, Path]:
     root = cfg.layout.services_dir / 'storage' / 'listen-captures'
     # Persist opaque local job keys, never capture paths or private identifiers.
-    return {hashlib.sha256(p.name.encode()).hexdigest(): p for p in root.glob('*') if p.is_dir()}
+    try:
+        folders = list(root.iterdir())
+    except FileNotFoundError:
+        if require_root:
+            raise
+        return {}
+    return {hashlib.sha256(p.name.encode()).hexdigest(): p for p in folders if p.is_dir()}
 
 
 def queue_path(cfg) -> Path:
@@ -141,7 +147,17 @@ class Worker:
         data = settings(self.cfg)
         if not data['enabled']:
             return
-        paths = captures(self.cfg)
+        try:
+            paths = captures(self.cfg, require_root=True)
+        except FileNotFoundError:
+            return  # Missing storage is not evidence that individual recordings were deleted.
+        retained = {
+            key: job for key, job in self.jobs.items()
+            if key in paths and ((paths[key] / 'audio.wav').exists() or (paths[key] / 'audio.pcm.part').exists())
+        }
+        if retained.keys() != self.jobs.keys():
+            self.jobs = retained
+            self.save()
         excluded = set(data['excluded'])
         for key, folder in sorted(paths.items(), key=lambda item: item[1].name):
             if key in excluded or key in self.jobs or not (folder / 'audio.wav').is_file():
