@@ -69,9 +69,9 @@ def installed(root: Path) -> Path:
 
 def normalize(raw: dict, duration: float) -> dict:
     """Map WhisperKit word probabilities to the existing local word contract."""
-    def timestamp(value):
+    def timestamp(value, *, allow_padding=False):
         if (type(value) not in (int, float) or not math.isfinite(value)
-                or not 0 <= value <= duration + 0.1):
+                or value < 0 or (not allow_padding and value > duration + 0.1)):
             raise WhisperKitError('WhisperKit returned invalid timestamps')
         return value
 
@@ -82,8 +82,16 @@ def normalize(raw: dict, duration: float) -> dict:
             text = segment['text'].strip()
             if not text:
                 continue
-            start, end = timestamp(segment['start']), timestamp(segment['end'])
-            if end < start or start < previous:
+            start = timestamp(segment['start'], allow_padding=True)
+            end = timestamp(segment['end'], allow_padding=True)
+            if end < start:
+                raise WhisperKitError('WhisperKit returned unordered timestamps')
+            # Short WAVs can produce extra hypotheses in Whisper's padded window.
+            # They contain no source audio and must not discard earlier valid speech.
+            if start >= duration:
+                continue
+            end = timestamp(end)
+            if start < previous:
                 raise WhisperKitError('WhisperKit returned unordered timestamps')
             previous = start
             words = []

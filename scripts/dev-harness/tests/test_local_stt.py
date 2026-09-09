@@ -51,6 +51,35 @@ def test_whisperkit_rejects_invalid_timestamps(end):
             {'text': 'Synthetic', 'start': 0.1, 'end': end}]}, 1)
 
 
+def test_whisperkit_keeps_valid_speech_when_padding_produces_an_extra_segment():
+    raw = {'language': 'ru', 'segments': [
+        {'text': ' Проверка.', 'start': 0.02, 'end': 11.84,
+         'words': [{'word': ' Проверка.', 'start': 0.02, 'end': 11.84, 'probability': 0.9}]},
+        {'text': 'Synthetic padding', 'start': 40.94, 'end': 40.96,
+         'words': [{'word': 'Synthetic padding', 'start': 40.94, 'end': 40.96, 'probability': 0.1}]},
+    ]}
+    result = local_whisperkit.normalize(raw, 16.4)
+    assert result['segments'] == [{
+        'text': 'Проверка.', 'start': 0.02, 'end': 11.84, 'speaker': 'SPEAKER_00',
+        'words': [{'word': ' Проверка.', 'start': 0.02, 'end': 11.84,
+                   'score': 0.9, 'speaker': 'SPEAKER_00'}],
+    }]
+
+
+def test_whisperkit_does_not_create_a_transcript_from_padding_only():
+    with pytest.raises(local_whisperkit.WhisperKitError, match='No speech segments'):
+        local_whisperkit.normalize({'language': 'ru', 'segments': [
+            {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12}]}, 10.6)
+
+
+def test_whisperkit_ignores_padding_before_checking_order_of_real_segments():
+    result = local_whisperkit.normalize({'language': 'ru', 'segments': [
+        {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12},
+        {'text': 'Synthetic speech', 'start': 0, 'end': 1},
+    ]}, 2)
+    assert [segment['text'] for segment in result['segments']] == ['Synthetic speech']
+
+
 def test_pinned_queue_profile_does_not_inherit_another_engine_runtime(tmp_path):
     settings = cfg(tmp_path)
     settings.repo_root = tmp_path
