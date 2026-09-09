@@ -78,6 +78,7 @@ class CaptureController extends ChangeNotifier
   final ConversationLocationCapture _conversationLocationCapture;
   final Future<void> Function()? _inProgressConversationLoader;
   final Future<BleAudioCodec> Function(String deviceId)? _audioCodecLoader;
+  final Future<StreamSubscription?> Function(String, void Function(List<int>))? _buttonListenerLoader;
   final Future<bool> Function()? _microphonePermissionRequester;
   final IMicRecorderService? _phoneMicBatchRecorder;
   Geolocation? _sessionGeolocation;
@@ -203,6 +204,7 @@ class CaptureController extends ChangeNotifier
     ConversationLocationCapture? conversationLocationCapture,
     Future<void> Function()? inProgressConversationLoader,
     Future<BleAudioCodec> Function(String deviceId)? audioCodecLoader,
+    Future<StreamSubscription?> Function(String, void Function(List<int>))? buttonListenerLoader,
     Future<bool> Function()? microphonePermissionRequester,
     IMicRecorderService? phoneMicBatchRecorder,
     RecordingLifecycleTelemetry? recordingTelemetry,
@@ -211,6 +213,7 @@ class CaptureController extends ChangeNotifier
             ConversationLocationCapture(onNewlyGranted: _startAndroidLocationForegroundTask),
         _inProgressConversationLoader = inProgressConversationLoader,
         _audioCodecLoader = audioCodecLoader,
+        _buttonListenerLoader = buttonListenerLoader,
         _microphonePermissionRequester = microphonePermissionRequester,
         _phoneMicBatchRecorder = phoneMicBatchRecorder,
         _recordingTelemetry = recordingTelemetry ?? RecordingLifecycleTelemetry() {
@@ -473,6 +476,8 @@ class CaptureController extends ChangeNotifier
   get bleBytesStream => _bleBytesStream;
 
   StreamSubscription? _bleButtonStream;
+  String? _bleButtonDeviceId;
+  int _buttonStreamGeneration = 0;
   DateTime? _voiceCommandSession;
   List<List<int>> _commandBytes = [];
   bool _isProcessingButtonEvent = false; // Guard to prevent overlapping button operations
@@ -540,6 +545,7 @@ class CaptureController extends ChangeNotifier
   }
 
   void _updateRecordingDevice(BtDevice? device) {
+    if (_recordingDevice?.id != device?.id) unawaited(_cancelButtonStream());
     Logger.debug('connected device changed from ${_recordingDevice?.id} to ${device?.id}');
     _recordingDevice = device;
     if (device == null) _endOfflineSession();
@@ -922,18 +928,63 @@ class CaptureController extends ChangeNotifier
     _processVoiceCommandBytes(deviceId, data);
   }
 
+  Future<void> _cancelButtonStream() async {
+    _buttonStreamGeneration++;
+    _bleButtonDeviceId = null;
+    final subscription = _bleButtonStream;
+    _bleButtonStream = null;
+    await subscription?.cancel();
+  }
+
+  Future<void> _toggleLocalRecordingSession(String deviceId) async {
+    if (_isProcessingButtonEvent || _recordingDevice?.id != deviceId) return;
+    _isProcessingButtonEvent = true;
+    try {
+      final active = _temporaryRecordingRequested ||
+          recordingState == RecordingState.deviceRecord ||
+          recordingState == RecordingState.pause;
+      if (active) {
+        await stopStreamDeviceRecording();
+      } else {
+        try {
+          await streamDeviceRecording(userInitiated: true);
+          if (recordingState != RecordingState.deviceRecord) throw StateError('Capture unavailable');
+        } catch (_) {
+          await stopStreamDeviceRecording();
+          rethrow;
+        }
+      }
+    } catch (error) {
+      Logger.debug('Local recording button failed: ${error.runtimeType}');
+    } finally {
+      _isProcessingButtonEvent = false;
+    }
+  }
+
   Future streamButton(String deviceId) async {
     Logger.debug('streamButton in capture_provider');
-    _bleButtonStream?.cancel();
-    _bleButtonStream = await _getBleButtonListener(
+    if (_bleButtonDeviceId == deviceId && _bleButtonStream != null) return;
+    final generation = ++_buttonStreamGeneration;
+    final previous = _bleButtonStream;
+    _bleButtonStream = null;
+    _bleButtonDeviceId = deviceId;
+    await previous?.cancel();
+    if (generation != _buttonStreamGeneration || _recordingDevice?.id != deviceId) return;
+    final subscription = await _getBleButtonListener(
       deviceId,
       onButtonReceived: (List<int> value) {
+        if (generation != _buttonStreamGeneration || _recordingDevice?.id != deviceId) return;
         final snapshot = List<int>.from(value);
         if (snapshot.isEmpty || snapshot.length < 4) return;
         var buttonState = ByteData.view(
           Uint8List.fromList(snapshot.sublist(0, 4).reversed.toList()).buffer,
         ).getUint32(0);
         Logger.debug("device button $buttonState");
+
+        if (TemporaryCaptureControls.enabled && buttonState == 1) {
+          unawaited(_toggleLocalRecordingSession(deviceId));
+          return;
+        }
 
         // Intercept for interactive device onboarding
         if (deviceOnboardingProvider?.isOnboardingActive == true) {
@@ -1045,6 +1096,11 @@ class CaptureController extends ChangeNotifier
         }
       },
     );
+    if (generation != _buttonStreamGeneration || _recordingDevice?.id != deviceId) {
+      await subscription?.cancel();
+      return;
+    }
+    _bleButtonStream = subscription;
   }
 
   Future<bool> streamAudioToWs(String deviceId, BleAudioCodec codec) async {
@@ -1168,6 +1224,7 @@ class CaptureController extends ChangeNotifier
     String deviceId, {
     required void Function(List<int>) onButtonReceived,
   }) async {
+    if (_buttonListenerLoader != null) return _buttonListenerLoader!(deviceId, onButtonReceived);
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return Future.value(null);
@@ -1486,7 +1543,8 @@ class CaptureController extends ChangeNotifier
   Future _closeBleStream({bool disableNativeBackground = false}) async {
     await _bleBytesStream?.cancel();
     await _blePhotoStream?.cancel();
-    await _bleButtonStream?.cancel();
+    // Local Start must remain available after Stop and while audio is muted.
+    if (!TemporaryCaptureControls.enabled) await _cancelButtonStream();
     _stopMetricsTracking();
     if (disableNativeBackground) {
       await SharedPreferencesUtil().saveBool('nativeBleForegroundReady', false);
@@ -1510,7 +1568,7 @@ class CaptureController extends ChangeNotifier
     _recordingTelemetry.complete(reason: 'pipeline_closed');
     _bleBytesStream?.cancel();
     _blePhotoStream?.cancel();
-    _bleButtonStream?.cancel();
+    unawaited(_cancelButtonStream());
     _socket?.unsubscribe(this);
     _keepAliveTimer?.cancel();
     _inProgressConversationRefreshTimer?.cancel();
@@ -1831,6 +1889,7 @@ class CaptureController extends ChangeNotifier
     Logger.debug("streamDeviceRecording $device");
     if (device != null) _updateRecordingDevice(device);
     if (TemporaryCaptureControls.enabled) {
+      if (_recordingDevice != null) await streamButton(_recordingDevice!.id);
       if (userInitiated && _recordingDevice != null) {
         _temporaryRecordingRequested = true;
         _isPaused = false;
@@ -1882,6 +1941,7 @@ class CaptureController extends ChangeNotifier
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
     _temporaryRecordingRequested = false;
+    if (cleanDevice) await _cancelButtonStream();
     if (TemporaryCaptureControls.enabled) {
       // Invalidate an in-flight reconnect before closing this local session.
       _websocketInitGeneration++;

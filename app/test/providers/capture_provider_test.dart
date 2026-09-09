@@ -181,6 +181,32 @@ class _CountingSocketCaptureProvider extends CaptureProvider {
   }
 }
 
+class _ButtonCaptureProvider extends CaptureProvider {
+  _ButtonCaptureProvider({super.buttonListenerLoader});
+
+  final calls = <String>[];
+  Completer<void>? startGate;
+  bool failStart = false;
+
+  @override
+  Future<void> streamDeviceRecording({BtDevice? device, bool userInitiated = false}) async {
+    if (!userInitiated) {
+      await super.streamDeviceRecording(device: device);
+      return;
+    }
+    calls.add('start');
+    await startGate?.future;
+    if (failStart) throw StateError('Synthetic capture failure');
+    updateRecordingState(RecordingState.deviceRecord);
+  }
+
+  @override
+  Future<void> stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    calls.add('stop');
+    await super.stopStreamDeviceRecording(cleanDevice: cleanDevice);
+  }
+}
+
 class _CountingConversationLocationCapture extends ConversationLocationCapture {
   int calls = 0;
   final List<bool> promptIfDeniedArgs = [];
@@ -348,6 +374,117 @@ void main() {
   // ------------------------------------------------------------------ //
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
+
+  test('local single tap starts, stops muted session, and starts again using the idle subscription', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    var subscriptions = 0;
+    final provider = _ButtonCaptureProvider(buttonListenerLoader: (_, callback) async {
+      subscriptions++;
+      return buttons.stream.listen(callback);
+    });
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    final device = _device(id: 'synthetic-cv1', type: DeviceType.omi);
+    await provider.streamDeviceRecording(device: device);
+    expect(provider.recordingState, RecordingState.stop);
+    expect(subscriptions, 1);
+    buttons.add([1]); // Incomplete BLE notification must not start capture.
+    buttons.add([]);
+    expect(provider.calls, isEmpty);
+
+    buttons.add([1, 0, 0, 0]);
+    await pumpEventQueue();
+    expect(provider.recordingState, RecordingState.deviceRecord);
+    provider.updateRecordingState(RecordingState.pause);
+    buttons.add([1, 0, 0, 0]);
+    await pumpEventQueue();
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.recordingDevice, same(device));
+    buttons.add([1, 0, 0, 0]);
+    await pumpEventQueue();
+    expect(provider.calls, ['start', 'stop', 'start']);
+    expect(subscriptions, 1);
+  });
+
+  test('local button ignores overlapping taps and recovers after failed start', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    final provider =
+        _ButtonCaptureProvider(buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback))
+          ..startGate = Completer<void>()
+          ..failStart = true;
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    await provider.streamDeviceRecording(device: _device(id: 'synthetic-cv1', type: DeviceType.omi));
+    buttons.add([1, 0, 0, 0]);
+    buttons.add([1, 0, 0, 0]);
+    expect(provider.calls, ['start']);
+    provider.startGate!.complete();
+    await pumpEventQueue();
+    expect(provider.calls, ['start', 'stop']);
+    expect(provider.recordingState, RecordingState.stop);
+    provider.failStart = false;
+    buttons.add([1, 0, 0, 0]);
+    await pumpEventQueue();
+    expect(provider.calls, ['start', 'stop', 'start']);
+  });
+
+  test('local button drops events from a replaced or disconnected device', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final callbacks = <void Function(List<int>)>[];
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    final provider = _ButtonCaptureProvider(buttonListenerLoader: (_, callback) async {
+      callbacks.add(callback);
+      return buttons.stream.listen(callback);
+    });
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    await provider.streamDeviceRecording(device: _device(id: 'synthetic-old', type: DeviceType.omi));
+    await provider.streamDeviceRecording(device: _device(id: 'synthetic-new', type: DeviceType.omi));
+    callbacks.first([1, 0, 0, 0]);
+    expect(provider.calls, isEmpty);
+    callbacks.last([1, 0, 0, 0]);
+    await pumpEventQueue();
+    expect(provider.calls, ['start']);
+    await provider.stopStreamDeviceRecording(cleanDevice: true);
+    callbacks.last([1, 0, 0, 0]);
+    expect(provider.calls, ['start', 'stop']);
+    expect(buttons.hasListener, isFalse);
+  });
+
+  test('local button cancels a subscription that arrives after disconnect', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    final listenerReady = Completer<StreamSubscription?>();
+    final requested = Completer<void>();
+    final provider = _ButtonCaptureProvider(buttonListenerLoader: (_, callback) {
+      requested.complete();
+      return listenerReady.future;
+    });
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    final starting = provider.streamDeviceRecording(device: _device(id: 'synthetic-cv1', type: DeviceType.omi));
+    await requested.future;
+    await provider.stopStreamDeviceRecording(cleanDevice: true);
+    listenerReady.complete(buttons.stream.listen((_) => fail('Disconnected button must be cancelled')));
+    await starting;
+    expect(buttons.hasListener, isFalse);
+    expect(provider.recordingDevice, isNull);
+    expect(provider.recordingState, RecordingState.stop);
+  });
 
   test('local CV1 needs explicit start; Stop keeps the device and blocks auto-start and mute', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
