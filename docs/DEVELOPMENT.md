@@ -20,7 +20,7 @@
 `backend/.python-version` и `backend/pylock.macos.toml`, Firebase CLI — в `package-lock.json`.
 Flutter, Xcode и CocoaPods готовятся по [инструкции iPhone](LOCAL_SETUP.md);
 `start.command --iphone-check` проверяет инструменты, подпись и телефон без сборки.
-Для моделей есть `scripts/install-local-stt.sh`.
+Для WhisperKit есть `scripts/install-local-whisperkit.sh`; выбор движка описан в [LOCAL_STT.md](LOCAL_STT.md).
 Проверка Java требует версию 21 или новее; iOS-проверка отклоняет неработающий CocoaPods.
 Вывод установки сохраняется в `.local/install.log`; файл доступен только владельцу
 и не входит в Git. Запросы Homebrew остаются видны в терминале, ввод ключей не записывается.
@@ -49,6 +49,16 @@ Backend требует ключ приложения, кроме `/v1/health`; �
 
 ## Модели распознавания
 
+WhisperKit 1.1.0 собирается из Argmax commit `1e2a163736dfa5a198e637ae44c114e1c6d5cc2d`,
+Swift Argument Parser 1.7.0 закреплён upstream `Package.resolved`.
+[Рецепт](../scripts/dev-harness/whisperkit-models.json) содержит revisions и SHA-256
+архива, Core ML large-v3-v20240930_626MB, токенизатора и контрольной речи.
+Runtime хранится в `.local/whisperkit/`; `ready.json` появляется после offline inference.
+Ключ результата включает модель, язык, параметры, бинарный файл и версию адаптера.
+Обработчик сохраняет таймкоды слов и их probability как score; сетевой sandbox обязателен.
+Установщик не переключает текущий движок и не устанавливает Python ML-зависимости.
+
+
 WhisperX 3.8.6/CPU/float32/batch 1 использует отдельный Python 3.12.14.
 [Зависимости с контрольными суммами](../scripts/dev-harness/requirements-whisperx-macos.txt),
 [правки WhisperX](../scripts/dev-harness/whisperx-local.patch) и
@@ -75,7 +85,7 @@ WhisperX 3.8.6/CPU/float32/batch 1 использует отдельный Pytho
 }
 ```
 
-Оба движка поддерживают `python` и `library_path`. FFmpeg 7 для стандартного WhisperX
+WhisperX и Parakeet поддерживают `python` и `library_path`. FFmpeg 7 для стандартного WhisperX
 ставится автоматически. Его ASR, alignment и NLTK закреплены и загружаются по локальным
 путям. В ручных окружениях учитываются `HF_HOME`, `HF_HUB_CACHE`, `TORCH_HOME` и `NLTK_DATA`;
 модели для них, включая pyannote при разделении говорящих, готовятся отдельно.
