@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Render the code-native omiloc monogram; Pillow is needed only to regenerate assets."""
 
+import argparse
+import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 
-def render(size=1024):
+def render(size=1024, *, ios=False):
     scale = 4
-    canvas = Image.new('RGBA', (size * scale, size * scale))
+    # iOS applies its own corner mask and requires an opaque app icon.
+    canvas = Image.new('RGB' if ios else 'RGBA', (size * scale, size * scale), '#f5f3ee' if ios else 0)
     draw = ImageDraw.Draw(canvas)
 
     def box(coords):
@@ -23,7 +26,19 @@ def render(size=1024):
 
 
 if __name__ == '__main__':
-    destination = Path(__file__).resolve().parents[1] / 'web-local/assets'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ios', action='store_true', help='Render the Personal Team iOS app icon catalog only.')
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    if args.ios:
+        destination = root / 'app/ios/Runner/Assets.xcassets/personalAppIcon.appiconset'
+        catalog = json.loads((destination / 'Contents.json').read_text())
+        for item in catalog['images']:
+            size = round(float(item['size'].split('x')[0]) * float(item['scale'].removesuffix('x')))
+            render(size, ios=True).save(destination / item['filename'])
+        print(f"Rendered {len(catalog['images'])} opaque iOS app icons.")
+        raise SystemExit(0)
+    destination = root / 'web-local/assets'
     destination.mkdir(parents=True, exist_ok=True)
     icon = render()
     icon.save(destination / 'omiloc.png')
