@@ -78,6 +78,14 @@ def normalize(raw: dict, duration: float) -> dict:
     try:
         segments = []
         previous = 0
+        # WhisperKit's pinned VAD chunker slices consecutive audio chunks, then
+        # appends their reports. `seek` is the chunk/window offset in 16 kHz
+        # samples. A hypothesis in one chunk's padding can land inside the full
+        # WAV, so use the next offset as its source-audio boundary as well.
+        seeks = sorted({segment['seek'] for segment in raw['segments']
+                        if type(segment.get('seek')) is int and segment['seek'] >= 0})
+        source_ends = {seek: min(duration, seeks[index + 1] / 16000)
+                       for index, seek in enumerate(seeks[:-1])}
         for segment in raw['segments']:
             text = segment['text'].strip()
             if not text:
@@ -88,21 +96,38 @@ def normalize(raw: dict, duration: float) -> dict:
                 raise WhisperKitError('WhisperKit returned unordered timestamps')
             # Short WAVs can produce extra hypotheses in Whisper's padded window.
             # They contain no source audio and must not discard earlier valid speech.
-            if start >= duration:
+            source_end = source_ends.get(segment.get('seek'), duration)
+            if start >= source_end:
                 continue
-            end = timestamp(end)
             if start < previous:
                 raise WhisperKitError('WhisperKit returned unordered timestamps')
-            previous = start
             words = []
+            dropped_words = False
             for word in segment.get('words') or []:
-                wstart, wend = timestamp(word['start']), timestamp(word['end'])
+                wstart = timestamp(word['start'], allow_padding=True)
+                wend = timestamp(word['end'], allow_padding=True)
                 score = word['probability']
                 if (wend < wstart or type(score) not in (int, float)
                         or not math.isfinite(score) or not 0 <= score <= 1):
                     raise WhisperKitError('WhisperKit returned invalid word timing or confidence')
+                if wstart >= source_end:
+                    dropped_words = True
+                    continue
+                wend = min(wend, source_end)
                 words.append({'word': word['word'], 'start': wstart, 'end': wend,
                               'score': score, 'speaker': 'SPEAKER_00'})
+            if segment.get('words'):
+                if not words:
+                    continue
+                # The final word can straddle Stop and padding. Keep its real
+                # audio interval; exclude words entirely beyond the boundary
+                # from the segment text as well as the word list.
+                end = min(end, source_end)
+                if dropped_words:
+                    text = ''.join(word['word'] for word in words).strip()
+            else:
+                end = timestamp(end)
+            previous = start
             segments.append({'text': text, 'start': start, 'end': end,
                              'speaker': 'SPEAKER_00', 'words': words})
         if not segments:
