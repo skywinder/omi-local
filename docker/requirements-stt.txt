@@ -1,0 +1,6 @@
+faster-whisper==1.2.1
+ctranslate2==4.6.0
+fastapi==0.121.0
+uvicorn==0.34.0
+python-multipart==0.0.20
+huggingface-hub==0.34.4

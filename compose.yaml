@@ -1,0 +1,94 @@
+name: omiloc-docker
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    network_mode: service:ingress
+    depends_on:
+      ingress:
+        condition: service_started
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 90s
+    environment:
+      PROVIDER_MODE: offline
+      OMI_LOCAL_TRANSPORT: ngrok
+      OMI_LOCAL_INSTANCE: docker
+      OMI_LOCAL_STATE_ROOT: /data/harness
+      OMI_HARNESS_PORT_OFFSET: '13000'
+      OMI_DEV_BIND_HOST: 127.0.0.1
+      OMI_HARNESS_PRIVATE_UMASK: '077'
+      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+    volumes:
+      - state:/data
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:21000/v1/health', timeout=3); urllib.request.urlopen('http://127.0.0.1:21001/', timeout=3)"]
+      interval: 15s
+      timeout: 10s
+      start_period: 180s
+      retries: 4
+  ingress:
+    image: nginx:1.28-alpine
+    ports:
+      - '127.0.0.1:21000:22000'
+      - '127.0.0.1:21001:22001'
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+  stt:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stt
+      target: cpu
+    network_mode: service:ingress
+    depends_on:
+      ingress:
+        condition: service_started
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      STT_REVISION: ${STT_REVISION:-main}
+      STT_DEVICE: cpu
+      STT_COMPUTE_TYPE: int8
+      STT_THREADS: ${STT_THREADS:-4}
+      HF_HUB_OFFLINE: '1'
+    volumes:
+      - models:/models
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10301/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 180s
+      retries: 4
+  download:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.stt
+      target: cpu
+    command: [python, stt.py, download]
+    environment:
+      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      STT_REVISION: ${STT_REVISION:-main}
+    volumes:
+      - models:/models
+  tunnel:
+    profiles: [tunnel]
+    image: ngrok/ngrok:3-alpine
+    network_mode: service:ingress
+    user: '10001:10001'
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - state:/data:ro
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - 'exec ngrok http http://127.0.0.1:21000 --url "$$(cat /data/tunnel-url)" --config /data/harness/docker/ngrok-agent.yml --inspect=false --log stdout --log-level warn'
+    restart: unless-stopped
+volumes:
+  state:
+  models:

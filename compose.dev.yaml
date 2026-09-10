@@ -1,0 +1,34 @@
+services:
+  app:
+    environment:
+      OMI_DOCKER_RELOAD: '1'
+    volumes:
+      - ./web-local:/opt/omiloc/web-local:ro
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /opt/omiloc/backend
+          initial_sync: true
+          ignore: [.env, '.env.*', .venv/, __pycache__/, '*.pyc', _temp/, _samples/, _segments/, _speech_profiles/, syncing/]
+        - action: sync+restart
+          path: ./scripts/dev-harness
+          target: /opt/omiloc/scripts/dev-harness
+          ignore: [__pycache__/, '*.pyc', tests/]
+        - action: sync+restart
+          path: ./docker/runtime.py
+          target: /opt/omiloc/docker/runtime.py
+        - action: rebuild
+          path: ./backend/pylock.runtime.toml
+        - action: rebuild
+          path: ./docker/Dockerfile.app
+  stt:
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./docker/stt.py
+          target: /srv/stt.py
+        - action: rebuild
+          path: ./docker/requirements-stt.txt
+        - action: rebuild
+          path: ./docker/Dockerfile.stt

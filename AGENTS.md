@@ -9,6 +9,12 @@ components, upstream remotes, and `make setup`/PR automation do not apply here.
 Use the targets in this repository's Makefile. Do not recreate removed services
 or fetch/pull upstream as a prerequisite for work on this snapshot.
 
+The portable Compose runtime is documented in `docs/DOCKER.md`. Use `docker.sh`
+for its separate named volumes; never mount the native `.local` state into it.
+Keep backend/emulator loopback addresses in the shared container network namespace.
+`make test-docker` is included in the existing transport-unit CI lane. Docker changes
+need no iOS rebuild. The container supervisor must let Firebase export before exit.
+
 Ngrok transport is documented in `docs/NGROK.md`. Use `scripts/local-mac.sh` for
 its owned loopback stack; never expose the LAN development backend or emulators.
 Run `make test-offline` and `make test-transport-app` before the separate final iOS
