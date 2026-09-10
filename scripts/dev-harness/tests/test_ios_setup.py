@@ -303,3 +303,125 @@ def test_debug_output_redacts_identifiers_and_vm_capability_url():
     text = ios_debug.redact('PHONE TEAM user@example.com ws://127.0.0.1:1234/private-token=/ws', ['PHONE', 'TEAM'])
     assert 'PHONE' not in text and 'TEAM' not in text and 'user@example' not in text
     assert 'private-token' not in text and '127.0.0.1' not in text
+
+# Unified launcher guards are exercised here so the existing offline lane runs them.
+from dev_harness import ios_launcher
+
+
+@pytest.mark.parametrize('mode,tail', [
+    ('debug', ['-m', 'dev_harness.ios_debug']),
+    ('profile', ['app/setup.sh', 'ios', 'personal']),
+])
+def test_unified_iphone_routes_modes(tmp_path, mode, tail):
+    args = ios_launcher.command(tmp_path, mode)
+    if mode == 'debug':
+        assert args[1:] == tail
+        assert ios_launcher.command(tmp_path, mode, build_only=True)[-1] == '--build-only'
+    else:
+        assert args == ['bash', str(tmp_path / tail[0]), *tail[1:]]
+        with pytest.raises(ios_launcher.LocalEnvError):
+            ios_launcher.command(tmp_path, mode, build_only=True)
+    assert ios_launcher.command(tmp_path, mode, check=True)[-1] == '--check'
+
+
+def test_unified_iphone_lock_blocks_concurrent_caller_and_recovers(tmp_path):
+    lock = tmp_path / 'session.lock'
+    with ios_launcher.session_lock(lock) as fd:
+        with pytest.raises(ios_launcher.SessionBusy):
+            with ios_launcher.session_lock(lock):
+                pytest.fail('Concurrent caller acquired a held lock')
+        # A launched direct child keeps the lock if the wrapper goes away.
+        child = subprocess.Popen([sys.executable, '-c',
+                                  'import sys; print("ready", flush=True); sys.stdin.read()'],
+                                 pass_fds=(fd,), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        assert child.stdout.readline() == b'ready\n'
+    try:
+        with pytest.raises(ios_launcher.SessionBusy):
+            with ios_launcher.session_lock(lock):
+                pytest.fail('Lost the inherited lock')
+    finally:
+        child.communicate(b'', timeout=5)
+    with ios_launcher.session_lock(lock):
+        pass  # Persistent file is not a stale lock after process exit.
+
+
+def test_unified_iphone_refuses_symlink_lock(tmp_path):
+    target = tmp_path / 'target'
+    target.write_text('untouched')
+    link = tmp_path / 'lock'
+    link.symlink_to(target)
+    with pytest.raises(OSError):
+        with ios_launcher.session_lock(link):
+            pytest.fail('Opened an unsafe lock')
+    assert target.read_text() == 'untouched'
+
+
+@pytest.mark.parametrize('command', [
+    '/sdk/dartvm /sdk/flutter_tools.snapshot build ios --debug --flavor dev',
+    '/sdk/dartvm /sdk/flutter_tools.snapshot run --profile -d PRIVATE-DEVICE',
+    '/sdk/dartvm /sdk/flutter_tools.snapshot attach',
+    '/usr/bin/xcodebuild -workspace Runner.xcworkspace',
+    '/venv/python -m dev_harness.ios_debug',
+    '/venv/python .local/run-live-iphone.py',
+    '/bin/bash setup.sh ios personal',
+])
+def test_unified_iphone_detects_legacy_session_without_exposing_arguments(tmp_path, monkeypatch, capsys, command):
+    (tmp_path / 'docs').mkdir()
+    (tmp_path / 'docs/LOCAL_SETUP.md').touch()
+    (tmp_path / 'scripts/dev-harness/dev_harness').mkdir(parents=True)
+    (tmp_path / 'scripts/dev-harness/dev_harness/ios_debug.py').touch()
+    def capture(args):
+        if args[-1] == 'pid=,comm=':
+            return f'12345 {command.split()[0]}\n'
+        return f'12345 {command}\n' if args[0] == 'ps' else f'p12345\nn{tmp_path}/app\n'
+    monkeypatch.setattr(ios_launcher, '_capture', capture)
+    monkeypatch.setattr(ios_launcher.subprocess, 'run', lambda *a, **k: pytest.fail('Started a duplicate'))
+    assert ios_launcher.launch(tmp_path, 'debug', lock_path=tmp_path / 'lock') == 0
+    output = capsys.readouterr().out
+    assert 'уже работает' in output
+    assert 'PRIVATE-DEVICE' not in output
+
+
+def test_unified_iphone_does_not_claim_idle_when_observation_fails(tmp_path, monkeypatch):
+    def denied(args):
+        raise ios_launcher.LocalEnvError('Cannot inspect processes')
+    monkeypatch.setattr(ios_launcher, '_capture', denied)
+    monkeypatch.setattr(ios_launcher.subprocess, 'run', lambda *a, **k: pytest.fail('Started without observation'))
+    with pytest.raises(ios_launcher.LocalEnvError):
+        ios_launcher.launch(tmp_path, 'debug', check=True, lock_path=tmp_path / 'lock')
+
+
+def test_unified_iphone_ignores_other_projects_and_test_processes(tmp_path, monkeypatch):
+    monkeypatch.setattr(ios_launcher, '_capture', lambda args:
+                        '12345 /sdk/dartvm /sdk/flutter_tools.snapshot run\n'
+                        if args[0] == 'ps' else f'n{tmp_path}/other-app\n')
+    assert ios_launcher.active_sessions() == []
+    assert not ios_launcher._candidate('/sdk/dartvm /sdk/flutter_tools.snapshot test test/widgets/example.dart')
+    assert not ios_launcher._candidate('/usr/bin/python -c "print(\'dev_harness.ios_debug\')"')
+
+
+def test_unified_iphone_invokes_one_child_with_lock_and_preserves_exit_code(tmp_path, monkeypatch):
+    monkeypatch.setattr(ios_launcher, 'active_sessions', lambda: [])
+    def child(args, **kwargs):
+        assert args == [sys.executable, '-m', 'dev_harness.ios_debug', '--check']
+        assert kwargs['cwd'] == tmp_path
+        assert len(kwargs['pass_fds']) == 1
+        with pytest.raises(ios_launcher.SessionBusy):
+            with ios_launcher.session_lock(tmp_path / 'lock'):
+                pytest.fail('Released lock before child finished')
+        return subprocess.CompletedProcess(args, 7)
+    monkeypatch.setattr(ios_launcher.subprocess, 'run', child)
+    assert ios_launcher.launch(tmp_path, 'debug', check=True, lock_path=tmp_path / 'lock') == 7
+
+
+def test_unified_iphone_detects_tool_paths_with_spaces():
+    assert ios_launcher._candidate(
+        '/My Project/flutter/bin/cache/dartvm /My Project/flutter_tools.snapshot run --debug', 'dartvm')
+
+
+@pytest.mark.parametrize('argument,expected', [('dev', 'debug'), ('prod', 'profile'), ('status', 'status')])
+def test_unified_iphone_aliases_only_select_local_modes(monkeypatch, argument, expected):
+    calls = []
+    monkeypatch.setattr(ios_launcher, 'launch', lambda root, mode, **kwargs: calls.append(mode) or 0)
+    assert ios_launcher.main([argument]) == 0
+    assert calls == [expected]
