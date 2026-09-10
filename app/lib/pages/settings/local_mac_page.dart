@@ -139,6 +139,30 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
       await _session.connect(_address.text.trim(), _key.text.trim());
       await (widget.refreshConnection ?? ConnectivityService().refreshLocalTunnel)();
       _key.clear();
+      if (mounted && !_session.readiness.isReady) {
+        setState(() => _busy = false);
+        await showDialog<void>(
+          context: context,
+          builder: (context) {
+            String statusText(String status) => switch (status) {
+                  'unknown' => context.l10n.unknown,
+                  'disabled' => context.l10n.off,
+                  _ => context.l10n.transcriptionUnavailable,
+                };
+            return AlertDialog(
+              title: Text(context.l10n.connected),
+              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(context.l10n.localMacTitle),
+                if (_session.readiness.live != 'ready')
+                  Text('${context.l10n.liveTranscript}: ${statusText(_session.readiness.live)}'),
+                if (_session.readiness.finalTranscript != 'ready')
+                  Text('${context.l10n.transcript}: ${statusText(_session.readiness.finalTranscript)}'),
+              ]),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.continueAction))],
+            );
+          },
+        );
+      }
       if (mounted) Navigator.of(context).pop(true);
     } on LocalMacUnauthorized {
       if (mounted) setState(() => _error = context.l10n.localMacKeyRejected);

@@ -11,6 +11,54 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dev_harness import local_stt, local_stt_watch as watch
 
 
+def test_worker_readiness_follows_validation_in_actual_child(tmp_path, monkeypatch):
+    from dev_harness import config
+
+    cfg = config.load_config(tmp_path, {'PROVIDER_MODE': 'offline', 'OMI_LOCAL_TRANSPORT': 'ngrok',
+                                       'OMI_DEV_BIND_HOST': '127.0.0.1'}, create_layout=True)
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": true, "excluded": []}')
+    monkeypatch.setattr(watch.config, 'load_config', lambda *_: cfg)
+    monkeypatch.setattr(local_stt.EngineConfig, 'load', lambda _: SimpleNamespace())
+
+    def fail(_):
+        assert not watch.worker_ready(cfg)
+        raise local_stt.TranscriptionError('Synthetic model not ready')
+
+    monkeypatch.setattr(local_stt, 'check_model', fail)
+    assert watch.main() == 1
+    assert not (watch.queue_path(cfg).parent / '.watch.lock').exists()
+    validated = []
+    monkeypatch.setattr(local_stt, 'check_model', lambda _: validated.append(True))
+    monkeypatch.setattr(watch.signal, 'signal', lambda *_: None)
+
+    def worker(_):
+        assert validated == [True]
+        assert watch.worker_ready(cfg)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(watch, 'Worker', worker)
+    assert watch.main() == 0
+    assert not watch.worker_ready(cfg)
+
+
+def test_existing_worker_can_finish_model_validation_after_five_seconds(tmp_path, monkeypatch):
+    from dev_harness import cli, config
+
+    cfg = config.load_config(tmp_path, {'PROVIDER_MODE': 'offline', 'OMI_LOCAL_TRANSPORT': 'ngrok',
+                                       'OMI_DEV_BIND_HOST': '127.0.0.1'}, create_layout=True)
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": true, "excluded": []}')
+    elapsed = [0.0]
+    monkeypatch.setattr(watch.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(watch.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(cli, '_service_record', lambda *_: {'service': 'stt-worker'})
+    monkeypatch.setattr(watch, 'worker_ready', lambda _: elapsed[0] >= 8.0)
+    starts = []
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **k: starts.append(True))
+    watch.start_if_enabled(cfg, checked=True)
+    assert elapsed[0] >= 8.0
+    assert not starts, 'An owned worker validating its model must not be restarted'
+
+
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     state = tmp_path / 'state'
@@ -243,11 +291,17 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     local_mac.private_json(tmp_path / 'pairing.json', local_mac.pairing_data('a' * 43))
     monkeypatch.setattr(local_mac, 'read_config', lambda _: {'url': 'https://synthetic.ngrok.app'})
     monkeypatch.setattr(local_mac, 'check_agent', lambda _: None)
+    lifecycle = []
+    monkeypatch.setattr(local_mac.local_live, 'require_backend_environment', lambda _: None)
+    monkeypatch.setattr(local_mac.local_live, 'preflight_start', lambda _: None)
+    monkeypatch.setattr(local_mac.local_transcription, 'check_models', lambda _: lifecycle.append('models'))
+    monkeypatch.setattr(local_mac.local_live, 'start', lambda _: lifecycle.append('live'))
+    monkeypatch.setattr(local_mac.local_live, 'require_ready', lambda _: lifecycle.append('ready'))
     monkeypatch.setattr(local_mac, 'ensure_owner_profile', lambda *a: None)
     monkeypatch.setattr(local_mac, 'require_auth_boundary', lambda _: None)
     monkeypatch.setattr(local_mac, 'ngrok_port', lambda _: 16040)
     monkeypatch.setattr(cli, 'cmd_check', lambda _: 0)
-    monkeypatch.setattr(cli, 'cmd_up', lambda _: 0)
+    monkeypatch.setattr(cli, 'cmd_up', lambda _: lifecycle.append('backend') or 0)
     monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
     monkeypatch.setattr(cli, '_service_health', lambda *a: (True, 'ready'))
     class Response(io.BytesIO):
@@ -256,6 +310,7 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     starts = []
     monkeypatch.setattr(watch, 'start_if_enabled', starts.append)
     assert local_mac.up(cfg) == 0
+    assert lifecycle == ['models', 'live', 'backend', 'ready']
     assert starts == [cfg]
 
 

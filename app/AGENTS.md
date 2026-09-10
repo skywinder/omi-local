@@ -24,6 +24,8 @@ must not restart polling. Error details remain visible when collapsed.
 Local capture labels use `localCapturePhase`, never BLE connection alone. Live Omi
 audio evidence expires after 3 seconds without payload; this changes only the label,
 not the recording session. Keep it separate from Mac receipt/storage/STT status.
+On the offline transcript screen, ASR errors belong in the transcript body;
+the header still reports capture state, and ASR readiness alone never means Listening.
 Button feedback shows received protocol events (tap=1, double=2, long=3, down=4,
 up=5); firmware may omit edges. Down/up must not toggle capture or start voice commands.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve

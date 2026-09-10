@@ -9,6 +9,7 @@ import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/env/env.dart';
+import 'package:omi/backend/schema/message_event.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/services/capture/local_capture_phase.dart';
@@ -109,6 +110,8 @@ class _IdleCalls extends ChangeNotifier implements PhoneCallProvider {
 
 class _IdleDevice extends ChangeNotifier implements DeviceProvider {
   @override
+  BtDevice? get connectedDevice => null;
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -126,6 +129,45 @@ void main() {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
   });
   tearDown(() => Env.setRuntimeModeForTesting(null));
+
+  testWidgets('live screen reports adapter failure and recovers only on preview readiness', (tester) async {
+    final capture = _Capture();
+    final device = _IdleDevice();
+    addTearDown(capture.dispose);
+    addTearDown(device.dispose);
+    capture.updateRecordingState(RecordingState.deviceRecord);
+    capture.onMessageEventReceived(MessageServiceStatusEvent(
+      status: 'stt_failed',
+      provider: 'local_live_preview',
+      reason: 'busy',
+      retryable: false,
+    ));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CaptureProvider>.value(value: capture),
+        ChangeNotifierProvider<DeviceProvider>.value(value: device),
+      ],
+      child: const MaterialApp(
+        locale: Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ConversationCapturingPage(),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsOneWidget);
+    expect(find.text('Listening'), findsNothing);
+    capture.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'offline_capture'));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsOneWidget);
+    capture.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'local_live_preview'));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsNothing);
+    expect(find.text('Listening'), findsNothing);
+    expect(find.text('Waiting for data...'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('connected idle Omi never says Listening; button and capture state stay separate', (tester) async {
     final capture = _Capture();

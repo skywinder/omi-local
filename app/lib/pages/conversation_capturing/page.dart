@@ -186,6 +186,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
     return Consumer2<CaptureProvider, DeviceProvider>(
       builder: (context, provider, deviceProvider, child) {
         final effectivelyMuted = _isMuted || provider.isPaused || provider.isCallActive;
+        final transcriptionUnavailable = provider.terminalTranscriptionFailure != null;
         final transcriptSessionId =
             provider.activeCaptureSessionId ?? widget.topConversationId ?? 'pending-live-capture';
         final transcriptScrollState = _scrollStateFor(transcriptSessionId);
@@ -226,7 +227,11 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                           ? localCaptureStatusText(context, provider.localCapturePhase)
                           : provider.photos.isNotEmpty
                               ? 'Capturing'
-                              : (effectivelyMuted ? context.l10n.muted : context.l10n.listening),
+                              : effectivelyMuted
+                                  ? context.l10n.muted
+                                  : transcriptionUnavailable
+                                      ? context.l10n.transcriptionUnavailable
+                                      : context.l10n.listening,
                       key: Env.isOfflineRuntime ? const Key('local_capture_page_state') : null,
                     ),
                   ),
@@ -269,7 +274,9 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                                         child: Text(
                                             Env.isOfflineRuntime && provider.localCapturePhase == LocalCapturePhase.idle
                                                 ? context.l10n.startRecordingToSeeTranscript
-                                                : context.l10n.waitingForTranscriptOrPhotos),
+                                                : transcriptionUnavailable
+                                                    ? context.l10n.transcriptionUnavailable
+                                                    : context.l10n.waitingForTranscriptOrPhotos),
                                       ),
                                     )
                                   : provider.photos.isNotEmpty

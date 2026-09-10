@@ -12,6 +12,7 @@ import uuid
 from urllib.parse import urlsplit
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from utils.async_tasks import create_named_task, drain_tasks
 from utils.observability.fallback import record_fallback
@@ -139,8 +140,9 @@ class LocalLivePreview:
     MAX_PENDING_BYTES = 60 * 32000
     MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
     FINISH_TIMEOUT = 60.0
+    STATUS_TIMEOUT = 1.0
 
-    def __init__(self, url, send_segments):
+    def __init__(self, url, send_segments, *, unavailable_reason='disabled'):
         self.url = url
         self.send_segments = send_segments
         self.queue = asyncio.Queue()
@@ -152,19 +154,43 @@ class LocalLivePreview:
         self.failed = False
         self.updates = 0
         self.eof_ack = False
+        self.unavailable_reason = unavailable_reason
+        self.failure_status_task = None
         self.task = create_named_task(self._run(), name='local-preview-session')
 
-    def _fail(self, reason):
+    @classmethod
+    def from_environment(cls, send_segments):
+        try:
+            return cls(preview_url(), send_segments)
+        except ValueError:
+            # A preview configuration error must never disable WAV capture.
+            return cls(None, send_segments, unavailable_reason='invalid_configuration')
+
+    async def _send_status(self, status, reason=None):
+        if not self.deliver:
+            return
+        payload = {'type': 'service_status', 'status': status, 'provider': 'local_live_preview'}
+        if status == 'stt_failed':
+            payload.update(outcome='unavailable', reason=reason, retryable=False)
+        try:
+            await asyncio.wait_for(self.send_segments(payload), self.STATUS_TIMEOUT)
+        except Exception:
+            # Status delivery cannot interrupt audio or expose adapter errors.
+            pass
+
+    def _fail(self, reason, *, status_reason='unavailable'):
         if not self.failed:
             self.failed = True
             record_fallback(component='stt_selection', from_mode='local_live_preview',
                             to_mode='offline_capture', reason=reason, outcome='degraded')
+            self.failure_status_task = create_named_task(
+                self._send_status('stt_failed', status_reason), name='local-preview-status')
 
     def feed(self, pcm: bytes) -> None:
         if not self.accepting or self.task.done():
             return
         if self.pending_bytes + len(pcm) > self.MAX_PENDING_BYTES:
-            self._fail('capacity_full')
+            self._fail('capacity_full', status_reason='buffer_full')
             self.accepting = False
             self.task.cancel()
             return
@@ -220,12 +246,18 @@ class LocalLivePreview:
     async def _run(self):
         sender = None
         try:
+            if not self.url:
+                self._fail('config_incomplete', status_reason=self.unavailable_reason)
+                return
             async with websockets.connect(self.url, open_timeout=3, close_timeout=2,
                                           max_size=self.MAX_SNAPSHOT_BYTES) as socket:
                 config = json.loads(await asyncio.wait_for(socket.recv(), 3))
                 if config.get('type') != 'config' or config.get('useAudioWorklet') is not True:
                     raise RuntimeError('local_preview_pcm_contract')
                 self.segment.configure(config)
+                if self.failed:
+                    return
+                await self._send_status('ready')
                 sender = create_named_task(self._send(socket), name='local-preview-send')
                 receiver = create_named_task(self._receive(socket), name='local-preview-receive')
                 try:
@@ -239,6 +271,19 @@ class LocalLivePreview:
                     await drain_tasks([sender, receiver], timeout=2, label='local_preview', cancel=True)
         except asyncio.CancelledError:
             raise
+        except ConnectionClosed as error:
+            code = error.rcvd.code if error.rcvd is not None else None
+            # 1013 also covers a recovering or unavailable native worker.
+            # Forward only our fixed contract values, never raw close reasons.
+            status_reason = {
+                'live_preview_busy': 'busy',
+                'final_transcription_busy': 'busy',
+                'live_preview_recovering': 'recovering',
+                'live_preview_unavailable': 'unavailable',
+            }.get(error.rcvd.reason, 'unavailable') if code == 1013 else 'unavailable'
+            self._fail('capacity_full' if status_reason == 'busy' else 'other', status_reason=status_reason)
+        except (ValueError, TypeError, RuntimeError):
+            self._fail('other', status_reason='protocol_error')
         except Exception:
             self._fail('other')
         finally:
@@ -268,5 +313,8 @@ class LocalLivePreview:
             if asyncio.current_task().cancelling():
                 raise
         finally:
+            if self.failure_status_task is not None:
+                await drain_tasks([self.failure_status_task], timeout=self.STATUS_TIMEOUT + 0.1,
+                                  label='local_preview_status', cancel=False)
             logger.warning('Local preview ended updates=%d eof_ack=%s failed=%s',
                         self.updates, self.eof_ack, self.failed)
