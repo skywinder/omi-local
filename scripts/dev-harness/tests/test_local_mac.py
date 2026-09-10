@@ -81,29 +81,97 @@ def test_env_initialization_never_overwrites_existing_settings(tmp_path, monkeyp
     assert len(key) == 43 and key not in capsys.readouterr().out
 
 
-def test_iphone_launch_forwards_only_app_pairing_and_not_secrets_in_arguments(tmp_path, monkeypatch, capsys):
+def iphone_fixture(*, tunnel='connected'):
+    return {
+        'hardwareProperties': {'deviceType': 'iPhone', 'udid': 'synthetic-phone'},
+        'connectionProperties': {
+            'pairingState': 'paired', 'transportType': 'localNetwork', 'tunnelState': tunnel,
+        },
+    }
+
+
+def iphone_app_fixture(tmp_path):
     import plistlib
-    from dev_harness import launch_iphone
-    env_path = env_fixture(tmp_path)
     app = tmp_path / 'Runner.app'
     app.mkdir()
     (app / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'com.omi.local.synthetic'}))
+    return app
+
+
+def test_iphone_launch_probes_stale_wifi_status_and_forwards_only_app_pairing(tmp_path, monkeypatch, capsys):
+    from dev_harness import launch_iphone
+    env_path = env_fixture(tmp_path)
+    app = iphone_app_fixture(tmp_path)
     calls = []
     def capture(args, *, env=None):
         calls.append((args, env))
         if 'devices' in args:
-            return json.dumps({'result': {'devices': [{
-                'hardwareProperties': {'deviceType': 'iPhone', 'udid': 'synthetic'},
-                'connectionProperties': {'tunnelState': 'connected'},
-            }]}}).encode()
+            return json.dumps({'result': {'devices': [iphone_fixture(tunnel='disconnected')]}}).encode()
+        if 'details' in args:
+            return json.dumps({'result': iphone_fixture()}).encode()
+        if 'lockState' in args:
+            return json.dumps({'result': {'unlockedSinceBoot': True, 'passcodeRequired': False}}).encode()
         return json.dumps({'info': {'outcome': 'success'}}).encode()
     monkeypatch.setattr(launch_iphone, 'capture', capture)
+    monkeypatch.setenv('NGROK_AUTHTOKEN', 'synthetic-agent-token-1234')
+    monkeypatch.setenv('DEVICECTL_CHILD_NGROK_AUTHTOKEN', 'synthetic-agent-token-1234')
     launch_iphone.launch(env_path, app)
+    assert [args[4] for args, _ in calls if 'info' in args] == ['details', 'lockState']
     args, env = calls[-1]
+    assert 'launch' in args
     assert env['DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY'] == 'a' * 43
+    assert env['DEVICECTL_CHILD_OMI_LOCAL_MAC_URL'] == 'https://synthetic.ngrok.app'
     assert 'NGROK_AUTHTOKEN' not in env and 'DEVICECTL_CHILD_NGROK_AUTHTOKEN' not in env
-    assert 'a' * 43 not in str(args) and 'synthetic-agent-token' not in str(args)
-    assert 'a' * 43 not in capsys.readouterr().out
+    assert all('a' * 43 not in str(args) and 'synthetic-agent-token' not in str(args) for args, _ in calls)
+    assert all(env is None for _, env in calls[:-1])
+    output = capsys.readouterr().out
+    assert 'a' * 43 not in output and 'synthetic-agent-token' not in output and 'synthetic-phone' not in output
+
+
+@pytest.mark.parametrize('failure', ['locked', 'not-unlocked-since-boot', 'offline', 'probe-failed', 'ambiguous'])
+def test_iphone_launch_rejects_unready_device_without_launch_or_secrets(tmp_path, monkeypatch, capsys, failure):
+    from dev_harness import launch_iphone
+    env_path = env_fixture(tmp_path)
+    app = iphone_app_fixture(tmp_path)
+    calls = []
+    def capture(args, *, env=None):
+        calls.append((args, env))
+        if 'devices' in args:
+            phones = [iphone_fixture()] * (2 if failure == 'ambiguous' else 1)
+            return json.dumps({'result': {'devices': phones}}).encode()
+        if 'details' in args:
+            if failure == 'probe-failed':
+                raise launch_iphone.LocalEnvError('iPhone operation failed')
+            return json.dumps({'result': iphone_fixture(
+                tunnel='disconnected' if failure == 'offline' else 'connected',
+            )}).encode()
+        if 'lockState' in args:
+            return json.dumps({'result': {
+                'unlockedSinceBoot': failure != 'not-unlocked-since-boot',
+                'passcodeRequired': failure == 'locked',
+            }}).encode()
+        return b''
+    monkeypatch.setattr(launch_iphone, 'capture', capture)
+    with pytest.raises(launch_iphone.LocalEnvError) as error:
+        launch_iphone.launch(env_path, app)
+    assert not any('launch' in args for args, _ in calls)
+    assert all(env is None for _, env in calls)
+    visible = capsys.readouterr().out + str(error.value)
+    assert 'a' * 43 not in visible and 'synthetic-agent-token' not in visible and 'synthetic-phone' not in visible
+
+
+def test_iphone_build_selection_can_skip_unlock_but_still_probes_connection(monkeypatch):
+    from dev_harness import launch_iphone
+    calls = []
+    def capture(args, *, env=None):
+        calls.append(args)
+        if 'devices' in args:
+            return json.dumps({'result': {'devices': [iphone_fixture(tunnel='disconnected')]}}).encode()
+        assert 'details' in args
+        return json.dumps({'result': iphone_fixture()}).encode()
+    monkeypatch.setattr(launch_iphone, 'capture', capture)
+    assert launch_iphone.select_iphone(require_unlocked=False) == iphone_fixture()
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize(

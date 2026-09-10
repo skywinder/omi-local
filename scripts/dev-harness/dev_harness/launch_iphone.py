@@ -17,6 +17,41 @@ def capture(args, *, env=None):
     return result.stdout
 
 
+def select_iphone(require_unlocked=True):
+    """Resolve one paired phone, then establish its current connection and lock state."""
+    try:
+        devices = json.loads(capture([
+            'xcrun', 'devicectl', 'list', 'devices', '--timeout', '15',
+            '--json-output', '/dev/stdout', '--quiet',
+        ]))['result']['devices']
+        # Wi-Fi discovery can retain a disconnected tunnel until a live request opens it.
+        phones = [device for device in devices
+                  if device['hardwareProperties'].get('deviceType') == 'iPhone'
+                  and device['connectionProperties'].get('pairingState') == 'paired'
+                  and device['connectionProperties'].get('transportType') in ('wired', 'localNetwork')]
+        if len(phones) != 1:
+            raise LocalEnvError('Connect exactly one paired iPhone')
+        device_id = phones[0]['hardwareProperties']['udid']
+        device = json.loads(capture([
+            'xcrun', 'devicectl', 'device', 'info', 'details', '--device', device_id,
+            '--timeout', '15', '--json-output', '/dev/stdout', '--quiet',
+        ]))['result']
+        if device['connectionProperties'].get('tunnelState') != 'connected':
+            raise LocalEnvError('iPhone is offline; connect it by USB or the paired Wi-Fi network')
+        if require_unlocked:
+            lock = json.loads(capture([
+                'xcrun', 'devicectl', 'device', 'info', 'lockState', '--device', device_id,
+                '--timeout', '15', '--json-output', '/dev/stdout', '--quiet',
+            ]))['result']
+            if lock.get('unlockedSinceBoot') is not True or lock.get('passcodeRequired') is not False:
+                raise LocalEnvError('Unlock the iPhone and keep its screen awake, then retry')
+        return device
+    except LocalEnvError:
+        raise
+    except (ValueError, KeyError, TypeError) as error:
+        raise LocalEnvError('Could not verify iPhone connection and lock state') from error
+
+
 def launch(env_file, app):
     values = read_env(env_file)
     app = Path(app)
@@ -25,12 +60,7 @@ def launch(env_file, app):
     bundle = info['CFBundleIdentifier']
     if not bundle.startswith('com.omi.local.'):
         raise LocalEnvError('Only the separately signed local iPhone app can receive these settings')
-    devices = json.loads(capture(['xcrun', 'devicectl', 'list', 'devices',
-                                 '--json-output', '/dev/stdout', '--quiet']))['result']['devices']
-    phones = [d for d in devices if d['hardwareProperties'].get('deviceType') == 'iPhone'
-              and d['connectionProperties'].get('tunnelState') == 'connected']
-    if len(phones) != 1:
-        raise LocalEnvError('Connect and unlock exactly one iPhone')
+    phone = select_iphone()
     env = {**os.environ,
            'DEVICECTL_CHILD_OMI_LOCAL_MAC_URL': values['OMI_NGROK_URL'],
            'DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY': values['OMI_LOCAL_APP_KEY']}
@@ -39,7 +69,7 @@ def launch(env_file, app):
     env.pop('DEVICECTL_CHILD_NGROK_AUTHTOKEN', None)
     result = json.loads(capture([
         'xcrun', 'devicectl', 'device', 'process', 'launch',
-        '--device', phones[0]['hardwareProperties']['udid'], '--terminate-existing',
+        '--device', phone['hardwareProperties']['udid'], '--terminate-existing',
         '--json-output', '/dev/stdout', '--quiet', bundle,
     ], env=env))
     if result.get('info', {}).get('outcome') != 'success':
