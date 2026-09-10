@@ -1,6 +1,8 @@
 """Wire/lifecycle tests with synthetic text; Core ML is exercised by local replay."""
 import asyncio
+import json
 from pathlib import Path
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -8,7 +10,7 @@ import unittest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from .serve_parakeet import create_app
+from .serve_parakeet import Worker, create_app
 
 
 class FakeWorker:
@@ -94,6 +96,35 @@ class ParakeetWireTests(unittest.TestCase):
             self.assertFalse(health['ready'])
             self.assertFalse(health['active'])
 
+
+class WorkerProcessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_large_snapshots_preserve_text_and_following_messages(self):
+        worker = Worker(None, None)
+        worker.process = await asyncio.create_subprocess_exec(
+            sys.executable, '-c',
+            'import json; '
+            'print(json.dumps({"type":"snapshot","text":"synthetic речь "*12000}, ensure_ascii=False)); '
+            'print(json.dumps({"type":"finished"})); '
+            'print(json.dumps({"type":"snapshot","text":"fresh session"}))',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            message = await asyncio.wait_for(worker.read(), 5)
+            self.assertEqual(message, {'type': 'snapshot', 'text': 'synthetic речь ' * 12000})
+            self.assertEqual(await worker.read(), {'type': 'finished'})
+            self.assertEqual(await worker.read(), {'type': 'snapshot', 'text': 'fresh session'})
+            await worker.process.wait()
+        finally:
+            await worker.close()
+
+    async def test_truncated_message_is_not_accepted_at_eof(self):
+        worker = Worker(None, None)
+        reader = asyncio.StreamReader()
+        reader.feed_data(json.dumps({'type': 'snapshot', 'text': 'synthetic'}).encode())
+        reader.feed_eof()
+        worker.process = SimpleNamespace(stdout=reader)
+        with self.assertRaisesRegex(RuntimeError, 'parakeet_worker_closed'):
+            await worker.read()
 
 if __name__ == '__main__':
     unittest.main()

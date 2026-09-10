@@ -32,9 +32,20 @@ class Worker:
             raise RuntimeError('parakeet_start_failed')
 
     async def read(self):
-        raw = await self.process.stdout.readline()
-        if not raw:
-            raise RuntimeError('parakeet_worker_closed')
+        # A full transcript grows beyond StreamReader's per-read buffer limit.
+        # Consume complete chunks without losing the JSONL boundary or imposing
+        # that buffer limit on transcript length. Decode UTF-8 only after the
+        # whole message arrives; the next protocol message stays in the pipe.
+        reader = self.process.stdout
+        raw = bytearray()
+        while True:
+            try:
+                raw.extend(await reader.readuntil(b'\n'))
+                break
+            except asyncio.LimitOverrunError as error:
+                raw.extend(await reader.readexactly(error.consumed))
+            except asyncio.IncompleteReadError:
+                raise RuntimeError('parakeet_worker_closed') from None
         message = json.loads(raw)
         if message.get('type') == 'error':
             raise RuntimeError('parakeet_worker_failed')
