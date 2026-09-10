@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from .launch_iphone import select_iphone
 from .local_env import LocalEnvError
@@ -46,7 +47,7 @@ def tool_environment(root):
     gem_paths.extend(capture([ruby, '-e', 'puts Gem.path'], env=env).decode().splitlines())
     env['GEM_PATH'] = os.pathsep.join(dict.fromkeys(gem_paths))
     env.update(OMI_RUNTIME_MODE='offline', OMI_APP_PROFILE='local_dev')
-    # Pairing is already in Keychain. Do not inherit a provisioning handoff.
+    # Each app owns its pairing in Keychain. Do not inherit a provisioning handoff.
     for name in ('NGROK_AUTHTOKEN', 'OMI_LOCAL_APP_KEY', 'OMI_LOCAL_MAC_KEY', 'OMI_LOCAL_MAC_URL',
                  'DEVICECTL_CHILD_NGROK_AUTHTOKEN', 'DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY',
                  'DEVICECTL_CHILD_OMI_LOCAL_MAC_URL'):
@@ -82,12 +83,39 @@ def prepare(root):
     properties = phone['deviceProperties']
     if properties.get('developerModeStatus') != 'enabled' or properties.get('ddiServicesAvailable') is not True:
         raise LocalEnvError('Enable Developer Mode and wait for Xcode to prepare the iPhone')
-    hidden = [team, bundle, capture(['hostname', '-s']).decode().strip()]
+    debug_bundle = bundle + '.dev'
+    hidden = [team, bundle, debug_bundle, capture(['hostname', '-s']).decode().strip()]
     hidden.extend(re.findall(r'"([^"\n]+)"', identities))
     hidden.extend(str(v) for section in ('hardwareProperties', 'deviceProperties')
                   for k, v in phone.get(section, {}).items() if k in ('udid', 'serialNumber', 'name'))
     hidden.append(phone.get('identifier', ''))
-    return env, team, bundle, phone['hardwareProperties']['udid'], hidden, b'\n'.join(versions)
+    return env, team, debug_bundle, phone['hardwareProperties']['udid'], hidden, b'\n'.join(versions)
+
+
+def configure_debug_identity(root, bundle):
+    """Upgrade the ignored signing config without changing the daily app's identity."""
+    path = root / 'app/ios/Flutter/PersonalTeam.xcconfig'
+    if path.is_symlink():
+        raise LocalEnvError('Personal signing configuration must not be a symlink')
+    original = path.read_text()
+    overrides = {
+        'APP_BUNDLE_IDENTIFIER[config=Debug-dev]': bundle,
+        'BUNDLE_NAME[config=Debug-dev]': 'Omi Local Dev',
+        'BUNDLE_DISPLAY_NAME[config=Debug-dev]': 'Omi Local Dev',
+    }
+    lines = [line for line in original.splitlines()
+             if not any(re.match(re.escape(key) + r'\s*=', line.strip()) for key in overrides)]
+    updated = '\n'.join(lines + [key + '=' + value for key, value in overrides.items()]) + '\n'
+    if updated == original:
+        return
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(updated)
+            stream.flush()
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def fingerprint(root, versions):
@@ -172,6 +200,7 @@ def session(root, *, check=False, build_only=False):
         return
     if not build_only and not sys.stdin.isatty():
         raise LocalEnvError('Open dev-iphone.command in Terminal for hot reload, or use --build-only')
+    configure_debug_identity(root, bundle)
     artifact = root / 'app/build/ios/Debug-dev-iphoneos/Runner.app'
     record = root / '.local/ios-debug.json'
     if record.is_symlink():

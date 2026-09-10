@@ -133,8 +133,8 @@ def launch(root, mode, *, check=False, build_only=False, lock_path=None):
             if not (check or build_only) and not sys.stdin.isatty():
                 raise LocalEnvError('Запустите iphone.command в своём Terminal для интерактивного сеанса.')
             args = command(root, mode, check=check, build_only=build_only)
-            print('Режим: Debug с hot reload.' if mode == 'debug'
-                  else 'Режим: Profile для обычного запуска с иконки; локальный сервер Mac.', flush=True)
+            print('Omi Local Dev: Debug с hot reload.' if mode == 'debug'
+                  else 'Omi Local: Profile для обычного запуска с иконки; локальный сервер Mac.', flush=True)
             # The direct child retains the lock even if this wrapper exits first.
             return subprocess.run(args, cwd=root, pass_fds=(fd,)).returncode
     except SessionBusy:
@@ -156,7 +156,7 @@ def main(argv=None):
         elif not sys.stdin.isatty():
             parser.error('Укажите debug, profile или status.')
         else:
-            print('1 — Debug: разработка и hot reload\n2 — Profile: обычный запуск на iPhone\n3 — Статус')
+            print('1 — Omi Local Dev: Debug и hot reload\n2 — Omi Local: Profile для обычного запуска\n3 — Статус')
             try:
                 choice = input('Выберите режим [1]: ').strip() or '1'
             except (EOFError, KeyboardInterrupt):

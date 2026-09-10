@@ -218,6 +218,7 @@ def test_check_only_entry_does_not_build_or_generate_config(ios):
 
 def test_debug_build_attest_run_and_reuse_order(monkeypatch, tmp_path, capsys):
     events = []
+    legacy_personal_config(tmp_path)
     artifact = tmp_path / 'app/build/ios/Debug-dev-iphoneos/Runner.app'
     monkeypatch.setattr(ios_debug, 'prepare', lambda root: ({}, 'TEAM', 'com.omi.local.test', 'PHONE', [], b'tools'))
     monkeypatch.setattr(ios_debug, 'fingerprint', lambda *args: 'inputs')
@@ -254,6 +255,7 @@ def test_debug_build_attest_run_and_reuse_order(monkeypatch, tmp_path, capsys):
 
 def test_debug_failed_attestation_never_launches_or_records_success(monkeypatch, tmp_path):
     events = []
+    legacy_personal_config(tmp_path)
     monkeypatch.setattr(ios_debug, 'prepare', lambda root: ({}, 'TEAM', 'bundle', 'PHONE', [], b'tools'))
     monkeypatch.setattr(ios_debug, 'fingerprint', lambda *args: 'inputs')
     monkeypatch.setattr(ios_debug, 'capture', lambda *args, **kwargs: b'commit')
@@ -270,7 +272,7 @@ def test_debug_failed_attestation_never_launches_or_records_success(monkeypatch,
     assert not (tmp_path / '.local/ios-debug.json').exists()
 
 
-@pytest.mark.parametrize('defect', [None, 'locked-entitlement', 'expired', 'wrong-phone', 'profile-build'])
+@pytest.mark.parametrize('defect', [None, 'locked-entitlement', 'expired', 'wrong-phone', 'profile-build', 'daily-bundle'])
 def test_debug_attestation_contract(monkeypatch, tmp_path, defect):
     artifact = tmp_path / 'Runner.app'
     assets = artifact / 'Frameworks/App.framework/flutter_assets'
@@ -278,9 +280,10 @@ def test_debug_attestation_contract(monkeypatch, tmp_path, defect):
     if defect != 'profile-build':
         (assets / 'kernel_blob.bin').write_bytes(b'synthetic kernel')
     (artifact / 'Runner').write_bytes(b'synthetic executable')
+    bundle = 'com.omi.local.test' + ('' if defect == 'daily-bundle' else '.dev')
     (artifact / 'Info.plist').write_bytes(plistlib.dumps({
-        'CFBundleExecutable': 'Runner', 'CFBundleIdentifier': 'com.omi.local.test'}))
-    ent = {'application-identifier': 'TEAM.com.omi.local.test', 'com.apple.developer.team-identifier': 'TEAM',
+        'CFBundleExecutable': 'Runner', 'CFBundleIdentifier': bundle}))
+    ent = {'application-identifier': 'TEAM.' + bundle, 'com.apple.developer.team-identifier': 'TEAM',
            'get-task-allow': defect != 'locked-entitlement'}
     expiry = datetime.now(timezone.utc) + timedelta(days=-1 if defect == 'expired' else 1)
     profile = {'ExpirationDate': expiry.replace(tzinfo=None), 'TeamIdentifier': ['TEAM'],
@@ -294,9 +297,69 @@ def test_debug_attestation_contract(monkeypatch, tmp_path, defect):
     monkeypatch.setattr(ios_debug, 'capture', capture)
     if defect:
         with pytest.raises(ios_debug.LocalEnvError):
-            ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test', 'PHONE')
+            ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test.dev', 'PHONE')
     else:
-        assert len(ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test', 'PHONE')[0]) == 64
+        assert len(ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test.dev', 'PHONE')[0]) == 64
+
+
+def legacy_personal_config(root):
+    path = root / 'app/ios/Flutter/PersonalTeam.xcconfig'
+    path.parent.mkdir(parents=True)
+    path.write_text('OMI_PERSONAL_LOCAL=YES\nOMI_RUNTIME_MODE=offline\nOMI_APPLE_TEAM_ID=ABCDEFGHIJ\n'
+                    'APP_BUNDLE_IDENTIFIER=com.omi.local.test\nBUNDLE_NAME=Omi Local\n'
+                    'BUNDLE_DISPLAY_NAME=Omi Local\n')
+    return path
+
+
+def test_debug_identity_upgrade_preserves_daily_identity_and_matches_new_setup(tmp_path):
+    path = legacy_personal_config(tmp_path)
+    result = subprocess.run(['bash', '-c', 'source "$1"; write_personal_team_config', 'test',
+                             str(ROOT / 'app/setup.sh')], cwd=tmp_path / 'app',
+                            env={**os.environ, 'OMI_APPLE_TEAM_ID': 'ABCDEFGHIJ',
+                                 'OMI_PERSONAL_BUNDLE_ID': 'com.omi.local.test'}, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    generated = path.read_text()
+    legacy = '\n'.join(line for line in generated.splitlines() if '[config=Debug-dev]' not in line) + '\n'
+    path.write_text(legacy)
+    ios_debug.configure_debug_identity(tmp_path, 'com.omi.local.test.dev')
+    assert path.read_text() == generated
+    assert path.stat().st_mode & 0o077 == 0
+    modified = path.stat().st_mtime_ns
+    ios_debug.configure_debug_identity(tmp_path, 'com.omi.local.test.dev')
+    assert path.stat().st_mtime_ns == modified
+    assert 'APP_BUNDLE_IDENTIFIER=com.omi.local.test\n' in generated
+    assert 'APP_BUNDLE_IDENTIFIER[config=Debug-dev]=com.omi.local.test.dev\n' in generated
+
+
+def test_debug_identity_rejects_symlink_without_changing_target(tmp_path):
+    path = legacy_personal_config(tmp_path)
+    target = tmp_path / 'external'
+    path.rename(target)
+    before = target.read_bytes()
+    path.symlink_to(target)
+    with pytest.raises(ios_debug.LocalEnvError):
+        ios_debug.configure_debug_identity(tmp_path, 'com.omi.local.test.dev')
+    assert target.read_bytes() == before
+
+
+def test_debug_preflight_selects_separate_identity_without_writing(monkeypatch, tmp_path):
+    config = legacy_personal_config(tmp_path)
+    original = config.read_bytes()
+    for name in ('ios/Pods/Manifest.lock', '.dart_tool/package_config.json', 'lib/env/dev_env.g.dart', '.dev.env'):
+        path = tmp_path / 'app' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    monkeypatch.setattr(ios_debug, 'tool_environment', lambda root: {})
+    monkeypatch.setattr(ios_debug, 'capture', lambda *args, **kwargs: b'1 valid identities found')
+    monkeypatch.setattr(ios_debug, 'select_iphone', lambda: {
+        'deviceProperties': {'developerModeStatus': 'enabled', 'ddiServicesAvailable': True},
+        'hardwareProperties': {'udid': 'PHONE'}, 'identifier': 'ID'})
+    _, _, bundle, _, hidden, _ = ios_debug.prepare(tmp_path)
+    assert bundle == 'com.omi.local.test.dev'
+    assert bundle in hidden and 'com.omi.local.test' in hidden
+    ios_debug.session(tmp_path, check=True)
+    assert config.read_bytes() == original
 
 
 def test_debug_output_redacts_identifiers_and_vm_capability_url():

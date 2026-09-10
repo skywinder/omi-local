@@ -74,6 +74,11 @@ For a prepared local checkout, `../dev-iphone.command` owns Debug build,
 attestation and `flutter run --use-application-binary` with identical offline
 defines. Do not launch a Debug iPhone bundle with plain devicectl before attach;
 Flutter must establish the native debugger for JIT. See `../docs/DEVELOPMENT.md`.
+Local Profile preserves the base Personal Team bundle ID and the Omi Local name.
+Debug-dev uses that ID plus `.dev` and Omi Local Dev, so both apps coexist.
+Keep the conditional identity settings from `write_personal_team_config` aligned
+with the prepared-checkout upgrade in `dev_harness.ios_debug`; `--check` must not write.
+Attestation must reject a base-ID artifact when the Debug ID is expected.
 
 ### Firebase Config
 Never run `flutterfire configure` — it overwrites prod credentials. Config files:
