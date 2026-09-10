@@ -68,6 +68,7 @@ import 'package:omi/backend/schema/message_event.dart'
         PhotoProcessingEvent,
         PhotoDescribedEvent,
         FreemiumThresholdReachedEvent,
+        LocalTranscriptSnapshotEvent,
         SegmentsDeletedEvent;
 
 class CaptureController extends ChangeNotifier
@@ -372,6 +373,11 @@ class CaptureController extends ChangeNotifier
   ServerConversation? _conversation;
   List<TranscriptSegment> segments = [];
   List<ConversationPhoto> photos = [];
+  String? _localTranscriptPreviewId;
+  int _localTranscriptRevision = 0;
+  Set<String> _localTranscriptSegmentIds = {};
+  final Set<String> _retiredLocalTranscriptPreviewIds = {};
+  int _transcriptStateGeneration = 0;
 
   /// Unix timestamp (seconds) when the current capture session started.
   /// Used to scope WAL queries to only this session's audio.
@@ -649,6 +655,7 @@ class CaptureController extends ChangeNotifier
 
   Future _resetStateVariables() async {
     _stopInProgressConversationRefresh();
+    _retireLocalTranscriptPreview();
     segments = [];
     photos = [];
     hasTranscripts = false;
@@ -657,6 +664,7 @@ class CaptureController extends ChangeNotifier
     taggingSegmentIds = [];
     _sessionStartSeconds = 0;
     _endOfflineSession();
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
@@ -1660,12 +1668,15 @@ class CaptureController extends ChangeNotifier
   }
 
   void clearTranscripts() {
+    _retireLocalTranscriptPreview();
     segments = [];
     hasTranscripts = false;
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
   void clearUserData() {
+    _retireLocalTranscriptPreview();
     segments = [];
     photos = [];
     hasTranscripts = false;
@@ -1673,6 +1684,7 @@ class CaptureController extends ChangeNotifier
     _terminalTranscriptionFailure = null;
     suggestionsBySegmentId = {};
     taggingSegmentIds = [];
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
@@ -2359,6 +2371,7 @@ class CaptureController extends ChangeNotifier
       recordingState == RecordingState.deviceRecord;
 
   void _startInProgressConversationRefresh() {
+    if (_localTranscriptPreviewId != null) return;
     if (!_canRefreshInProgressConversation || segments.isNotEmpty || photos.isNotEmpty) return;
     // The socket calls this on every connect. If a cycle is already running, leave it
     // alone: restarting it resets the attempt counter, so a connection that reconnects
@@ -2392,7 +2405,8 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _refreshInProgressConversationTick() async {
     if (_isRefreshingInProgressConversation) return;
-    if (!_canRefreshInProgressConversation ||
+    if (_localTranscriptPreviewId != null ||
+        !_canRefreshInProgressConversation ||
         segments.isNotEmpty ||
         photos.isNotEmpty ||
         _inProgressConversationRefreshAttempts >= _maxInProgressConversationRefreshAttempts) {
@@ -2464,7 +2478,10 @@ class CaptureController extends ChangeNotifier
   }
 
   Future _loadInProgressConversation() async {
+    if (_localTranscriptPreviewId != null) return;
+    final generation = _transcriptStateGeneration;
     var convos = await getConversations(statuses: [ConversationStatus.in_progress], limit: 1);
+    if (generation != _transcriptStateGeneration) return;
     _conversation = convos.isNotEmpty ? convos.first : null;
     if (_conversation != null) {
       segments = _conversation!.transcriptSegments;
@@ -2492,6 +2509,10 @@ class CaptureController extends ChangeNotifier
 
   @override
   void onMessageEventReceived(MessageEvent event) {
+    if (event is LocalTranscriptSnapshotEvent) {
+      _handleLocalTranscriptSnapshot(event);
+      return;
+    }
     if (event is ConversationProcessingStartedEvent) {
       externalActions.addProcessingConversation(event.memory);
       _pendingAutoSyncSessionStart = _sessionStartSeconds;
@@ -2732,6 +2753,43 @@ class CaptureController extends ChangeNotifier
     notifyListeners();
   }
 
+  void _retireLocalTranscriptPreview() {
+    final previewId = _localTranscriptPreviewId;
+    if (previewId != null) _retiredLocalTranscriptPreviewIds.add(previewId);
+    _localTranscriptPreviewId = null;
+    _localTranscriptRevision = 0;
+    _localTranscriptSegmentIds = {};
+    _transcriptStateGeneration++;
+  }
+
+  void _handleLocalTranscriptSnapshot(LocalTranscriptSnapshotEvent event) {
+    if (event.revision <= 0 || _retiredLocalTranscriptPreviewIds.contains(event.previewId)) return;
+    if (event.previewId == _localTranscriptPreviewId && event.revision <= _localTranscriptRevision) return;
+
+    final previousPreviewId = _localTranscriptPreviewId;
+    if (previousPreviewId != null && previousPreviewId != event.previewId) {
+      _retiredLocalTranscriptPreviewIds.add(previousPreviewId);
+    }
+    final previousIds = _localTranscriptSegmentIds;
+    _localTranscriptPreviewId = event.previewId;
+    _localTranscriptRevision = event.revision;
+    _localTranscriptSegmentIds = event.segments.map((segment) => segment.id).toSet();
+    _transcriptStateGeneration++;
+    _stopInProgressConversationRefresh();
+
+    // Snapshots own only local preview rows. Corrections may split, merge or
+    // retract them; ordinary conversation segments must survive unchanged.
+    segments = [
+      ...segments.where((segment) => !previousIds.contains(segment.id)),
+      ...event.segments,
+    ];
+    suggestionsBySegmentId.removeWhere((id, _) => previousIds.contains(id));
+    taggingSegmentIds.removeWhere(previousIds.contains);
+    hasTranscripts = segments.isNotEmpty;
+    _segmentsPhotosVersion++;
+    notifyListeners();
+  }
+
   void _handleSpeakerLabelSuggestionEvent(SpeakerLabelSuggestionEvent event) {
     // Tagging
     if (taggingSegmentIds.contains(event.segmentId)) {
@@ -2848,6 +2906,7 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _processNewSegmentReceived(List<TranscriptSegment> newSegments) async {
     if (newSegments.isEmpty) return;
+    final generation = _transcriptStateGeneration;
 
     if (segments.isEmpty && !_isLoadingInProgressConversation) {
       _isLoadingInProgressConversation = true;
@@ -2865,6 +2924,7 @@ class CaptureController extends ChangeNotifier
         _isLoadingInProgressConversation = false;
       }
     }
+    if (generation != _transcriptStateGeneration) return;
 
     final remainSegments = TranscriptSegment.updateSegments(segments, newSegments);
     segments.addAll(remainSegments);

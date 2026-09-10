@@ -600,3 +600,32 @@ def test_both_pyannote_models_use_exclusive_turns_for_text(tmp_path, monkeypatch
     monkeypatch.setitem(sys.modules, 'pyannote.audio', SimpleNamespace(Pipeline=Pipeline))
     result = local_diarization.infer(audio, model)
     assert result['turns'] == [(0., .5, 'SPEAKER_00'), (.5, 1., 'SPEAKER_01')]
+
+
+def test_live_diarization_wraps_local_or_external_asr_without_changing_upstream(tmp_path, monkeypatch):
+    from dev_harness import cli, config, local_stt_services as services
+    python = tmp_path / 'python'
+    python.write_text('fixture')
+    cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
+                          layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
+    path = tmp_path / 'live-stt.json'
+    original = {'enabled': True, 'provider': 'external', 'url': 'ws://127.0.0.1:18090/asr'}
+    path.write_text(json.dumps(original))
+    assert services.live_url(cfg) == original['url']
+    path.write_text(json.dumps({**original, 'diarization': {'enabled': True, 'port': 18091, 'python': str(python)}}))
+    assert services.live_url(cfg) == 'ws://127.0.0.1:18091/asr'
+    starts = []
+    monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
+    monkeypatch.setattr(cli, '_start_process', lambda cfg, name, command, **kw: starts.append((name, command)))
+    monkeypatch.setattr(cli, '_service_record', lambda *a: None)
+    monkeypatch.setattr(services, 'health', lambda *a: (True, 'ready'))
+    services.start_configured(cfg)
+    assert len(starts) == 1 and starts[0][0] == 'live-diarization'
+    assert starts[0][1][starts[0][1].index('--upstream') + 1] == original['url']
+    invalid = {**original, 'diarization': {'enabled': True, 'port': 18090, 'python': str(python)}}
+    path.write_text(json.dumps(invalid))
+    with pytest.raises(services.ServiceError, match='diarization settings'):
+        services.live_url(cfg)
+    path.write_text(json.dumps({**original, 'diarization': 'invalid'}))
+    with pytest.raises(services.ServiceError, match='diarization settings'):
+        services.live_url(cfg)

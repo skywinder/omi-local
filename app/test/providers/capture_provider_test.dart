@@ -890,30 +890,100 @@ void main() {
     provider.dispose();
   });
 
-  test('live preview wire snapshots replace the same segment without duplicates', () async {
-    final provider = CaptureProvider(
-      conversationLocationCapture: _CountingConversationLocationCapture(),
-      inProgressConversationLoader: () async {},
-    );
-    TranscriptSegment snapshot(String text) => TranscriptSegment.fromJson({
-          'id': 'preview-test-session',
-          'text': text,
-          'start': 0.0,
-          'end': 4.0,
-          'speaker': 'SPEAKER_00',
-          'is_user': false,
+  group('atomic local transcript snapshots', () {
+    MessageEvent snapshot(String previewId, int revision, List<Map<String, dynamic>> rows) => MessageEvent.fromJson({
+          'type': 'local_transcript_snapshot',
+          'preview_id': previewId,
+          'revision': revision,
+          'segments': rows,
         });
-    provider.onSegmentReceived([snapshot('Проверка')]);
-    await Future<void>.delayed(Duration.zero);
-    final version = provider.segmentsPhotosVersion;
-    provider.onSegmentReceived([snapshot('Проверка обновления текста.')]);
-    expect(provider.segments.single.text, 'Проверка обновления текста.');
-    expect(provider.segmentsPhotosVersion, greaterThan(version));
-    expect(provider.hasTranscripts, isTrue);
-    // A rejected pending hypothesis may retract text already shown.
-    provider.onSegmentReceived([snapshot('')]);
-    expect(provider.segments.single.text, isEmpty);
-    provider.dispose();
+    Map<String, dynamic> row(String id, String text, {String? speaker, double start = 0, bool draft = false}) => {
+          'id': id,
+          'text': text,
+          'start': start,
+          'end': start + 2,
+          'speaker': speaker,
+          'is_user': false,
+          'is_draft': draft,
+          'stt_provider': 'whisperx',
+        };
+
+    test('corrects, splits and retracts only preview rows without loading a conversation', () {
+      var loads = 0;
+      var notifications = 0;
+      final provider = CaptureProvider(inProgressConversationLoader: () async => loads++);
+      addTearDown(provider.dispose);
+      provider.addListener(() => notifications++);
+
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('local-preview-one-draft', 'Черновик')]));
+      expect(provider.segments.single.text, 'Черновик');
+      expect(loads, 0, reason: 'a snapshot must apply synchronously without fetching server conversation state');
+      provider.onSegmentReceived([_segment('ordinary', 'Existing conversation')]);
+      notifications = 0;
+      final version = provider.segmentsPhotosVersion;
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [
+        row('local-preview-one-line-1', 'Первый голос.', speaker: 'SPEAKER_00'),
+        row('local-preview-one-line-2', 'Второй голос.', speaker: 'SPEAKER_01', start: 3),
+        row('local-preview-one-draft', 'Ещё', start: 6, draft: true),
+      ]));
+      expect(notifications, 1, reason: 'UI observes the replacement as a single state change');
+      expect(provider.segments.map((s) => s.id), [
+        'ordinary',
+        'local-preview-one-line-1',
+        'local-preview-one-line-2',
+        'local-preview-one-draft',
+      ]);
+      expect(provider.segments.map((s) => s.speakerId), [0, 0, 1, -1]);
+      expect(provider.segments.last.isDraft, isTrue);
+      expect(provider.segments[2].start, 3);
+      expect(provider.segmentsPhotosVersion, greaterThan(version));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 3, [
+        row('local-preview-one-line-1', 'Исправленный первый голос.', speaker: 'SPEAKER_00'),
+      ]));
+      expect(provider.segments.map((s) => s.text), ['Existing conversation', 'Исправленный первый голос.']);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 4, []));
+      expect(provider.segments.single.id, 'ordinary');
+      expect(provider.hasTranscripts, isTrue);
+    });
+
+    test('ignores old revisions and retired sessions, including after clearing user data', () {
+      final provider = CaptureProvider();
+      addTearDown(provider.dispose);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [row('one', 'Newer')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('one', 'Older')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [row('one', 'Duplicate revision')]));
+      expect(provider.segments.single.text, 'Newer');
+
+      provider.onMessageEventReceived(snapshot('local-preview-two', 1, [row('two', 'Next session')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 3, [row('one', 'Late old session')]));
+      expect(provider.segments.single.text, 'Next session');
+      provider.onMessageEventReceived(snapshot('local-preview-two', 2, []));
+      expect(provider.segments, isEmpty);
+      expect(provider.hasTranscripts, isFalse);
+      provider.clearUserData();
+      provider.onMessageEventReceived(snapshot('local-preview-two', 3, [row('two', 'Late after reset')]));
+      expect(provider.segments, isEmpty);
+      provider.onMessageEventReceived(snapshot('local-preview-three', 1, [row('three', 'Fresh session')]));
+      expect(provider.segments.single.text, 'Fresh session');
+      provider.clearTranscripts();
+      provider.onMessageEventReceived(snapshot('local-preview-three', 2, [row('three', 'Late after clear')]));
+      expect(provider.segments, isEmpty);
+    });
+
+    test('a pending ordinary segment load cannot reinsert stale rows after a snapshot', () async {
+      final pendingLoad = Completer<void>();
+      final provider = CaptureProvider(
+        conversationLocationCapture: _CountingConversationLocationCapture(),
+        inProgressConversationLoader: () => pendingLoad.future,
+      );
+      addTearDown(provider.dispose);
+      provider.onSegmentReceived([_segment('old', 'Pending old row')]);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('one', 'Current snapshot')]));
+      expect(provider.segments.single.text, 'Current snapshot');
+      pendingLoad.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.segments.single.text, 'Current snapshot');
+    });
   });
 
   test('local phone start refuses a connected device and preserves its draft', () async {

@@ -45,15 +45,45 @@ def live_settings(cfg):
         raise ServiceError('Invalid local live STT settings') from None
 
 
+def diarization_settings(live):
+    data = live.get('diarization', {})
+    if not isinstance(data, dict):
+        raise ServiceError('Invalid local live diarization settings')
+    if not data or not data.get('enabled', False):
+        return {}
+    if (type(data.get('port')) is not int or not 1024 <= data['port'] <= 65535
+            or data['port'] == urlsplit(live['url']).port
+            or data.get('model', 'pyannote/speaker-diarization-3.1') not in {
+                'pyannote/speaker-diarization-3.1', 'pyannote/speaker-diarization-community-1'}
+            or data.get('device', 'mps') not in {'cpu', 'mps'}
+            or type(data.get('threads', 4)) is not int or not 1 <= data.get('threads', 4) <= 16
+            or type(data.get('interval_seconds', 15)) not in (int, float)
+            or not 5 <= data.get('interval_seconds', 15) <= 120
+            or not isinstance(data.get('python'), str)):
+        raise ServiceError('Invalid local live diarization settings')
+    return data
+
+
 def live_url(cfg):
-    return live_settings(cfg).get('url', '')
+    live = live_settings(cfg)
+    diarization = diarization_settings(live)
+    return f"ws://127.0.0.1:{diarization['port']}/asr" if diarization else live.get('url', '')
+
+
+def live_runtime_revision(cfg):
+    digest = hashlib.sha256()
+    for path in sorted((cfg.repo_root / 'scripts/local_live_preview').glob('*.py')):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
 
 
 def health(cfg, service):
     try:
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=2) as client:
-            if service == 'live-stt':
-                url = live_url(cfg).replace('ws://', 'http://').removesuffix('/asr') + '/health'
+            if service in {'live-stt', 'live-diarization'}:
+                endpoint = live_settings(cfg).get('url', '') if service == 'live-stt' else live_url(cfg)
+                url = endpoint.replace('ws://', 'http://').removesuffix('/asr') + '/health'
                 response = client.get(url)
                 data = response.json()
                 return response.status_code == 200 and data.get('ready') is True, 'live STT readiness'
@@ -70,6 +100,7 @@ def start_configured(cfg):
         return
     argmax = settings(cfg, 'argmax-stt.json')
     live = live_settings(cfg)
+    diarization = diarization_settings(live)
     commands = []
     if argmax.get('enabled'):
         port = argmax['port']
@@ -92,8 +123,21 @@ def start_configured(cfg):
                                     '--model-dir', str(model), '--inference-lock', str(root / '.lock'),
                                     '--port', str(urlsplit(live['url']).port),
                                     '--language', live.get('language', 'ru'),
-                                    '--chunk-seconds', str(live.get('chunk_seconds', 4))],
+                                    '--chunk-seconds', str(live.get('chunk_seconds', 4)),
+                                    '--runtime-revision', live_runtime_revision(cfg)],
                          cfg.repo_root / 'scripts', urlsplit(live['url']).port))
+    if diarization:
+        python = Path(diarization['python']).expanduser().absolute()
+        if not python.is_file():
+            raise ServiceError('Live diarization Python is unavailable')
+        commands.append(('live-diarization', [str(python), '-m', 'local_live_preview.diarization_proxy',
+                         '--upstream', live['url'], '--port', str(diarization['port']),
+                         '--model', diarization.get('model', 'pyannote/speaker-diarization-3.1'),
+                         '--device', diarization.get('device', 'mps'),
+                         '--threads', str(diarization.get('threads', 4)),
+                         '--interval-seconds', str(diarization.get('interval_seconds', 15)),
+                         '--runtime-revision', live_runtime_revision(cfg)],
+                         cfg.repo_root / 'scripts', diarization['port']))
     for name, command, cwd, port in commands:
         existing = cli._service_record(cfg, name)
         if existing is not None and existing.get('command') != command:

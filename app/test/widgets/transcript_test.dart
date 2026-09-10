@@ -107,6 +107,46 @@ void main() {
       expect(find.text('Speaker 1'), findsOneWidget);
     });
 
+    testWidgets('local timed speakers keep Omi cards, provider and time ranges', (tester) async {
+      final first = segmentFor('first', 0)..sttProvider = 'WhisperLiveKit';
+      final second = segmentFor('second', 1)
+        ..start = 2
+        ..end = 4
+        ..text = 'Second voice'
+        ..sttProvider = 'WhisperLiveKit';
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: TranscriptWidget(segments: [first, second], bottomMargin: 0)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Speaker 1'), findsOneWidget);
+      expect(find.text('Speaker 2'), findsOneWidget);
+      expect(find.text('WhisperLiveKit'), findsNWidgets(2));
+      expect(find.text('00:00:02 - 00:00:04'), findsOneWidget);
+      final colors = tester.widgetList<CircleAvatar>(find.byType(CircleAvatar)).map((w) => w.backgroundColor).toSet();
+      expect(colors.length, 2);
+    });
+
+    testWidgets('unknown draft is neutral and does not invent a speaker or phrase timing', (tester) async {
+      final draft = segmentFor('draft', 0)
+        ..speaker = null
+        ..speakerId = -1
+        ..isDraft = true
+        ..sttProvider = 'Local STT';
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: TranscriptWidget(segments: [draft], bottomMargin: 0)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.text('Speaker 1'), findsNothing);
+      expect(find.text('00:00:00 - 00:00:01'), findsNothing);
+      expect(find.text('Local STT'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('Tag button is removed from UI', (tester) async {
       final segment = segmentFor('seg3', 1);
       final suggestion = SpeakerLabelSuggestionEvent(

@@ -124,7 +124,8 @@ def create_app(worker, lock_path, emit):
             await worker.send(1)
             if (await asyncio.wait_for(worker.read(), 3)).get('type') != 'started':
                 raise RuntimeError('parakeet_session_start_failed')
-            await socket.send_json({'type': 'config', 'useAudioWorklet': True, 'mode': 'full'})
+            await socket.send_json({'type': 'config', 'useAudioWorklet': True, 'mode': 'full',
+                                    'diarization': False, 'stt_provider': 'parakeet-local'})
 
             async def results():
                 nonlocal snapshots, first_text, disconnected
