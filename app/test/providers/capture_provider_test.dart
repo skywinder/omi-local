@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus_platform_interface/connectivity_plus_platform_interface.dart';
@@ -1385,6 +1386,43 @@ void main() {
       expect(failed.provider, 'parakeet');
       expect(failed.retryable, isTrue);
       expect(failed.reason, 'send_failed');
+    });
+
+    test('capture-only readiness cannot clear local preview failure', () {
+      final provider = CaptureProvider();
+      addTearDown(provider.dispose);
+      provider.onMessageEventReceived(MessageServiceStatusEvent.fromJson({
+        'type': 'service_status',
+        'status': 'stt_failed',
+        'provider': 'local_live_preview',
+        'outcome': 'unavailable',
+        'reason': 'busy',
+        'retryable': false,
+      }));
+      provider.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'offline_capture'));
+      expect(provider.terminalTranscriptionFailure?.reason, 'busy');
+      provider.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'local_live_preview'));
+      expect(provider.terminalTranscriptionFailure, isNull);
+    });
+
+    test('local preview failure received before subscription is not lost', () async {
+      final provider = CaptureProvider();
+      addTearDown(provider.dispose);
+      final service = TranscriptSegmentSocketService.withSocket(16000, BleAudioCodec.pcm16, 'en', _AudioPacketSocket());
+      service.onMessage(jsonEncode({
+        'type': 'service_status',
+        'status': 'stt_failed',
+        'provider': 'local_live_preview',
+        'reason': 'disabled',
+        'retryable': false,
+      }));
+      service.subscribe(provider, provider);
+      expect(provider.terminalTranscriptionFailure?.reason, 'disabled');
+      await service.stop();
+      final next = CaptureProvider();
+      addTearDown(next.dispose);
+      service.subscribe(next, next);
+      expect(next.terminalTranscriptionFailure, isNull);
     });
   });
 

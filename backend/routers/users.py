@@ -114,6 +114,7 @@ from utils.cloud_tasks import (
 )
 from utils.executors import cleanup_executor, db_executor, llm_executor, run_blocking
 from utils.log_sanitizer import sanitize
+from utils.local_transcription_status import local_transcription_status
 from utils.llm.followup import followup_question_prompt
 from utils.notifications import send_notification, send_training_data_submitted_notification
 from utils.llm.external_integrations import generate_comprehensive_daily_summary
@@ -326,6 +327,9 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
     if not profile:
         raise HTTPException(status_code=410, detail="User not found")
     profile.setdefault('uid', uid)
+    transcription = local_transcription_status()
+    if transcription is not None:
+        profile['local_transcription'] = transcription
     return profile
 
 
