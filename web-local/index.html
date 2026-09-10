@@ -31,6 +31,8 @@
       </footer>
     </aside>
     <section class="detail" aria-label="Просмотр записи">
+      <nav class="detail-tabs" aria-label="Режим просмотра"><button id="view-live" class="selected" aria-pressed="true">Сейчас</button><button id="view-recording" aria-pressed="false">Запись</button></nav>
+      <section id="live-monitor" class="live-monitor" aria-label="Текущее распознавание"></section>
       <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>
         <header class="detail-heading"><div class="detail-actions"><p id="recording-date" class="eyebrow"></p><button id="delete" class="delete-button">Удалить запись</button></div><h2 id="recording-title"></h2><div id="recording-meta" class="recording-meta"></div></header>
