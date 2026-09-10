@@ -107,11 +107,12 @@ class Library:
                     token = self.tokens.setdefault(audio, secrets.token_urlsafe(18))
                     job = queue.get(hashlib.sha256(folder.name.encode()).hexdigest(), {})
                     state = job.get('state', 'unavailable')
-                    state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
+                    state = state if state in {'pending', 'processing', 'failed', 'no_speech'} else 'unavailable'
                     segments = []
                     if digest in results:
                         try:
-                            for item in read_json(results[digest]).get('segments', []):
+                            transcript = read_json(results[digest])
+                            for item in transcript.get('segments', []):
                                 start, end = float(item['start']), float(item['end'])
                                 if (not isinstance(item.get('text'), str) or not item['text'].strip()
                                         or not math.isfinite(start) or not math.isfinite(end)
@@ -123,6 +124,8 @@ class Library:
                                                  'text': item['text'].strip(), 'speaker': speaker})
                             segments.sort(key=lambda s: s['start'])
                             state = 'ready' if segments else 'unavailable'
+                            if not segments and transcript.get('outcome') == 'no_speech' and transcript.get('segments') == []:
+                                state = 'no_speech'
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),

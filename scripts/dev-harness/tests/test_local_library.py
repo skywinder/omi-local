@@ -219,3 +219,19 @@ def test_delete_preserves_files_on_db_failure_and_busy_inference(library, monkey
     assert len(calls) == 1 and calls[0][2] == ['b' * 64]
     assert not audio.exists() and not manifest.exists()
     assert library.scan() == []
+
+
+@pytest.mark.parametrize('cached', [False, True])
+def test_no_speech_result_keeps_audio_available(library, cached):
+    raw = library.transcripts / 'result/audio.json'
+    if cached:
+        raw.write_text(json.dumps({'outcome': 'no_speech', 'segments': []}))
+    else:
+        raw.unlink()
+        key = hashlib.sha256(next(library.captures.iterdir()).name.encode()).hexdigest()
+        (library.transcripts / 'watch-queue.json').write_text(json.dumps({key: {'state': 'no_speech'}}))
+    data = json.loads(request(library, '/api/recordings')[2])['recordings']
+    assert data[0]['status'] == 'no_speech'
+    path = '/api/recordings/' + data[0]['id']
+    assert json.loads(request(library, path)[2])['segments'] == []
+    assert request(library, path + '/audio', headers={'Range': 'bytes=0-43'})[0] == 206

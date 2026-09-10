@@ -28,6 +28,10 @@ class TranscriptionBusy(TranscriptionError):
     """The shared inference slot is occupied; retry without counting a failure."""
 
 
+class NoSpeechDetected(TranscriptionError):
+    """A successful, cached inference found no speech; do not retry or import."""
+
+
 @dataclass(frozen=True)
 class EngineConfig:
     """Only the engine adapter consumes these settings; Omi receives segments.
@@ -355,6 +359,11 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
             adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit}[engine.engine]
             raw = adapter(engine, audio, folder, manifest)
             atomic_json(raw_path, raw)
+        else:
+            raw = json.loads(raw_path.read_text())
+        if raw.get('outcome') == 'no_speech' and raw.get('segments') == []:
+            raise NoSpeechDetected('No speech detected; original WAV retained')
+        if not reused:
             print(f'Local STT finished in {time.monotonic() - started:.1f}s; importing transcript...', flush=True)
         result = backend_step(cfg, folder)
         print(json.dumps({**result, 'reused_transcript': reused}, ensure_ascii=False))

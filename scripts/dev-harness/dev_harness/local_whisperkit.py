@@ -76,6 +76,8 @@ def normalize(raw: dict, duration: float) -> dict:
         return value
 
     try:
+        if not isinstance(raw['segments'], list) or not isinstance(raw['language'], str):
+            raise WhisperKitError('WhisperKit returned an invalid report')
         segments = []
         previous = 0
         # WhisperKit's pinned VAD chunker slices consecutive audio chunks, then
@@ -131,7 +133,7 @@ def normalize(raw: dict, duration: float) -> dict:
             segments.append({'text': text, 'start': start, 'end': end,
                              'speaker': 'SPEAKER_00', 'words': words})
         if not segments:
-            raise WhisperKitError('No speech segments returned; no conversation created')
+            return {'language': raw['language'], 'segments': [], 'outcome': 'no_speech'}
         return {'language': raw['language'], 'segments': segments}
     except (KeyError, TypeError, AttributeError):
         raise WhisperKitError('WhisperKit returned an invalid report') from None

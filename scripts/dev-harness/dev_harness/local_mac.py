@@ -372,6 +372,9 @@ def main() -> int:
             finally:
                 os.close(read_fd)
         return 0
+    except local_stt.NoSpeechDetected:
+        print('Речь не обнаружена. Аудиозапись сохранена.')
+        return 0
     except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
         message = (

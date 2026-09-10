@@ -66,10 +66,19 @@ def test_whisperkit_keeps_valid_speech_when_padding_produces_an_extra_segment():
     }]
 
 
-def test_whisperkit_does_not_create_a_transcript_from_padding_only():
-    with pytest.raises(local_whisperkit.WhisperKitError, match='No speech segments'):
-        local_whisperkit.normalize({'language': 'ru', 'segments': [
-            {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12}]}, 10.6)
+@pytest.mark.parametrize('segments', [[], [
+    {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12},
+]])
+def test_whisperkit_empty_or_padding_only_report_is_no_speech(segments):
+    # A real short CV1 WAV returned a successful WhisperKit report with zero segments.
+    result = local_whisperkit.normalize({'language': 'en', 'segments': segments}, 2.9)
+    assert result == {'language': 'en', 'segments': [], 'outcome': 'no_speech'}
+
+
+@pytest.mark.parametrize('segments', [None, {}, '', [None]])
+def test_whisperkit_malformed_segments_are_not_no_speech(segments):
+    with pytest.raises(local_whisperkit.WhisperKitError, match='invalid report'):
+        local_whisperkit.normalize({'language': 'en', 'segments': segments}, 2.9)
 
 
 def test_whisperkit_ignores_padding_before_checking_order_of_real_segments():
