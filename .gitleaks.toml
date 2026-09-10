@@ -25,6 +25,13 @@ paths = [
 id = "generic-api-key"
 
 [[rules.allowlists]]
+description = "Historical synthetic wizard fixture (40b6fa7), diagnosed in PR #8; not an issued credential"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^synthetic-replacement-123456$''']
+paths = ['''(?:^|/)scripts/dev-harness/tests/test_local_mac\.py$''']
+
+[[rules.allowlists]]
 description = "CocoaPods dependency checksum, not an authentication key"
 condition = "AND"
 regexTarget = "secret"
