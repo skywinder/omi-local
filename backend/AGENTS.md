@@ -11,6 +11,9 @@ Ngrok profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
+Authenticated `/v1/local/status` is ngrok/offline-only. Its capture counters come
+from the caller's active listen sessions; live-ASR health is separate from WAV
+capture. Never return transcript text, identifiers, filesystem paths or credentials.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
@@ -327,3 +330,9 @@ WS handlers in `transcribe.py` and `pusher.py` manage 5-11 concurrent tasks per 
 11. **Queue caps for user data** — `private_cloud_queue` uses `deque(maxlen=20)` to prevent OOM kills (sized for 30 conns/pod); dropping oldest chunk is better than killing the pod and losing ALL data for ALL users
 12. **`langdetect` unreliable on short text** — don't use on <20 chars or gate paid API calls on interim streaming text
 13. **DG keepalive vs response timeout** — `keep_alive()` prevents DG's 10s idle timeout but NOT 1011 response timeout after all audio is processed. Post-session 1011 is benign.
+
+Custom local STT: finished WAVs may use a loopback OpenAI-compatible timed API;
+`live-stt.json` selects a separate `/asr` provider. The harness owns optional
+Argmax/WhisperLiveKit services; `apply-stt` checks capture idle again after model
+startup before restarting its backend. See `docs/LOCAL_STT.md` and
+`docs/LIVE_PREVIEW.md`. Never add ML imports or provider URLs to phone builds.

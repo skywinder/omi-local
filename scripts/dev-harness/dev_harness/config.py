@@ -415,6 +415,9 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
     if cfg.local_transport == "ngrok":
         extra["OMI_LOCAL_PAIRING_FILE"] = str(cfg.layout.state_root / "pairing.json")
         extra["ADMIN_KEY_AUTH_ENABLED"] = "false"
+        from .local_stt_services import live_url
+        if url := live_url(cfg):
+            extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = url
     if cfg.provider_mode != "offline":
         extra.update(
             {

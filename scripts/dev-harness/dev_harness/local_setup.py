@@ -49,7 +49,9 @@ def check(cfg):
 def run(cfg, *, open_browser=True):
     from . import local_mac
 
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    repo = getattr(cfg, 'repo_root', None)
+    if not interactive and (repo is None or not (repo / '.env').is_file()):
         raise SetupError('Запустите ./start.command в локальном Terminal.')
     print('Проверяем готовность…', flush=True)
     check(cfg)
@@ -71,6 +73,6 @@ def run(cfg, *, open_browser=True):
     else:
         print('Для автоматического распознавания: docs/LOCAL_STT.md')
     print('Остановка: bash scripts/local-mac.sh down')
-    if open_browser:
+    if open_browser and interactive:
         webbrowser.open(local_library.url(cfg))
     return 0

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +46,63 @@ void main() {
     expect(restored.authorizationFor(Uri.parse('wss://synthetic.ngrok.app/v4/listen')), 'Bearer $key');
     expect(restored.address, url);
     expect(Env.usesLocalTunnel, isTrue);
+  });
+
+  test('saved settings survive restart without authenticating or switching the active server', () async {
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    await session.connect(url, key);
+    await session.saveSettings(' https://another.ngrok.app ', ' unfinished-key ');
+    final restored = LocalMacSession();
+    await restored.restore();
+    expect(await restored.readSettings(), (address: 'https://another.ngrok.app', key: 'unfinished-key'));
+    expect(restored.address, url);
+    expect(restored.authorizationFor(Uri.parse(url)), 'Bearer $key');
+    expect(restored.permits(Uri.parse('https://another.ngrok.app')), isFalse);
+  });
+
+  test('legacy pairing pre-fills settings and sign-out erases the saved key', () async {
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    await session.connect(url, key);
+    expect(await session.readSettings(), (address: url, key: key));
+    await session.saveSettings(url, key);
+    await session.signOut();
+    expect((await session.readSettings()).key, isEmpty);
+    expect(await const FlutterSecureStorage().read(key: LocalMacSession.settingsKey), isNull);
+  });
+
+  test('explicit native launch handoff persists settings without changing authenticated origin', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    const channel = MethodChannel('com.omi/environment');
+    Map<String, String>? handoff = {'url': url, 'key': key};
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'takeLocalMacSettings');
+      final value = handoff;
+      handoff = null;
+      return value;
+    });
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+    });
+    final session = LocalMacSession();
+    await session.importLaunchSettings();
+    expect(await LocalMacSession().readSettings(), (address: url, key: key));
+    expect(session.isSignedIn, isFalse);
+    await session.saveSettings('https://changed.ngrok.app', key);
+    await session.importLaunchSettings();
+    expect((await session.readSettings()).address, 'https://changed.ngrok.app');
+  });
+
+  test('whitespace from pasted app keys is normalized before verification and storage', () async {
+    final session = LocalMacSession(probe: (_, submitted) async {
+      expect(submitted, key);
+      return {'uid': 'alice'};
+    });
+    final pasted = ' ${key.substring(0, 20)}\n${key.substring(20)} ';
+    await session.saveSettings(url, pasted);
+    await session.connect(url, pasted);
+    expect((await session.readSettings()).key, key);
+    expect(session.accessKey, key);
   });
 
   test('credentials are restricted to one secure origin', () async {

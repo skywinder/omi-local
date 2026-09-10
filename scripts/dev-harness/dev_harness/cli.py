@@ -173,6 +173,9 @@ def _typesense_container_running(cfg: config.HarnessConfig) -> bool:
 
 
 def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]:
+    if service in {"live-stt", "argmax-stt"}:
+        from .local_stt_services import health
+        return health(cfg, service)
     if service == "library":
         from .local_library import ready
         return ready(cfg), "local library readiness"

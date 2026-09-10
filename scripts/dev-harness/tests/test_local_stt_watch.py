@@ -238,7 +238,8 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     monkeypatch.setenv('OMI_LOCAL_TRANSPORT', 'ngrok')
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / 'backend'))
     cfg = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3],
-                          layout=SimpleNamespace(state_root=tmp_path), backend_url='http://127.0.0.1:20000')
+                          layout=SimpleNamespace(state_root=tmp_path), backend_url='http://127.0.0.1:20000',
+                          provider_mode='offline', local_transport='ngrok')
     local_mac.private_json(tmp_path / 'pairing.json', local_mac.pairing_data('a' * 43))
     monkeypatch.setattr(local_mac, 'read_config', lambda _: {'url': 'https://synthetic.ngrok.app'})
     monkeypatch.setattr(local_mac, 'check_agent', lambda _: None)
