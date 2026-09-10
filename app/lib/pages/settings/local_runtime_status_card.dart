@@ -35,8 +35,13 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   bool _visible = false;
   bool _foreground = true;
   bool _loading = false;
+  bool _expanded = false;
   _ConnectionState _connection = _ConnectionState.unknown;
   LocalRuntimeStatus? _status;
+  late ({String address, String? key, bool signedIn}) _pairing;
+
+  ({String address, String? key, bool signedIn}) get _currentPairing =>
+      (address: _session.address, key: _session.accessKey, signedIn: _session.isSignedIn);
 
   bool get _canPoll =>
       mounted && Env.isOfflineRuntime && widget.active && _visible && _foreground && _session.isSignedIn;
@@ -47,6 +52,7 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     _foreground = WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    _pairing = _currentPairing;
     _session.addListener(_sessionChanged);
   }
 
@@ -66,16 +72,23 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     if (oldWidget.session != widget.session) {
       (oldWidget.session ?? LocalMacSession.instance).removeListener(_sessionChanged);
       _session.addListener(_sessionChanged);
+      _pairing = _currentPairing;
     }
     if (oldWidget.session != widget.session ||
         oldWidget.active != widget.active ||
         oldWidget.fetcher != widget.fetcher ||
         oldWidget.refreshInterval != widget.refreshInterval) {
-      _restart();
+      _restart(clear: oldWidget.session != widget.session);
     }
   }
 
-  void _sessionChanged() => _restart();
+  void _sessionChanged() {
+    final pairing = _currentPairing;
+    // Draft saves and other notifications are not a new authenticated session.
+    if (pairing == _pairing) return;
+    _pairing = pairing;
+    _restart(clear: true);
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -83,13 +96,15 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     _restart();
   }
 
-  void _restart() {
+  void _restart({bool clear = false}) {
     _generation++;
     _timer?.cancel();
     _timer = null;
     _loading = false;
-    _status = null;
-    _connection = _ConnectionState.unknown;
+    if (clear) {
+      _status = null;
+      _connection = _ConnectionState.unknown;
+    }
     if (mounted) setState(() {});
     if (_canPoll) unawaited(_refresh());
   }
@@ -101,8 +116,7 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     final generation = _generation;
     setState(() {
       _loading = true;
-      _connection = _ConnectionState.loading;
-      _status = null;
+      if (_connection == _ConnectionState.unknown) _connection = _ConnectionState.loading;
     });
     try {
       final status = await (widget.fetcher ?? LocalRuntimeStatusClient(session: _session).fetch)();
@@ -113,10 +127,16 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
       });
     } on LocalMacUnauthorized {
       if (generation != _generation || !_canPoll) return;
-      setState(() => _connection = _ConnectionState.rejected);
+      setState(() {
+        _status = null;
+        _connection = _ConnectionState.rejected;
+      });
     } catch (_) {
       if (generation != _generation || !_canPoll) return;
-      setState(() => _connection = _ConnectionState.unavailable);
+      setState(() {
+        _status = null;
+        _connection = _ConnectionState.unavailable;
+      });
     } finally {
       if (generation == _generation && _canPoll) {
         setState(() => _loading = false);
@@ -141,6 +161,26 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
         _ConnectionState.unavailable => context.l10n.localMacConnectionFailed,
         _ConnectionState.unknown => _session.isSignedIn ? context.l10n.unknown : context.l10n.notConnectedStatus,
       };
+
+  String? _errorText(BuildContext context) {
+    if (_connection == _ConnectionState.rejected) return context.l10n.localMacKeyRejected;
+    if (_connection == _ConnectionState.unavailable) return context.l10n.localMacConnectionFailed;
+    if (_status?.captureState == LocalCaptureState.decodeError) return context.l10n.error;
+    if (_status?.liveTranscriptState == LocalLiveTranscriptState.failed) return context.l10n.transcriptionFailed;
+    if (_status?.liveTranscriptState == LocalLiveTranscriptState.unavailable) {
+      return context.l10n.transcriptionUnavailable;
+    }
+    return null;
+  }
+
+  String _summaryText(BuildContext context) {
+    final state = _errorText(context) != null
+        ? context.l10n.error
+        : _connection == _ConnectionState.connected
+            ? context.l10n.connected
+            : _connectionText(context);
+    return '${context.l10n.localMacTitle} · $state';
+  }
 
   String _audioText(BuildContext context) {
     final status = _status;
@@ -181,23 +221,62 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   @override
   Widget build(BuildContext context) {
     if (!Env.isOfflineRuntime) return const SizedBox.shrink();
-    return Container(
+    final error = _errorText(context);
+    return Material(
       key: const ValueKey('local-runtime-status'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(12)),
+      color: const Color(0xFF222222),
+      borderRadius: BorderRadius.circular(_expanded ? 12 : 24),
+      clipBehavior: Clip.antiAlias,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          Expanded(child: Text(context.l10n.statusLabel, style: const TextStyle(color: Colors.white))),
-          IconButton(
-            key: const ValueKey('local-runtime-refresh'),
-            tooltip: context.l10n.refresh,
-            onPressed: _canPoll && !_loading ? _refresh : null,
-            icon: const Icon(Icons.refresh, color: Colors.white70),
+        Semantics(
+          button: true,
+          expanded: _expanded,
+          child: InkWell(
+            key: const ValueKey('local-runtime-toggle'),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(children: [
+                Icon(error == null ? Icons.computer : Icons.error_outline, size: 18, color: Colors.white70),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_summaryText(context),
+                      key: const ValueKey('local-runtime-summary'),
+                      style: const TextStyle(color: Colors.white, fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: Colors.white70),
+              ]),
+            ),
           ),
-        ]),
-        _row('connection', context.l10n.localMacTitle, _connectionText(context), Icons.computer),
-        _row('audio', context.l10n.audioDataReceived, _audioText(context), Icons.graphic_eq),
-        _row('transcript', context.l10n.realtimeTranscript, _transcriptText(context), Icons.subtitles_outlined),
+        ),
+        if (!_expanded && error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Text(error,
+                key: const ValueKey('local-runtime-error'),
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ),
+        if (_expanded)
+          Padding(
+            key: const ValueKey('local-runtime-details'),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _row('connection', context.l10n.localMacTitle, _connectionText(context), Icons.computer),
+              _row('audio', context.l10n.audioDataReceived, _audioText(context), Icons.graphic_eq),
+              _row('transcript', context.l10n.realtimeTranscript, _transcriptText(context), Icons.subtitles_outlined),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: const ValueKey('local-runtime-refresh'),
+                  onPressed: _canPoll && !_loading ? _refresh : null,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: Text(context.l10n.refresh),
+                ),
+              ),
+            ]),
+          ),
       ]),
     );
   }

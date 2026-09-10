@@ -21,6 +21,15 @@ Map<String, dynamic> payload({String capture = 'received', String live = 'disabl
       'live_transcript': {'state': live, 'updates': live == 'streaming' ? 2 : 0},
     };
 
+class DraftNotifyingSession extends LocalMacSession {
+  DraftNotifyingSession() : super(probe: (_, __) async => {'uid': 'alice'});
+
+  Future<void> saveDraftAndNotify() async {
+    await saveSettings('https://synthetic-draft.ngrok.app', 'draft-only');
+    notifyListeners();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -50,6 +59,7 @@ void main() {
     LocalMacSession session,
     Future<LocalRuntimeStatus> Function() fetcher, {
     bool active = true,
+    bool expanded = true,
     GlobalKey<NavigatorState>? navigatorKey,
   }) async {
     await tester.pumpWidget(MaterialApp(
@@ -64,6 +74,10 @@ void main() {
       home: Scaffold(body: LocalRuntimeStatusCard(session: session, fetcher: fetcher, active: active)),
     ));
     await tester.pumpAndSettle();
+    if (expanded && find.byKey(const ValueKey('local-runtime-details')).evaluate().isEmpty) {
+      await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+      await tester.pumpAndSettle();
+    }
   }
 
   String value(WidgetTester tester, String name) =>
@@ -132,6 +146,94 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('compact pill expands and keeps its chosen state across polling', (tester) async {
+    var calls = 0;
+    await showCard(tester, await paired(), () async {
+      calls++;
+      return LocalRuntimeStatus.fromJson(payload());
+    }, expanded: false);
+    expect(value(tester, 'summary'), 'Local Mac · Connected');
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsNothing);
+    expect(tester.getSize(find.byKey(const ValueKey('local-runtime-status'))).height, lessThanOrEqualTo(52));
+    await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+    await tester.pumpAndSettle();
+    expect(value(tester, 'audio'), 'Total: 12 seconds');
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(calls, 3);
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('pending refresh keeps confirmed values but a later failure clears them', (tester) async {
+    final refresh = Completer<LocalRuntimeStatus>();
+    var calls = 0;
+    await showCard(tester, await paired(), () async {
+      if (++calls == 1) return LocalRuntimeStatus.fromJson(payload(live: 'streaming'));
+      return refresh.future;
+    });
+    await tester.tap(find.byKey(const ValueKey('local-runtime-refresh')));
+    await tester.pumpAndSettle();
+    expect(value(tester, 'summary'), 'Local Mac · Connected');
+    expect(value(tester, 'connection'), 'Connected · API Key Auth');
+    expect(value(tester, 'audio'), 'Total: 12 seconds');
+    expect(value(tester, 'transcript'), 'Transcript received: 2');
+    expect(find.text('Loading...'), findsNothing);
+    expect(find.text('Unknown'), findsNothing);
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsOneWidget);
+    refresh.completeError(LocalRuntimeStatusUnavailable());
+    await tester.pumpAndSettle();
+    expect(value(tester, 'summary'), 'Local Mac · Error');
+    expect(value(tester, 'audio'), 'Unknown');
+    expect(value(tester, 'transcript'), 'Unknown');
+    await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+    await tester.pumpAndSettle();
+    expect(value(tester, 'error'), startsWith('Could not connect.'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('draft notifications do not refresh or clear authenticated status', (tester) async {
+    final session = DraftNotifyingSession();
+    await session.connect('https://synthetic.ngrok.app', List.filled(43, 's').join());
+    var calls = 0;
+    await showCard(tester, session, () async {
+      calls++;
+      return LocalRuntimeStatus.fromJson(payload());
+    });
+    await session.saveDraftAndNotify();
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(value(tester, 'audio'), 'Total: 12 seconds');
+    expect(value(tester, 'connection'), 'Connected · API Key Auth');
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('changing pairing clears confirmed values before the new request completes', (tester) async {
+    final session = await paired();
+    final next = Completer<LocalRuntimeStatus>();
+    var calls = 0;
+    await showCard(tester, session, () async {
+      if (++calls == 1) return LocalRuntimeStatus.fromJson(payload());
+      return next.future;
+    });
+    await session.connect('https://second-synthetic.ngrok.app', List.filled(43, 't').join());
+    await tester.pumpAndSettle();
+    expect(value(tester, 'audio'), 'Unknown');
+    expect(value(tester, 'transcript'), 'Unknown');
+    expect(value(tester, 'connection'), 'Loading...');
+    next.complete(LocalRuntimeStatus.fromJson(payload(seconds: 3)));
+    await tester.pumpAndSettle();
+    expect(value(tester, 'audio'), 'Total: 3 seconds');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('rejected status shows the key error without changing pairing', (tester) async {
     final session = await paired();
     await showCard(tester, session, () async => throw LocalMacUnauthorized());
@@ -184,7 +286,7 @@ void main() {
     expect(calls, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
-    expect(value(tester, 'audio'), 'Unknown');
+    expect(value(tester, 'audio'), 'Total: 12 seconds');
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump(const Duration(seconds: 20));
     expect(calls, 1);
