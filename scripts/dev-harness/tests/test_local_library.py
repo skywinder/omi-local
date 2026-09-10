@@ -291,6 +291,50 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
     assert b'synthetic-private-error' not in body
 
 
+def test_runtime_final_timeout_preserves_healthy_live_draft(library, monkeypatch):
+    import httpx
+    from dev_harness import local_library_runtime as live
+    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000)
+    runtime = live.Runtime(cfg)
+    settings = {
+        'stt-engine.json': {'engine': 'openai-compatible', 'provider_url': 'http://127.0.0.1:10301/v1',
+                            'model': 'synthetic-model'},
+        'stt-watch.json': {'enabled': True},
+        'argmax-stt.json': {'enabled': True, 'port': 10301},
+        'live-stt.json': {'provider': 'whisperlivekit'},
+    }
+    monkeypatch.setattr(runtime, '_settings', lambda name: settings[name])
+    monkeypatch.setattr(live.local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': 'synthetic-private-key'})
+    monkeypatch.setattr(live.local_stt_watch, 'read_queue', lambda _: {})
+    monkeypatch.setattr(live.local_stt_watch, 'worker_ready', lambda _: True)
+    requested = []
+
+    def serve(req):
+        requested.append(req.url.path)
+        if req.url.path == '/v1/models':
+            # A slow final provider must fit inside the live monitor's request budget.
+            assert req.extensions['timeout']['read'] == 1
+            raise httpx.ReadTimeout('synthetic-private-final-error', request=req)
+        assert req.url.path == '/v1/local/preview'
+        assert req.extensions['timeout']['read'] == 2
+        return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
+            'live_transcript': {'state': 'streaming', 'updates': 1},
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+
+    factory = httpx.Client
+    monkeypatch.setattr(live.httpx, 'Client', lambda **kwargs:
+        factory(transport=httpx.MockTransport(serve), **kwargs))
+    status, _, body = request(library, '/api/runtime', runtime=runtime)
+    data = json.loads(body)
+    assert status == 200 and data['backend'] == 'ready'
+    assert data['live_transcript']['state'] == 'streaming'
+    assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert data['final_stt']['state'] == 'unavailable'
+    assert data['final_stt']['provider'] == 'Argmax · WhisperKit'
+    assert b'synthetic-private-final-error' not in body
+    assert requested == ['/v1/local/preview', '/v1/models']
+
+
 def test_runtime_journal_observes_final_completion_without_transcript(library):
     from copy import deepcopy
     from dev_harness.local_library_runtime import Runtime

@@ -82,9 +82,9 @@ def normalize(raw, duration):
         raise ProviderError('STT provider returned an invalid timed transcript') from None
 
 
-def check(url, model):
+def check(url, model, *, timeout=5):
     try:
-        with httpx.Client(trust_env=False, follow_redirects=False, timeout=5) as client:
+        with httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout) as client:
             response = client.get(validate_url(url) + '/models')
             response.raise_for_status()
             if model not in {item['id'] for item in response.json()['data']}:

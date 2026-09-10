@@ -1,6 +1,6 @@
 import {formatTime} from './player.mjs';
 
-const states = {ready: 'Готов', busy: 'Ожидаем текст', streaming: 'Текст обновляется', disabled: 'Выключен',
+const states = {ready: 'Готов', busy: 'Ожидаем текст', streaming: 'Live-текст получен', disabled: 'Выключен',
   failed: 'Ошибка', unavailable: 'Недоступен', stopped: 'Остановлен', processing: 'Распознаёт запись'};
 
 export function audioActivity(current, previous, now, lastProgress) {
@@ -50,7 +50,8 @@ export function mountLiveMonitor(root) {
   journal.append(summary, journalNote, events);
   const freshness = element('p', 'monitor-freshness');
   root.append(title, note, cards, transcriptHeading, text, journal, freshness);
-  let previous = null, lastProgress = Date.now(), lastDraft = '', lastEvents = '', timer, disposed = false;
+  let previous = null, lastProgress = Date.now(), lastDraft = '', lastEvents = '', timer;
+  let paused = false, request = null, generation = 0;
 
   function render(data) {
     const activity = audioActivity(data, previous, Date.now(), lastProgress);
@@ -97,19 +98,38 @@ export function mountLiveMonitor(root) {
   }
 
   async function poll() {
-    if (disposed) return;
+    if (paused || request) return;
+    clearTimeout(timer);
     if (!document.hidden) {
+      const controller = new AbortController(), started = generation;
+      request = controller;
       try {
-        const response = await fetch('/api/runtime', {cache: 'no-store', signal: AbortSignal.timeout(6000)});
+        const response = await fetch('/api/runtime', {cache: 'no-store',
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(6000)])});
         if (!response.ok) throw new Error('Runtime unavailable');
-        render(await response.json());
+        const data = await response.json();
+        if (!paused && started === generation) render(data);
       } catch {
-        render({backend: 'unavailable', capture: {state: 'unknown'}, sessions: [],
-          live_transcript: {state: 'unavailable'}, final_stt: {state: 'unavailable'}, events: previous?.events || []});
+        if (!paused && started === generation) {
+          render({backend: 'unavailable', capture: {state: 'unknown'}, sessions: [],
+            live_transcript: {state: 'unavailable'}, final_stt: {state: 'unavailable'}, events: previous?.events || []});
+        }
+      } finally {
+        request = null;
       }
     }
-    timer = setTimeout(poll, 1000);
+    if (!paused) timer = setTimeout(poll, 1000);
   }
-  addEventListener('pagehide', () => { disposed = true; clearTimeout(timer); }, {once: true});
+  addEventListener('pagehide', () => {
+    paused = true;
+    generation++;
+    clearTimeout(timer);
+    request?.abort();
+  });
+  addEventListener('pageshow', () => {
+    if (!paused) return;
+    paused = false;
+    poll();
+  });
   poll();
 }

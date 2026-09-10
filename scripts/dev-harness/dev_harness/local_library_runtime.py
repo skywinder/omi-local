@@ -45,7 +45,7 @@ class Runtime:
         state = 'ready' if ready else 'stopped'
         if ready and engine.get('engine') == 'openai-compatible':
             try:
-                local_openai_stt.check(engine['provider_url'], engine['model'])
+                local_openai_stt.check(engine['provider_url'], engine['model'], timeout=1)
             except (httpx.HTTPError, ValueError, KeyError):
                 state = 'unavailable'
         if ready and counts['processing']:
