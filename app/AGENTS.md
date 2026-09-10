@@ -11,6 +11,10 @@ refresh. A successful empty server page must clear the cache; cached rows may
 be restored only after a failed request, never after a confirmed empty response.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
+Local Mac form settings are a separate Keychain draft, not an authenticated session.
+Saving or revealing a key must not switch the active origin or send network requests.
+The optional iOS launch handoff passes only the local URL/app key through the existing
+environment channel into Keychain. Never embed `.env` or the ngrok authtoken in the app.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.

@@ -10,6 +10,102 @@ from dev_harness import config, safety
 from dev_harness.local_mac import endpoint, pairing_data, private_json, prepare_emulator, require_auth_boundary
 
 
+def env_fixture(tmp_path):
+    path = tmp_path / '.env'
+    path.write_text('OMI_NGROK_URL=https://synthetic.ngrok.app\n'
+                    'NGROK_AUTHTOKEN=synthetic-agent-token-1234\n'
+                    'OMI_LOCAL_APP_KEY=' + 'a' * 43 + '\n')
+    path.chmod(0o600)
+    return path
+
+
+def test_private_env_validation_and_no_shell_expansion(tmp_path):
+    from dev_harness.local_env import read_env, LocalEnvError
+    path = env_fixture(tmp_path)
+    assert read_env(path)['OMI_LOCAL_APP_KEY'] == 'a' * 43
+    path.chmod(0o644)
+    with pytest.raises(LocalEnvError, match='chmod 600'):
+        read_env(path)
+    path.chmod(0o600)
+    original = path.read_text()
+    path.write_text(original + 'OMI_LOCAL_APP_KEY=duplicate\n')
+    with pytest.raises(LocalEnvError, match='exactly once'):
+        read_env(path)
+    path.write_text(original.replace('synthetic-agent-token-1234', '$(touch injected)'))
+    with pytest.raises(LocalEnvError, match='NGROK_AUTHTOKEN'):
+        read_env(path)
+    assert not (tmp_path / 'injected').exists()
+    link = tmp_path / 'linked.env'
+    link.symlink_to(path)
+    with pytest.raises(LocalEnvError, match='symlinks'):
+        read_env(link)
+
+
+def test_noninteractive_env_configuration_preserves_live_settings_and_never_prints_secrets(
+    monkeypatch, tmp_path, capsys,
+):
+    from types import SimpleNamespace
+    from dev_harness import local_mac, local_env
+    env_path = env_fixture(tmp_path)
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path / 'state'), backend_port=20000)
+    monkeypatch.setattr(local_mac.sys.stdin, 'isatty', lambda: False)
+    monkeypatch.setattr(local_mac.cli, '_service_record', lambda *a: None)
+    local_mac.configure(cfg)
+    pairing = cfg.layout.state_root / 'pairing.json'
+    assert 'a' * 43 not in pairing.read_text()
+    before = pairing.read_bytes()
+    monkeypatch.setattr(local_mac.cli, '_service_record', lambda *a: {'pid': 123})
+    local_mac.configure(cfg)
+    assert pairing.read_bytes() == before
+    env_path.write_text(env_path.read_text().replace('a' * 43, 'b' * 43))
+    with pytest.raises(local_env.LocalEnvError, match='Stop the local stack'):
+        local_mac.configure(cfg)
+    assert pairing.read_bytes() == before
+    output = capsys.readouterr().out
+    assert 'a' * 43 not in output and 'b' * 43 not in output and 'synthetic-agent-token' not in output
+
+
+def test_env_initialization_never_overwrites_existing_settings(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+    from dev_harness import local_env
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path / 'state'))
+    monkeypatch.setattr(local_env.Path, 'home', lambda: tmp_path / 'home')
+    local_env.initialize(cfg)
+    path = tmp_path / '.env'
+    assert path.stat().st_mode & 0o777 == 0o600
+    original = path.read_bytes()
+    with pytest.raises(local_env.LocalEnvError, match='already exists'):
+        local_env.initialize(cfg)
+    assert path.read_bytes() == original
+    key = next(line.split('=', 1)[1] for line in path.read_text().splitlines() if line.startswith('OMI_LOCAL_APP_KEY='))
+    assert len(key) == 43 and key not in capsys.readouterr().out
+
+
+def test_iphone_launch_forwards_only_app_pairing_and_not_secrets_in_arguments(tmp_path, monkeypatch, capsys):
+    import plistlib
+    from dev_harness import launch_iphone
+    env_path = env_fixture(tmp_path)
+    app = tmp_path / 'Runner.app'
+    app.mkdir()
+    (app / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'com.omi.local.synthetic'}))
+    calls = []
+    def capture(args, *, env=None):
+        calls.append((args, env))
+        if 'devices' in args:
+            return json.dumps({'result': {'devices': [{
+                'hardwareProperties': {'deviceType': 'iPhone', 'udid': 'synthetic'},
+                'connectionProperties': {'tunnelState': 'connected'},
+            }]}}).encode()
+        return json.dumps({'info': {'outcome': 'success'}}).encode()
+    monkeypatch.setattr(launch_iphone, 'capture', capture)
+    launch_iphone.launch(env_path, app)
+    args, env = calls[-1]
+    assert env['DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY'] == 'a' * 43
+    assert 'NGROK_AUTHTOKEN' not in env and 'DEVICECTL_CHILD_NGROK_AUTHTOKEN' not in env
+    assert 'a' * 43 not in str(args) and 'synthetic-agent-token' not in str(args)
+    assert 'a' * 43 not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     'url',
     [

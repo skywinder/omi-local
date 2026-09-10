@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -70,5 +71,78 @@ void main() {
     expect(session.isSignedIn, isTrue);
     expect(find.text('Open'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  Future<void> openPage(WidgetTester tester, LocalMacSession session) async {
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: LocalMacPage(session: session, stopRecording: () async {}, refreshConnection: () async {}),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('save and reopen retains settings; eye reveals key and background hides it', (tester) async {
+    final session = LocalMacSession(probe: (_, __) async => throw StateError('Saving must not probe'));
+    await openPage(tester, session);
+    final addressField = find.byKey(const ValueKey('local-mac-address'));
+    final keyField = find.byKey(const ValueKey('local-mac-key'));
+    await tester.enterText(addressField, 'https://synthetic.ngrok.app');
+    await tester.enterText(keyField, 'synthetic-draft-key');
+    await tester.tap(find.byKey(const ValueKey('local-mac-show-key')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(keyField).obscureText, isFalse);
+    expect(tester.widget<SelectableText>(find.byKey(const ValueKey('local-mac-visible-url'))).data,
+        'https://synthetic.ngrok.app');
+    expect(
+        tester.widget<SelectableText>(find.byKey(const ValueKey('local-mac-visible-key'))).data, 'synthetic-draft-key');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(keyField).obscureText, isTrue);
+    expect(find.byKey(const ValueKey('local-mac-visible-key')), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.tap(find.byKey(const ValueKey('local-mac-save')));
+    await tester.pumpAndSettle();
+    expect(session.isSignedIn, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await openPage(tester, LocalMacSession());
+    expect(tester.widget<TextField>(addressField).controller!.text, 'https://synthetic.ngrok.app');
+    expect(tester.widget<TextField>(keyField).controller!.text, 'synthetic-draft-key');
+    expect(tester.widget<TextField>(keyField).obscureText, isTrue);
+  });
+
+  testWidgets('failed connection preserves entered settings across page reopen', (tester) async {
+    final session = LocalMacSession(probe: (_, __) async => throw const SocketException('unavailable'));
+    await openPage(tester, session);
+    final key = List.filled(43, 's').join();
+    await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
+    await tester.enterText(find.byKey(const ValueKey('local-mac-key')), key);
+    await tester.tap(find.byKey(const ValueKey('local-mac-connect')));
+    await tester.pumpAndSettle();
+    expect(session.isSignedIn, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await openPage(tester, LocalMacSession());
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-address'))).controller!.text,
+        'https://synthetic.ngrok.app');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text, key);
+  });
+
+  testWidgets('edits autosave without pressing a button and pasted whitespace is removed', (tester) async {
+    await openPage(tester, LocalMacSession());
+    final addressField = find.byKey(const ValueKey('local-mac-address'));
+    final keyField = find.byKey(const ValueKey('local-mac-key'));
+    await tester.enterText(addressField, 'https://synthetic.ngrok.app');
+    await tester.enterText(keyField, ' pasted\nkey ');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(keyField).controller!.text, 'pastedkey');
+    await tester.pumpWidget(const SizedBox());
+    await openPage(tester, LocalMacSession());
+    expect(tester.widget<TextField>(addressField).controller!.text, 'https://synthetic.ngrok.app');
+    expect(tester.widget<TextField>(keyField).controller!.text, 'pastedkey');
   });
 }

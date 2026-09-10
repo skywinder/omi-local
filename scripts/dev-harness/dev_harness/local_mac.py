@@ -82,6 +82,15 @@ def read_config(cfg) -> dict:
 
 def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
     from .local_setup import show_frame
+    from . import local_env
+
+    repo = getattr(cfg, 'repo_root', None)
+    env_path = repo / '.env' if repo is not None else None
+    if env_path is not None and (env_path.exists() or env_path.is_symlink()):
+        if rotate or edit:
+            raise LocalMacError('Edit the private .env while the local stack is stopped')
+        local_env.apply(cfg, local_env.read_env(env_path))
+        return
 
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise LocalMacError("Configure requires a local interactive terminal; credentials must not enter logs")
@@ -293,6 +302,8 @@ def main() -> int:
         "command",
         choices=[
             "prepare-emulator",
+            "init-env",
+            "launch-iphone",
             "check",
             "configure",
             "edit-connection",
@@ -320,7 +331,13 @@ def main() -> int:
             prepare_emulator(repo)
             return 0
         cfg = config.load_config(repo, create_layout=args.command in {"configure", "edit-connection", "rotate-key"})
-        if args.command == "check":
+        if args.command == 'init-env':
+            from . import local_env
+            local_env.initialize(cfg)
+        elif args.command == 'launch-iphone':
+            from . import launch_iphone
+            launch_iphone.launch(cfg.repo_root / '.env', cfg.repo_root / 'app/build/ios/Profile-dev-iphoneos/Runner.app')
+        elif args.command == "check":
             if not shutil.which("ngrok"):
                 raise LocalMacError("ngrok is missing; run install")
             return cli.cmd_check(argparse.Namespace())
@@ -374,9 +391,10 @@ def main() -> int:
         return 0
     except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
+        from .local_env import LocalEnvError
         message = (
             str(error)
-            if isinstance(error, (LocalMacError, local_stt.TranscriptionError))
+            if isinstance(error, (LocalMacError, LocalEnvError, local_stt.TranscriptionError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )
         print(f"Local Mac operation failed: {message}", file=sys.stderr)
