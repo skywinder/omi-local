@@ -220,6 +220,7 @@ class HomeRecordButton extends StatefulWidget {
 }
 
 class _HomeRecordButtonState extends State<HomeRecordButton> {
+  bool _busy = false;
   void _showRecordOptions(BuildContext context) {
     HapticFeedback.lightImpact();
     showModalBottomSheet(
@@ -241,10 +242,21 @@ class _HomeRecordButtonState extends State<HomeRecordButton> {
   }
 
   Future<void> _startRecording(BuildContext context) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _performRecordingAction(context);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _performRecordingAction(BuildContext context) async {
     HapticFeedback.mediumImpact();
     final captureProvider = context.read<CaptureProvider>();
     if (captureProvider.recordingState == RecordingState.initialising) return;
-    if (captureProvider.recordingState == RecordingState.record) {
+    if (captureProvider.recordingState == RecordingState.record ||
+        captureProvider.recordingState == RecordingState.interrupted) {
       // Batch reports RecordingState.record too, but has no in-progress conversation
       // to force-process — stopStreamRecording finalizes the local .bin on its own.
       final wasBatch = captureProvider.isPhoneMicBatchRecording;
@@ -253,7 +265,20 @@ class _HomeRecordButtonState extends State<HomeRecordButton> {
       PlatformManager.instance.analytics.phoneMicRecordingStopped();
       return;
     }
-    await captureProvider.streamRecording();
+    try {
+      await captureProvider.streamRecording();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+      return;
+    }
+    if (captureProvider.recordingState == RecordingState.stop) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+      return;
+    }
     PlatformManager.instance.analytics.phoneMicRecordingStarted();
     // Phone-mic Transcribe Later (batch) has no live transcript — its surface is the
     // conversations-list batch card, so skip the capturing page (same as BLE batch).
@@ -277,8 +302,9 @@ class _HomeRecordButtonState extends State<HomeRecordButton> {
   Widget build(BuildContext context) {
     return Consumer<CaptureProvider>(
       builder: (context, captureProvider, _) {
-        final isRecording = captureProvider.recordingState == RecordingState.record;
-        final isInitialising = captureProvider.recordingState == RecordingState.initialising;
+        final isRecording = captureProvider.recordingState == RecordingState.record ||
+            captureProvider.recordingState == RecordingState.interrupted;
+        final isInitialising = _busy || captureProvider.recordingState == RecordingState.initialising;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _startRecording(context),

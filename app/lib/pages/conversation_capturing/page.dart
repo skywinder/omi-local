@@ -59,6 +59,18 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
   }
 
   Future<void> _toggleMute(CaptureProvider provider) async {
+    final wasMuted = _isMuted;
+    try {
+      await _performToggleMute(provider);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isMuted = wasMuted);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+    }
+  }
+
+  Future<void> _performToggleMute(CaptureProvider provider) async {
     if (_isMuted) {
       // Unmute - resume recording
       HapticFeedback.mediumImpact();
@@ -66,7 +78,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
         _isMuted = false;
       });
 
-      if (provider.havingRecordingDevice) {
+      if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
         // Device recording (Omi device)
         await provider.resumeDeviceRecording();
       } else {
@@ -83,7 +95,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
         _isMuted = true;
       });
 
-      if (provider.havingRecordingDevice) {
+      if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
         // Device recording (Omi device)
         await provider.pauseDeviceRecording();
       } else {

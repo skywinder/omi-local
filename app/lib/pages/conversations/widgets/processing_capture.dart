@@ -149,10 +149,21 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
     }
   }
 
-  _toggleRecording(BuildContext context, CaptureProvider provider) async {
+  Future<void> _toggleRecording(BuildContext context, CaptureProvider provider) async {
+    try {
+      await _performToggleRecording(context, provider);
+    } catch (_) {
+      if (mounted && context.mounted) {
+        setState(() => _isPhoneMicPaused = true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+    }
+  }
+
+  Future<void> _performToggleRecording(BuildContext context, CaptureProvider provider) async {
     var recordingState = provider.recordingState;
 
-    if (provider.havingRecordingDevice) {
+    if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
       // Device recording logic - add pause/resume for device recording
       if (recordingState == RecordingState.deviceRecord && !provider.isPaused) {
         // Pause device recording

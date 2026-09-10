@@ -9,6 +9,11 @@ at the repo root covers pairing, network policy, legacy auth, and the analyzer.
 After deletion from the local web library, pull down the Conversations list to
 refresh. A successful empty server page must clear the cache; cached rows may
 be restored only after a failed request, never after a confirmed empty response.
+Local input selection is independent of Bluetooth connection. Starting the phone mic
+finishes the Omi session without disconnecting Bluetooth; an explicit Omi Start
+finishes the phone session. Home entry/BLE reconnect must not take over phone audio.
+Stop fences pending phone startup and reconnect.
+Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
 Local Mac form settings are a separate Keychain draft, not an authenticated session.

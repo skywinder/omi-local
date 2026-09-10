@@ -296,6 +296,35 @@ void main() {
     expect(tester.widget<IconButton>(find.byKey(const Key('temporary_recording_mute'))).onPressed, isNull);
   });
 
+  testWidgets('home microphone failure shows feedback without opening the capture page', (tester) async {
+    final capture = _Capture()..failStart = true;
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
+    await tester.tap(find.byType(HomeRecordButton));
+    await tester.pumpAndSettle();
+    expect(capture.calls, ['phone:start']);
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.byType(ConversationCapturingPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home button stops an interrupted phone session while Omi stays connected', (tester) async {
+    final capture = _Capture()..updateRecordingState(RecordingState.interrupted);
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
+    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.pumpAndSettle();
+    expect(capture.calls.first, 'phone:stop');
+    expect(capture.calls, isNot(contains('phone:start')));
+    expect(capture.recordingState, RecordingState.stop);
+  });
+
   testWidgets('original home plus opens record choices in local mode', (tester) async {
     final capture = _Capture()..deviceConnected = false;
     addTearDown(capture.dispose);
