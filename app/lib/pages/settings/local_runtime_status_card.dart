@@ -17,6 +17,7 @@ class LocalRuntimeStatusCard extends StatefulWidget {
     this.source,
     this.fetcher,
     this.active = true,
+    this.refreshRevision = 0,
     this.refreshInterval = const Duration(seconds: 5),
   });
 
@@ -24,6 +25,7 @@ class LocalRuntimeStatusCard extends StatefulWidget {
   final LocalMacSession? session;
   final Future<LocalRuntimeStatus> Function()? fetcher;
   final bool active;
+  final int refreshRevision;
   final Duration refreshInterval;
 
   @override
@@ -81,8 +83,9 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     if (oldWidget.session != widget.session ||
         oldWidget.active != widget.active ||
         oldWidget.fetcher != widget.fetcher ||
-        oldWidget.refreshInterval != widget.refreshInterval) {
-      _restart(clear: oldWidget.session != widget.session);
+        oldWidget.refreshInterval != widget.refreshInterval ||
+        oldWidget.refreshRevision != widget.refreshRevision) {
+      _restart(clear: oldWidget.session != widget.session || oldWidget.refreshRevision != widget.refreshRevision);
     }
   }
 
