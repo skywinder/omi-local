@@ -52,6 +52,8 @@ def settings(cfg) -> dict:
 
 
 def managed(cfg) -> bool:
+    if configured_endpoint(cfg) is not None:
+        return False
     data = settings(cfg)
     return data['enabled'] and not data.get('url')
 
@@ -63,11 +65,19 @@ def endpoint(cfg) -> str:
     return data.get('url') or f'ws://127.0.0.1:{port(cfg)}/asr'
 
 
-def selected_endpoint(cfg) -> str:
-    """Return the live endpoint selected for the backend child process."""
+def configured_endpoint(cfg) -> str | None:
+    """None means no provider choice; an empty URL is an explicit off choice."""
     from .local_stt_services import live_url
 
-    return live_url(cfg) or endpoint(cfg)
+    if (cfg.layout.state_root / 'live-stt.json').exists():
+        return live_url(cfg)
+    return None
+
+
+def selected_endpoint(cfg) -> str:
+    """Return the live endpoint selected for the backend child process."""
+    configured = configured_endpoint(cfg)
+    return endpoint(cfg) if configured is None else configured
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -76,7 +86,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def health(cfg) -> dict:
-    address = endpoint(cfg)
+    address = selected_endpoint(cfg)
     if not address:
         return {}
     host = urlsplit(address)
@@ -88,7 +98,7 @@ def health(cfg) -> dict:
                 return {}
             data = json.loads(response.read(65536))
         if (not isinstance(data, dict) or type(data.get('ready')) is not bool
-                or type(data.get('active')) is not bool):
+                or type(data.get('active', False)) is not bool):
             return {}
         return {key: data.get(key) is True for key in ('ready', 'active', 'recovering')}
     except (OSError, ValueError, urllib.error.URLError):
@@ -96,7 +106,7 @@ def health(cfg) -> dict:
 
 
 def require_ready(cfg) -> None:
-    if not settings(cfg)['enabled']:
+    if not selected_endpoint(cfg):
         return
     if not health(cfg).get('ready'):
         raise LocalLiveError('Live transcription is not ready; inspect live-preview status and its startup event')
@@ -138,6 +148,15 @@ def prepare_inference_lock(cfg) -> Path:
 
 def preflight_start(cfg) -> None:
     from . import cli
+    from .local_stt_services import live_settings
+
+    if configured_endpoint(cfg) is not None:
+        configured = live_settings(cfg)
+        # Configured native providers are started by start_configured; an
+        # external provider must already be ready. Neither owns Parakeet's port.
+        if configured.get('provider') == 'external':
+            require_ready(cfg)
+        return
 
     if not settings(cfg)['enabled']:
         return
@@ -166,6 +185,8 @@ def preflight_start(cfg) -> None:
 def start(cfg) -> None:
     from . import cli, local_live_install
 
+    if configured_endpoint(cfg) is not None:
+        return
     if not settings(cfg)['enabled']:
         return
     preflight_start(cfg)

@@ -182,6 +182,25 @@ def test_legacy_ambient_live_endpoint_is_preserved_and_managed_install_skipped(p
     assert events == ['check_final', ('check_engine', 'whisperkit'), ('check_engine', 'whisperkit')]
 
 
+@pytest.mark.parametrize('provider', ['external', 'whisperlivekit'])
+@pytest.mark.parametrize('enabled', [False, True])
+def test_selected_live_provider_does_not_require_or_install_parakeet(prepared, provider, enabled):
+    cfg, events, ready = prepared
+    create_layout(cfg)
+    write(cfg, 'stt-watch.json', {'enabled': False})
+    write(cfg, 'live-stt.json', {
+        'enabled': enabled, 'provider': provider, 'url': 'ws://127.0.0.1:19090/asr',
+    })
+    selected = (cfg.layout.state_root / 'live-stt.json').read_bytes()
+    setup.prepare(cfg)
+    setup.configure_defaults(cfg)
+    setup.check_models(cfg)
+    assert events == []
+    assert ready == {'final': False, 'live': False}
+    assert (cfg.layout.state_root / 'live-stt.json').read_bytes() == selected
+    assert not (cfg.layout.services_dir / 'local-transcripts/.lock').exists()
+
+
 def test_first_defaults_preserve_archive_boundary_and_private_file_modes(prepared):
     cfg, _, _ = prepared
     create_layout(cfg)

@@ -39,7 +39,7 @@ def test_start_uses_existing_lifecycle_and_prints_short_result(monkeypatch):
     monkeypatch.setattr(local_setup.local_transcription, 'prepare', lambda _: events.append('prepare'))
     monkeypatch.setattr(local_setup.local_transcription, 'configure_defaults', lambda _: events.append('defaults'))
     monkeypatch.setattr(local_setup, 'require_transcription_ready', lambda _: events.append('ready'))
-    monkeypatch.setattr(local_setup.local_live, 'settings', lambda _: {'enabled': True})
+    monkeypatch.setattr(local_setup.local_live, 'selected_endpoint', lambda _: 'ws://127.0.0.1:18090/asr')
     monkeypatch.setattr(local_setup.local_launcher, 'install', lambda _: events.append('install'))
     monkeypatch.setattr(local_setup.config, 'load_config', lambda *a, **k: cfg)
     monkeypatch.setattr(local_mac, 'configure', lambda _: events.append('configure'))

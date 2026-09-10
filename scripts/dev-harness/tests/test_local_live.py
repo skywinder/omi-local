@@ -96,3 +96,58 @@ def test_existing_external_url_is_observed_but_not_managed(cfg, monkeypatch):
     monkeypatch.setattr(local_live_install, 'installed', lambda _: pytest.fail('must not install external runtime'))
     local_live.start(cfg)
     assert not local_live.managed(cfg)
+
+
+@pytest.mark.parametrize('provider', ['external', 'whisperlivekit'])
+@pytest.mark.parametrize('legacy_enabled', [False, True])
+def test_selected_provider_owns_preflight_health_and_readiness(cfg, monkeypatch, provider, legacy_enabled):
+    import io
+    from dev_harness import local_setup
+
+    selected_url = 'ws://127.0.0.1:19090/asr'
+    (cfg.layout.state_root / 'live-stt.json').write_text(json.dumps({
+        'enabled': True, 'provider': provider, 'url': selected_url,
+    }))
+    (cfg.layout.state_root / 'live-preview.json').write_text(json.dumps({'enabled': legacy_enabled}))
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": false}')
+    observed = []
+    ready = True
+
+    class Opener:
+        def open(self, url, **kwargs):
+            observed.append(url)
+            response = io.BytesIO(json.dumps({'ready': ready}).encode())
+            response.status = 200
+            return response
+
+    monkeypatch.setattr(local_live.urllib.request, 'build_opener', lambda *_: Opener())
+    monkeypatch.setattr(cli, '_require_port_available_or_owned', lambda *_: pytest.fail('unused Parakeet port'))
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **k: pytest.fail('configured provider has its own lifecycle'))
+    monkeypatch.setattr(local_live_install, 'installed', lambda _: pytest.fail('unused Parakeet assets'))
+    assert not local_live.managed(cfg)
+    assert config.child_env_for(cfg)['OMI_LOCAL_LIVE_PREVIEW_URL'] == selected_url
+    local_live.preflight_start(cfg)
+    assert bool(observed) == (provider == 'external')
+    local_live.start(cfg)
+    local_setup.require_transcription_ready(cfg)
+    assert set(observed) == {'http://127.0.0.1:19090/health'}
+    ready = False
+    with pytest.raises(local_live.LocalLiveError, match='not ready'):
+        local_setup.require_transcription_ready(cfg)
+
+
+def test_explicit_provider_off_disables_live_without_falling_back_to_parakeet(cfg, monkeypatch):
+    from dev_harness import local_setup, local_stt_services
+
+    (cfg.layout.state_root / 'live-stt.json').write_text('{"enabled": false}')
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": false}')
+    monkeypatch.setattr(cli, '_require_port_available_or_owned', lambda *_: pytest.fail('disabled live port'))
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **k: pytest.fail('disabled provider must not start'))
+    monkeypatch.setattr(local_live, 'health', lambda _: pytest.fail('disabled provider must not be probed'))
+    monkeypatch.setattr(local_live_install, 'installed', lambda _: pytest.fail('unused Parakeet assets'))
+    assert config.child_env_for(cfg)['OMI_LOCAL_LIVE_PREVIEW_URL'] == ''
+    assert not local_live.managed(cfg)
+    local_live.preflight_start(cfg)
+    local_live.start(cfg)
+    local_stt_services.start_configured(cfg)
+    local_setup.require_transcription_ready(cfg)

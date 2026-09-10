@@ -85,7 +85,7 @@ def run(cfg, *, open_browser=True):
         print('Новые записи распознаются автоматически.')
     else:
         print('Автоматическое финальное распознавание выключено в настройках.')
-    print('Live-транскрипция готова.' if local_live.settings(cfg)['enabled'] else 'Live-транскрипция выключена в настройках.')
+    print('Live-транскрипция готова.' if local_live.selected_endpoint(cfg) else 'Live-транскрипция выключена в настройках.')
     print('Остановка: bash scripts/local-mac.sh down')
     if open_browser and interactive:
         webbrowser.open(local_library.url(cfg))

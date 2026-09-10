@@ -417,10 +417,8 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
 
         extra["OMI_LOCAL_PAIRING_FILE"] = str(cfg.layout.state_root / "pairing.json")
         extra["ADMIN_KEY_AUTH_ENABLED"] = "false"
-        from .local_stt_services import live_url
-        # A separately configured provider takes precedence; otherwise the
-        # managed Parakeet preview receives its deterministic loopback URL.
-        extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = live_url(cfg) or local_live.endpoint(cfg)
+        # Preserve explicit provider choices, including disabled live STT.
+        extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = local_live.selected_endpoint(cfg)
     if cfg.provider_mode != "offline":
         extra.update(
             {
