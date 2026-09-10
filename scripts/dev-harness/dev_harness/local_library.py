@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
 import os
@@ -20,6 +21,25 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import config, safety
+
+
+ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
+          '/style.css': ('style.css', 'text/css; charset=utf-8'),
+          '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+          '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
+          '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8'),
+          '/reload.mjs': ('reload.mjs', 'text/javascript; charset=utf-8')}
+
+
+def asset_versions(assets, *, index_content=None):
+    """Fingerprint browser code only; no private files or filesystem identifiers."""
+    page = hashlib.sha256()
+    for name, _mime in ASSETS.values():
+        if name != 'style.css':
+            content = index_content if name == 'index.html' and index_content is not None else (assets / name).read_bytes()
+            page.update(name.encode() + b'\0' + content)
+    return {'styles': hashlib.sha256((assets / 'style.css').read_bytes()).hexdigest(),
+            'page': page.hexdigest()}
 
 
 def port(cfg):
@@ -258,14 +278,12 @@ def handler(library, assets, delete=None, runtime=None):
                     or any(k.lower() == 'forwarded' or k.lower().startswith('x-forwarded-') for k in self.headers)
                     or (path.startswith('/api/') and self.headers.get('Sec-Fetch-Site', 'none') not in {'same-origin', 'none'})):
                 return self.send_json({'error': 'Доступ только с этого Mac.'}, 403)
-            assets_map = {'/': ('index.html', 'text/html; charset=utf-8'),
-                          '/style.css': ('style.css', 'text/css; charset=utf-8'),
-                          '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-                          '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
-                          '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8')}
-            if path in assets_map:
-                name, mime = assets_map[path]
+            if path in ASSETS:
+                name, mime = ASSETS[path]
                 body = (assets / name).read_bytes()
+                if path == '/':
+                    versions = html.escape(json.dumps(asset_versions(assets, index_content=body)), quote=True).encode()
+                    body = body.replace(b'__OMILOC_ASSETS__', versions)
                 self.headers_for(200, mime, len(body))
                 if self.command != 'HEAD':
                     self.wfile.write(body)
@@ -273,6 +291,8 @@ def handler(library, assets, delete=None, runtime=None):
                 self.send_json({'service': 'omi-local-library', 'status': 'ok'})
             elif path == '/api/recordings':
                 self.send_json({'recordings': library.scan()})
+            elif path == '/api/assets':
+                self.send_json(asset_versions(assets))
             elif path == '/api/runtime' and runtime is not None:
                 self.send_json(runtime.snapshot())
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
@@ -321,7 +341,7 @@ def start(cfg):
     if not 1024 <= port(cfg) <= 65535:
         raise ValueError('Library port outside supported range')
     assets = cfg.repo_root / 'web-local'
-    if not all((assets / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs', 'live.mjs')):
+    if not all((assets / name).is_file() for name, _mime in ASSETS.values()):
         raise ValueError('Library assets missing')
     cli._require_port_available_or_owned(cfg, 'library', port(cfg))
     if cli._service_record(cfg, 'library'):
