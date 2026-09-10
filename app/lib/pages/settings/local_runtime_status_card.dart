@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:omi/env/env.dart';
+import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/local_runtime_status.dart';
 import 'package:omi/utils/l10n_extensions.dart';
@@ -12,11 +14,13 @@ class LocalRuntimeStatusCard extends StatefulWidget {
   const LocalRuntimeStatusCard({
     super.key,
     this.session,
+    this.source,
     this.fetcher,
     this.active = true,
     this.refreshInterval = const Duration(seconds: 5),
   });
 
+  final ConversationSource? source;
   final LocalMacSession? session;
   final Future<LocalRuntimeStatus> Function()? fetcher;
   final bool active;
@@ -174,8 +178,9 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   }
 
   String _summaryText(BuildContext context) {
-    final state = _errorText(context) != null
-        ? context.l10n.error
+    final error = _errorText(context);
+    final state = error != null
+        ? (_expanded ? context.l10n.error : error)
         : _connection == _ConnectionState.connected
             ? context.l10n.connected
             : _connectionText(context);
@@ -237,12 +242,21 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               child: Row(children: [
+                if (widget.source == ConversationSource.omi || widget.source == ConversationSource.phone) ...[
+                  Flexible(child: RecordingSourceLabel(source: widget.source)),
+                  const SizedBox(width: 12),
+                ],
                 Icon(error == null ? Icons.computer : Icons.error_outline, size: 18, color: Colors.white70),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(_summaryText(context),
-                      key: const ValueKey('local-runtime-summary'),
-                      style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  child: Tooltip(
+                    message: _summaryText(context),
+                    child: Text(_summaryText(context),
+                        key: const ValueKey('local-runtime-summary'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: Colors.white70),
@@ -250,13 +264,6 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
             ),
           ),
         ),
-        if (!_expanded && error != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Text(error,
-                key: const ValueKey('local-runtime-error'),
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ),
         if (_expanded)
           Padding(
             key: const ValueKey('local-runtime-details'),

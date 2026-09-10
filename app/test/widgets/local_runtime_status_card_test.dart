@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:omi/backend/preferences.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/env/dev_env.dart';
 import 'package:omi/env/env.dart';
 import 'package:omi/l10n/app_localizations.dart';
@@ -146,6 +147,36 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('collapsed source and connection share one row at phone width', (tester) async {
+    final session = await paired();
+    for (final source in [ConversationSource.omi, ConversationSource.phone]) {
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('ru'),
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+            body: SizedBox(
+                width: 320,
+                child: LocalRuntimeStatusCard(
+                  session: session,
+                  source: source,
+                  fetcher: () async => LocalRuntimeStatus.fromJson(payload()),
+                ))),
+      ));
+      await tester.pumpAndSettle();
+      final sourceLabel = find.byKey(const Key('recording_source_label'));
+      final summary = find.byKey(const Key('local-runtime-summary'));
+      expect(tester.getCenter(sourceLabel).dy, closeTo(tester.getCenter(summary).dy, 1));
+      expect(tester.getSize(find.byKey(const Key('local-runtime-status'))).height, lessThanOrEqualTo(52));
+      await tester.tap(find.byKey(const Key('local-runtime-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('local-runtime-details')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets('compact pill expands and keeps its chosen state across polling', (tester) async {
     var calls = 0;
     await showCard(tester, await paired(), () async {
@@ -194,7 +225,8 @@ void main() {
     expect(value(tester, 'transcript'), 'Unknown');
     await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
     await tester.pumpAndSettle();
-    expect(value(tester, 'error'), startsWith('Could not connect.'));
+    expect(value(tester, 'summary'), startsWith('Local Mac · Could not connect.'));
+    expect(tester.getSize(find.byKey(const Key('local-runtime-status'))).height, lessThanOrEqualTo(52));
     await tester.pumpWidget(const SizedBox());
   });
 

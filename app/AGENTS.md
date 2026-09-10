@@ -20,12 +20,15 @@ Keep Mac reachability, received-audio counters and live-ASR readiness distinct; 
 must clear stale successful status. Poll only on the visible foreground screen.
 The status card starts collapsed; keep confirmed values during an in-flight poll,
 but clear them on failure or an authenticated pairing change. Draft notifications
-must not restart polling. Error details remain visible when collapsed.
+must not restart polling. Errors replace the collapsed summary; the full text is
+available in its tooltip and expanded details.
 Local capture labels use `localCapturePhase`, never BLE connection alone. Live Omi
 audio evidence expires after 3 seconds without payload; this changes only the label,
 not the recording session. Keep it separate from Mac receipt/storage/STT status.
-Button feedback shows received protocol events (tap=1, double=2, long=3, down=4,
-up=5); firmware may omit edges. Down/up must not toggle capture or start voice commands.
+The collapsed runtime header combines the input source and Mac connection in one row.
+Button feedback shows the completed action for four seconds, never raw down/up events.
+Protocol events (tap=1, double=2, long=3, down=4, up=5) remain diagnostic; firmware
+may omit edges. Down/up must not toggle capture or start voice commands.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.

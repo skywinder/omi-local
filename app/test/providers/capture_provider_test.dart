@@ -431,6 +431,30 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('completed button feedback expires even when no further BLE event arrives', () {
+    fakeAsync((async) {
+      Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      final buttons = StreamController<List<int>>.broadcast(sync: true);
+      final provider = _ButtonCaptureProvider(
+        buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback),
+      );
+      provider.streamDeviceRecording(device: _device(id: 'synthetic-button', type: DeviceType.omi));
+      async.flushMicrotasks();
+      buttons.add([1, 0, 0, 0]);
+      async.flushMicrotasks();
+      expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+      async.elapse(const Duration(seconds: 3));
+      buttons.add([5, 0, 0, 0]);
+      expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+      async.elapse(const Duration(seconds: 1));
+      expect(provider.localOmiButtonFeedback, isNull);
+      provider.dispose();
+      buttons.close();
+      async.flushMicrotasks();
+      Env.setRuntimeModeForTesting(null);
+    });
+  });
+
   test('local button edges are visible without starting recording or a voice command', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
     final buttons = StreamController<List<int>>.broadcast(sync: true);
@@ -445,6 +469,7 @@ void main() {
     for (final event in [OmiButtonEvent.pressed, OmiButtonEvent.longPress, OmiButtonEvent.released]) {
       buttons.add([event.code, 0, 0, 0]);
       expect(provider.lastOmiButtonEvent, event);
+      expect(provider.localOmiButtonFeedback, isNull);
       expect(provider.localCapturePhase, LocalCapturePhase.idle);
     }
     buttons.add([99, 0, 0, 0]);
@@ -453,13 +478,18 @@ void main() {
     provider.startGate = Completer<void>();
     buttons.add([1, 0, 0, 0]);
     expect(provider.localCapturePhase, LocalCapturePhase.starting);
+    expect(provider.localOmiButtonFeedback, isNull);
     expect(provider.lastOmiButtonEvent, OmiButtonEvent.singleTap);
     buttons.add([5, 0, 0, 0]);
     expect(provider.calls, ['start']); // Release is not a second toggle.
     provider.startGate!.complete();
     await pumpEventQueue();
     expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+    buttons.add([5, 0, 0, 0]);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
     provider.updateRecordingDevice(null);
+    expect(provider.localOmiButtonFeedback, isNull);
     expect(provider.lastOmiButtonEvent, isNull);
   });
 
@@ -551,6 +581,7 @@ void main() {
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.recordingState, RecordingState.stop);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.stopped);
     expect(provider.recordingDevice, same(device));
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
@@ -580,6 +611,7 @@ void main() {
     expect(provider.recordingState, RecordingState.stop);
     provider.failStart = false;
     expect(provider.localCapturePhase, LocalCapturePhase.failed);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.failed);
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.calls, ['start', 'stop', 'start']);

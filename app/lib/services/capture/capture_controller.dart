@@ -513,6 +513,21 @@ class CaptureController extends ChangeNotifier
   bool _isProcessingButtonEvent = false; // Guard to prevent overlapping button operations
   OmiButtonEvent? _lastOmiButtonEvent;
   OmiButtonEvent? get lastOmiButtonEvent => _lastOmiButtonEvent;
+  LocalOmiButtonAction? _localOmiButtonFeedback;
+  LocalOmiButtonAction? get localOmiButtonFeedback => _localOmiButtonFeedback;
+  Timer? _localButtonFeedbackTimer;
+
+  void _showLocalButtonFeedback(LocalOmiButtonAction action, int generation) {
+    if (!TemporaryCaptureControls.enabled || generation != _buttonStreamGeneration) return;
+    _localButtonFeedbackTimer?.cancel();
+    _localOmiButtonFeedback = action;
+    notifyListeners();
+    _localButtonFeedbackTimer = Timer(const Duration(seconds: 4), () {
+      _localOmiButtonFeedback = null;
+      notifyListeners();
+    });
+  }
+
   LocalCapturePhase? _localButtonAction;
   bool _localButtonFailed = false;
   bool _hasRecentLocalAudio = false;
@@ -638,6 +653,8 @@ class CaptureController extends ChangeNotifier
     }
     if (_recordingDevice?.id != device?.id) {
       _lastOmiButtonEvent = null;
+      _localButtonFeedbackTimer?.cancel();
+      _localOmiButtonFeedback = null;
       _localButtonAction = null;
       _localButtonFailed = false;
       _resetLocalAudioEvidence();
@@ -1055,9 +1072,15 @@ class CaptureController extends ChangeNotifier
       notifyListeners();
       if (active) {
         await stopStreamDeviceRecording();
+        if (recordingState == RecordingState.stop) {
+          _showLocalButtonFeedback(LocalOmiButtonAction.stopped, generation);
+        }
       } else {
         try {
           await streamDeviceRecording(userInitiated: true);
+          if (recordingState == RecordingState.deviceRecord || recordingState == RecordingState.pause) {
+            _showLocalButtonFeedback(LocalOmiButtonAction.started, generation);
+          }
           if (_temporaryRecordingRequested &&
               _localDeviceStop == null &&
               recordingState != RecordingState.deviceRecord &&
@@ -1071,6 +1094,7 @@ class CaptureController extends ChangeNotifier
       }
     } catch (error) {
       if (generation == _buttonStreamGeneration) _localButtonFailed = true;
+      _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
       Logger.debug('Local recording button failed: ${error.runtimeType}');
     } finally {
       _isProcessingButtonEvent = false;
@@ -1144,16 +1168,24 @@ class CaptureController extends ChangeNotifier
             if (_isPaused) {
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'unmute');
               resumeDeviceRecording().then((_) {
+                if (recordingState == RecordingState.deviceRecord && !isPaused) {
+                  _showLocalButtonFeedback(LocalOmiButtonAction.resumed, generation);
+                }
                 _isProcessingButtonEvent = false;
               }).catchError((e) {
+                _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
                 Logger.debug("Error resuming device recording: $e");
                 _isProcessingButtonEvent = false;
               });
             } else {
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'mute');
               pauseDeviceRecording().then((_) {
+                if (recordingState == RecordingState.pause && isPaused) {
+                  _showLocalButtonFeedback(LocalOmiButtonAction.paused, generation);
+                }
                 _isProcessingButtonEvent = false;
               }).catchError((e) {
+                _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
                 Logger.debug("Error pausing device recording: $e");
                 _isProcessingButtonEvent = false;
               });
@@ -1163,12 +1195,14 @@ class CaptureController extends ChangeNotifier
             Logger.debug("Double tap: marking conversation for starring");
             if (!_starOngoingConversation) {
               markConversationForStarring();
+              _showLocalButtonFeedback(LocalOmiButtonAction.starred, generation);
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'star_conversation');
               // Haptic feedback to confirm
               HapticFeedback.mediumImpact();
             } else {
               // Toggle off if already marked
               unmarkConversationForStarring();
+              _showLocalButtonFeedback(LocalOmiButtonAction.unstarred, generation);
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'unstar_conversation');
               HapticFeedback.lightImpact();
             }
@@ -1176,7 +1210,11 @@ class CaptureController extends ChangeNotifier
             // End conversation and process (default)
             Logger.debug("Double tap: processing conversation");
             PlatformManager.instance.analytics.omiDoubleTap(feature: 'process_conversation');
-            forceProcessingCurrentConversation();
+            forceProcessingCurrentConversation().then((_) {
+              _showLocalButtonFeedback(LocalOmiButtonAction.processing, generation);
+            }).catchError((Object error) {
+              _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
+            });
           }
           return;
         }
@@ -1726,6 +1764,7 @@ class CaptureController extends ChangeNotifier
 
   @override
   void dispose() {
+    _localButtonFeedbackTimer?.cancel();
     _resetLocalAudioEvidence();
     _localDeviceAudioStart?.discard();
     _websocketInitGeneration++;

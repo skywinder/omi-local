@@ -22,7 +22,6 @@ import 'package:omi/services/wals/wal.dart';
 import 'package:omi/widgets/confirmation_dialog.dart';
 import 'package:omi/widgets/conversation_photo_image.dart';
 import 'package:omi/widgets/media_viewer_page.dart';
-import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/widgets/local_capture_feedback.dart';
 import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/widgets/transcript.dart';
@@ -238,17 +237,12 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                 if (Env.isOfflineRuntime)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: LocalOmiButtonFeedback(event: provider.lastOmiButtonEvent),
+                    child: LocalOmiButtonFeedback(action: provider.localOmiButtonFeedback),
                   ),
                 if (Env.isOfflineRuntime)
-                  RecordingSourceLabel(
-                    source: provider.activeRecordingSource,
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  ),
-                if (Env.isOfflineRuntime)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: LocalRuntimeStatusCard(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: LocalRuntimeStatusCard(source: provider.activeRecordingSource),
                   ),
                 Expanded(
                   child: Padding(

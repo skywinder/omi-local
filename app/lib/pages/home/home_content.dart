@@ -17,6 +17,7 @@ import 'package:omi/pages/settings/daily_summary_detail_page.dart';
 import 'package:omi/pages/settings/local_runtime_status_card.dart';
 import 'package:omi/providers/conversation_provider.dart';
 import 'package:omi/providers/home_provider.dart';
+import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/utils/ui_guidelines.dart';
 import 'package:omi/widgets/shimmer_with_timeout.dart';
@@ -86,7 +87,10 @@ class HomeContentPageState extends State<HomeContentPage> with AutomaticKeepAliv
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                    child: LocalRuntimeStatusCard(active: context.watch<HomeProvider>().selectedIndex == 0),
+                    child: LocalRuntimeStatusCard(
+                      active: context.watch<HomeProvider>().selectedIndex == 0,
+                      source: context.watch<CaptureProvider>().activeRecordingSource,
+                    ),
                   ),
                 ),
               // Live capture widget — shows when device or phone mic is recording
