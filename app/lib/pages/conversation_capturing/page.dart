@@ -23,6 +23,8 @@ import 'package:omi/widgets/confirmation_dialog.dart';
 import 'package:omi/widgets/conversation_photo_image.dart';
 import 'package:omi/widgets/media_viewer_page.dart';
 import 'package:omi/widgets/recording_source_label.dart';
+import 'package:omi/widgets/local_capture_feedback.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/widgets/transcript.dart';
 
 class ConversationCapturingPage extends StatefulWidget {
@@ -183,7 +185,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
   Widget build(BuildContext context) {
     return Consumer2<CaptureProvider, DeviceProvider>(
       builder: (context, provider, deviceProvider, child) {
-        final effectivelyMuted = _isMuted || provider.isCallActive;
+        final effectivelyMuted = _isMuted || provider.isPaused || provider.isCallActive;
         final transcriptSessionId =
             provider.activeCaptureSessionId ?? widget.topConversationId ?? 'pending-live-capture';
         final transcriptScrollState = _scrollStateFor(transcriptSessionId);
@@ -209,18 +211,23 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    provider.photos.isNotEmpty
-                        ? "📸"
-                        : effectivelyMuted
-                            ? "🔇"
-                            : "🎙️",
+                    Env.isOfflineRuntime
+                        ? (provider.localCapturePhase == LocalCapturePhase.recording ? '🎙️' : '⏸')
+                        : provider.photos.isNotEmpty
+                            ? "📸"
+                            : effectivelyMuted
+                                ? "🔇"
+                                : "🎙️",
                   ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      provider.photos.isNotEmpty
-                          ? 'Capturing'
-                          : (effectivelyMuted ? context.l10n.muted : context.l10n.listening),
+                      Env.isOfflineRuntime
+                          ? localCaptureStatusText(context, provider.localCapturePhase)
+                          : provider.photos.isNotEmpty
+                              ? 'Capturing'
+                              : (effectivelyMuted ? context.l10n.muted : context.l10n.listening),
+                      key: Env.isOfflineRuntime ? const Key('local_capture_page_state') : null,
                     ),
                   ),
                 ],
@@ -228,6 +235,11 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
             ),
             body: Column(
               children: [
+                if (Env.isOfflineRuntime)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: LocalOmiButtonFeedback(event: provider.lastOmiButtonEvent),
+                  ),
                 if (Env.isOfflineRuntime)
                   RecordingSourceLabel(
                     source: provider.activeRecordingSource,
@@ -254,7 +266,10 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                                   ? Center(
                                       child: Padding(
                                         padding: const EdgeInsets.only(top: 50.0),
-                                        child: Text(context.l10n.waitingForTranscriptOrPhotos),
+                                        child: Text(
+                                            Env.isOfflineRuntime && provider.localCapturePhase == LocalCapturePhase.idle
+                                                ? context.l10n.startRecordingToSeeTranscript
+                                                : context.l10n.waitingForTranscriptOrPhotos),
                                       ),
                                     )
                                   : provider.photos.isNotEmpty

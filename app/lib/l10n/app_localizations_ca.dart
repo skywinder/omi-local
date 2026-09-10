@@ -9,6 +9,21 @@ class AppLocalizationsCa extends AppLocalizations {
   AppLocalizationsCa([String locale = 'ca']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'No s\'està gravant';
+
+  @override
+  String get omiButtonPressed => 'Botó premut';
+
+  @override
+  String get omiButtonReleased => 'Botó alliberat';
+
+  @override
+  String get omiButtonSingleTap => 'Pulsació curta';
+
+  @override
+  String get omiButtonLongPress => 'Pulsació llarga';
+
+  @override
   String get sessionExpiredSignInAgain => 'La sessió ha caducat — torna a iniciar la sessió.';
 
   @override

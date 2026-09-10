@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "未在录音",
+    "omiButtonPressed": "按钮已按下",
+    "omiButtonReleased": "按钮已松开",
+    "omiButtonSingleTap": "短按",
+    "omiButtonLongPress": "长按",
     "@@locale": "zh",
     "sessionExpiredSignInAgain": "会话已过期，请重新登录。",
     "appTitle": "Omi",

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Запис не ведеться",
+    "omiButtonPressed": "Кнопку натиснуто",
+    "omiButtonReleased": "Кнопку відпущено",
+    "omiButtonSingleTap": "Коротке натискання",
+    "omiButtonLongPress": "Довге натискання",
     "@@locale": "uk",
     "sessionExpiredSignInAgain": "Сеанс завершено — увійдіть знову.",
     "appTitle": "Omi",

@@ -9,6 +9,21 @@ class AppLocalizationsSk extends AppLocalizations {
   AppLocalizationsSk([String locale = 'sk']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Nenahráva sa';
+
+  @override
+  String get omiButtonPressed => 'Tlačidlo stlačené';
+
+  @override
+  String get omiButtonReleased => 'Tlačidlo uvoľnené';
+
+  @override
+  String get omiButtonSingleTap => 'Krátke stlačenie';
+
+  @override
+  String get omiButtonLongPress => 'Dlhé stlačenie';
+
+  @override
   String get sessionExpiredSignInAgain => 'Platnosť relácie vypršala — prihláste sa znova.';
 
   @override

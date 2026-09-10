@@ -9,6 +9,21 @@ class AppLocalizationsPl extends AppLocalizations {
   AppLocalizationsPl([String locale = 'pl']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Nagrywanie nieaktywne';
+
+  @override
+  String get omiButtonPressed => 'Przycisk naciśnięty';
+
+  @override
+  String get omiButtonReleased => 'Przycisk zwolniony';
+
+  @override
+  String get omiButtonSingleTap => 'Krótkie naciśnięcie';
+
+  @override
+  String get omiButtonLongPress => 'Długie naciśnięcie';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesja wygasła — zaloguj się ponownie.';
 
   @override

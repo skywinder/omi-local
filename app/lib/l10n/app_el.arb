@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Δεν γίνεται εγγραφή",
+    "omiButtonPressed": "Το κουμπί πατήθηκε",
+    "omiButtonReleased": "Το κουμπί αφέθηκε",
+    "omiButtonSingleTap": "Σύντομο πάτημα",
+    "omiButtonLongPress": "Παρατεταμένο πάτημα",
     "@@locale": "el",
     "sessionExpiredSignInAgain": "Η συνεδρία έληξε — συνδεθείτε ξανά.",
     "appTitle": "Omi",

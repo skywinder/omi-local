@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "ไม่ได้กำลังบันทึก",
+    "omiButtonPressed": "กดปุ่มแล้ว",
+    "omiButtonReleased": "ปล่อยปุ่มแล้ว",
+    "omiButtonSingleTap": "กดสั้น",
+    "omiButtonLongPress": "กดค้าง",
     "@@locale": "th",
     "sessionExpiredSignInAgain": "เซสชันหมดอายุ — ลงชื่อเข้าใช้อีกครั้ง",
     "appTitle": "Omi",

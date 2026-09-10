@@ -9,6 +9,21 @@ class AppLocalizationsUr extends AppLocalizations {
   AppLocalizationsUr([String locale = 'ur']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'ریکارڈنگ نہیں ہو رہی';
+
+  @override
+  String get omiButtonPressed => 'بٹن دبایا گیا';
+
+  @override
+  String get omiButtonReleased => 'بٹن چھوڑ دیا گیا';
+
+  @override
+  String get omiButtonSingleTap => 'مختصر دباؤ';
+
+  @override
+  String get omiButtonLongPress => 'طویل دباؤ';
+
+  @override
   String get sessionExpiredSignInAgain => 'سیشن کی میعاد ختم ہو گئی — دوبارہ سائن ان کریں۔';
 
   @override

@@ -9,6 +9,21 @@ class AppLocalizationsFr extends AppLocalizations {
   AppLocalizationsFr([String locale = 'fr']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Aucun enregistrement en cours';
+
+  @override
+  String get omiButtonPressed => 'Bouton enfoncé';
+
+  @override
+  String get omiButtonReleased => 'Bouton relâché';
+
+  @override
+  String get omiButtonSingleTap => 'Appui court';
+
+  @override
+  String get omiButtonLongPress => 'Appui long';
+
+  @override
   String get sessionExpiredSignInAgain => 'La session a expiré — reconnectez-vous.';
 
   @override

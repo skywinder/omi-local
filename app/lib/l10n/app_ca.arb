@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "No s'està gravant",
+    "omiButtonPressed": "Botó premut",
+    "omiButtonReleased": "Botó alliberat",
+    "omiButtonSingleTap": "Pulsació curta",
+    "omiButtonLongPress": "Pulsació llarga",
     "@@locale": "ca",
     "sessionExpiredSignInAgain": "La sessió ha caducat — torna a iniciar la sessió.",
     "appTitle": "Omi",

@@ -11,6 +11,10 @@ import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/env/env.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/widgets/recording_source_label.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
+import 'package:omi/services/wals/wal.dart';
+import 'package:omi/pages/conversation_capturing/page.dart';
+import 'package:omi/providers/device_provider.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
 import 'package:omi/pages/conversations/widgets/processing_capture.dart';
@@ -31,6 +35,13 @@ class _Capture extends CaptureProvider {
   bool muted = false;
   bool failStart = false;
   Completer<void>? startGate;
+  OmiButtonEvent? buttonEvent;
+  @override
+  OmiButtonEvent? get lastOmiButtonEvent => buttonEvent;
+  @override
+  List<Wal> get unsyncedSessionWals => [];
+  @override
+  int get inFlightAudioSeconds => 0;
 
   @override
   bool get havingRecordingDevice => deviceConnected;
@@ -96,6 +107,11 @@ class _IdleCalls extends ChangeNotifier implements PhoneCallProvider {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _IdleDevice extends ChangeNotifier implements DeviceProvider {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _app(Widget child) => MaterialApp(
       locale: const Locale('ru'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -110,6 +126,73 @@ void main() {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
   });
   tearDown(() => Env.setRuntimeModeForTesting(null));
+
+  testWidgets('connected idle Omi never says Listening; button and capture state stay separate', (tester) async {
+    final capture = _Capture();
+    final calls = _IdleCalls();
+    addTearDown(capture.dispose);
+    addTearDown(calls.dispose);
+    await tester.pumpWidget(_app(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CaptureProvider>.value(value: capture),
+        ChangeNotifierProvider<PhoneCallProvider>.value(value: calls),
+      ],
+      child: const ConversationCaptureWidget(),
+    )));
+    await tester.pump();
+    expect(find.text('Запись не идёт'), findsOneWidget);
+    expect(find.text('Listening'), findsNothing);
+    for (final event in [OmiButtonEvent.pressed, OmiButtonEvent.released, OmiButtonEvent.singleTap]) {
+      capture.buttonEvent = event;
+      capture.notifyListeners();
+      await tester.pump();
+      expect(find.byKey(const Key('local_omi_button_feedback')), findsOneWidget);
+      expect(find.text('Запись не идёт'), findsOneWidget);
+    }
+    expect(find.text('Omi · Короткое нажатие'), findsOneWidget);
+    capture.updateRecordingState(RecordingState.deviceRecord);
+    await tester.pump();
+    final label = tester.widget<Text>(find.byKey(const Key('local_capture_state'))).data;
+    final l10n = AppLocalizations.of(tester.element(find.byKey(const Key('local_capture_state'))));
+    expect(label, l10n.waitingForData);
+    expect(find.text(l10n.listening), findsNothing);
+    capture.muted = true;
+    capture.updateRecordingState(RecordingState.pause);
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('local_capture_state'))).data, l10n.paused);
+    capture.updateRecordingState(RecordingState.stop);
+    await tester.pump();
+    expect(find.text('Запись не идёт'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('transcript page uses the same idle and paused states instead of unconditional Listening',
+      (tester) async {
+    final capture = _Capture();
+    final device = _IdleDevice();
+    addTearDown(capture.dispose);
+    addTearDown(device.dispose);
+    await tester.pumpWidget(_app(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CaptureProvider>.value(value: capture),
+        ChangeNotifierProvider<DeviceProvider>.value(value: device),
+      ],
+      child: const ConversationCapturingPage(),
+    )));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('local_capture_page_state'))).data, 'Запись не идёт');
+    capture.buttonEvent = OmiButtonEvent.released;
+    capture.muted = true;
+    capture.updateRecordingState(RecordingState.pause);
+    await tester.pump();
+    final l10n = AppLocalizations.of(tester.element(find.byKey(const Key('local_capture_page_state'))));
+    expect(tester.widget<Text>(find.byKey(const Key('local_capture_page_state'))).data, l10n.paused);
+    expect(find.text('Omi · Кнопка отпущена'), findsOneWidget);
+    expect(find.text(l10n.listening), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('source label follows the current input and clears when capture stops', (tester) async {
     Widget sourceApp(ConversationSource? source, {String language = 'ru', double scale = 1}) => MaterialApp(

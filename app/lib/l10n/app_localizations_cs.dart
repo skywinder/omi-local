@@ -9,6 +9,21 @@ class AppLocalizationsCs extends AppLocalizations {
   AppLocalizationsCs([String locale = 'cs']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Nenahrává se';
+
+  @override
+  String get omiButtonPressed => 'Tlačítko stisknuto';
+
+  @override
+  String get omiButtonReleased => 'Tlačítko uvolněno';
+
+  @override
+  String get omiButtonSingleTap => 'Krátké stisknutí';
+
+  @override
+  String get omiButtonLongPress => 'Dlouhé stisknutí';
+
+  @override
   String get sessionExpiredSignInAgain => 'Platnost relace vypršela — přihlaste se znovu.';
 
   @override

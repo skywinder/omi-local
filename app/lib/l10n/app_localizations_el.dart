@@ -9,6 +9,21 @@ class AppLocalizationsEl extends AppLocalizations {
   AppLocalizationsEl([String locale = 'el']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Δεν γίνεται εγγραφή';
+
+  @override
+  String get omiButtonPressed => 'Το κουμπί πατήθηκε';
+
+  @override
+  String get omiButtonReleased => 'Το κουμπί αφέθηκε';
+
+  @override
+  String get omiButtonSingleTap => 'Σύντομο πάτημα';
+
+  @override
+  String get omiButtonLongPress => 'Παρατεταμένο πάτημα';
+
+  @override
   String get sessionExpiredSignInAgain => 'Η συνεδρία έληξε — συνδεθείτε ξανά.';
 
   @override

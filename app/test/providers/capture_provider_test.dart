@@ -22,6 +22,7 @@ import 'package:omi/models/custom_stt_config.dart';
 import 'package:omi/models/stt_provider.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/services/capture/capture_external_actions.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/services/capture/conversation_location_capture.dart';
 import 'package:omi/services/services.dart';
 import 'package:omi/services/sockets/pure_socket.dart';
@@ -430,6 +431,78 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('local button edges are visible without starting recording or a voice command', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    final provider =
+        _ButtonCaptureProvider(buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback));
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    await provider.streamDeviceRecording(device: _device(id: 'synthetic-button', type: DeviceType.omi));
+    for (final event in [OmiButtonEvent.pressed, OmiButtonEvent.longPress, OmiButtonEvent.released]) {
+      buttons.add([event.code, 0, 0, 0]);
+      expect(provider.lastOmiButtonEvent, event);
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+    }
+    buttons.add([99, 0, 0, 0]);
+    expect(provider.lastOmiButtonEvent, OmiButtonEvent.released);
+    expect(provider.calls, isEmpty);
+    provider.startGate = Completer<void>();
+    buttons.add([1, 0, 0, 0]);
+    expect(provider.localCapturePhase, LocalCapturePhase.starting);
+    expect(provider.lastOmiButtonEvent, OmiButtonEvent.singleTap);
+    buttons.add([5, 0, 0, 0]);
+    expect(provider.calls, ['start']); // Release is not a second toggle.
+    provider.startGate!.complete();
+    await pumpEventQueue();
+    expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+    provider.updateRecordingDevice(null);
+    expect(provider.lastOmiButtonEvent, isNull);
+  });
+
+  test('local audio status needs payload and expires without stopping capture', () {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    fakeAsync((async) {
+      final audio = StreamController<List<int>>.broadcast(sync: true);
+      final provider = CaptureProvider(audioListenerLoader: (_, callback) async => audio.stream.listen(callback));
+      provider.updateRecordingDevice(_device(id: 'synthetic-audio', type: DeviceType.omi));
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+      provider.updateRecordingState(RecordingState.deviceRecord);
+      provider.streamAudioToWs('synthetic-audio', BleAudioCodec.pcm16);
+      async.flushMicrotasks();
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      audio.add([0, 0, 0]);
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      audio.add([0, 0, 0, 1, 2]);
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      async.elapse(const Duration(seconds: 2));
+      audio.add([1, 0, 0, 3, 4]);
+      async.elapse(const Duration(seconds: 2));
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      async.elapse(const Duration(seconds: 1));
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      expect(provider.recordingState, RecordingState.deviceRecord);
+      audio.add([2, 0, 0, 5, 6]);
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      provider.updateRecordingState(RecordingState.pause);
+      audio.add([3, 0, 0, 7, 8]);
+      expect(provider.localCapturePhase, LocalCapturePhase.paused);
+      provider.updateRecordingState(RecordingState.stop);
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+      provider.updateRecordingState(RecordingState.deviceRecord);
+      audio.add([4, 0, 0, 9, 10]); // Old subscription cannot prove a new capture.
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      provider.dispose();
+      audio.close();
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 4));
+    });
+  });
+
   test('active recording source follows capture state, not the connected device', () {
     final provider = CaptureProvider();
     addTearDown(provider.dispose);
@@ -506,9 +579,11 @@ void main() {
     expect(provider.calls, ['start', 'stop']);
     expect(provider.recordingState, RecordingState.stop);
     provider.failStart = false;
+    expect(provider.localCapturePhase, LocalCapturePhase.failed);
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.calls, ['start', 'stop', 'start']);
+    expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
   });
 
   test('local button drops events from a replaced or disconnected device', () async {

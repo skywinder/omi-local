@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "ریکارڈنگ نہیں ہو رہی",
+    "omiButtonPressed": "بٹن دبایا گیا",
+    "omiButtonReleased": "بٹن چھوڑ دیا گیا",
+    "omiButtonSingleTap": "مختصر دباؤ",
+    "omiButtonLongPress": "طویل دباؤ",
     "@@locale": "ur",
     "sessionExpiredSignInAgain": "سیشن کی میعاد ختم ہو گئی — دوبارہ سائن ان کریں۔",
     "@@last_modified": "2024-12-26",

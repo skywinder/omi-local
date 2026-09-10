@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "در حال ضبط نیست",
+    "omiButtonPressed": "دکمه فشرده شد",
+    "omiButtonReleased": "دکمه رها شد",
+    "omiButtonSingleTap": "فشار کوتاه",
+    "omiButtonLongPress": "فشار طولانی",
     "@@locale": "fa",
     "sessionExpiredSignInAgain": "جلسه منقضی شد — دوباره وارد شوید.",
     "@@last_modified": "2024-12-26",

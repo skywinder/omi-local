@@ -9,6 +9,21 @@ class AppLocalizationsFa extends AppLocalizations {
   AppLocalizationsFa([String locale = 'fa']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'در حال ضبط نیست';
+
+  @override
+  String get omiButtonPressed => 'دکمه فشرده شد';
+
+  @override
+  String get omiButtonReleased => 'دکمه رها شد';
+
+  @override
+  String get omiButtonSingleTap => 'فشار کوتاه';
+
+  @override
+  String get omiButtonLongPress => 'فشار طولانی';
+
+  @override
   String get sessionExpiredSignInAgain => 'جلسه منقضی شد — دوباره وارد شوید.';
 
   @override

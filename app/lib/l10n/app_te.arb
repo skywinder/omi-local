@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "రికార్డింగ్ జరగడం లేదు",
+    "omiButtonPressed": "బటన్ నొక్కబడింది",
+    "omiButtonReleased": "బటన్ వదిలివేయబడింది",
+    "omiButtonSingleTap": "చిన్న నొక్కు",
+    "omiButtonLongPress": "ఎక్కువసేపు నొక్కు",
     "@@locale": "te",
     "sessionExpiredSignInAgain": "సెషన్ గడువు ముగిసింది — మళ్లీ సైన్ ఇన్ చేయండి.",
     "@@last_modified": "2024-12-26",

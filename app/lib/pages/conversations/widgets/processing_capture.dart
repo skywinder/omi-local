@@ -25,6 +25,8 @@ import 'package:omi/utils/other/temp.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/providers/phone_call_provider.dart';
 import 'package:omi/widgets/recording_source_label.dart';
+import 'package:omi/widgets/local_capture_feedback.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 
 class ConversationCaptureWidget extends StatefulWidget {
   const ConversationCaptureWidget({super.key});
@@ -130,6 +132,11 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
                       source: provider.activeRecordingSource,
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                     ),
+                  if (Env.isOfflineRuntime)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: LocalOmiButtonFeedback(event: provider.lastOmiButtonEvent),
+                    ),
                   _buildUnifiedRecordingUI(provider, header),
                 ],
               ),
@@ -192,6 +199,20 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
 
   Widget? _getConversationHeader(BuildContext context) {
     var captureProvider = context.read<CaptureProvider>();
+    if (Env.isOfflineRuntime) {
+      if (!captureProvider.havingRecordingDevice &&
+          captureProvider.localCapturePhase == LocalCapturePhase.idle &&
+          captureProvider.segments.isEmpty &&
+          captureProvider.photos.isEmpty) return null;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(
+          localCaptureStatusText(context, captureProvider.localCapturePhase),
+          key: const Key('local_capture_state'),
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+      );
+    }
     bool deviceServiceStateOk = captureProvider.recordingDeviceServiceReady;
     bool transcriptServiceStateOk = captureProvider.transcriptServiceReady;
     bool isHavingTranscript = captureProvider.segments.isNotEmpty;
@@ -407,31 +428,43 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
                         ? 'Capturing'
                         : context.l10n.listening;
 
+    if (Env.isOfflineRuntime) statusText = localCaptureStatusText(context, provider.localCapturePhase);
+
     // When recording is active, show the unified UI design
     if (isDeviceRecording || isPhoneRecording) {
       Widget statusRow = Row(
         children: [
           // Left: Status tag
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: const Color(0xFF35343B), borderRadius: BorderRadius.circular(20)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  statusText,
-                  style: const TextStyle(color: Color(0xFFC9CBCF), fontSize: 14, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: isPaused ? const Color(0xFFFF9500) : const Color(0xFFFE5D50),
-                    shape: BoxShape.circle,
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: const Color(0xFF35343B), borderRadius: BorderRadius.circular(20)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                      child: Text(
+                    statusText,
+                    key: Env.isOfflineRuntime ? const Key('local_capture_state') : null,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFFC9CBCF), fontSize: 14, fontWeight: FontWeight.w500),
+                  )),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Env.isOfflineRuntime && provider.localCapturePhase != LocalCapturePhase.recording
+                          ? Colors.white54
+                          : isPaused
+                              ? const Color(0xFFFF9500)
+                              : const Color(0xFFFE5D50),
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           // Star indicator when conversation is marked for starring

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Nincs felvétel",
+    "omiButtonPressed": "Gomb lenyomva",
+    "omiButtonReleased": "Gomb felengedve",
+    "omiButtonSingleTap": "Rövid gombnyomás",
+    "omiButtonLongPress": "Hosszú gombnyomás",
     "@@locale": "hu",
     "sessionExpiredSignInAgain": "A munkamenet lejárt — jelentkezz be újra.",
     "appTitle": "Omi",

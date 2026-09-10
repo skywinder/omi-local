@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Запись не идёт",
+    "omiButtonPressed": "Кнопка нажата",
+    "omiButtonReleased": "Кнопка отпущена",
+    "omiButtonSingleTap": "Короткое нажатие",
+    "omiButtonLongPress": "Долгое нажатие",
     "@@locale": "ru",
     "sessionExpiredSignInAgain": "Сеанс истёк — войдите снова.",
     "appTitle": "Omi",

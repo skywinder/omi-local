@@ -9,6 +9,21 @@ class AppLocalizationsMk extends AppLocalizations {
   AppLocalizationsMk([String locale = 'mk']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Не се снима';
+
+  @override
+  String get omiButtonPressed => 'Копчето е притиснато';
+
+  @override
+  String get omiButtonReleased => 'Копчето е отпуштено';
+
+  @override
+  String get omiButtonSingleTap => 'Кратко притискање';
+
+  @override
+  String get omiButtonLongPress => 'Долго притискање';
+
+  @override
   String get sessionExpiredSignInAgain => 'Сесијата истече — најавете се повторно.';
 
   @override

@@ -9,6 +9,21 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get localCaptureIdle => '녹음 중이 아님';
+
+  @override
+  String get omiButtonPressed => '버튼 누름';
+
+  @override
+  String get omiButtonReleased => '버튼에서 손을 뗌';
+
+  @override
+  String get omiButtonSingleTap => '짧게 누름';
+
+  @override
+  String get omiButtonLongPress => '길게 누름';
+
+  @override
   String get sessionExpiredSignInAgain => '세션이 만료되었습니다. 다시 로그인하세요.';
 
   @override

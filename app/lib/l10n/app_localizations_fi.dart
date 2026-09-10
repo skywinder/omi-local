@@ -9,6 +9,21 @@ class AppLocalizationsFi extends AppLocalizations {
   AppLocalizationsFi([String locale = 'fi']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Ei tallenneta';
+
+  @override
+  String get omiButtonPressed => 'Painike painettu';
+
+  @override
+  String get omiButtonReleased => 'Painike vapautettu';
+
+  @override
+  String get omiButtonSingleTap => 'Lyhyt painallus';
+
+  @override
+  String get omiButtonLongPress => 'Pitkä painallus';
+
+  @override
   String get sessionExpiredSignInAgain => 'Istunto on vanhentunut — kirjaudu uudelleen.';
 
   @override

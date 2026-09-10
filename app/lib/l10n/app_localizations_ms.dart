@@ -9,6 +9,21 @@ class AppLocalizationsMs extends AppLocalizations {
   AppLocalizationsMs([String locale = 'ms']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Tidak merakam';
+
+  @override
+  String get omiButtonPressed => 'Butang ditekan';
+
+  @override
+  String get omiButtonReleased => 'Butang dilepaskan';
+
+  @override
+  String get omiButtonSingleTap => 'Tekan sebentar';
+
+  @override
+  String get omiButtonLongPress => 'Tekan lama';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesi tamat tempoh — log masuk semula.';
 
   @override

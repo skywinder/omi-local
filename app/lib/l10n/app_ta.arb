@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "பதிவு நடைபெறவில்லை",
+    "omiButtonPressed": "பொத்தான் அழுத்தப்பட்டது",
+    "omiButtonReleased": "பொத்தான் விடப்பட்டது",
+    "omiButtonSingleTap": "குறுகிய அழுத்தம்",
+    "omiButtonLongPress": "நீண்ட அழுத்தம்",
     "@@locale": "ta",
     "sessionExpiredSignInAgain": "அமர்வு காலாவதியானது — மீண்டும் உள்நுழையவும்.",
     "@@last_modified": "2024-12-26",

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Snimanje nije aktivno",
+    "omiButtonPressed": "Gumb je pritisnut",
+    "omiButtonReleased": "Gumb je otpušten",
+    "omiButtonSingleTap": "Kratki pritisak",
+    "omiButtonLongPress": "Dugi pritisak",
     "@@locale": "hr",
     "sessionExpiredSignInAgain": "Sesija je istekla — prijavite se ponovno.",
     "@@last_modified": "2024-12-26",
