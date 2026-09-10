@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import fcntl
 from pathlib import Path
 import sys
 import subprocess
@@ -75,7 +77,8 @@ def start_configured(cfg):
         for key in ('binary', 'model_dir', 'tokenizer_dir'):
             Path(argmax[key]).resolve(strict=True)
         commands.append(('argmax-stt', [sys.executable, str(Path(__file__).with_name('run_argmax.py')),
-                                      '--settings', str(cfg.layout.state_root / 'argmax-stt.json')],
+                                      '--settings', str(cfg.layout.state_root / 'argmax-stt.json'),
+                                      '--settings-digest', hashlib.sha256(json.dumps(argmax, sort_keys=True).encode()).hexdigest()],
                          cfg.repo_root, port))
     if live.get('provider') == 'whisperlivekit':
         python = Path(live['python']).expanduser().absolute()
@@ -92,6 +95,16 @@ def start_configured(cfg):
                                     '--chunk-seconds', str(live.get('chunk_seconds', 4))],
                          cfg.repo_root / 'scripts', urlsplit(live['url']).port))
     for name, command, cwd, port in commands:
+        existing = cli._service_record(cfg, name)
+        if existing is not None and existing.get('command') != command:
+            lock_path = cfg.layout.services_dir / 'local-transcripts/.lock'
+            lock_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with lock_path.open('a') as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise ServiceError('Stop recording and wait for final STT before changing providers') from None
+                cli._stop_single_service(cfg, existing)
         env = config.child_env_for(cfg)
         env['OMI_HARNESS_PRIVATE_UMASK'] = '077'
         cli._start_process(cfg, name, command, cwd=cwd, log_name=name + '.log', port=port, env=env)

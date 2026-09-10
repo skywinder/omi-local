@@ -468,21 +468,43 @@ def test_managed_live_preserves_virtualenv_interpreter_path(tmp_path, monkeypatc
     starts = []
     monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
     monkeypatch.setattr(cli, '_start_process', lambda cfg, service, command, **kw: starts.append(command))
+    monkeypatch.setattr(cli, '_service_record', lambda *a: None)
     monkeypatch.setattr(services, 'health', lambda *a: (True, 'ready'))
     services.start_configured(cfg)
     assert starts[0][0] == str(python)  # Resolving this symlink loses the venv packages.
+
+    # A healthy process must still reload when the requested language changes.
+    recorded = {'command': starts[0]}
+    monkeypatch.setattr(cli, '_service_record', lambda *a: recorded)
+    stops = []
+    monkeypatch.setattr(cli, '_stop_single_service', lambda *a: stops.append(True))
+    services.start_configured(cfg)
+    assert stops == []
+    path = tmp_path / 'live-stt.json'
+    changed = json.loads(path.read_text())
+    changed['language'] = 'auto'
+    path.write_text(json.dumps(changed))
+    import fcntl
+    with (cfg.layout.services_dir / 'local-transcripts/.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(services.ServiceError, match='Stop recording'):
+            services.start_configured(cfg)
+        assert stops == []
+    services.start_configured(cfg)
+    assert stops == [True] and 'auto' in starts[-1]
 
 
 def test_managed_stt_detects_failed_start_without_waiting_for_model_timeout(tmp_path, monkeypatch):
     from dev_harness import cli, config, local_stt_services as services
     cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
-                          layout=SimpleNamespace(state_root=tmp_path))
+                          layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
     (tmp_path / 'argmax-stt.json').write_text(json.dumps({
         'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(tmp_path),
         'model_dir': str(tmp_path), 'tokenizer_dir': str(tmp_path)}))
     monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
     monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
-    monkeypatch.setattr(cli, '_service_record', lambda *a: {'pid': 123})
+    records = iter([None, {'pid': 123}])
+    monkeypatch.setattr(cli, '_service_record', lambda *a: next(records))
     monkeypatch.setattr(services, 'health', lambda *a: (False, 'unavailable'))
     monkeypatch.setattr(services.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout='Z'))
     monkeypatch.setattr(services.time, 'sleep', lambda *a: pytest.fail('must fail promptly'))

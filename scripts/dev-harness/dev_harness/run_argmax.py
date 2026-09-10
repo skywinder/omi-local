@@ -1,6 +1,7 @@
 """Run an existing Argmax binary with loopback-only networking and private temporary audio."""
 import argparse
 import json
+import hashlib
 import os
 from pathlib import Path
 import signal
@@ -11,8 +12,12 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--settings', type=Path, required=True)
+    parser.add_argument('--settings-digest', required=True)
     args = parser.parse_args()
     data = json.loads(args.settings.read_text())
+    digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    if digest != args.settings_digest:
+        raise SystemExit('Argmax settings changed during startup')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='argmax-', dir=args.settings.parent) as temporary:
         env = {key: os.environ[key] for key in ('HOME', 'PATH', 'LANG') if key in os.environ}
