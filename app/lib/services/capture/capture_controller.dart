@@ -28,6 +28,7 @@ import 'package:omi/providers/device_onboarding_provider.dart';
 import 'package:omi/services/capture/capture_external_actions.dart';
 import 'package:omi/services/capture/capture_metrics_tracker.dart';
 import 'package:omi/services/capture/local_device_audio_start.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/services/capture/temporary_capture_controls.dart';
 import 'package:omi/services/capture/conversation_source_for_device.dart';
 import 'package:omi/services/capture/conversation_location_capture.dart';
@@ -67,6 +68,7 @@ import 'package:omi/backend/schema/message_event.dart'
         PhotoProcessingEvent,
         PhotoDescribedEvent,
         FreemiumThresholdReachedEvent,
+        LocalTranscriptSnapshotEvent,
         SegmentsDeletedEvent;
 
 class CaptureController extends ChangeNotifier
@@ -345,6 +347,25 @@ class CaptureController extends ChangeNotifier
   BtDevice? _recordingDevice;
   BtDevice? _sessionRecordingDevice;
 
+  /// The source owned by the current capture, independent of Bluetooth status.
+  ConversationSource? get activeRecordingSource {
+    switch (recordingState) {
+      case RecordingState.initialising:
+      case RecordingState.record:
+      case RecordingState.interrupted:
+        return ConversationSource.phone;
+      case RecordingState.deviceRecord:
+      case RecordingState.pause:
+        final device = _sessionRecordingDevice ?? _recordingDevice;
+        return ConversationSource.values.asNameMap()[conversationSourceForDeviceType(device?.type)];
+      case RecordingState.systemAudioRecord:
+        return ConversationSource.desktop;
+      case RecordingState.stop:
+      case RecordingState.error:
+        return null;
+    }
+  }
+
   String? _getConversationSourceFromDevice() {
     return conversationSourceForDeviceType(_recordingDevice?.type);
   }
@@ -352,6 +373,11 @@ class CaptureController extends ChangeNotifier
   ServerConversation? _conversation;
   List<TranscriptSegment> segments = [];
   List<ConversationPhoto> photos = [];
+  String? _localTranscriptPreviewId;
+  int _localTranscriptRevision = 0;
+  Set<String> _localTranscriptSegmentIds = {};
+  final Set<String> _retiredLocalTranscriptPreviewIds = {};
+  int _transcriptStateGeneration = 0;
 
   /// Unix timestamp (seconds) when the current capture session started.
   /// Used to scope WAL queries to only this session's audio.
@@ -485,6 +511,61 @@ class CaptureController extends ChangeNotifier
   DateTime? _voiceCommandSession;
   List<List<int>> _commandBytes = [];
   bool _isProcessingButtonEvent = false; // Guard to prevent overlapping button operations
+  OmiButtonEvent? _lastOmiButtonEvent;
+  OmiButtonEvent? get lastOmiButtonEvent => _lastOmiButtonEvent;
+  LocalCapturePhase? _localButtonAction;
+  bool _localButtonFailed = false;
+  bool _hasRecentLocalAudio = false;
+  Timer? _localAudioFreshnessTimer;
+  int _localAudioGeneration = 0;
+
+  // A short gap is normal; sustained absence must not look like live audio.
+  static const localAudioFreshness = Duration(seconds: 3);
+
+  LocalCapturePhase get localCapturePhase {
+    if (_localDeviceStop != null ||
+        (_localDeviceAudioStart?.stopping ?? false) ||
+        _localButtonAction == LocalCapturePhase.stopping) return LocalCapturePhase.stopping;
+    if (_localButtonFailed || recordingState == RecordingState.error) return LocalCapturePhase.failed;
+    if (recordingState == RecordingState.pause || recordingState == RecordingState.interrupted || isPaused) {
+      // A stopped session remains stopped even if a persisted mute flag survives.
+      if (recordingState != RecordingState.stop) return LocalCapturePhase.paused;
+    }
+    if (_localDeviceAudioStart != null ||
+        _localButtonAction == LocalCapturePhase.starting ||
+        recordingState == RecordingState.initialising) return LocalCapturePhase.starting;
+    return switch (recordingState) {
+      RecordingState.deviceRecord => SharedPreferencesUtil().batchModeEnabled || _hasRecentLocalAudio
+          ? LocalCapturePhase.recording
+          : LocalCapturePhase.waitingAudio,
+      RecordingState.record || RecordingState.systemAudioRecord => LocalCapturePhase.recording,
+      _ => LocalCapturePhase.idle,
+    };
+  }
+
+  void _resetLocalAudioEvidence() {
+    _localAudioGeneration++;
+    _hasRecentLocalAudio = false;
+    _localAudioFreshnessTimer?.cancel();
+    _localAudioFreshnessTimer = null;
+  }
+
+  void _receiveLocalAudioEvidence(int generation) {
+    if (!TemporaryCaptureControls.enabled ||
+        generation != _localAudioGeneration ||
+        recordingState != RecordingState.deviceRecord ||
+        isPaused) return;
+    final wasReceiving = _hasRecentLocalAudio;
+    _hasRecentLocalAudio = true;
+    _localAudioFreshnessTimer?.cancel();
+    _localAudioFreshnessTimer = Timer(localAudioFreshness, () {
+      _localAudioFreshnessTimer = null;
+      _hasRecentLocalAudio = false;
+      notifyListeners();
+    });
+    if (!wasReceiving) notifyListeners();
+  }
+
   Timer? _voiceCommandTimeoutTimer; // 30s auto-end timer for voice questions
   bool _voiceSessionStartedByLegacyLongPress =
       false; // Track if session was started by legacy long press (3) vs new toggle (1), TODO: remove this flag later
@@ -555,7 +636,13 @@ class CaptureController extends ChangeNotifier
       _websocketInitGeneration++;
       recordingState = RecordingState.stop;
     }
-    if (_recordingDevice?.id != device?.id) unawaited(_cancelButtonStream());
+    if (_recordingDevice?.id != device?.id) {
+      _lastOmiButtonEvent = null;
+      _localButtonAction = null;
+      _localButtonFailed = false;
+      _resetLocalAudioEvidence();
+      unawaited(_cancelButtonStream());
+    }
     Logger.debug('connected device changed from ${_recordingDevice?.id} to ${device?.id}');
     _recordingDevice = device;
     if (device == null) _endOfflineSession();
@@ -568,6 +655,7 @@ class CaptureController extends ChangeNotifier
 
   Future _resetStateVariables() async {
     _stopInProgressConversationRefresh();
+    _retireLocalTranscriptPreview();
     segments = [];
     photos = [];
     hasTranscripts = false;
@@ -576,6 +664,7 @@ class CaptureController extends ChangeNotifier
     taggingSegmentIds = [];
     _sessionStartSeconds = 0;
     _endOfflineSession();
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
@@ -948,6 +1037,7 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _toggleLocalRecordingSession(String deviceId) async {
     if (_recordingDevice?.id != deviceId) return;
+    final generation = _buttonStreamGeneration;
     if (_isProcessingButtonEvent) {
       final starting = _localDeviceAudioStart;
       if (starting != null && !starting.stopping && !starting.invalidated) {
@@ -956,10 +1046,13 @@ class CaptureController extends ChangeNotifier
       return;
     }
     _isProcessingButtonEvent = true;
+    _localButtonFailed = false;
     try {
       final active = _temporaryRecordingRequested ||
           recordingState == RecordingState.deviceRecord ||
           recordingState == RecordingState.pause;
+      _localButtonAction = active ? LocalCapturePhase.stopping : LocalCapturePhase.starting;
+      notifyListeners();
       if (active) {
         await stopStreamDeviceRecording();
       } else {
@@ -977,9 +1070,14 @@ class CaptureController extends ChangeNotifier
         }
       }
     } catch (error) {
+      if (generation == _buttonStreamGeneration) _localButtonFailed = true;
       Logger.debug('Local recording button failed: ${error.runtimeType}');
     } finally {
       _isProcessingButtonEvent = false;
+      if (generation == _buttonStreamGeneration) {
+        _localButtonAction = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -1003,9 +1101,17 @@ class CaptureController extends ChangeNotifier
         ).getUint32(0);
         Logger.debug("device button $buttonState");
 
-        if (TemporaryCaptureControls.enabled && buttonState == 1) {
-          unawaited(_toggleLocalRecordingSession(deviceId));
-          return;
+        if (TemporaryCaptureControls.enabled) {
+          final event = OmiButtonEvent.fromCode(buttonState);
+          if (event == null) return;
+          _lastOmiButtonEvent = event;
+          notifyListeners();
+          if (event == OmiButtonEvent.singleTap) {
+            unawaited(_toggleLocalRecordingSession(deviceId));
+            return;
+          }
+          // Edges describe the gesture, not a second Start/Stop or cloud command.
+          if (event != OmiButtonEvent.doubleTap || _temporaryRecordingStopped) return;
         }
 
         // Intercept for interactive device onboarding
@@ -1130,9 +1236,11 @@ class CaptureController extends ChangeNotifier
     final starting = _localDeviceAudioStart;
     if (starting == null) await _bleBytesStream?.cancel();
     _startMetricsTracking();
+    final audioGeneration = _localAudioGeneration;
     void receive(List<int> value) {
       final snapshot = List<int>.from(value);
       if (snapshot.isEmpty || snapshot.length < 3) return;
+      if (snapshot.length > 3) _receiveLocalAudioEvidence(audioGeneration);
 
       // Track bytes received from BLE
       _metrics.addBleBytes(snapshot.length);
@@ -1560,12 +1668,15 @@ class CaptureController extends ChangeNotifier
   }
 
   void clearTranscripts() {
+    _retireLocalTranscriptPreview();
     segments = [];
     hasTranscripts = false;
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
   void clearUserData() {
+    _retireLocalTranscriptPreview();
     segments = [];
     photos = [];
     hasTranscripts = false;
@@ -1573,6 +1684,7 @@ class CaptureController extends ChangeNotifier
     _terminalTranscriptionFailure = null;
     suggestionsBySegmentId = {};
     taggingSegmentIds = [];
+    _segmentsPhotosVersion++;
     notifyListeners();
   }
 
@@ -1614,6 +1726,7 @@ class CaptureController extends ChangeNotifier
 
   @override
   void dispose() {
+    _resetLocalAudioEvidence();
     _localDeviceAudioStart?.discard();
     _websocketInitGeneration++;
     _phoneBatchGeolocationPreference.invalidateSession();
@@ -1635,6 +1748,8 @@ class CaptureController extends ChangeNotifier
   }
 
   void updateRecordingState(RecordingState state) {
+    if (state != RecordingState.deviceRecord) _resetLocalAudioEvidence();
+    if (state == RecordingState.initialising || state == RecordingState.record) _localButtonFailed = false;
     recordingState = state;
     notifyListeners();
   }
@@ -1957,6 +2072,8 @@ class CaptureController extends ChangeNotifier
       if (_recordingDevice != null) await streamButton(_recordingDevice!.id);
       if (userInitiated && _recordingDevice != null) {
         if (_temporaryRecordingRequested && recordingState == RecordingState.deviceRecord) return;
+        _resetLocalAudioEvidence();
+        _localButtonFailed = false;
         _temporaryRecordingRequested = true;
         _isPaused = false;
         SharedPreferencesUtil().deviceMuted = false;
@@ -1976,7 +2093,10 @@ class CaptureController extends ChangeNotifier
             (recordingDevice.type == DeviceType.omi || recordingDevice.type == DeviceType.openglass)
         ? LocalDeviceAudioStart(recordingDevice.id)
         : null;
-    if (starting != null) _localDeviceAudioStart = starting;
+    if (starting != null) {
+      _localDeviceAudioStart = starting;
+      notifyListeners();
+    }
     try {
       if (starting != null) {
         await _bleBytesStream?.cancel();
@@ -2031,12 +2151,16 @@ class CaptureController extends ChangeNotifier
     } finally {
       if (starting != null) {
         starting.completed.complete();
-        if (identical(_localDeviceAudioStart, starting)) _localDeviceAudioStart = null;
+        if (identical(_localDeviceAudioStart, starting)) {
+          _localDeviceAudioStart = null;
+          if (!starting.invalidated) notifyListeners();
+        }
       }
     }
   }
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    final generation = _buttonStreamGeneration;
     if (_localDeviceStop != null) return _localDeviceStop;
     final starting = _localDeviceAudioStart;
     if (starting != null) {
@@ -2047,7 +2171,10 @@ class CaptureController extends ChangeNotifier
       try {
         await stopping;
       } finally {
-        if (identical(_localDeviceStop, stopping)) _localDeviceStop = null;
+        if (identical(_localDeviceStop, stopping)) {
+          _localDeviceStop = null;
+          if (generation == _buttonStreamGeneration) notifyListeners();
+        }
       }
       return;
     }
@@ -2244,6 +2371,7 @@ class CaptureController extends ChangeNotifier
       recordingState == RecordingState.deviceRecord;
 
   void _startInProgressConversationRefresh() {
+    if (_localTranscriptPreviewId != null) return;
     if (!_canRefreshInProgressConversation || segments.isNotEmpty || photos.isNotEmpty) return;
     // The socket calls this on every connect. If a cycle is already running, leave it
     // alone: restarting it resets the attempt counter, so a connection that reconnects
@@ -2277,7 +2405,8 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _refreshInProgressConversationTick() async {
     if (_isRefreshingInProgressConversation) return;
-    if (!_canRefreshInProgressConversation ||
+    if (_localTranscriptPreviewId != null ||
+        !_canRefreshInProgressConversation ||
         segments.isNotEmpty ||
         photos.isNotEmpty ||
         _inProgressConversationRefreshAttempts >= _maxInProgressConversationRefreshAttempts) {
@@ -2349,7 +2478,10 @@ class CaptureController extends ChangeNotifier
   }
 
   Future _loadInProgressConversation() async {
+    if (_localTranscriptPreviewId != null) return;
+    final generation = _transcriptStateGeneration;
     var convos = await getConversations(statuses: [ConversationStatus.in_progress], limit: 1);
+    if (generation != _transcriptStateGeneration) return;
     _conversation = convos.isNotEmpty ? convos.first : null;
     if (_conversation != null) {
       segments = _conversation!.transcriptSegments;
@@ -2377,6 +2509,10 @@ class CaptureController extends ChangeNotifier
 
   @override
   void onMessageEventReceived(MessageEvent event) {
+    if (event is LocalTranscriptSnapshotEvent) {
+      _handleLocalTranscriptSnapshot(event);
+      return;
+    }
     if (event is ConversationProcessingStartedEvent) {
       externalActions.addProcessingConversation(event.memory);
       _pendingAutoSyncSessionStart = _sessionStartSeconds;
@@ -2618,6 +2754,43 @@ class CaptureController extends ChangeNotifier
     notifyListeners();
   }
 
+  void _retireLocalTranscriptPreview() {
+    final previewId = _localTranscriptPreviewId;
+    if (previewId != null) _retiredLocalTranscriptPreviewIds.add(previewId);
+    _localTranscriptPreviewId = null;
+    _localTranscriptRevision = 0;
+    _localTranscriptSegmentIds = {};
+    _transcriptStateGeneration++;
+  }
+
+  void _handleLocalTranscriptSnapshot(LocalTranscriptSnapshotEvent event) {
+    if (event.revision <= 0 || _retiredLocalTranscriptPreviewIds.contains(event.previewId)) return;
+    if (event.previewId == _localTranscriptPreviewId && event.revision <= _localTranscriptRevision) return;
+
+    final previousPreviewId = _localTranscriptPreviewId;
+    if (previousPreviewId != null && previousPreviewId != event.previewId) {
+      _retiredLocalTranscriptPreviewIds.add(previousPreviewId);
+    }
+    final previousIds = _localTranscriptSegmentIds;
+    _localTranscriptPreviewId = event.previewId;
+    _localTranscriptRevision = event.revision;
+    _localTranscriptSegmentIds = event.segments.map((segment) => segment.id).toSet();
+    _transcriptStateGeneration++;
+    _stopInProgressConversationRefresh();
+
+    // Snapshots own only local preview rows. Corrections may split, merge or
+    // retract them; ordinary conversation segments must survive unchanged.
+    segments = [
+      ...segments.where((segment) => !previousIds.contains(segment.id)),
+      ...event.segments,
+    ];
+    suggestionsBySegmentId.removeWhere((id, _) => previousIds.contains(id));
+    taggingSegmentIds.removeWhere(previousIds.contains);
+    hasTranscripts = segments.isNotEmpty;
+    _segmentsPhotosVersion++;
+    notifyListeners();
+  }
+
   void _handleSpeakerLabelSuggestionEvent(SpeakerLabelSuggestionEvent event) {
     // Tagging
     if (taggingSegmentIds.contains(event.segmentId)) {
@@ -2734,6 +2907,7 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _processNewSegmentReceived(List<TranscriptSegment> newSegments) async {
     if (newSegments.isEmpty) return;
+    final generation = _transcriptStateGeneration;
 
     if (segments.isEmpty && !_isLoadingInProgressConversation) {
       _isLoadingInProgressConversation = true;
@@ -2751,6 +2925,7 @@ class CaptureController extends ChangeNotifier
         _isLoadingInProgressConversation = false;
       }
     }
+    if (generation != _transcriptStateGeneration) return;
 
     final remainSegments = TranscriptSegment.updateSegments(segments, newSegments);
     segments.addAll(remainSegments);

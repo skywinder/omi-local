@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "रेकॉर्डिंग सुरू नाही",
+    "omiButtonPressed": "बटण दाबले",
+    "omiButtonReleased": "बटण सोडले",
+    "omiButtonSingleTap": "थोडक्यात दाबणे",
+    "omiButtonLongPress": "दीर्घकाळ दाबणे",
     "@@locale": "mr",
     "sessionExpiredSignInAgain": "सत्राची मुदत संपली — पुन्हा साइन इन करा.",
     "@@last_modified": "2024-12-26",

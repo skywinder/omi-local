@@ -23,6 +23,7 @@ import 'package:omi/models/custom_stt_config.dart';
 import 'package:omi/models/stt_provider.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/services/capture/capture_external_actions.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/services/capture/conversation_location_capture.dart';
 import 'package:omi/services/services.dart';
 import 'package:omi/services/sockets/pure_socket.dart';
@@ -431,6 +432,98 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('local button edges are visible without starting recording or a voice command', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    final buttons = StreamController<List<int>>.broadcast(sync: true);
+    final provider =
+        _ButtonCaptureProvider(buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback));
+    addTearDown(() async {
+      provider.dispose();
+      await buttons.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+    await provider.streamDeviceRecording(device: _device(id: 'synthetic-button', type: DeviceType.omi));
+    for (final event in [OmiButtonEvent.pressed, OmiButtonEvent.longPress, OmiButtonEvent.released]) {
+      buttons.add([event.code, 0, 0, 0]);
+      expect(provider.lastOmiButtonEvent, event);
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+    }
+    buttons.add([99, 0, 0, 0]);
+    expect(provider.lastOmiButtonEvent, OmiButtonEvent.released);
+    expect(provider.calls, isEmpty);
+    provider.startGate = Completer<void>();
+    buttons.add([1, 0, 0, 0]);
+    expect(provider.localCapturePhase, LocalCapturePhase.starting);
+    expect(provider.lastOmiButtonEvent, OmiButtonEvent.singleTap);
+    buttons.add([5, 0, 0, 0]);
+    expect(provider.calls, ['start']); // Release is not a second toggle.
+    provider.startGate!.complete();
+    await pumpEventQueue();
+    expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+    provider.updateRecordingDevice(null);
+    expect(provider.lastOmiButtonEvent, isNull);
+  });
+
+  test('local audio status needs payload and expires without stopping capture', () {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    fakeAsync((async) {
+      final audio = StreamController<List<int>>.broadcast(sync: true);
+      final provider = CaptureProvider(audioListenerLoader: (_, callback) async => audio.stream.listen(callback));
+      provider.updateRecordingDevice(_device(id: 'synthetic-audio', type: DeviceType.omi));
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+      provider.updateRecordingState(RecordingState.deviceRecord);
+      provider.streamAudioToWs('synthetic-audio', BleAudioCodec.pcm16);
+      async.flushMicrotasks();
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      audio.add([0, 0, 0]);
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      audio.add([0, 0, 0, 1, 2]);
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      async.elapse(const Duration(seconds: 2));
+      audio.add([1, 0, 0, 3, 4]);
+      async.elapse(const Duration(seconds: 2));
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      async.elapse(const Duration(seconds: 1));
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      expect(provider.recordingState, RecordingState.deviceRecord);
+      audio.add([2, 0, 0, 5, 6]);
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      provider.updateRecordingState(RecordingState.pause);
+      audio.add([3, 0, 0, 7, 8]);
+      expect(provider.localCapturePhase, LocalCapturePhase.paused);
+      provider.updateRecordingState(RecordingState.stop);
+      expect(provider.localCapturePhase, LocalCapturePhase.idle);
+      provider.updateRecordingState(RecordingState.deviceRecord);
+      audio.add([4, 0, 0, 9, 10]); // Old subscription cannot prove a new capture.
+      expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+      provider.dispose();
+      audio.close();
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 4));
+    });
+  });
+
+  test('active recording source follows capture state, not the connected device', () {
+    final provider = CaptureProvider();
+    addTearDown(provider.dispose);
+    provider.updateRecordingDevice(_device(id: 'synthetic-cv1', type: DeviceType.omi));
+    expect(provider.havingRecordingDevice, isTrue);
+    expect(provider.activeRecordingSource, isNull);
+
+    for (final state in [RecordingState.initialising, RecordingState.record, RecordingState.interrupted]) {
+      provider.updateRecordingState(state);
+      expect(provider.activeRecordingSource, ConversationSource.phone);
+    }
+    provider.updateRecordingState(RecordingState.systemAudioRecord);
+    expect(provider.activeRecordingSource, ConversationSource.desktop);
+    provider.updateRecordingState(RecordingState.error);
+    expect(provider.activeRecordingSource, isNull);
+    provider.updateRecordingState(RecordingState.stop);
+    expect(provider.activeRecordingSource, isNull);
+    expect(provider.havingRecordingDevice, isTrue);
+  });
+
   test('local single tap starts, stops muted session, and starts again using the idle subscription', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
     final buttons = StreamController<List<int>>.broadcast(sync: true);
@@ -487,9 +580,11 @@ void main() {
     expect(provider.calls, ['start', 'stop']);
     expect(provider.recordingState, RecordingState.stop);
     provider.failStart = false;
+    expect(provider.localCapturePhase, LocalCapturePhase.failed);
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.calls, ['start', 'stop', 'start']);
+    expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
   });
 
   test('local button drops events from a replaced or disconnected device', () async {
@@ -588,6 +683,7 @@ void main() {
         audioCodecLoader: (_) => codec.future,
       );
       await provider.streamDeviceRecording(device: _device(id: 'synthetic-buffered', type: DeviceType.omi));
+      expect(provider.activeRecordingSource, isNull);
     });
 
     tearDown(() async {
@@ -607,6 +703,7 @@ void main() {
       await pumpEventQueue();
       expect(audio.hasListener, isTrue);
       expect(provider.recordingState, RecordingState.deviceRecord);
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       expect(provider.gates, isEmpty);
       final packet = [0, 0, 0, 11];
       audio.add(packet);
@@ -615,6 +712,8 @@ void main() {
       audio.add([1, 0, 0, 22]);
       final socket = provider.connect(0);
       await start;
+      provider.updateRecordingDevice(_device(id: 'synthetic-replacement', type: DeviceType.openglass));
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       audio.add([2, 0, 0, 33]);
       expect(socket.packets, [
         [11],
@@ -624,6 +723,7 @@ void main() {
       await provider.stopStreamDeviceRecording();
       expect(socket.stopped, isTrue);
       expect(audio.hasListener, isFalse);
+      expect(provider.activeRecordingSource, isNull);
     });
 
     test('Stop during connect drains accepted audio and keeps the next session separate', () async {
@@ -635,6 +735,7 @@ void main() {
       await pumpEventQueue();
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       audio.add([1, 0, 0, 99]);
       final nextStart = provider.streamDeviceRecording(userInitiated: true);
       final first = provider.connect(0);
@@ -665,6 +766,7 @@ void main() {
       await failure;
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       await provider.stopStreamDeviceRecording();
       expect(provider.recordingState, RecordingState.stop);
     });
@@ -681,6 +783,7 @@ void main() {
       expect(socket.stopped, isTrue);
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       await provider.stopStreamDeviceRecording();
     });
 
@@ -694,6 +797,7 @@ void main() {
       final socket = provider.connect(0);
       await start;
       expect(provider.recordingState, RecordingState.pause);
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       expect(socket.packets, [
         [11]
       ]);
@@ -787,30 +891,100 @@ void main() {
     provider.dispose();
   });
 
-  test('live preview wire snapshots replace the same segment without duplicates', () async {
-    final provider = CaptureProvider(
-      conversationLocationCapture: _CountingConversationLocationCapture(),
-      inProgressConversationLoader: () async {},
-    );
-    TranscriptSegment snapshot(String text) => TranscriptSegment.fromJson({
-          'id': 'preview-test-session',
-          'text': text,
-          'start': 0.0,
-          'end': 4.0,
-          'speaker': 'SPEAKER_00',
-          'is_user': false,
+  group('atomic local transcript snapshots', () {
+    MessageEvent snapshot(String previewId, int revision, List<Map<String, dynamic>> rows) => MessageEvent.fromJson({
+          'type': 'local_transcript_snapshot',
+          'preview_id': previewId,
+          'revision': revision,
+          'segments': rows,
         });
-    provider.onSegmentReceived([snapshot('Проверка')]);
-    await Future<void>.delayed(Duration.zero);
-    final version = provider.segmentsPhotosVersion;
-    provider.onSegmentReceived([snapshot('Проверка обновления текста.')]);
-    expect(provider.segments.single.text, 'Проверка обновления текста.');
-    expect(provider.segmentsPhotosVersion, greaterThan(version));
-    expect(provider.hasTranscripts, isTrue);
-    // A rejected pending hypothesis may retract text already shown.
-    provider.onSegmentReceived([snapshot('')]);
-    expect(provider.segments.single.text, isEmpty);
-    provider.dispose();
+    Map<String, dynamic> row(String id, String text, {String? speaker, double start = 0, bool draft = false}) => {
+          'id': id,
+          'text': text,
+          'start': start,
+          'end': start + 2,
+          'speaker': speaker,
+          'is_user': false,
+          'is_draft': draft,
+          'stt_provider': 'whisperx',
+        };
+
+    test('corrects, splits and retracts only preview rows without loading a conversation', () {
+      var loads = 0;
+      var notifications = 0;
+      final provider = CaptureProvider(inProgressConversationLoader: () async => loads++);
+      addTearDown(provider.dispose);
+      provider.addListener(() => notifications++);
+
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('local-preview-one-draft', 'Черновик')]));
+      expect(provider.segments.single.text, 'Черновик');
+      expect(loads, 0, reason: 'a snapshot must apply synchronously without fetching server conversation state');
+      provider.onSegmentReceived([_segment('ordinary', 'Existing conversation')]);
+      notifications = 0;
+      final version = provider.segmentsPhotosVersion;
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [
+        row('local-preview-one-line-1', 'Первый голос.', speaker: 'SPEAKER_00'),
+        row('local-preview-one-line-2', 'Второй голос.', speaker: 'SPEAKER_01', start: 3),
+        row('local-preview-one-draft', 'Ещё', start: 6, draft: true),
+      ]));
+      expect(notifications, 1, reason: 'UI observes the replacement as a single state change');
+      expect(provider.segments.map((s) => s.id), [
+        'ordinary',
+        'local-preview-one-line-1',
+        'local-preview-one-line-2',
+        'local-preview-one-draft',
+      ]);
+      expect(provider.segments.map((s) => s.speakerId), [0, 0, 1, -1]);
+      expect(provider.segments.last.isDraft, isTrue);
+      expect(provider.segments[2].start, 3);
+      expect(provider.segmentsPhotosVersion, greaterThan(version));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 3, [
+        row('local-preview-one-line-1', 'Исправленный первый голос.', speaker: 'SPEAKER_00'),
+      ]));
+      expect(provider.segments.map((s) => s.text), ['Existing conversation', 'Исправленный первый голос.']);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 4, []));
+      expect(provider.segments.single.id, 'ordinary');
+      expect(provider.hasTranscripts, isTrue);
+    });
+
+    test('ignores old revisions and retired sessions, including after clearing user data', () {
+      final provider = CaptureProvider();
+      addTearDown(provider.dispose);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [row('one', 'Newer')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('one', 'Older')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 2, [row('one', 'Duplicate revision')]));
+      expect(provider.segments.single.text, 'Newer');
+
+      provider.onMessageEventReceived(snapshot('local-preview-two', 1, [row('two', 'Next session')]));
+      provider.onMessageEventReceived(snapshot('local-preview-one', 3, [row('one', 'Late old session')]));
+      expect(provider.segments.single.text, 'Next session');
+      provider.onMessageEventReceived(snapshot('local-preview-two', 2, []));
+      expect(provider.segments, isEmpty);
+      expect(provider.hasTranscripts, isFalse);
+      provider.clearUserData();
+      provider.onMessageEventReceived(snapshot('local-preview-two', 3, [row('two', 'Late after reset')]));
+      expect(provider.segments, isEmpty);
+      provider.onMessageEventReceived(snapshot('local-preview-three', 1, [row('three', 'Fresh session')]));
+      expect(provider.segments.single.text, 'Fresh session');
+      provider.clearTranscripts();
+      provider.onMessageEventReceived(snapshot('local-preview-three', 2, [row('three', 'Late after clear')]));
+      expect(provider.segments, isEmpty);
+    });
+
+    test('a pending ordinary segment load cannot reinsert stale rows after a snapshot', () async {
+      final pendingLoad = Completer<void>();
+      final provider = CaptureProvider(
+        conversationLocationCapture: _CountingConversationLocationCapture(),
+        inProgressConversationLoader: () => pendingLoad.future,
+      );
+      addTearDown(provider.dispose);
+      provider.onSegmentReceived([_segment('old', 'Pending old row')]);
+      provider.onMessageEventReceived(snapshot('local-preview-one', 1, [row('one', 'Current snapshot')]));
+      expect(provider.segments.single.text, 'Current snapshot');
+      pendingLoad.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(provider.segments.single.text, 'Current snapshot');
+    });
   });
 
   test('local phone start refuses a connected device and preserves its draft', () async {

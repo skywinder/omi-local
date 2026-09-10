@@ -375,12 +375,14 @@ class SttProviderConfig {
     if (providerString == null || providerString.isEmpty) {
       return 'Unknown';
     }
-    try {
-      final provider = SttProvider.fromString(providerString);
-      return _configs[provider]?.displayName ?? providerString;
-    } catch (e) {
-      return providerString;
+    for (final provider in SttProvider.values) {
+      if (provider.name == providerString) {
+        return _configs[provider]?.displayName ?? providerString;
+      }
     }
+    // Local and external engines can name their actual provider without being
+    // registered as a selectable cloud preset.
+    return providerString;
   }
 
   static const _visibleProviders = [

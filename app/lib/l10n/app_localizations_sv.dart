@@ -9,6 +9,21 @@ class AppLocalizationsSv extends AppLocalizations {
   AppLocalizationsSv([String locale = 'sv']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Spelar inte in';
+
+  @override
+  String get omiButtonPressed => 'Knappen nedtryckt';
+
+  @override
+  String get omiButtonReleased => 'Knappen släppt';
+
+  @override
+  String get omiButtonSingleTap => 'Kort tryck';
+
+  @override
+  String get omiButtonLongPress => 'Långt tryck';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sessionen har gått ut — logga in igen.';
 
   @override

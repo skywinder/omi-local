@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Not recording",
+    "omiButtonPressed": "Button pressed",
+    "omiButtonReleased": "Button released",
+    "omiButtonSingleTap": "Short press",
+    "omiButtonLongPress": "Long press",
     "@@locale": "en",
     "sessionExpiredSignInAgain": "Session expired — sign in again.",
     "@sessionExpiredSignInAgain": {

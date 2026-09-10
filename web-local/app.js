@@ -1,14 +1,29 @@
 import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
+import {mountLiveMonitor} from '/live.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
-const state = {records: [], selected: null, detail: null, filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
+const state = {records: [], selected: null, detail: null, view: 'live', filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
 const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Распознаётся', no_speech: 'Речь не обнаружена', failed: 'Ошибка распознавания', unavailable: 'Без транскрипта'};
 const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
 async function get(path) { const response = await fetch(path, {cache: 'no-store', signal: AbortSignal.timeout(10000)}); if (!response.ok) throw new Error('Unavailable'); return response.json(); }
 function message(text = '') { $('player-message').textContent = text; $('player-message').hidden = !text; }
+
+function showView(view = state.view) {
+  state.view = view;
+  const live = view === 'live';
+  $('live-monitor').hidden = !live;
+  $('welcome').hidden = live || !!state.detail;
+  $('recording-detail').hidden = live || !state.detail;
+  $('player').hidden = live || !state.detail;
+  for (const mode of ['live', 'recording']) {
+    $(`view-${mode}`).classList.toggle('selected', mode === view);
+    $(`view-${mode}`).setAttribute('aria-pressed', String(mode === view));
+  }
+  if (live) audio.pause();
+}
 
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
@@ -60,25 +75,21 @@ function renderTranscript(record) {
   syncPlayer();
 }
 
-async function select(id) {
+async function select(id, open = true) {
   const request = ++state.request;
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
   state.selected = id;
   state.detail = null;
-  $('recording-detail').hidden = true;
-  $('welcome').hidden = false;
-  $('player').hidden = true;
+  showView(open ? 'recording' : state.view);
   message();
   renderList();
   try {
     const record = await get(`/api/recordings/${id}`);
     if (request !== state.request) return;
     state.detail = record;
-    $('welcome').hidden = true;
-    $('recording-detail').hidden = false;
-    $('player').hidden = false;
+    showView();
     $('recording-date').textContent = day(record.started_at).toLocaleUpperCase('ru-RU');
     $('recording-title').textContent = `Запись в ${hour(record.started_at)}`;
     $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
@@ -121,10 +132,10 @@ async function refresh() {
     $('connection').hidden = true;
     if (state.selected && !recordings.some(r => r.id === state.selected)) {
       audio.pause(); state.selected = null; state.detail = null; ++state.request;
-      $('recording-detail').hidden = true; $('player').hidden = true; $('welcome').hidden = false;
+      showView();
     }
     if (changed) renderList();
-    if (!state.selected && recordings.length) await select(recordings[0].id);
+    if (!state.selected && recordings.length) await select(recordings[0].id, false);
     else if (state.detail) {
       const id = state.selected;
       const record = await get(`/api/recordings/${id}`);
@@ -205,6 +216,9 @@ $('search').addEventListener('input', renderList);
 for (const [id, enabled] of [['filter-all', false], ['filter-ready', true]]) $(id).addEventListener('click', () => { state.filter = enabled; for (const name of ['filter-all', 'filter-ready']) { $(name).classList.toggle('selected', name === id); $(name).setAttribute('aria-pressed', String(name === id)); } renderList(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+for (const view of ['live', 'recording']) $(`view-${view}`).addEventListener('click', () => showView(view));
+mountLiveMonitor($('live-monitor'));
+showView();
 refresh();
 
 if (document.modelContext?.registerTool) {

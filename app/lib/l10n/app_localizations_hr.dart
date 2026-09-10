@@ -9,6 +9,21 @@ class AppLocalizationsHr extends AppLocalizations {
   AppLocalizationsHr([String locale = 'hr']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Snimanje nije aktivno';
+
+  @override
+  String get omiButtonPressed => 'Gumb je pritisnut';
+
+  @override
+  String get omiButtonReleased => 'Gumb je otpušten';
+
+  @override
+  String get omiButtonSingleTap => 'Kratki pritisak';
+
+  @override
+  String get omiButtonLongPress => 'Dugi pritisak';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesija je istekla — prijavite se ponovno.';
 
   @override

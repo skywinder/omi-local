@@ -9,6 +9,21 @@ class AppLocalizationsTr extends AppLocalizations {
   AppLocalizationsTr([String locale = 'tr']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Kayıt yapılmıyor';
+
+  @override
+  String get omiButtonPressed => 'Düğmeye basıldı';
+
+  @override
+  String get omiButtonReleased => 'Düğme bırakıldı';
+
+  @override
+  String get omiButtonSingleTap => 'Kısa basış';
+
+  @override
+  String get omiButtonLongPress => 'Uzun basış';
+
+  @override
   String get sessionExpiredSignInAgain => 'Oturumun süresi doldu — tekrar giriş yapın.';
 
   @override

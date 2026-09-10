@@ -9,6 +9,21 @@ class AppLocalizationsDe extends AppLocalizations {
   AppLocalizationsDe([String locale = 'de']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Keine Aufnahme';
+
+  @override
+  String get omiButtonPressed => 'Taste gedrückt';
+
+  @override
+  String get omiButtonReleased => 'Taste losgelassen';
+
+  @override
+  String get omiButtonSingleTap => 'Kurzer Tastendruck';
+
+  @override
+  String get omiButtonLongPress => 'Langer Tastendruck';
+
+  @override
   String get sessionExpiredSignInAgain => 'Deine Sitzung ist abgelaufen — melde dich erneut an.';
 
   @override

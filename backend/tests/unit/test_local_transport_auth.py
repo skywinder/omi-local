@@ -206,9 +206,10 @@ def run_probe():
         app.include_router(transcribe.router)
         app.add_middleware(OfflineRoutePolicyMiddleware)
         app.add_middleware(LocalTransportAuthMiddleware)
-        with TestClient(app) as client:
+        with TestClient(app, client=('127.0.0.1', 50000)) as client:
             for headers in ({}, {'Authorization': 'Bearer wrong'}, {'Authorization': 'Basic ' + 'a' * 43}):
                 assert client.get('/v1/local/status', headers=headers).status_code == 401
+                assert client.get('/v1/local/preview', headers=headers).status_code == 401
             response = client.get('/v1/local/status?uid=synthetic-attacker', headers={'Authorization': 'Bearer ' + 'a' * 43})
             assert response.status_code == 200, response.status_code
             assert response.json() == {
@@ -216,11 +217,21 @@ def run_probe():
                 'capture': {'state': 'idle', 'audio_seconds': 0, 'frames_received': 0},
                 'live_transcript': {'state': 'disabled', 'updates': 0},
             }
+            headers = {'Authorization': 'Bearer ' + 'a' * 43}
+            preview = client.get('/v1/local/preview?uid=synthetic-attacker', headers=headers)
+            assert preview.status_code == 200 and preview.json()['sessions'] == []
+            assert preview.headers['cache-control'] == 'no-store'
+            for forwarded in ('Forwarded', 'X-Forwarded-For', 'X-Forwarded-Proto'):
+                assert client.get('/v1/local/preview', headers={**headers, forwarded: 'synthetic-proxy'}).status_code == 404
+            with TestClient(app, client=('192.0.2.1', 50000)) as remote:
+                assert remote.get('/v1/local/preview', headers=headers).status_code == 404
             app.dependency_overrides[auth.get_current_user_uid] = forbidden
             os.environ['OMI_LOCAL_TRANSPORT'] = 'lan'
             assert client.get('/v1/local/status').status_code == 404
+            assert client.get('/v1/local/preview').status_code == 404
             os.environ['OMI_ENV_STAGE'] = 'prod'
             assert client.get('/v1/local/status').status_code == 404
+            assert client.get('/v1/local/preview').status_code == 404
 
 run_probe()
 print('local_status_auth_passed')

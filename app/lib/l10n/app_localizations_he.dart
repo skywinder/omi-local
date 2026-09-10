@@ -9,6 +9,21 @@ class AppLocalizationsHe extends AppLocalizations {
   AppLocalizationsHe([String locale = 'he']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'אין הקלטה פעילה';
+
+  @override
+  String get omiButtonPressed => 'הכפתור נלחץ';
+
+  @override
+  String get omiButtonReleased => 'הכפתור שוחרר';
+
+  @override
+  String get omiButtonSingleTap => 'לחיצה קצרה';
+
+  @override
+  String get omiButtonLongPress => 'לחיצה ארוכה';
+
+  @override
   String get sessionExpiredSignInAgain => 'ההפעלה פגה — יש להתחבר שוב.';
 
   @override

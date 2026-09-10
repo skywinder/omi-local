@@ -9,6 +9,21 @@ class AppLocalizationsUk extends AppLocalizations {
   AppLocalizationsUk([String locale = 'uk']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Запис не ведеться';
+
+  @override
+  String get omiButtonPressed => 'Кнопку натиснуто';
+
+  @override
+  String get omiButtonReleased => 'Кнопку відпущено';
+
+  @override
+  String get omiButtonSingleTap => 'Коротке натискання';
+
+  @override
+  String get omiButtonLongPress => 'Довге натискання';
+
+  @override
   String get sessionExpiredSignInAgain => 'Сеанс завершено — увійдіть знову.';
 
   @override

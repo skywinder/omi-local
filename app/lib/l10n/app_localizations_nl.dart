@@ -9,6 +9,21 @@ class AppLocalizationsNl extends AppLocalizations {
   AppLocalizationsNl([String locale = 'nl']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Geen opname actief';
+
+  @override
+  String get omiButtonPressed => 'Knop ingedrukt';
+
+  @override
+  String get omiButtonReleased => 'Knop losgelaten';
+
+  @override
+  String get omiButtonSingleTap => 'Kort indrukken';
+
+  @override
+  String get omiButtonLongPress => 'Lang indrukken';
+
+  @override
   String get sessionExpiredSignInAgain => 'De sessie is verlopen — log opnieuw in.';
 
   @override

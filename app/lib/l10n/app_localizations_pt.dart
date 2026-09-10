@@ -9,6 +9,21 @@ class AppLocalizationsPt extends AppLocalizations {
   AppLocalizationsPt([String locale = 'pt']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Não está a gravar';
+
+  @override
+  String get omiButtonPressed => 'Botão premido';
+
+  @override
+  String get omiButtonReleased => 'Botão solto';
+
+  @override
+  String get omiButtonSingleTap => 'Pressão curta';
+
+  @override
+  String get omiButtonLongPress => 'Pressão longa';
+
+  @override
   String get sessionExpiredSignInAgain => 'A sessão expirou — inicie sessão novamente.';
 
   @override

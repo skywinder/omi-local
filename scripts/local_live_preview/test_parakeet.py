@@ -73,7 +73,10 @@ class ParakeetWireTests(unittest.TestCase):
         with self.client as client:
             for _ in range(2):
                 with client.websocket_connect('/asr') as ws:
-                    self.assertEqual(ws.receive_json()['type'], 'config')
+                    config = ws.receive_json()
+                    self.assertEqual(config['type'], 'config')
+                    self.assertIs(config['diarization'], False)
+                    self.assertEqual(config['stt_provider'], 'parakeet-local')
                     ws.send_bytes(b'\0\0')
                     first = ws.receive_json()['lines'][0]['text']
                     self.assertEqual(first, 'phrase')

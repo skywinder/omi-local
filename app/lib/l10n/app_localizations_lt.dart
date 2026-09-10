@@ -9,6 +9,21 @@ class AppLocalizationsLt extends AppLocalizations {
   AppLocalizationsLt([String locale = 'lt']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Neįrašoma';
+
+  @override
+  String get omiButtonPressed => 'Mygtukas paspaustas';
+
+  @override
+  String get omiButtonReleased => 'Mygtukas atleistas';
+
+  @override
+  String get omiButtonSingleTap => 'Trumpas paspaudimas';
+
+  @override
+  String get omiButtonLongPress => 'Ilgas paspaudimas';
+
+  @override
   String get sessionExpiredSignInAgain => 'Seanso laikas baigėsi — prisijunkite dar kartą.';
 
   @override

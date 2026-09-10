@@ -810,6 +810,8 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
     final Person? person = data.personId != null ? _getPersonById(data.personId) : null;
     final isTagging = widget.taggingSegmentIds.contains(data.id);
     final bool isUser = data.isUser;
+    final unknownSpeaker = !isUser && person == null && (data.speaker == null || data.speakerId < 0);
+    final showTimestamp = widget.canDisplaySeconds && !data.isDraft;
     return Container(
       key: _segmentKeys[data.id],
       child: Padding(
@@ -825,7 +827,7 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
             if (!isUser) ...[
               // Avatar for other speakers (left side)
               GestureDetector(
-                onTap: data.speakerId == omiSpeakerId
+                onTap: unknownSpeaker || data.speakerId == omiSpeakerId
                     ? null
                     : () {
                         widget.editSegment?.call(data.id, data.speakerId);
@@ -835,8 +837,12 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                   children: [
                     CircleAvatar(
                       radius: 16,
-                      backgroundColor: _getSpeakerAvatarColor(isUser, data.speakerId, person),
-                      child: _getSpeakerAvatar(data.speakerId, isUser, person),
+                      backgroundColor: unknownSpeaker
+                          ? const Color(0xFF30343A)
+                          : _getSpeakerAvatarColor(isUser, data.speakerId, person),
+                      child: unknownSpeaker
+                          ? const Icon(Icons.record_voice_over, size: 22, color: Colors.grey)
+                          : _getSpeakerAvatar(data.speakerId, isUser, person),
                     ),
                     const SizedBox(height: 2),
                   ],
@@ -857,19 +863,21 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           GestureDetector(
-                            onTap: data.speakerId == omiSpeakerId
+                            onTap: unknownSpeaker || data.speakerId == omiSpeakerId
                                 ? null
                                 : () {
                                     widget.editSegment?.call(data.id, data.speakerId);
                                     PlatformManager.instance.analytics.tagSheetOpened();
                                   },
                             child: Text(
-                              data.speakerId == omiSpeakerId
-                                  ? 'omi'
-                                  : (person?.name ??
-                                      context.l10n.speakerWithId(
-                                        '${TranscriptSegment.getDisplaySpeakerId(data.speakerId, widget.segments)}',
-                                      )),
+                              unknownSpeaker
+                                  ? context.l10n.unknown
+                                  : data.speakerId == omiSpeakerId
+                                      ? 'omi'
+                                      : (person?.name ??
+                                          context.l10n.speakerWithId(
+                                            '${TranscriptSegment.getDisplaySpeakerId(data.speakerId, widget.segments)}',
+                                          )),
                               style: TextStyle(
                                 color: data.speakerId == omiSpeakerId || person != null
                                     ? Colors.grey.shade300
@@ -904,7 +912,9 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
-                            color: _getSpeakerBubbleColor(isUser, data.speakerId, person),
+                            color: unknownSpeaker
+                                ? const Color(0xFF252A30)
+                                : _getSpeakerBubbleColor(isUser, data.speakerId, person),
                             borderRadius: BorderRadius.only(
                               topLeft: Radius.circular(
                                 isUser
@@ -963,9 +973,7 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                                     _buildTranslationNotice(),
                                   ],
                                   // Timestamp, provider, and play button
-                                  if (widget.canDisplaySeconds ||
-                                      data.sttProvider != null ||
-                                      widget.onSegmentTap != null) ...[
+                                  if (showTimestamp || data.sttProvider != null || widget.onSegmentTap != null) ...[
                                     const SizedBox(height: 4),
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.end,
@@ -980,7 +988,7 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                                               fontStyle: FontStyle.italic,
                                             ),
                                           ),
-                                          if (widget.canDisplaySeconds) ...[
+                                          if (showTimestamp) ...[
                                             Text(
                                               ' · ',
                                               style: TextStyle(
@@ -1007,7 +1015,7 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                                           ),
                                           const SizedBox(width: 6),
                                         ],
-                                        if (widget.canDisplaySeconds)
+                                        if (showTimestamp)
                                           Text(
                                             data.getTimestampString(),
                                             style: TextStyle(
@@ -1043,8 +1051,12 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
                   children: [
                     CircleAvatar(
                       radius: 16,
-                      backgroundColor: _getSpeakerAvatarColor(isUser, data.speakerId, person),
-                      child: _getSpeakerAvatar(data.speakerId, isUser, person),
+                      backgroundColor: unknownSpeaker
+                          ? const Color(0xFF30343A)
+                          : _getSpeakerAvatarColor(isUser, data.speakerId, person),
+                      child: unknownSpeaker
+                          ? const Icon(Icons.record_voice_over, size: 22, color: Colors.grey)
+                          : _getSpeakerAvatar(data.speakerId, isUser, person),
                     ),
                     const SizedBox(height: 2),
                   ],

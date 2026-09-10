@@ -9,6 +9,21 @@ class AppLocalizationsAr extends AppLocalizations {
   AppLocalizationsAr([String locale = 'ar']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'لا يجري التسجيل';
+
+  @override
+  String get omiButtonPressed => 'الزر مضغوط';
+
+  @override
+  String get omiButtonReleased => 'تم تحرير الزر';
+
+  @override
+  String get omiButtonSingleTap => 'ضغطة قصيرة';
+
+  @override
+  String get omiButtonLongPress => 'ضغطة مطولة';
+
+  @override
   String get sessionExpiredSignInAgain => 'انتهت صلاحية الجلسة — سجّل الدخول مرة أخرى.';
 
   @override

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from . import config, stt_install, local_whisperkit, local_openai_stt
+from . import config, stt_install, local_whisperkit, local_openai_stt, local_diarization
 
 
 class TranscriptionError(ValueError):
@@ -41,6 +41,12 @@ class EngineConfig:
     the same. Models must already be installed; this command never installs them.
     """
 
+    speaker_revision: str = 'exclusive-v1'
+    speaker_model: str = ''
+    speaker_python: str = ''
+    speaker_device: str = 'cpu'
+    speaker_threads: int = 4
+    speaker_count: int = 0
     provider_url: str = ''
     engine: str = 'whisperx'
     model: str = 'large-v3-turbo'
@@ -63,7 +69,8 @@ class EngineConfig:
         if profile is not None:
             # Queue profiles pin the engine, but runtime paths belong to that engine.
             # Never inherit a WhisperKit directory/Python override across providers.
-            data = {**(data if data.get('engine', 'whisperx') == profile['engine'] else {}), **profile}
+            data = {**(data if data.get('engine', 'whisperx') == profile['engine'] else {}),
+                    'speaker_model': '', 'speaker_device': 'cpu', 'speaker_count': 0, 'speaker_threads': 4, **profile}
         repo_root = getattr(cfg, 'repo_root', None)
         managed = repo_root / '.local/stt' if repo_root is not None else None
         standard = (not data or (data.get('model', 'large-v3-turbo') == 'large-v3-turbo'
@@ -87,7 +94,17 @@ class EngineConfig:
         if data.get('engine') == 'openai-compatible':
             data = {'language': 'auto', 'device': 'server', 'diarization_model': 'none', **data}
             local_openai_stt.validate_url(data.get('provider_url', ''))
+        if data.get('speaker_model') and not data.get('speaker_python') and repo_root is not None:
+            data['speaker_python'] = str(repo_root / '.local/diarization/venv/bin/python')
         engine = cls(**data)
+        if (engine.speaker_revision != 'exclusive-v1'
+                or engine.speaker_model and engine.speaker_model not in local_diarization.MODELS
+                or engine.speaker_device not in {'cpu', 'mps'}
+                or type(engine.speaker_threads) is not int or not 1 <= engine.speaker_threads <= 16
+                or type(engine.speaker_count) is not int or not 0 <= engine.speaker_count <= 32):
+            raise TranscriptionError('Invalid independent diarization settings')
+        if engine.speaker_model and engine.diarization_model != 'none':
+            raise TranscriptionError('Select one diarization stage; set diarization_model to none')
         if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit', 'openai-compatible'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
                 or not (re.fullmatch(r'[a-z]{2,3}', engine.language) or engine.language == 'auto')
                 or engine.compute_type not in {'float32', 'int8', 'int8_float32'}
@@ -112,7 +129,9 @@ class EngineConfig:
         return engine
 
     def profile(self):
-        excluded = {'python', 'library_path', 'assets_path'}
+        excluded = {'python', 'library_path', 'assets_path', 'speaker_python'}
+        if not self.speaker_model:
+            excluded.update({'speaker_revision', 'speaker_model', 'speaker_device', 'speaker_threads', 'speaker_count'})
         if self.engine != 'openai-compatible':
             excluded.add('provider_url')
         else:
@@ -355,6 +374,35 @@ def run_openai(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) 
             raise TranscriptionError(str(error)) from None
 
 
+def apply_diarization(engine, audio, folder, manifest, raw):
+    if not engine.speaker_model or not raw.get('segments'):
+        return raw
+    python = Path(engine.speaker_python).expanduser()
+    if not python.is_file():
+        raise TranscriptionError('Independent diarization Python is unavailable')
+    with tempfile.TemporaryDirectory(dir=folder, prefix='.speakers-') as temporary:
+        snapshot, output = Path(temporary) / 'audio.wav', Path(temporary) / 'turns.json'
+        shutil.copyfile(audio, snapshot)
+        if stt_install.digest(snapshot) != manifest['audio_sha256']:
+            raise TranscriptionError('WAV changed during diarization preparation')
+        command = [str(python), str(Path(__file__).with_name('local_diarization.py')),
+                   '--audio', str(snapshot), '--output', str(output), '--model', engine.speaker_model,
+                   '--device', engine.speaker_device, '--threads', str(engine.speaker_threads)]
+        if engine.speaker_count:
+            command.extend(['--num-speakers', str(engine.speaker_count)])
+        env = model_environment(engine)
+        result = subprocess.run(stt_install.offline_command(command, env), env=env,
+                                capture_output=True, timeout=3600)
+        if result.returncode or not output.is_file():
+            raise TranscriptionError('Independent diarization failed; original audio and ASR retained')
+        try:
+            report = json.loads(output.read_text())
+            segments = local_diarization.reconcile(raw['segments'], report['turns'])
+        except (ValueError, TypeError, KeyError):
+            raise TranscriptionError('Invalid independent diarization result') from None
+        return {**raw, 'segments': segments, 'diarization': report}
+
+
 def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> int:
     if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
         raise TranscriptionError('Use the paired local Mac offline stack')
@@ -388,7 +436,14 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         if not reused:
             started = time.monotonic()
             adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit, 'openai-compatible': run_openai}[engine.engine]
-            raw = adapter(engine, audio, folder, manifest)
+            asr_path = folder / 'asr.json'
+            if asr_path.exists():
+                raw = json.loads(asr_path.read_text())
+            else:
+                raw = adapter(engine, audio, folder, manifest)
+                if engine.speaker_model:
+                    atomic_json(asr_path, raw)
+            raw = apply_diarization(engine, audio, folder, manifest, raw)
             atomic_json(raw_path, raw)
         else:
             raw = json.loads(raw_path.read_text())

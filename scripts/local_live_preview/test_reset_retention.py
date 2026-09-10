@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from .reset_retention import PreviewResetRetention
+from .serve import snapshot_with_words
 
 
 class Online:
@@ -34,6 +35,33 @@ class Online:
 
 
 class RetentionTests(unittest.TestCase):
+    def test_snapshot_words_preserve_session_times_and_exact_text_after_reset(self):
+        online = Online()
+        PreviewResetRetention(online)
+        tokens = [SimpleNamespace(text=' Первая', start=23.25, end=23.7),
+                  SimpleNamespace(text=' фраза.', start=23.7, end=24.1)]
+        online.transcript_buffer.buffer = tokens
+        online.init(offset=30)
+        retained, _ = online.process_iter()
+        self.assertEqual(retained, tokens)
+        line = SimpleNamespace(text=' Первая фраза.', speaker=1, tokens=retained)
+        response = SimpleNamespace(lines=[line], to_dict=lambda: {
+            'lines': [{'text': line.text, 'speaker': 1, 'start': '0:00:23.25', 'end': '0:00:24.10'}],
+            'buffer_transcription': ''})
+        message = snapshot_with_words(response)
+        self.assertEqual(message['lines'][0]['words'], [
+            {'word': ' Первая', 'start': 23.25, 'end': 23.7},
+            {'word': ' фраза.', 'start': 23.7, 'end': 24.1}])
+        self.assertEqual(message['lines'][0]['text'], line.text)
+        self.assertNotIn('words', response.to_dict()['lines'][0])
+
+    def test_invalid_words_are_not_published_with_misleading_timestamps(self):
+        line = SimpleNamespace(text='word', speaker=1,
+                               tokens=[SimpleNamespace(text='word', start=2, end=1)])
+        response = SimpleNamespace(lines=[line], to_dict=lambda: {'lines': [{'text': line.text}]})
+        with self.assertRaisesRegex(ValueError, 'Invalid live word timing'):
+            snapshot_with_words(response)
+
     def test_stall_reset_publishes_draft_once(self):
         online = Online()
         retention = PreviewResetRetention(online)

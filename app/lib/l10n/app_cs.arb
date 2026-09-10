@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Nenahrává se",
+    "omiButtonPressed": "Tlačítko stisknuto",
+    "omiButtonReleased": "Tlačítko uvolněno",
+    "omiButtonSingleTap": "Krátké stisknutí",
+    "omiButtonLongPress": "Dlouhé stisknutí",
     "@@locale": "cs",
     "sessionExpiredSignInAgain": "Platnost relace vypršela — přihlaste se znovu.",
     "appTitle": "Omi",

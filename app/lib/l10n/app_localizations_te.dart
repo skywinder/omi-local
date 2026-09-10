@@ -9,6 +9,21 @@ class AppLocalizationsTe extends AppLocalizations {
   AppLocalizationsTe([String locale = 'te']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'రికార్డింగ్ జరగడం లేదు';
+
+  @override
+  String get omiButtonPressed => 'బటన్ నొక్కబడింది';
+
+  @override
+  String get omiButtonReleased => 'బటన్ వదిలివేయబడింది';
+
+  @override
+  String get omiButtonSingleTap => 'చిన్న నొక్కు';
+
+  @override
+  String get omiButtonLongPress => 'ఎక్కువసేపు నొక్కు';
+
+  @override
   String get sessionExpiredSignInAgain => 'సెషన్ గడువు ముగిసింది — మళ్లీ సైన్ ఇన్ చేయండి.';
 
   @override

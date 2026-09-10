@@ -24,11 +24,65 @@ def test_full_snapshots_replace_retract_and_isolate_sessions():
     first = segment.update({'lines': [], 'buffer_transcription': 'первый черновик'}, 4)
     second = segment.update({'lines': [{'text': 'первый', 'speaker': 1}, {'speaker': -2}],
                              'buffer_transcription': 'исправленный текст'}, 8)
-    assert first[0]['id'] == second[0]['id']
-    assert second[0]['text'] == 'первый исправленный текст'
-    assert segment.update({'lines': [], 'buffer_transcription': ''}, 8)[0]['text'] == ''
+    assert first['segments'][0]['id'] == second['segments'][0]['id']
+    assert second['segments'][0]['text'] == 'первый исправленный текст'
+    assert second['revision'] == first['revision'] + 1
+    assert second['segments'][0]['speaker'] is None
+    assert second['segments'][0]['speaker_id'] == -1
+    assert second['segments'][0]['is_draft'] is True
+    assert segment.update({'lines': [], 'buffer_transcription': ''}, 8)['segments'] == []
     assert segment.update({'lines': [], 'buffer_transcription': ''}, 9) is None
     assert segment.id != PreviewSegment().id
+
+
+def test_authoritative_timed_speakers_keep_corrections_removals_and_real_translations():
+    segment = PreviewSegment()
+    segment.configure({'diarization': True, 'stt_provider': 'synthetic-stt'})
+    line = {'text': 'Первая фраза.', 'speaker': 3, 'start': '0:00:00.25', 'end': '0:00:01.50',
+            'translations': [{'lang': 'en', 'text': 'First phrase.'}]}
+    later = {'text': 'Да.', 'speaker': 5, 'start': 2.25, 'end': 3.5}
+    first = segment.update({'lines': [line, {'speaker': -2}, later],
+                            'buffer_diarization': 'ожидает спикера', 'buffer_transcription': 'черновик'}, 5)
+    assert first['type'] == 'local_transcript_snapshot'
+    assert first['preview_id'] == segment.id
+    assert [(s['start'], s['end'], s['speaker_id']) for s in first['segments']] == [
+        (0.25, 1.5, 3), (2.25, 3.5, 5), (3.5, 5, -1)]
+    assert first['segments'][0]['translations'] == [{'lang': 'en', 'text': 'First phrase.'}]
+    assert all(s['stt_provider'] == 'synthetic-stt' for s in first['segments'])
+    assert first['segments'][-1]['text'] == 'ожидает спикера черновик'
+    assert first['segments'][-1]['speaker'] is None
+    assert first['segments'][-1]['is_draft']
+    # A speaker-only correction is meaningful even when the text is unchanged.
+    corrected = segment.update({'lines': [{**line, 'speaker': 5}], 'buffer_transcription': ''}, 5)
+    assert corrected['revision'] == 2
+    assert len(corrected['segments']) == 1
+    assert corrected['segments'][0]['id'] == first['segments'][0]['id']
+    assert corrected['segments'][0]['speaker'] == 'SPEAKER_05'
+    assert not corrected['segments'][0]['is_draft']
+    assert segment.update({'lines': [{**line, 'speaker': 5}], 'buffer_transcription': ''}, 6) is None
+
+
+@pytest.mark.parametrize('capability', [None, False, 'true'])
+def test_provider_placeholder_is_unknown_without_explicit_diarization(capability):
+    segment = PreviewSegment()
+    segment.configure({'diarization': capability, 'stt_provider': 'whisperlivekit-local'})
+    result = segment.update({'lines': [{'text': 'Текст.', 'speaker': 1, 'start': 0, 'end': 1}],
+                             'buffer_transcription': ''}, 2)
+    row = result['segments'][0]
+    assert row['speaker'] is None and row['speaker_id'] == -1
+    assert not row['is_draft'] and row['translations'] == []
+
+
+@pytest.mark.parametrize('start,end', [(True, 1), ('0:60:00', 1), (float('nan'), 1), (-1, 1),
+                                       (0, float('inf')), (2, 1), (0, 3)])
+def test_invalid_timed_snapshot_does_not_replace_last_draft(start, end):
+    segment = PreviewSegment()
+    previous = segment.update({'lines': [], 'buffer_transcription': 'черновик'}, 2)
+    with pytest.raises(ValueError):
+        segment.update({'lines': [{'text': 'Текст.', 'speaker': 1, 'start': start, 'end': end}],
+                        'buffer_transcription': ''}, 2)
+    assert segment.segments == previous['segments']
+    assert segment.revision == 1
 
 
 def test_live_endpoint_is_opt_in_and_loopback_only(monkeypatch):
@@ -43,9 +97,11 @@ def test_live_endpoint_is_opt_in_and_loopback_only(monkeypatch):
 
 
 class Socket:
-    def __init__(self):
+    def __init__(self, *, config=None, response=None):
         self.incoming = asyncio.Queue()
         self.sent = []
+        self.config = config or {}
+        self.response = response or {'lines': [], 'buffer_transcription': 'проверка'}
 
     async def __aenter__(self):
         return self
@@ -54,11 +110,11 @@ class Socket:
         pass
 
     async def recv(self):
-        return json.dumps({'type': 'config', 'useAudioWorklet': True})
+        return json.dumps({'type': 'config', 'useAudioWorklet': True, **self.config})
 
     async def send(self, data):
         self.sent.append(data)
-        message = ({'lines': [], 'buffer_transcription': 'проверка'} if data else {'type': 'ready_to_stop'})
+        message = self.response if data else {'type': 'ready_to_stop'}
         self.incoming.put_nowait(json.dumps(message))
 
     def __aiter__(self):
@@ -78,17 +134,77 @@ async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch
     preview.feed(pcm)
     for _ in range(20):
         await asyncio.sleep(0)
-        if any(isinstance(call.args[0], list) for call in send.call_args_list):
+        if any(call.args[0].get('type') == 'local_transcript_snapshot' for call in send.call_args_list):
             break
+    assert send.await_count == 2  # Readiness is distinct from the one text snapshot.
     assert send.call_args_list[0].args[0] == {
         'type': 'service_status', 'status': 'ready', 'provider': 'local_live_preview'}
-    assert send.call_args.args[0][0]['text'] == 'проверка'
+    assert send.call_args.args[0]['type'] == 'local_transcript_snapshot'
+    assert send.call_args.args[0]['segments'][0]['text'] == 'проверка'
+    assert send.call_args.args[0]['segments'][0]['speaker'] is None
     await preview.finish()
     assert socket.sent == [pcm, b'']
     assert preview.eof_ack and not preview.failed
-    assert preview.task.done() and preview.segment.text == ''
+    assert preview.task.done() and preview.segment.text == '' and preview.segment.segments == []
     preview.feed(pcm)
     assert preview.pending_bytes == 0
+
+
+@pytest.mark.anyio
+async def test_diarized_provider_handshake_reaches_phone_as_complete_snapshot(monkeypatch):
+    socket = Socket(config={'diarization': True, 'stt_provider': 'synthetic-live'}, response={
+        'lines': [{'text': 'Один.', 'speaker': 0, 'start': 0, 'end': .4},
+                  {'text': 'Два.', 'speaker': 1, 'start': .5, 'end': .9}],
+        'buffer_transcription': ''})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', send)
+    preview.feed(b'\0\0' * 16000)
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if send.await_count == 2:
+            break
+    assert send.await_count == 2
+    snapshot = send.call_args.args[0]
+    assert snapshot['type'] == 'local_transcript_snapshot' and snapshot['revision'] == 1
+    assert [row['speaker'] for row in snapshot['segments']] == ['SPEAKER_00', 'SPEAKER_01']
+    assert all(row['stt_provider'] == 'synthetic-live' and not row['is_draft'] for row in snapshot['segments'])
+    await preview.finish()
+    assert preview.eof_ack and not preview.failed
+
+
+@pytest.mark.anyio
+async def test_diarization_degradation_retracts_labels_and_keeps_preview_alive(monkeypatch):
+    socket = Socket(config={'diarization': True}, response={
+        'lines': [{'text': 'Текст.', 'speaker': 1, 'start': 0, 'end': .9}], 'buffer_transcription': ''})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    fallback = []
+    monkeypatch.setattr('utils.local_live_preview.record_fallback', lambda **values: fallback.append(values))
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', send)
+    preview.feed(b'\0\0' * 16000)
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if send.await_count == 2:
+            break
+    assert send.call_args.args[0]['segments'][0]['speaker'] == 'SPEAKER_01'
+    await socket.incoming.put(json.dumps({'type': 'diarization_status', 'status': 'degraded',
+                                         'diarization': False, 'code': 'worker_failed'}))
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if send.await_count == 3:
+            break
+    assert send.call_args.args[0]['segments'][0]['speaker'] is None
+    assert send.call_args.args[0]['segments'][0]['text'] == 'Текст.'
+    assert len(fallback) == 1 and fallback[0]['from_mode'] == 'local_live_diarization'
+    assert fallback[0]['to_mode'] == 'local_live_preview' and fallback[0]['outcome'] == 'degraded'
+    assert not preview.failed and not preview.task.done()
+    # Repeated snapshot status does not spam telemetry or restore placeholders.
+    await socket.incoming.put(json.dumps({**socket.response, 'diarization_status': 'degraded'}))
+    await asyncio.sleep(0)
+    assert len(fallback) == 1 and send.call_args.args[0]['segments'][0]['speaker'] is None
+    await preview.finish()
+    assert preview.eof_ack and not preview.failed
 
 
 @pytest.mark.anyio
@@ -384,3 +500,37 @@ async def test_local_status_reports_actual_preview_updates_and_forgets_closed_se
     finally:
         registry.unregister(owner)
         await preview.finish()
+
+
+@pytest.mark.anyio
+async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypatch, tmp_path):
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+    owners = []
+    for uid, text in [('synthetic-owner', 'первый черновик'), ('synthetic-other', 'чужая речь')]:
+        sink = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=tmp_path)
+        sink.record_decoded_frame(encoded_bytes=640, pcm=b'\0\0' * 320)
+        segment = PreviewSegment()
+        segment.update({'lines': [], 'buffer_transcription': text}, .02)
+        preview = SimpleNamespace(segment=segment, updates=1, failed=False)
+        owner = StatusSession(uid, sink, preview)
+        owners.append(owner)
+        registry.register(owner)
+    try:
+        data = await local_status.preview_snapshot('synthetic-owner')
+        assert len(data['sessions']) == 1
+        draft = data['sessions'][0]
+        assert draft['source'] == 'phone' and draft['codec'] == 'pcm16'
+        assert draft['text'] == 'первый черновик' and draft['frames_received'] == 1
+        assert draft['segments'][0]['text'] == draft['text'] and draft['revision'] == 1
+        assert owners[0].capture_sink.session_id not in json.dumps(data)
+        assert 'чужая речь' not in json.dumps(data, ensure_ascii=False)
+        status = await local_status.snapshot('synthetic-owner')
+        assert 'sessions' not in status and 'text' not in status['live_transcript']
+        owners[0].local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, .02)
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]['text'] == 'исправлено'
+        owners[0].state.shutdown_event.set()
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
+    finally:
+        for owner in owners:
+            registry.unregister(owner)
+            owner.capture_sink.finalize()

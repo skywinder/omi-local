@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Не се записва",
+    "omiButtonPressed": "Бутонът е натиснат",
+    "omiButtonReleased": "Бутонът е отпуснат",
+    "omiButtonSingleTap": "Кратко натискане",
+    "omiButtonLongPress": "Продължително натискане",
     "@@locale": "bg",
     "sessionExpiredSignInAgain": "Сесията изтече — влезте отново.",
     "appTitle": "Omi",

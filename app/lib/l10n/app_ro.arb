@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Nu se înregistrează",
+    "omiButtonPressed": "Buton apăsat",
+    "omiButtonReleased": "Buton eliberat",
+    "omiButtonSingleTap": "Apăsare scurtă",
+    "omiButtonLongPress": "Apăsare lungă",
     "@@locale": "ro",
     "sessionExpiredSignInAgain": "Sesiunea a expirat — autentifică-te din nou.",
     "appTitle": "Omi",

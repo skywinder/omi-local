@@ -13,11 +13,13 @@ from typing import Any, Dict, Optional, cast
 
 from fastapi import APIRouter, Depends, WebSocketException
 from fastapi.websockets import WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from firebase_admin.auth import InvalidIdTokenError
 
 from models.geolocation import Geolocation, geolocation_from_private_header
 from routers.listen.contracts import CustomSttMode, ListenRequest
 from routers.listen.local_status import require_local_status, snapshot as local_status_snapshot
+from routers.listen.local_status import require_local_preview, preview_snapshot as local_preview_snapshot
 from routers.listen.runtime import run_listen_session
 from utils.client_device import (
     ClientDeviceContext,
@@ -35,6 +37,11 @@ _ACCOUNT_DELETION_RECHECK_SECONDS = 30
 @router.get('/v1/local/status', dependencies=[Depends(require_local_status)])
 async def local_status(uid: str = Depends(auth.get_current_user_uid)) -> dict:
     return await local_status_snapshot(uid)
+
+
+@router.get('/v1/local/preview', dependencies=[Depends(require_local_preview)])
+async def local_preview(uid: str = Depends(auth.get_current_user_uid)) -> JSONResponse:
+    return JSONResponse(await local_preview_snapshot(uid), headers={'Cache-Control': 'no-store'})
 
 
 async def _wait_for_account_deletion_recheck() -> None:

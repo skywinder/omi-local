@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Не се снима",
+    "omiButtonPressed": "Копчето е притиснато",
+    "omiButtonReleased": "Копчето е отпуштено",
+    "omiButtonSingleTap": "Кратко притискање",
+    "omiButtonLongPress": "Долго притискање",
     "@@locale": "mk",
     "sessionExpiredSignInAgain": "Сесијата истече — најавете се повторно.",
     "@@last_modified": "2024-12-26",

@@ -177,7 +177,7 @@ def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]
         from .local_live import health
         ready = health(cfg).get('ready', False)
         return ready, "live model ready" if ready else "live model unavailable"
-    if service in {"live-stt", "argmax-stt"}:
+    if service in {"live-stt", "argmax-stt", "live-diarization"}:
         from .local_stt_services import health
         return health(cfg, service)
     if service == "library":

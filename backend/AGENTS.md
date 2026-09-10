@@ -14,6 +14,10 @@ binary frame/byte counts. Audio, private parameters and close reasons stay out.
 Authenticated `/v1/local/status` is ngrok/offline-only. Its capture counters come
 from the caller's active listen sessions; live-ASR health is separate from WAV
 capture. Never return transcript text, identifiers, filesystem paths or credentials.
+The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts
+to the loopback library. It requires the existing paired key, rejects non-loopback
+clients and all forwarded headers, and uses `Cache-Control: no-store`. Never add
+draft text to the status endpoint, logs or a diagnostic file.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the

@@ -189,6 +189,36 @@ abstract class AppLocalizations {
     Locale('zh')
   ];
 
+  /// No description provided for @localCaptureIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not recording'**
+  String get localCaptureIdle;
+
+  /// No description provided for @omiButtonPressed.
+  ///
+  /// In en, this message translates to:
+  /// **'Button pressed'**
+  String get omiButtonPressed;
+
+  /// No description provided for @omiButtonReleased.
+  ///
+  /// In en, this message translates to:
+  /// **'Button released'**
+  String get omiButtonReleased;
+
+  /// No description provided for @omiButtonSingleTap.
+  ///
+  /// In en, this message translates to:
+  /// **'Short press'**
+  String get omiButtonSingleTap;
+
+  /// No description provided for @omiButtonLongPress.
+  ///
+  /// In en, this message translates to:
+  /// **'Long press'**
+  String get omiButtonLongPress;
+
   /// Message shown after an expired authenticated session returns the user to sign-in
   ///
   /// In en, this message translates to:

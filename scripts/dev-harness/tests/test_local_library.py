@@ -1,8 +1,12 @@
 import hashlib
 import io
 import json
+import os
+import re
+import shutil
 import sys
 import wave
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,7 +37,7 @@ def library(tmp_path):
     return Library(tmp_path)
 
 
-def request(library, path, *, headers=None, method='GET', delete=None):
+def request(library, path, *, headers=None, method='GET', delete=None, runtime=None, assets=None, http_handler=None):
     """Exercise the real HTTP handler with in-memory transport; no live server."""
     raw = f'{method} {path} HTTP/1.0\r\n'
     raw += ''.join(f'{k}: {v}\r\n' for k, v in {'Host': '127.0.0.1:20001', **(headers or {})}.items())
@@ -48,8 +52,9 @@ def request(library, path, *, headers=None, method='GET', delete=None):
             self.output.write(data)
 
     sock = Socket()
-    assets = Path(__file__).resolve().parents[3] / 'web-local'
-    handler(library, assets, delete)(sock, ('127.0.0.1', 1234), SimpleNamespace(server_port=20001))
+    assets = assets or Path(__file__).resolve().parents[3] / 'web-local'
+    server_handler = http_handler or handler(library, assets, delete, runtime)
+    server_handler(sock, ('127.0.0.1', 1234), SimpleNamespace(server_port=20001))
     head, body = sock.output.getvalue().split(b'\r\n\r\n', 1)
     lines = head.decode().split('\r\n')
     return int(lines[0].split()[1]), dict(line.split(': ', 1) for line in lines[1:]), body
@@ -82,6 +87,130 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
 ])
 def test_remote_browser_and_proxy_requests_cannot_read_library(library, headers):
     assert request(library, '/api/recordings', headers=headers)[0] == 403
+
+
+@pytest.fixture
+def web_assets(tmp_path):
+    return Path(shutil.copytree(Path(__file__).resolve().parents[3] / 'web-local', tmp_path / 'web-local'))
+
+
+def page_asset_revision(body):
+    class PageMetadata(HTMLParser):
+        revision = None
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == 'meta' and attributes.get('name') == 'omiloc-assets':
+                self.revision = json.loads(attributes['content'])
+
+    document = PageMetadata()
+    document.feed(body.decode())
+    return document.revision
+
+
+def test_asset_revision_matches_served_page_and_updates_without_server_restart(library, web_assets):
+    server_handler = handler(library, web_assets)
+
+    def get(path, **kwargs):
+        return request(library, path, assets=web_assets, http_handler=server_handler, **kwargs)
+
+    status, headers, body = get('/api/assets', headers={
+        'Origin': 'http://127.0.0.1:20001', 'Sec-Fetch-Site': 'same-origin',
+    })
+    initial = json.loads(body)
+    assert status == 200 and headers['Cache-Control'] == 'no-store'
+    assert set(initial) == {'styles', 'page'}
+    assert all(re.fullmatch(r'[0-9a-f]{64}', value) for value in initial.values())
+
+    status, headers, body = get('/')
+    assert status == 200 and page_asset_revision(body) == initial
+    assert b'__OMILOC_ASSETS__' not in body
+    assert headers['Cache-Control'] == 'no-store'
+    assert int(headers['Content-Length']) == len(body)
+    assert get('/', method='HEAD')[2] == b''
+
+    app = web_assets / 'app.js'
+    stamp = app.stat()
+    os.utime(app, ns=(stamp.st_atime_ns, stamp.st_mtime_ns + 1_000_000_000))
+    assert json.loads(get('/api/assets')[2]) == initial
+
+    style = web_assets / 'style.css'
+    style.write_bytes(style.read_bytes() + b'\n/* Synthetic live style edit. */\n')
+    styled = json.loads(get('/api/assets')[2])
+    assert styled['styles'] != initial['styles'] and styled['page'] == initial['page']
+    assert get('/style.css?revision=' + styled['styles'])[2] == style.read_bytes()
+
+    for name in ('index.html', 'app.js', 'player.mjs', 'live.mjs', 'reload.mjs'):
+        previous = json.loads(get('/api/assets')[2])
+        asset = web_assets / name
+        comment = b'\n<!-- Synthetic content edit. -->\n' if name == 'index.html' else b'\n/* Synthetic content edit. */\n'
+        asset.write_bytes(asset.read_bytes() + comment)
+        changed = json.loads(get('/api/assets')[2])
+        assert changed['page'] != previous['page'], name
+        assert changed['styles'] == styled['styles'], name
+
+    status, headers, body = get('/reload.mjs')
+    assert status == 200 and headers['Cache-Control'] == 'no-store'
+    assert headers['Content-Type'].startswith('text/javascript')
+    assert body == (web_assets / 'reload.mjs').read_bytes()
+
+
+def test_page_revision_tracks_the_served_html_when_a_save_overlaps_request(library, web_assets, monkeypatch):
+    initial = json.loads(request(library, '/api/assets', assets=web_assets)[2])
+    original_read = Path.read_bytes
+    index = web_assets / 'index.html'
+    saved = False
+
+    def read_then_save(path):
+        nonlocal saved
+        body = original_read(path)
+        if path == index and not saved:
+            saved = True
+            index.write_bytes(body + b'\n<!-- Synthetic overlapping save. -->\n')
+        return body
+
+    monkeypatch.setattr(Path, 'read_bytes', read_then_save)
+    status, _, body = request(library, '/', assets=web_assets)
+    assert status == 200 and saved
+    assert b'Synthetic overlapping save' not in body
+    assert page_asset_revision(body) == initial
+    assert json.loads(request(library, '/api/assets', assets=web_assets)[2])['page'] != initial['page']
+
+
+def test_asset_revision_ignores_private_files_and_recovers_from_missing_asset(library, web_assets):
+    server_handler = handler(library, web_assets)
+
+    def get(path):
+        return request(library, path, assets=web_assets, http_handler=server_handler)
+
+    original = get('/api/assets')[2]
+    for name in ('.env', 'private-recording.wav', 'reload.test.mjs'):
+        (web_assets / name).write_text('synthetic-private-content')
+    (library.transcripts / 'synthetic-private-log.txt').write_text('synthetic-private-content')
+    assert get('/api/assets')[2] == original
+    for name in ('.env', 'private-recording.wav', 'reload.test.mjs'):
+        assert get('/' + name)[0] == 404
+    assert b'synthetic-private-content' not in original
+    assert str(web_assets).encode() not in original
+
+    module = web_assets / 'reload.mjs'
+    content = module.read_bytes()
+    module.unlink()
+    status, headers, body = get('/api/assets')
+    assert status >= 400 and headers['Cache-Control'] == 'no-store'
+    assert b'synthetic-private-content' not in body and str(web_assets).encode() not in body
+    module.write_bytes(content)
+    assert get('/api/assets')[2] == original
+
+
+@pytest.mark.parametrize('headers', [
+    {'Host': 'attacker.example:20001'}, {'Host': '127.0.0.1:20000'},
+    {'Origin': 'https://attacker.example'}, {'Sec-Fetch-Site': 'cross-site'},
+    {'X-Forwarded-For': '127.0.0.1'}, {'Forwarded': 'host=example.ngrok.app'},
+])
+def test_asset_revision_rejects_other_origins_and_proxies(library, web_assets, headers):
+    status, _, body = request(library, '/api/assets', assets=web_assets, headers=headers)
+    assert status == 403 and 'styles' not in json.loads(body)
 
 
 def test_partial_symlink_missing_and_bad_transcript(library, tmp_path):
@@ -248,3 +377,107 @@ def test_changed_wav_does_not_reuse_no_speech_queue_status(library):
         audio.seek(44)
         audio.write(b'\1\0')
     assert library.scan()[0]['status'] == 'unavailable'
+
+
+def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, monkeypatch):
+    import httpx
+    from dev_harness import local_library_runtime as live
+    from dev_harness.local_library_runtime import Runtime
+    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000,
+                          layout=SimpleNamespace(state_root=library.captures.parent.parent))
+    runtime = Runtime(cfg)
+    monkeypatch.setattr(live.local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': 'synthetic-private-key'})
+    def serve(req):
+        assert req.headers['authorization'] == 'Bearer synthetic-private-key'
+        assert str(req.url) == 'http://127.0.0.1:20000/v1/local/preview'
+        return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
+            'live_transcript': {'state': 'streaming', 'updates': 1},
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+    factory = httpx.Client
+    def client(**kwargs):
+        assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
+        return factory(transport=httpx.MockTransport(serve), **kwargs)
+    monkeypatch.setattr(live.httpx, 'Client', client)
+    monkeypatch.setattr(runtime, '_final', lambda: {'state': 'ready', 'provider': 'Argmax',
+        'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)})
+    status, headers, body = request(library, '/api/runtime', runtime=runtime)
+    assert status == 200 and headers['Cache-Control'] == 'no-store'
+    data = json.loads(body)
+    assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert b'synthetic-private-key' not in body
+    assert 'Синтетический черновик' not in json.dumps(data['events'], ensure_ascii=False)
+    assert 'text' not in runtime.previous['sessions'][0]
+    for headers in [{'Host': 'attacker.example'}, {'Origin': 'https://attacker.example'},
+                    {'X-Forwarded-For': '127.0.0.1'}, {'Sec-Fetch-Site': 'cross-site'}]:
+        assert request(library, '/api/runtime', headers=headers, runtime=runtime)[0] == 403
+    def disconnected():
+        raise httpx.ConnectError('synthetic-private-error')
+    monkeypatch.setattr(runtime, '_preview', disconnected)
+    runtime.checked_at = 0
+    status, _, body = request(library, '/api/runtime', runtime=runtime)
+    assert status == 200 and json.loads(body)['backend'] == 'unavailable'
+    assert json.loads(body)['sessions'] == []
+    assert b'synthetic-private-error' not in body
+
+
+def test_runtime_final_timeout_preserves_healthy_live_draft(library, monkeypatch):
+    import httpx
+    from dev_harness import local_library_runtime as live
+    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000)
+    runtime = live.Runtime(cfg)
+    settings = {
+        'stt-engine.json': {'engine': 'openai-compatible', 'provider_url': 'http://127.0.0.1:10301/v1',
+                            'model': 'synthetic-model'},
+        'stt-watch.json': {'enabled': True},
+        'argmax-stt.json': {'enabled': True, 'port': 10301},
+        'live-stt.json': {'provider': 'whisperlivekit'},
+    }
+    monkeypatch.setattr(runtime, '_settings', lambda name: settings[name])
+    monkeypatch.setattr(live.local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': 'synthetic-private-key'})
+    monkeypatch.setattr(live.local_stt_watch, 'read_queue', lambda _: {})
+    monkeypatch.setattr(live.local_stt_watch, 'worker_ready', lambda _: True)
+    requested = []
+
+    def serve(req):
+        requested.append(req.url.path)
+        if req.url.path == '/v1/models':
+            # A slow final provider must fit inside the live monitor's request budget.
+            assert req.extensions['timeout']['read'] == 1
+            raise httpx.ReadTimeout('synthetic-private-final-error', request=req)
+        assert req.url.path == '/v1/local/preview'
+        assert req.extensions['timeout']['read'] == 2
+        return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
+            'live_transcript': {'state': 'streaming', 'updates': 1},
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+
+    factory = httpx.Client
+    monkeypatch.setattr(live.httpx, 'Client', lambda **kwargs:
+        factory(transport=httpx.MockTransport(serve), **kwargs))
+    status, _, body = request(library, '/api/runtime', runtime=runtime)
+    data = json.loads(body)
+    assert status == 200 and data['backend'] == 'ready'
+    assert data['live_transcript']['state'] == 'streaming'
+    assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert data['final_stt']['state'] == 'unavailable'
+    assert data['final_stt']['provider'] == 'Argmax · WhisperKit'
+    assert b'synthetic-private-final-error' not in body
+    assert requested == ['/v1/local/preview', '/v1/models']
+
+
+def test_runtime_journal_observes_final_completion_without_transcript(library):
+    from copy import deepcopy
+    from dev_harness.local_library_runtime import Runtime
+    runtime = Runtime(None)
+    current = {'backend': 'ready', 'sessions': [{'source': 'omi', 'preview_id': 'draft', 'text': 'Синтетическая речь'}],
+               'capture': {'state': 'received'}, 'live_transcript': {'state': 'streaming', 'updates': 1},
+               'final_stt': {'state': 'ready', 'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)}}
+    runtime._observe(deepcopy(current))
+    current['sessions'] = []
+    current['final_stt']['jobs']['processing'] = 1
+    runtime._observe(deepcopy(current))
+    current['final_stt']['jobs'].update(processing=0, completed=1)
+    runtime._observe(deepcopy(current))
+    messages = [event['message'] for event in runtime.events]
+    assert 'Началось финальное распознавание.' in messages
+    assert 'Финальный транскрипт сохранён и доступен в аудиотеке.' in messages
+    assert 'Синтетическая речь' not in json.dumps(messages, ensure_ascii=False)

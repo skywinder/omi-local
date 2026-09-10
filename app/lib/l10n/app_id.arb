@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Tidak merekam",
+    "omiButtonPressed": "Tombol ditekan",
+    "omiButtonReleased": "Tombol dilepas",
+    "omiButtonSingleTap": "Tekan singkat",
+    "omiButtonLongPress": "Tekan lama",
     "@@locale": "id",
     "sessionExpiredSignInAgain": "Sesi berakhir — masuk lagi.",
     "appTitle": "Omi",

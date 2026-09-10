@@ -9,6 +9,21 @@ class AppLocalizationsLv extends AppLocalizations {
   AppLocalizationsLv([String locale = 'lv']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Ierakstīšana nenotiek';
+
+  @override
+  String get omiButtonPressed => 'Poga nospiesta';
+
+  @override
+  String get omiButtonReleased => 'Poga atlaista';
+
+  @override
+  String get omiButtonSingleTap => 'Īss spiediens';
+
+  @override
+  String get omiButtonLongPress => 'Ilgs spiediens';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesija ir beigusies — pierakstieties vēlreiz.';
 
   @override

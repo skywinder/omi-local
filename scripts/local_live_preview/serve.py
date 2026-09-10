@@ -13,6 +13,7 @@ import importlib
 from importlib.metadata import version
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import sys
@@ -26,6 +27,35 @@ def deny_network(event, args):
         raise PermissionError('Live preview has no outbound network access')
 
 
+def snapshot_with_words(response):
+    """Expose WLK's existing absolute word times for independent diarization.
+
+    HypothesisBuffer already applies the audio-window offset before commit.
+    PreviewResetRetention forwards those same tokens, so no second offset is
+    applied here. Whitespace stays on each token exactly as emitted by ASR.
+    """
+    message = response.to_dict()
+    visible = [line for line in response.lines if line.text or line.speaker == -2]
+    if len(visible) != len(message['lines']):
+        raise ValueError('Inconsistent live line serialization')
+    for line, output in zip(visible, message['lines']):
+        tokens = getattr(line, 'tokens', None)
+        if not tokens:
+            continue
+        words = []
+        for token in tokens:
+            if (not isinstance(token.text, str)
+                    or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                           or not math.isfinite(value) or value < 0 for value in (token.start, token.end))
+                    or token.end < token.start):
+                raise ValueError('Invalid live word timing')
+            words.append({'word': token.text, 'start': float(token.start), 'end': float(token.end)})
+        if ''.join(word['word'] for word in words).strip() != (line.text or '').strip():
+            raise ValueError('Inconsistent live word text')
+        output['words'] = words
+    return message
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-dir', type=Path, required=True)
@@ -33,6 +63,7 @@ def main():
     parser.add_argument('--port', type=int, default=18090)
     parser.add_argument('--language', choices=['ru', 'en', 'auto'], default='ru')
     parser.add_argument('--chunk-seconds', type=float, default=4)
+    parser.add_argument('--runtime-revision', default='')
     args = parser.parse_args()
     if not 1 <= args.chunk_seconds <= 10:
         parser.error('chunk-seconds must be between 1 and 10')
@@ -166,12 +197,13 @@ def main():
                 if processor.vac.min_silence_samples != 12800:
                     raise RuntimeError('unexpected_vac_profile')
                 generator = await processor.create_tasks()
-                await socket.send_json({'type': 'config', 'useAudioWorklet': True, 'mode': 'full'})
+                await socket.send_json({'type': 'config', 'useAudioWorklet': True, 'mode': 'full',
+                                        'diarization': False, 'stt_provider': 'whisperlivekit-local'})
 
                 async def results():
                     nonlocal snapshots, first_text, disconnected
                     async for response in generator:
-                        message = response.to_dict()
+                        message = snapshot_with_words(response)
                         snapshots += 1
                         if first_text is None and (message.get('buffer_transcription', '').strip()
                                 or any(line.get('text', '').strip() for line in message.get('lines', []))):

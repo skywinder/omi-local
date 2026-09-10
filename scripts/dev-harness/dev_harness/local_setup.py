@@ -37,7 +37,7 @@ def check(cfg, *, preparing=False):
         missing, _warnings = cli.prerequisite_report(cfg)
     if missing:
         raise SetupError('Проверка зависимостей не пройдена. Диагностика: bash scripts/local-mac.sh check')
-    if not all((cfg.repo_root / 'web-local' / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs')):
+    if not all((cfg.repo_root / 'web-local' / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs', 'live.mjs', 'reload.mjs')):
         raise SetupError('Не хватает файлов веб-страницы. Восстановите копию проекта.')
     try:
         local_launcher.install_plan(cfg.repo_root)

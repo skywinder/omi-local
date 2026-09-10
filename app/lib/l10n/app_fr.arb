@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Aucun enregistrement en cours",
+    "omiButtonPressed": "Bouton enfoncé",
+    "omiButtonReleased": "Bouton relâché",
+    "omiButtonSingleTap": "Appui court",
+    "omiButtonLongPress": "Appui long",
     "@@locale": "fr",
     "sessionExpiredSignInAgain": "La session a expiré — reconnectez-vous.",
     "appTitle": "Omi",
