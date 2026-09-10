@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_left, bisect_right
 import json
 import math
 import os
@@ -19,9 +20,16 @@ def reconcile(segments, turns):
     for start, end, label in turns:
         if not all(math.isfinite(v) for v in (start, end)) or start < 0 or end <= start or not isinstance(label, str):
             raise ValueError('Invalid speaker turns')
+    turns = sorted(turns)
+    starts, max_ends = [], []
+    for start, end, _ in turns:
+        starts.append(start)
+        max_ends.append(max(end, max_ends[-1] if max_ends else end))
     def speaker(item):
         scores = {}
-        for start, end, label in turns:
+        left = bisect_right(max_ends, item['start'])
+        right = bisect_left(starts, item['end'])
+        for start, end, label in turns[left:right]:
             overlap = max(0, min(item['end'], end) - max(item['start'], start))
             if overlap:
                 scores[label] = scores.get(label, 0) + overlap
@@ -59,7 +67,7 @@ def infer(audio, model, device='cpu', threads=4, num_speakers=None):
         waveform = np.frombuffer(wav.readframes(wav.getnframes()), dtype='<i2').astype(np.float32) / 32768
     result = pipeline({'waveform': torch.from_numpy(waveform).unsqueeze(0), 'sample_rate': 16000},
                       **({'num_speakers': num_speakers} if num_speakers else {}))
-    annotation = result.exclusive_speaker_diarization if model == MODEL else result.speaker_diarization
+    annotation = result.exclusive_speaker_diarization
     turns = [(float(t.start), float(t.end), label)
              for t, _, label in annotation.itertracks(yield_label=True)]
     return {'turns': turns, 'seconds': round(time.monotonic() - started, 3), 'device': device,

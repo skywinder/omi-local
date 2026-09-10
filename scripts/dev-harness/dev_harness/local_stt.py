@@ -41,6 +41,7 @@ class EngineConfig:
     the same. Models must already be installed; this command never installs them.
     """
 
+    speaker_revision: str = 'exclusive-v1'
     speaker_model: str = ''
     speaker_python: str = ''
     speaker_device: str = 'cpu'
@@ -96,7 +97,8 @@ class EngineConfig:
         if data.get('speaker_model') and not data.get('speaker_python') and repo_root is not None:
             data['speaker_python'] = str(repo_root / '.local/diarization/venv/bin/python')
         engine = cls(**data)
-        if (engine.speaker_model and engine.speaker_model not in local_diarization.MODELS
+        if (engine.speaker_revision != 'exclusive-v1'
+                or engine.speaker_model and engine.speaker_model not in local_diarization.MODELS
                 or engine.speaker_device not in {'cpu', 'mps'}
                 or type(engine.speaker_threads) is not int or not 1 <= engine.speaker_threads <= 16
                 or type(engine.speaker_count) is not int or not 0 <= engine.speaker_count <= 32):
@@ -129,7 +131,7 @@ class EngineConfig:
     def profile(self):
         excluded = {'python', 'library_path', 'assets_path', 'speaker_python'}
         if not self.speaker_model:
-            excluded.update({'speaker_model', 'speaker_device', 'speaker_threads', 'speaker_count'})
+            excluded.update({'speaker_revision', 'speaker_model', 'speaker_device', 'speaker_threads', 'speaker_count'})
         if self.engine != 'openai-compatible':
             excluded.add('provider_url')
         else:

@@ -572,3 +572,31 @@ def test_old_queued_profile_does_not_inherit_new_diarization(tmp_path):
     old = local_stt.EngineConfig.load(settings, profile=data)
     assert old.speaker_model == ''
     assert 'speaker_model' not in old.profile()
+
+
+@pytest.mark.parametrize('model', ['pyannote/speaker-diarization-3.1', 'pyannote/speaker-diarization-community-1'])
+def test_both_pyannote_models_use_exclusive_turns_for_text(tmp_path, monkeypatch, model):
+    from dev_harness import local_diarization
+    audio = tmp_path / 'audio.wav'
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        wav.writeframes(b'\0\0' * 16000)
+    class Tensor:
+        def unsqueeze(self, _): return self
+    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(set_num_threads=lambda _: None,
+                       device=lambda x: x, from_numpy=lambda _: Tensor()))
+    class Pipeline:
+        @staticmethod
+        def from_pretrained(_): return Pipeline()
+        def to(self, _): pass
+        def __call__(self, audio, **kwargs):
+            return SimpleNamespace(
+                speaker_diarization=SimpleNamespace(itertracks=lambda **_: iter([
+                    (SimpleNamespace(start=0, end=1), None, 'SPEAKER_00')])),
+                exclusive_speaker_diarization=SimpleNamespace(itertracks=lambda **_: iter([
+                    (SimpleNamespace(start=0, end=.5), None, 'SPEAKER_00'),
+                    (SimpleNamespace(start=.5, end=1), None, 'SPEAKER_01')])))
+    monkeypatch.setitem(sys.modules, 'pyannote', SimpleNamespace())
+    monkeypatch.setitem(sys.modules, 'pyannote.audio', SimpleNamespace(Pipeline=Pipeline))
+    result = local_diarization.infer(audio, model)
+    assert result['turns'] == [(0., .5, 'SPEAKER_00'), (.5, 1., 'SPEAKER_01')]
