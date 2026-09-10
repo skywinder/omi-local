@@ -7,7 +7,7 @@ import shutil
 import sys
 import webbrowser
 
-from . import cli, config, local_launcher, local_library, local_stt_watch
+from . import cli, config, local_launcher, local_library, local_stt_watch, local_live, local_transcription
 
 
 class SetupError(ValueError):
@@ -29,7 +29,7 @@ def show_frame(title, lines):
     print(output)
 
 
-def check(cfg):
+def check(cfg, *, preparing=False):
     if not shutil.which('ngrok'):
         raise SetupError('Не найден ngrok. Запустите ./start.command для подготовки.')
     # Capture diagnostic chatter in memory; credentials are never provisioned here.
@@ -43,7 +43,15 @@ def check(cfg):
         local_launcher.install_plan(cfg.repo_root)
     except local_launcher.LauncherError as error:
         raise SetupError(str(error)) from error
+    if not preparing:
+        local_transcription.check_models(cfg)
     return 0
+
+
+def require_transcription_ready(cfg):
+    local_live.require_ready(cfg)
+    if local_stt_watch.settings(cfg)['enabled'] and not local_stt_watch.worker_ready(cfg):
+        raise SetupError('Финальное распознавание не готово. Проверьте transcription-status и запустите start.command.')
 
 
 def run(cfg, *, open_browser=True):
@@ -52,15 +60,20 @@ def run(cfg, *, open_browser=True):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise SetupError('Запустите ./start.command в локальном Terminal.')
     print('Проверяем готовность…', flush=True)
-    check(cfg)
+    check(cfg, preparing=True)
+    local_live.require_backend_environment(cfg)
+    local_live.preflight_start(cfg)
+    local_transcription.prepare(cfg)
     local_launcher.install(cfg.repo_root)
     cfg = config.load_config(cfg.repo_root, create_layout=True)
+    local_transcription.configure_defaults(cfg)
     # Configure remains outside redirected output: key provisioning requires a TTY.
     local_mac.configure(cfg)
     print('Запускаем сервисы…', flush=True)
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         if local_mac.up(cfg):
             raise SetupError('Запуск остановлен. Диагностика: bash scripts/local-mac.sh check')
+        require_transcription_ready(cfg)
         local_library.start(cfg)
     print()
     print('Сервисы Mac запущены. Терминал можно закрыть.')
@@ -69,7 +82,8 @@ def run(cfg, *, open_browser=True):
     if local_stt_watch.worker_ready(cfg):
         print('Новые записи распознаются автоматически.')
     else:
-        print('Для автоматического распознавания: docs/LOCAL_STT.md')
+        print('Автоматическое финальное распознавание выключено в настройках.')
+    print('Live-транскрипция готова.' if local_live.settings(cfg)['enabled'] else 'Live-транскрипция выключена в настройках.')
     print('Остановка: bash scripts/local-mac.sh down')
     if open_browser:
         webbrowser.open(local_library.url(cfg))

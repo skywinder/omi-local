@@ -8,6 +8,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/backend/schema/phone_call.dart';
+import 'package:omi/backend/schema/message_event.dart';
 import 'package:omi/env/env.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
@@ -15,6 +16,9 @@ import 'package:omi/pages/conversations/widgets/processing_capture.dart';
 import 'package:omi/pages/home/widgets/battery_info_widget.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/providers/phone_call_provider.dart';
+import 'package:omi/providers/device_provider.dart';
+import 'package:omi/pages/conversation_capturing/page.dart';
+import 'package:omi/services/wals/wal.dart';
 import 'package:omi/services/capture/conversation_location_capture.dart';
 import 'package:omi/utils/enums.dart';
 
@@ -29,6 +33,11 @@ class _Capture extends CaptureProvider {
   bool muted = false;
   bool failStart = false;
   Completer<void>? startGate;
+
+  @override
+  List<Wal> get unsyncedSessionWals => [];
+  @override
+  int get inFlightAudioSeconds => 0;
 
   @override
   bool get havingRecordingDevice => deviceConnected;
@@ -94,6 +103,13 @@ class _IdleCalls extends ChangeNotifier implements PhoneCallProvider {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _NoDevice extends ChangeNotifier implements DeviceProvider {
+  @override
+  BtDevice? get connectedDevice => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _app(Widget child) => MaterialApp(
       locale: const Locale('ru'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -108,6 +124,44 @@ void main() {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
   });
   tearDown(() => Env.setRuntimeModeForTesting(null));
+
+  testWidgets('live screen reports adapter failure and recovers only on preview readiness', (tester) async {
+    final capture = _Capture();
+    final device = _NoDevice();
+    addTearDown(capture.dispose);
+    addTearDown(device.dispose);
+    capture.updateRecordingState(RecordingState.deviceRecord);
+    capture.onMessageEventReceived(MessageServiceStatusEvent(
+      status: 'stt_failed',
+      provider: 'local_live_preview',
+      reason: 'busy',
+      retryable: false,
+    ));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CaptureProvider>.value(value: capture),
+        ChangeNotifierProvider<DeviceProvider>.value(value: device),
+      ],
+      child: const MaterialApp(
+        locale: Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ConversationCapturingPage(),
+      ),
+    ));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsNWidgets(2));
+    expect(find.text('Listening'), findsNothing);
+    capture.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'offline_capture'));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsNWidgets(2));
+    capture.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'local_live_preview'));
+    await tester.pump();
+    expect(find.text('Transcription unavailable'), findsNothing);
+    expect(find.text('Listening'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('start, mute, unmute and stop use existing functions; idle mute is disabled', (tester) async {
     final capture = _Capture();

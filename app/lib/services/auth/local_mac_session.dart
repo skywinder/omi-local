@@ -13,6 +13,26 @@ class LocalMacUnauthorized implements Exception {}
 
 typedef LocalProfileProbe = Future<Map<String, dynamic>> Function(Uri base, String key);
 
+class LocalTranscriptionReadiness {
+  final String live;
+  final String finalTranscript;
+
+  const LocalTranscriptionReadiness({this.live = 'unknown', this.finalTranscript = 'unknown'});
+
+  bool get isReady => live == 'ready' && finalTranscript == 'ready';
+
+  factory LocalTranscriptionReadiness.fromProfile(Map<String, dynamic> profile) {
+    final value = profile['local_transcription'];
+    String stage(String name) {
+      final entry = value is Map ? value[name] : null;
+      final status = entry is Map ? entry['status'] : null;
+      return const {'ready', 'disabled', 'unavailable', 'busy'}.contains(status) ? status as String : 'unknown';
+    }
+
+    return LocalTranscriptionReadiness(live: stage('live'), finalTranscript: stage('final'));
+  }
+}
+
 /// A local owner session, independent of Firebase's cached user and token timer.
 class LocalMacSession extends ChangeNotifier {
   LocalMacSession({FlutterSecureStorage? storage, LocalProfileProbe? probe})
@@ -30,6 +50,7 @@ class LocalMacSession extends ChangeNotifier {
   String? _key;
   bool _rejected = false;
   bool _publishing = false;
+  LocalTranscriptionReadiness readiness = const LocalTranscriptionReadiness();
 
   String get address => _base?.toString() ?? '';
   bool get isSignedIn => _key != null && !_rejected;
@@ -75,6 +96,7 @@ class LocalMacSession extends ChangeNotifier {
     _base = base;
     _key = key;
     _rejected = false;
+    readiness = LocalTranscriptionReadiness.fromProfile(profile);
     _activate();
     OfflineNetworkPolicy.installFromEnv();
     notifyListeners();

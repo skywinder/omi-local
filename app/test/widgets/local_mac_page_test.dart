@@ -32,7 +32,13 @@ void main() {
     final order = <String>[];
     final session = LocalMacSession(probe: (_, __) async {
       order.add('probe');
-      return {'uid': 'alice'};
+      return {
+        'uid': 'alice',
+        'local_transcription': {
+          'live': {'status': 'ready'},
+          'final': {'status': 'ready'}
+        },
+      };
     });
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('ru'),
@@ -71,4 +77,36 @@ void main() {
     expect(find.text('Open'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final readiness in [
+    null,
+    {
+      'live': {'status': 'disabled'},
+      'final': {'status': 'unavailable'}
+    }
+  ]) {
+    testWidgets('pairing warns for readiness $readiness while keeping audio connection usable', (tester) async {
+      final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice', 'local_transcription': readiness});
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(session: session, stopRecording: () async {}, refreshConnection: () async {}),
+      ));
+      await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
+      await tester.enterText(find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+      await tester.tap(find.byKey(const ValueKey('local-mac-connect')));
+      await tester.pumpAndSettle();
+      expect(session.isSignedIn, isTrue);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(readiness == null ? 'Live Transcript: Unknown' : 'Live Transcript: Off'), findsOneWidget);
+      expect(find.text(readiness == null ? 'Transcript: Unknown' : 'Transcript: Transcription unavailable'),
+          findsOneWidget);
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(session.isSignedIn, isTrue);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

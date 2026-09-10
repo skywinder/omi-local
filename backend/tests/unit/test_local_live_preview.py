@@ -1,10 +1,12 @@
 import asyncio
 import json
+import fcntl
 from unittest.mock import AsyncMock
 
 import pytest
 
 from utils.local_live_preview import LocalLivePreview, PreviewSegment, preview_url
+from utils import local_transcription_status
 
 
 @pytest.fixture
@@ -71,9 +73,10 @@ async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch
     preview.feed(pcm)
     for _ in range(20):
         await asyncio.sleep(0)
-        if send.called:
+        if any(isinstance(call.args[0], list) for call in send.call_args_list):
             break
-    send.assert_awaited_once()
+    assert send.call_args_list[0].args[0] == {
+        'type': 'service_status', 'status': 'ready', 'provider': 'local_live_preview'}
     assert send.call_args.args[0][0]['text'] == 'проверка'
     await preview.finish()
     assert socket.sent == [pcm, b'']
@@ -81,6 +84,146 @@ async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch
     assert preview.task.done() and preview.segment.text == ''
     preview.feed(pcm)
     assert preview.pending_bytes == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('mode,reason', [
+    ('disabled', 'disabled'), ('invalid', 'invalid_configuration'),
+    ('refused', 'unavailable'), ('busy', 'busy'), ('protocol', 'protocol_error'),
+])
+async def test_unavailable_preview_reports_fixed_status_without_stopping_capture(monkeypatch, mode, reason):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
+    if mode == 'disabled':
+        monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL')
+    elif mode == 'invalid':
+        monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'wss://private.example/asr')
+
+    class BrokenSocket(Socket):
+        async def recv(self):
+            if mode == 'busy':
+                raise ConnectionClosedError(Close(1013, 'live_preview_busy'), None)
+            return 'invalid protocol with private content'
+
+    def connect(*args, **kwargs):
+        if mode == 'refused':
+            raise ConnectionRefusedError('private socket details')
+        return BrokenSocket()
+
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', connect)
+    send = AsyncMock()
+    preview = LocalLivePreview.from_environment(send)
+    preview.feed(b'\x01\x00')
+    await preview.task
+    await preview.failure_status_task
+    assert send.call_args_list == [(({
+        'type': 'service_status', 'status': 'stt_failed', 'provider': 'local_live_preview',
+        'outcome': 'unavailable', 'reason': reason, 'retryable': False,
+    },), {})]
+    preview.feed(b'\x02\x00')
+    await preview.finish()
+    assert preview.pending_bytes == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('close_reason,status_reason', [
+    ('live_preview_busy', 'busy'),
+    ('final_transcription_busy', 'busy'),
+    ('live_preview_recovering', 'recovering'),
+    ('live_preview_unavailable', 'unavailable'),
+    ('private adapter diagnostic', 'unavailable'),
+])
+async def test_adapter_1013_reason_uses_only_fixed_availability_values(monkeypatch, close_reason, status_reason):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    class UnavailableSocket(Socket):
+        async def recv(self):
+            raise ConnectionClosedError(Close(1013, close_reason), None)
+
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *args, **kwargs: UnavailableSocket())
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', send)
+    await preview.task
+    await preview.failure_status_task
+    send.assert_awaited_once_with({
+        'type': 'service_status', 'status': 'stt_failed', 'provider': 'local_live_preview',
+        'outcome': 'unavailable', 'reason': status_reason, 'retryable': False,
+    })
+    await preview.finish()
+
+
+@pytest.mark.anyio
+async def test_preview_capacity_failure_reports_once_even_before_adapter_task_starts(monkeypatch):
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', send)
+    preview.MAX_PENDING_BYTES = 1
+    preview.feed(b'\x01\x00')
+    preview.feed(b'\x01\x00')
+    await preview.failure_status_task
+    await preview.finish()
+    send.assert_awaited_once()
+    assert send.call_args.args[0]['reason'] == 'buffer_full'
+
+
+def test_final_readiness_requires_enabled_config_and_actual_worker_lock(monkeypatch, tmp_path):
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    assert local_transcription_status.final_status()['status'] == 'unavailable'
+    config = tmp_path / 'stt-watch.json'
+    config.write_text('{"enabled": false}')
+    assert local_transcription_status.final_status()['status'] == 'disabled'
+    config.write_text('{"enabled": true}')
+    lock = tmp_path / 'services/local-transcripts/.watch.lock'
+    lock.parent.mkdir(parents=True)
+    lock.touch()
+    assert local_transcription_status.final_status()['reason'] == 'worker_stopped'
+    with lock.open('r') as worker:
+        fcntl.flock(worker, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert local_transcription_status.final_status() == {'status': 'ready', 'reason': None}
+    assert local_transcription_status.final_status()['status'] == 'unavailable'
+
+
+@pytest.mark.parametrize('health,status', [
+    ({'ready': True, 'active': False}, 'ready'),
+    ({'ready': True, 'active': True}, 'busy'),
+    ({'ready': False}, 'unavailable'),
+    ({'ready': 'true'}, 'unavailable'),
+    ([], 'unavailable'),
+])
+def test_live_readiness_observes_model_health_without_following_redirects(monkeypatch, health, status):
+    from io import BytesIO
+
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
+    class Response(BytesIO):
+        status = 200
+    class Opener:
+        def open(self, url, timeout):
+            assert url == 'http://127.0.0.1:18090/health' and timeout == 1
+            return Response(json.dumps(health).encode())
+    def build(*handlers):
+        assert handlers[0].proxies == {}
+        assert handlers[1].redirect_request(None, None, 302, None, None, 'https://private.example') is None
+        return Opener()
+    monkeypatch.setattr(local_transcription_status.urllib.request, 'build_opener', build)
+    assert local_transcription_status.live_status()['status'] == status
+
+
+def test_profile_status_is_opt_in_and_rejects_external_live_probe(monkeypatch):
+    monkeypatch.setenv('OMI_ENV_STAGE', 'offline')
+    monkeypatch.delenv('OMI_LOCAL_TRANSPORT', raising=False)
+    assert local_transcription_status.local_transcription_status() is None
+    monkeypatch.setenv('OMI_LOCAL_TRANSPORT', 'ngrok')
+    monkeypatch.delenv('OMI_HARNESS_STATE_ROOT', raising=False)
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'wss://private.example/asr')
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Invalid endpoint must never reach HTTP')
+    monkeypatch.setattr(local_transcription_status.urllib.request, 'build_opener', forbidden)
+    result = local_transcription_status.local_transcription_status()
+    assert result['live']['status'] == 'unavailable'
+    assert result['final']['status'] == 'unavailable'
+    assert 'private' not in json.dumps(result)
 
 
 @pytest.mark.anyio

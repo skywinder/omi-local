@@ -173,6 +173,10 @@ def _typesense_container_running(cfg: config.HarnessConfig) -> bool:
 
 
 def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]:
+    if service == "live-preview":
+        from .local_live import health
+        ready = health(cfg).get('ready', False)
+        return ready, "live model ready" if ready else "live model unavailable"
     if service == "library":
         from .local_library import ready
         return ready(cfg), "local library readiness"
@@ -624,6 +628,9 @@ def _start_process(
         if healthy:
             print(f"{service}: already recorded as running")
             return
+        if service == "stt-worker":
+            print("stt-worker: waiting for the owned worker to finish model validation")
+            return
         print(f"{service}: recorded process unhealthy ({detail}); restarting")
         _stop_single_service(cfg, existing)
     _require_port_available_or_owned(cfg, service, port)
@@ -655,6 +662,8 @@ def _start_process(
         {
             "service": service,
             "local_transport": cfg.local_transport,
+            **({"local_live_preview_url": child_env.get("OMI_LOCAL_LIVE_PREVIEW_URL", "")}
+               if service == "backend" else {}),
             "pid": proc.pid,
             "process_group": proc.pid,
             "port": port,
@@ -777,13 +786,15 @@ def _typesense_command(cfg: config.HarnessConfig) -> list[str]:
 # finished binding its port.
 _INFRA_SETTLE_DELAY = 2.0
 _OFFLINE_SERVICES = frozenset({"firestore", "auth", "redis", "backend"})
+_LOCAL_MAC_SERVICES = frozenset({"ngrok", "library", "stt-worker", "live-preview"})
 
 
 def _stop_unused_offline_services(cfg: config.HarnessConfig) -> None:
     if cfg.provider_mode != "offline":
         return
+    allowed = _OFFLINE_SERVICES | (_LOCAL_MAC_SERVICES if cfg.local_transport == "ngrok" else frozenset())
     for record in _process_records(cfg):
-        if str(record.get("service")) not in _OFFLINE_SERVICES:
+        if str(record.get("service")) not in allowed:
             _stop_single_service(cfg, record)
 
 

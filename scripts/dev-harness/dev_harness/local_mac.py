@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import cli, config, safety, local_stt, local_stt_watch, local_library
+from . import cli, config, safety, local_stt, local_stt_watch, local_library, local_live, local_transcription
 
 
 class LocalMacError(ValueError):
@@ -245,6 +245,9 @@ def ensure_owner_profile(cfg, owner_uid: str) -> None:
 def up(cfg) -> int:
     data = read_config(cfg)
     check_agent(cfg)
+    local_live.require_backend_environment(cfg)
+    local_transcription.check_models(cfg)
+    local_live.preflight_start(cfg)
     sys.path.insert(0, str(cfg.repo_root / "backend"))
     from utils.local_transport_auth import load_pairing
 
@@ -252,6 +255,7 @@ def up(cfg) -> int:
     pairing = load_pairing()
     if cli.cmd_check(argparse.Namespace()):
         return 1
+    local_live.start(cfg)
     if cli.cmd_up(argparse.Namespace()):
         return 1
     ensure_owner_profile(cfg, pairing["owner_uid"])
@@ -289,6 +293,7 @@ def up(cfg) -> int:
                         require_auth_boundary(data["url"])
                         print("Public HTTPS health passed; run audio-smoke to verify authenticated WSS")
                         local_stt_watch.start_if_enabled(cfg)
+                        local_live.require_ready(cfg)
                         return 0
             except (OSError, urllib.error.URLError):
                 pass
@@ -359,6 +364,7 @@ def main() -> int:
             try:
                 if args.command == "setup-check":
                     local_setup.check(cfg)
+                    local_setup.require_transcription_ready(cfg)
                     print('Готовность Mac: проверено. Изменений не внесено.')
                     return 0
                 return local_setup.run(cfg)
@@ -400,7 +406,8 @@ def main() -> int:
         # Error text from external tools can contain credentials or account IDs.
         message = (
             str(error)
-            if isinstance(error, (LocalMacError, local_stt.TranscriptionError))
+            if isinstance(error, (LocalMacError, local_stt.TranscriptionError, local_live.LocalLiveError,
+                                  local_transcription.TranscriptionSetupError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )
         print(f"Local Mac operation failed: {message}", file=sys.stderr)

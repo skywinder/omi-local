@@ -15,7 +15,7 @@ import tarfile
 import tempfile
 import wave
 
-from . import local_whisperkit as kit, stt_install
+from . import local_whisperkit as kit, stt_install, transcription_lock
 
 
 def preflight(root):
@@ -69,9 +69,20 @@ def build_inputs(data, swift):
             'configuration': 'release', 'product': 'whisperkit-cli', 'jobs': 2}
 
 
-def install(root):
+def install(root, *, shared_lock=None, lock_path=None):
     swift = preflight(root)
     data = kit.recipe()
+    repo_root = kit.SOURCE.parents[1]
+    try:
+        with transcription_lock.acquire(repo_root, shared_lock=shared_lock, lock_path=lock_path):
+            _install_locked(root, swift, data)
+    except transcription_lock.TranscriptionLockBusy as error:
+        raise kit.WhisperKitError(str(error)) from None
+    except transcription_lock.TranscriptionLockError:
+        raise kit.WhisperKitError('Не удалось безопасно открыть общую блокировку распознавания.') from None
+
+
+def _install_locked(root, swift, data):
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (root / '.install.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -121,7 +132,10 @@ def install(root):
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root', type=Path, default=kit.SOURCE.parents[1] / '.local/whisperkit')
+    default_root = kit.SOURCE.parents[1] / '.local/whisperkit'
+    parser.add_argument('--root', type=Path, default=default_root)
+    parser.add_argument('--lock-path', type=Path,
+                        help='путь общей блокировки; обязателен для нестандартного --root')
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     try:
@@ -129,9 +143,13 @@ def main():
             kit.installed(args.root)
             print('WhisperKit: файлы проверены.')
         else:
-            install(args.root.resolve())
+            root = args.root.resolve()
+            if root != default_root.resolve() and args.lock_path is None:
+                raise kit.WhisperKitError('Для нестандартного --root укажите --lock-path общей блокировки.')
+            install(root, lock_path=args.lock_path.resolve() if args.lock_path else None)
         return 0
-    except (kit.WhisperKitError, stt_install.InstallError, OSError, subprocess.SubprocessError) as error:
+    except (kit.WhisperKitError, transcription_lock.TranscriptionLockError,
+            stt_install.InstallError, OSError, subprocess.SubprocessError) as error:
         print(str(error) if isinstance(error, (kit.WhisperKitError, stt_install.InstallError)) else
               'Подготовка WhisperKit остановлена. Повторите команду после проверки среды.')
         return 1

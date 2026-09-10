@@ -181,6 +181,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
     return Consumer2<CaptureProvider, DeviceProvider>(
       builder: (context, provider, deviceProvider, child) {
         final effectivelyMuted = _isMuted || provider.isCallActive;
+        final transcriptionUnavailable = provider.terminalTranscriptionFailure != null;
         final transcriptSessionId =
             provider.activeCaptureSessionId ?? widget.topConversationId ?? 'pending-live-capture';
         final transcriptScrollState = _scrollStateFor(transcriptSessionId);
@@ -217,7 +218,11 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                     child: Text(
                       provider.photos.isNotEmpty
                           ? 'Capturing'
-                          : (effectivelyMuted ? context.l10n.muted : context.l10n.listening),
+                          : effectivelyMuted
+                              ? context.l10n.muted
+                              : transcriptionUnavailable
+                                  ? context.l10n.transcriptionUnavailable
+                                  : context.l10n.listening,
                     ),
                   ),
                 ],
@@ -241,7 +246,9 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                                   ? Center(
                                       child: Padding(
                                         padding: const EdgeInsets.only(top: 50.0),
-                                        child: Text(context.l10n.waitingForTranscriptOrPhotos),
+                                        child: Text(transcriptionUnavailable
+                                            ? context.l10n.transcriptionUnavailable
+                                            : context.l10n.waitingForTranscriptOrPhotos),
                                       ),
                                     )
                                   : provider.photos.isNotEmpty

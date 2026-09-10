@@ -79,6 +79,7 @@ enum SocketServiceState { connected, disconnected }
 class TranscriptSegmentSocketService implements IPureSocketListener {
   late IPureSocket _socket;
   final Map<Object, ITransctiptSegmentSocketServiceListener> _listeners = {};
+  MessageServiceStatusEvent? _localPreviewStatus;
 
   /// Access to the underlying socket (for composite service creation)
   IPureSocket get socket => _socket;
@@ -173,6 +174,8 @@ class TranscriptSegmentSocketService implements IPureSocketListener {
   void subscribe(Object context, ITransctiptSegmentSocketServiceListener listener) {
     _listeners.remove(context.hashCode);
     _listeners.putIfAbsent(context.hashCode, () => listener);
+    final previewStatus = _localPreviewStatus;
+    if (previewStatus != null) listener.onMessageEventReceived(previewStatus);
   }
 
   void unsubscribe(Object context) {
@@ -195,6 +198,7 @@ class TranscriptSegmentSocketService implements IPureSocketListener {
   Future stop({String? reason}) async {
     await _socket.stop();
     _listeners.clear();
+    _localPreviewStatus = null;
 
     if (reason != null) {
       Logger.debug(reason);
@@ -262,6 +266,11 @@ class TranscriptSegmentSocketService implements IPureSocketListener {
     // Message event
     if (jsonEvent.containsKey("type")) {
       var event = MessageEvent.fromJson(jsonEvent);
+      // The server may report unavailable before connect() returns and capture
+      // subscribes. Keep only the current preview status, never audio or text.
+      if (event is MessageServiceStatusEvent && event.provider == 'local_live_preview') {
+        _localPreviewStatus = event;
+      }
       _listeners.forEach((k, v) {
         v.onMessageEventReceived(event);
       });

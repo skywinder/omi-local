@@ -413,8 +413,11 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
         extra["OMI_OFFLINE_ALLOWED_ENDPOINTS"] = f"{cfg.dev_bind_host}:{cfg.backend_port}"
     extra["OMI_LOCAL_TRANSPORT"] = cfg.local_transport
     if cfg.local_transport == "ngrok":
+        from . import local_live
+
         extra["OMI_LOCAL_PAIRING_FILE"] = str(cfg.layout.state_root / "pairing.json")
         extra["ADMIN_KEY_AUTH_ENABLED"] = "false"
+        extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = local_live.endpoint(cfg)
     if cfg.provider_mode != "offline":
         extra.update(
             {

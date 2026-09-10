@@ -44,6 +44,32 @@ void main() {
     expect(restored.authorizationFor(Uri.parse('wss://synthetic.ngrok.app/v4/listen')), 'Bearer $key');
     expect(restored.address, url);
     expect(Env.usesLocalTunnel, isTrue);
+    expect(session.readiness.isReady, isFalse);
+    expect(session.readiness.live, 'unknown');
+  });
+
+  test('pairing admits audio while reporting separate live and final readiness', () async {
+    final session = LocalMacSession(
+        probe: (_, __) async => {
+              'uid': 'alice',
+              'local_transcription': {
+                'live': {'status': 'busy'},
+                'final': {'status': 'ready'}
+              },
+            });
+    await session.connect(url, key);
+    expect(session.isSignedIn, isTrue);
+    expect(session.readiness.live, 'busy');
+    expect(session.readiness.finalTranscript, 'ready');
+    expect(session.readiness.isReady, isFalse);
+    final restored = LocalMacSession();
+    await restored.restore();
+    expect(restored.readiness.finalTranscript, 'unknown');
+    expect(
+        LocalTranscriptionReadiness.fromProfile({
+          'local_transcription': {'live': 1}
+        }).live,
+        'unknown');
   });
 
   test('credentials are restricted to one secure origin', () async {

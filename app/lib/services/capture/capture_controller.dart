@@ -2449,7 +2449,8 @@ class CaptureController extends ChangeNotifier
       // list so the user can see the outage while the reconnect loop runs.
       if (event.status == 'stt_failed') {
         _terminalTranscriptionFailure = event;
-      } else if (event.status == 'ready') {
+      } else if (event.status == 'ready' &&
+          !(event.provider == 'offline_capture' && _terminalTranscriptionFailure?.provider == 'local_live_preview')) {
         _terminalTranscriptionFailure = null;
       }
 
