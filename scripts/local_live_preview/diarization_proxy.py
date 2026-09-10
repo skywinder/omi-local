@@ -106,7 +106,7 @@ def seconds(value):
     return result if math.isfinite(result) and result >= 0 else None
 
 
-def labeled_snapshot(message, turns, covered_seconds, status):
+def labeled_snapshot(message, turns, covered_seconds, status, *, speaker_aliases=None):
     """Split timed words at actual voice changes; never invent timing for untimed ASR."""
     turns = sorted(turns)
     starts, max_ends = [], []
@@ -132,6 +132,9 @@ def labeled_snapshot(message, turns, covered_seconds, status):
             continue
         if line.get('speaker') == -2:
             lines.append(dict(line))
+            continue
+        if line.get('is_draft') is True:
+            lines.append({**line, 'speaker': -1})
             continue
         words = line.get('words')
         if not words:
@@ -163,6 +166,20 @@ def labeled_snapshot(message, turns, covered_seconds, status):
             lines.append({**line, 'text': text, 'start': group[0].get('start'),
                           'end': max(seconds(word['end']) for word in group),
                           'speaker': group[0]['speaker'], 'words': group})
+    if speaker_aliases is not None:
+        # Acoustic clusters can exist long before any speech is transcribed.
+        # Assign visible numbers only when their first actual text row appears.
+        for line in lines:
+            raw = line.get('speaker')
+            if (type(raw) is not int or raw < 0 or not isinstance(line.get('text'), str)
+                    or not line['text'].strip()):
+                continue
+            if raw not in speaker_aliases:
+                speaker_aliases[raw] = len(speaker_aliases) + 1
+            line['speaker'] = speaker_aliases[raw]
+            if isinstance(line.get('words'), list):
+                line['words'] = [{**word, 'speaker': speaker_aliases[raw]}
+                                 if word.get('speaker') == raw else word for word in line['words']]
     return {**message, 'lines': lines, 'diarization_status': status}
 
 
@@ -242,6 +259,7 @@ def create_app(diarizer, upstream_url, emit, *, interval_seconds=15, max_seconds
         disconnected = False
         degraded = False
         history = SpeakerHistory()
+        speaker_aliases = {}
         latest = None
         changed = asyncio.Event()
         sending = asyncio.Lock()
@@ -261,7 +279,8 @@ def create_app(diarizer, upstream_url, emit, *, interval_seconds=15, max_seconds
         async def snapshot():
             if latest is not None:
                 await send(labeled_snapshot(latest, history.turns, covered / 16000,
-                                             'degraded' if degraded else 'ready' if covered else 'pending'))
+                                             'degraded' if degraded else 'ready' if covered else 'pending',
+                                             speaker_aliases=speaker_aliases))
 
         async def degrade(code):
             nonlocal degraded
