@@ -19,10 +19,11 @@ function browser() {
     remove() { this.removed = true; }
   }
   links.push(new Link());
-  const document = {hidden: false, deleting: false, querySelector(selector) {
+  const document = {hidden: false, deleting: false, settings: false, querySelector(selector) {
     if (selector === 'meta[name="omiloc-assets"]') return {content: JSON.stringify(original)};
     if (selector === 'link[rel="stylesheet"]') return links.find(link => !link.removed);
     if (selector === '#delete-confirm:disabled') return this.deleting ? {} : null;
+    if (selector === '#provider-settings[aria-busy="true"], .provider-editor') return this.settings ? {} : null;
     throw new Error(`Unexpected selector: ${selector}`);
   }};
   runInNewContext(source, {
@@ -74,6 +75,16 @@ test('CSS swaps only after load, unchanged revisions do nothing, code edits relo
   await settle();
   assert.equal(ui.reloads, 1);
   assert.equal(ui.timers.size, 0);
+});
+
+test('code reload waits until settings edits or mutations finish', async () => {
+  const ui = browser();
+  ui.document.settings = true;
+  ui.requests[0].reply(scriptEdit); await settle();
+  assert.equal(ui.reloads, 0);
+  ui.document.settings = false;
+  ui.tick(); ui.requests[1].reply(scriptEdit); await settle();
+  assert.equal(ui.reloads, 1);
 });
 
 test('temporary failures retain current CSS and retry without forgetting the last loaded version', async () => {

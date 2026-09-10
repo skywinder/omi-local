@@ -80,6 +80,25 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+def test_pipeline_projection_keeps_partial_transcript_and_safe_summary(library):
+    folder = library.transcripts / 'result'
+    raw = folder / 'audio.json'
+    transcript = json.loads(raw.read_text())
+    raw.rename(folder / 'asr.json')
+    (folder / 'processing.json').write_text(json.dumps({
+        'stt': {'status': 'ready', 'provider_name': 'Synthetic STT'},
+        'summary': {'status': 'failed', 'provider_name': 'Synthetic LLM', 'api_key': 'must-not-escape'},
+    }))
+    record = library.scan()[0]
+    detail = library.public(library.get(record['id']), detail=True)
+    assert detail['status'] == 'failed' and detail['segments'][0]['text'] == transcript['segments'][0]['text']
+    assert detail['summary'] is None and 'must-not-escape' not in json.dumps(detail)
+    raw.write_text(json.dumps({**transcript, 'structured': {'title': 'Synthetic title', 'overview': 'Synthetic summary'}}))
+    (folder / 'processing.json').write_text(json.dumps({'stt': {'status': 'ready'}, 'summary': {'status': 'ready'}}))
+    record = library.scan()[0]
+    assert record['status'] == 'ready' and record['summary']['title'] == 'Synthetic title'
+
+
 @pytest.mark.parametrize('headers', [
     {'Host': 'attacker.example:20001'}, {'Host': '127.0.0.1:20000'},
     {'Origin': 'https://attacker.example'}, {'Sec-Fetch-Site': 'cross-site'},
@@ -423,7 +442,8 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
 def test_runtime_final_timeout_preserves_healthy_live_draft(library, monkeypatch):
     import httpx
     from dev_harness import local_library_runtime as live
-    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000)
+    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000,
+                          layout=SimpleNamespace(state_root=library.transcripts.parent / 'state'))
     runtime = live.Runtime(cfg)
     settings = {
         'stt-engine.json': {'engine': 'openai-compatible', 'provider_url': 'http://127.0.0.1:10301/v1',

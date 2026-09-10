@@ -23,9 +23,13 @@ phone uses PCM16. Invalid recovery metadata must leave the original parts intact
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.
-The trusted-host importer creates transcript-only Conversations through the lifecycle
+The trusted-host importer creates local Conversations through the lifecycle
 owner; offline detail reads must never dispatch first-open work. Model settings and
 the adapter contract are in `docs/LOCAL_STT.md`; do not add ML imports to backend.
+The library provider registry and selected remote adapters run in the harness.
+Generated summaries use the same trusted-host import after all enabled stages
+finish. Remote Live runs through the owned loopback provider relay; never widen
+backend egress or forward provider credentials to it. See `docs/PROVIDERS.md`.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

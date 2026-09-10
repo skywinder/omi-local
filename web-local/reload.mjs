@@ -40,8 +40,8 @@
         const next = await response.json();
         if (paused || started !== generation || !valid(next)) return;
         if (next.page !== versions.page) {
-          // Do not interrupt the visible result of an in-flight deletion.
-          if (!document.querySelector('#delete-confirm:disabled')) {
+          // Preserve the visible result of an in-flight mutation and settings drafts.
+          if (!document.querySelector('#delete-confirm:disabled') && !document.querySelector('#provider-settings[aria-busy="true"], .provider-editor')) {
             reloading = true;
             location.reload();
           }

@@ -401,8 +401,9 @@ def main():
     args = parser.parse_args()
     origin = urlsplit(args.upstream)
     if (origin.scheme != 'ws' or origin.hostname != '127.0.0.1' or not origin.port or
-            origin.username or origin.password or origin.query or origin.fragment or origin.path != '/asr'):
-        parser.error('upstream must be an explicit 127.0.0.1 ws /asr endpoint')
+            origin.username or origin.password or origin.query or origin.fragment
+            or origin.path not in {'/asr', '/upstream'}):
+        parser.error('upstream must be an explicit 127.0.0.1 ws preview endpoint')
     if (not 1 <= args.port <= 65535 or args.port == origin.port or not 1 <= args.threads <= 16 or
             not 5 <= args.interval_seconds <= 120 or args.model not in {
                 'pyannote/speaker-diarization-3.1', 'pyannote/speaker-diarization-community-1'}):
