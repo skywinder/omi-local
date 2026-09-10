@@ -181,6 +181,53 @@ class _CountingSocketCaptureProvider extends CaptureProvider {
   }
 }
 
+class _BufferedStartProvider extends CaptureProvider {
+  _BufferedStartProvider({required super.audioListenerLoader, super.audioCodecLoader, super.buttonListenerLoader})
+      : super(inProgressConversationLoader: () async {});
+
+  final gates = <Completer<TranscriptSegmentSocketService?>>[];
+  final sockets = <_AudioPacketSocket>[];
+
+  @override
+  Future<TranscriptSegmentSocketService?> openConversationSocket({
+    required BleAudioCodec codec,
+    required int sampleRate,
+    required String language,
+    required bool force,
+    String? source,
+    String? clientConversationId,
+    CustomSttConfig? customSttConfig,
+  }) {
+    final gate = Completer<TranscriptSegmentSocketService?>();
+    gates.add(gate);
+    return gate.future;
+  }
+
+  _AudioPacketSocket connect(int index) {
+    final socket = _AudioPacketSocket();
+    sockets.add(socket);
+    gates[index].complete(TranscriptSegmentSocketService.withSocket(16000, BleAudioCodec.opusFS320, 'en', socket));
+    return socket;
+  }
+}
+
+class _AudioPacketSocket extends _TrackingSocket {
+  final packets = <List<int>>[];
+  bool stopped = false;
+
+  @override
+  PureSocketStatus get status => stopped ? PureSocketStatus.disconnected : PureSocketStatus.connected;
+
+  @override
+  void send(dynamic message) {
+    expect(stopped, isFalse, reason: 'Audio must drain before the socket closes');
+    packets.add(List<int>.from(message as List<int>));
+  }
+
+  @override
+  Future<void> stop() async => stopped = true;
+}
+
 class _ButtonCaptureProvider extends CaptureProvider {
   _ButtonCaptureProvider({super.buttonListenerLoader});
 
@@ -501,9 +548,9 @@ void main() {
     await provider.resumeDeviceRecording();
     expect(provider.recordingState, RecordingState.stop);
 
-    // The real start path reaches the socket boundary; no physical BLE device in CI.
-    await provider.streamDeviceRecording(userInitiated: true);
-    expect(provider.openCalls, 1);
+    // No physical BLE subscription: fail before opening a socket or claiming capture.
+    await expectLater(provider.streamDeviceRecording(userInitiated: true), throwsStateError);
+    expect(provider.openCalls, 0);
     await provider.stopStreamDeviceRecording();
     expect(provider.recordingDevice, same(device));
     expect(provider.recordingState, RecordingState.stop);
@@ -512,8 +559,164 @@ void main() {
     await provider.resumeDeviceRecording();
     await provider.pauseDeviceRecording();
     expect(provider.recordingState, RecordingState.stop);
-    expect(provider.openCalls, 1);
+    expect(provider.openCalls, 0);
     expect(SharedPreferencesUtil().getBool('nativeBleStreamingEnabled'), isFalse);
+  });
+
+  group('local audio start buffering', () {
+    late StreamController<List<int>> audio;
+    late _BufferedStartProvider provider;
+    late Completer<BleAudioCodec> codec;
+
+    setUp(() async {
+      Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      SharedPreferencesUtil().batchModeEnabled = false;
+      SharedPreferencesUtil().unlimitedLocalStorageEnabled = false;
+      audio = StreamController<List<int>>.broadcast(sync: true);
+      codec = Completer<BleAudioCodec>();
+      provider = _BufferedStartProvider(
+        audioListenerLoader: (_, callback) async => audio.stream.listen(callback),
+        audioCodecLoader: (_) => codec.future,
+      );
+      await provider.streamDeviceRecording(device: _device(id: 'synthetic-buffered', type: DeviceType.omi));
+    });
+
+    tearDown(() async {
+      provider.dispose();
+      await audio.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+
+    Future<void> reachSocket() async {
+      codec.complete(BleAudioCodec.opusFS320);
+      await pumpEventQueue();
+      expect(provider.gates, hasLength(1));
+    }
+
+    test('captures before codec and socket readiness, then sends FIFO once', () async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      expect(audio.hasListener, isTrue);
+      expect(provider.recordingState, RecordingState.deviceRecord);
+      expect(provider.gates, isEmpty);
+      final packet = [0, 0, 0, 11];
+      audio.add(packet);
+      packet[3] = 99; // The buffer must own the notification snapshot.
+      await reachSocket();
+      audio.add([1, 0, 0, 22]);
+      final socket = provider.connect(0);
+      await start;
+      audio.add([2, 0, 0, 33]);
+      expect(socket.packets, [
+        [11],
+        [22],
+        [33]
+      ]);
+      await provider.stopStreamDeviceRecording();
+      expect(socket.stopped, isTrue);
+      expect(audio.hasListener, isFalse);
+    });
+
+    test('Stop during connect drains accepted audio and keeps the next session separate', () async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      audio.add([0, 0, 0, 11]);
+      await reachSocket();
+      final stop = provider.stopStreamDeviceRecording();
+      await pumpEventQueue();
+      expect(audio.hasListener, isFalse);
+      expect(provider.recordingState, RecordingState.stop);
+      audio.add([1, 0, 0, 99]);
+      final nextStart = provider.streamDeviceRecording(userInitiated: true);
+      final first = provider.connect(0);
+      await start;
+      await stop;
+      await pumpEventQueue();
+      expect(first.packets, [
+        [11]
+      ]);
+      expect(first.stopped, isTrue);
+      expect(provider.gates, hasLength(2));
+      audio.add([0, 0, 0, 22]);
+      final second = provider.connect(1);
+      await nextStart;
+      expect(second.packets, [
+        [22]
+      ]);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('failed socket clears the buffered session and stops its audio subscription', () async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      final failure = expectLater(start, throwsStateError);
+      await pumpEventQueue();
+      audio.add([0, 0, 0, 11]);
+      await reachSocket();
+      provider.gates.single.complete(null);
+      await failure;
+      expect(audio.hasListener, isFalse);
+      expect(provider.recordingState, RecordingState.stop);
+      await provider.stopStreamDeviceRecording();
+      expect(provider.recordingState, RecordingState.stop);
+    });
+
+    test('disconnect during connect closes a late socket without sending old audio', () async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      audio.add([0, 0, 0, 11]);
+      await reachSocket();
+      provider.updateRecordingDevice(null);
+      final socket = provider.connect(0);
+      await start;
+      expect(socket.packets, isEmpty);
+      expect(socket.stopped, isTrue);
+      expect(audio.hasListener, isFalse);
+      expect(provider.recordingState, RecordingState.stop);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('pause during connect preserves accepted audio without restarting input', () async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      audio.add([0, 0, 0, 11]);
+      await reachSocket();
+      await provider.pauseDeviceRecording();
+      audio.add([1, 0, 0, 99]);
+      final socket = provider.connect(0);
+      await start;
+      expect(provider.recordingState, RecordingState.pause);
+      expect(socket.packets, [
+        [11]
+      ]);
+      expect(audio.hasListener, isFalse);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('physical Stop during startup cancels input and drains before closing', () async {
+      provider.dispose();
+      final buttons = StreamController<List<int>>.broadcast(sync: true);
+      addTearDown(buttons.close);
+      provider = _BufferedStartProvider(
+        audioListenerLoader: (_, callback) async => audio.stream.listen(callback),
+        buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback),
+        audioCodecLoader: (_) async => BleAudioCodec.opusFS320,
+      );
+      await provider.streamDeviceRecording(device: _device(id: 'synthetic-buffered', type: DeviceType.omi));
+      buttons.add([1, 0, 0, 0]);
+      await pumpEventQueue();
+      expect(provider.gates, hasLength(1));
+      audio.add([0, 0, 0, 11]);
+      buttons.add([1, 0, 0, 0]);
+      await pumpEventQueue();
+      expect(audio.hasListener, isFalse);
+      final socket = provider.connect(0);
+      await pumpEventQueue();
+      expect(socket.packets, [
+        [11]
+      ]);
+      expect(socket.stopped, isTrue);
+      expect(provider.recordingState, RecordingState.stop);
+    });
   });
 
   test('initial phone microphone stream identifies its PCM16 source', () async {
@@ -571,6 +774,68 @@ void main() {
 
     expect(locationCapture.calls, 1);
     provider.dispose();
+  });
+
+  test('live preview wire snapshots replace the same segment without duplicates', () async {
+    final provider = CaptureProvider(
+      conversationLocationCapture: _CountingConversationLocationCapture(),
+      inProgressConversationLoader: () async {},
+    );
+    TranscriptSegment snapshot(String text) => TranscriptSegment.fromJson({
+          'id': 'preview-test-session',
+          'text': text,
+          'start': 0.0,
+          'end': 4.0,
+          'speaker': 'SPEAKER_00',
+          'is_user': false,
+        });
+    provider.onSegmentReceived([snapshot('Проверка')]);
+    await Future<void>.delayed(Duration.zero);
+    final version = provider.segmentsPhotosVersion;
+    provider.onSegmentReceived([snapshot('Проверка обновления текста.')]);
+    expect(provider.segments.single.text, 'Проверка обновления текста.');
+    expect(provider.segmentsPhotosVersion, greaterThan(version));
+    expect(provider.hasTranscripts, isTrue);
+    // A rejected pending hypothesis may retract text already shown.
+    provider.onSegmentReceived([snapshot('')]);
+    expect(provider.segments.single.text, isEmpty);
+    provider.dispose();
+  });
+
+  test('local phone start refuses a connected device and preserves its draft', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    final provider = CaptureProvider();
+    addTearDown(provider.dispose);
+    provider.updateRecordingDevice(_device(id: 'synthetic-device', type: DeviceType.omi));
+    provider.segments.add(_segment('old', 'Synthetic device draft'));
+    await expectLater(provider.streamRecording(), throwsStateError);
+    expect(provider.segments.single.id, 'old');
+  });
+
+  test('local phone start clears the previous preview before requesting microphone permission', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    final provider = CaptureProvider();
+    addTearDown(provider.dispose);
+    provider.segments.add(_segment('old', 'Synthetic previous draft'));
+    provider.testSessionStartSeconds = 100;
+    var permissionRequested = false;
+    const channel = MethodChannel('flutter.baseflow.com/permissions/methods');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'requestPermissions') {
+        permissionRequested = true;
+        expect(provider.segments, isEmpty);
+        expect(provider.activeCaptureSessionId, isNull);
+        return {7: 0}; // Denied: the native microphone must not start.
+      }
+      return null;
+    });
+    addTearDown(() =>
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    await provider.streamRecording();
+    expect(permissionRequested, isTrue);
+    expect(provider.recordingState, RecordingState.stop);
   });
 
   test('streamDeviceRecording does not wait for location capture', () async {

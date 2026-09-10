@@ -27,6 +27,7 @@ import 'package:omi/models/custom_stt_config.dart';
 import 'package:omi/providers/device_onboarding_provider.dart';
 import 'package:omi/services/capture/capture_external_actions.dart';
 import 'package:omi/services/capture/capture_metrics_tracker.dart';
+import 'package:omi/services/capture/local_device_audio_start.dart';
 import 'package:omi/services/capture/temporary_capture_controls.dart';
 import 'package:omi/services/capture/conversation_source_for_device.dart';
 import 'package:omi/services/capture/conversation_location_capture.dart';
@@ -79,6 +80,7 @@ class CaptureController extends ChangeNotifier
   final Future<void> Function()? _inProgressConversationLoader;
   final Future<BleAudioCodec> Function(String deviceId)? _audioCodecLoader;
   final Future<StreamSubscription?> Function(String, void Function(List<int>))? _buttonListenerLoader;
+  final Future<StreamSubscription?> Function(String, void Function(List<int>))? _audioListenerLoader;
   final Future<bool> Function()? _microphonePermissionRequester;
   final IMicRecorderService? _phoneMicBatchRecorder;
   Geolocation? _sessionGeolocation;
@@ -205,6 +207,7 @@ class CaptureController extends ChangeNotifier
     Future<void> Function()? inProgressConversationLoader,
     Future<BleAudioCodec> Function(String deviceId)? audioCodecLoader,
     Future<StreamSubscription?> Function(String, void Function(List<int>))? buttonListenerLoader,
+    Future<StreamSubscription?> Function(String, void Function(List<int>))? audioListenerLoader,
     Future<bool> Function()? microphonePermissionRequester,
     IMicRecorderService? phoneMicBatchRecorder,
     RecordingLifecycleTelemetry? recordingTelemetry,
@@ -214,6 +217,7 @@ class CaptureController extends ChangeNotifier
         _inProgressConversationLoader = inProgressConversationLoader,
         _audioCodecLoader = audioCodecLoader,
         _buttonListenerLoader = buttonListenerLoader,
+        _audioListenerLoader = audioListenerLoader,
         _microphonePermissionRequester = microphonePermissionRequester,
         _phoneMicBatchRecorder = phoneMicBatchRecorder,
         _recordingTelemetry = recordingTelemetry ?? RecordingLifecycleTelemetry() {
@@ -545,6 +549,12 @@ class CaptureController extends ChangeNotifier
   }
 
   void _updateRecordingDevice(BtDevice? device) {
+    if (_localDeviceAudioStart != null && _localDeviceAudioStart!.deviceId != device?.id) {
+      _localDeviceAudioStart!.discard();
+      _temporaryRecordingRequested = false;
+      _websocketInitGeneration++;
+      recordingState = RecordingState.stop;
+    }
     if (_recordingDevice?.id != device?.id) unawaited(_cancelButtonStream());
     Logger.debug('connected device changed from ${_recordingDevice?.id} to ${device?.id}');
     _recordingDevice = device;
@@ -937,7 +947,14 @@ class CaptureController extends ChangeNotifier
   }
 
   Future<void> _toggleLocalRecordingSession(String deviceId) async {
-    if (_isProcessingButtonEvent || _recordingDevice?.id != deviceId) return;
+    if (_recordingDevice?.id != deviceId) return;
+    if (_isProcessingButtonEvent) {
+      final starting = _localDeviceAudioStart;
+      if (starting != null && !starting.stopping && !starting.invalidated) {
+        await stopStreamDeviceRecording();
+      }
+      return;
+    }
     _isProcessingButtonEvent = true;
     try {
       final active = _temporaryRecordingRequested ||
@@ -948,7 +965,12 @@ class CaptureController extends ChangeNotifier
       } else {
         try {
           await streamDeviceRecording(userInitiated: true);
-          if (recordingState != RecordingState.deviceRecord) throw StateError('Capture unavailable');
+          if (_temporaryRecordingRequested &&
+              _localDeviceStop == null &&
+              recordingState != RecordingState.deviceRecord &&
+              recordingState != RecordingState.pause) {
+            throw StateError('Capture unavailable');
+          }
         } catch (_) {
           await stopStreamDeviceRecording();
           rethrow;
@@ -1105,61 +1127,68 @@ class CaptureController extends ChangeNotifier
 
   Future<bool> streamAudioToWs(String deviceId, BleAudioCodec codec) async {
     Logger.debug('streamAudioToWs in capture_provider');
-    _bleBytesStream?.cancel();
+    final starting = _localDeviceAudioStart;
+    if (starting == null) await _bleBytesStream?.cancel();
     _startMetricsTracking();
-    final subscription = await _getBleAudioBytesListener(
-      deviceId,
-      onAudioBytesReceived: (List<int> value) {
-        final snapshot = List<int>.from(value);
-        if (snapshot.isEmpty || snapshot.length < 3) return;
+    void receive(List<int> value) {
+      final snapshot = List<int>.from(value);
+      if (snapshot.isEmpty || snapshot.length < 3) return;
 
-        // Track bytes received from BLE
-        _metrics.addBleBytes(snapshot.length);
+      // Track bytes received from BLE
+      _metrics.addBleBytes(snapshot.length);
 
-        // Command button triggered
-        bool voiceCommandSupported = _recordingDevice != null
-            ? (_recordingDevice?.type == DeviceType.omi || _recordingDevice?.type == DeviceType.openglass)
-            : false;
-        if (_voiceCommandSession != null && voiceCommandSupported) {
-          final payload = _activeSource?.getSocketPayload(snapshot) ?? snapshot.sublist(3);
-          _commandBytes.add(payload);
+      // Command button triggered
+      bool voiceCommandSupported = _recordingDevice != null
+          ? (_recordingDevice?.type == DeviceType.omi || _recordingDevice?.type == DeviceType.openglass)
+          : false;
+      if (_voiceCommandSession != null && voiceCommandSupported) {
+        final payload = _activeSource?.getSocketPayload(snapshot) ?? snapshot.sublist(3);
+        _commandBytes.add(payload);
+      }
+
+      // Local storage syncs. In batch mode the native layer owns writing the
+      // .bin files, so the Dart WAL writer must stay off to avoid double-writes.
+      var checkWalSupported = !SharedPreferencesUtil().batchModeEnabled &&
+          (_recordingDevice?.type == DeviceType.omi || _recordingDevice?.type == DeviceType.openglass) &&
+          codec.isOpusSupported() &&
+          (_socket?.state != SocketServiceState.connected || SharedPreferencesUtil().unlimitedLocalStorageEnabled);
+      if (checkWalSupported != _isWalSupported) {
+        setIsWalSupported(checkWalSupported);
+      }
+
+      // Process bytes through audio source and feed to WAL
+      final frames = _activeSource?.processBytes(snapshot) ?? [];
+      if (_isWalSupported) {
+        for (final frame in frames) {
+          _wal.getSyncs().phone.onFrameCaptured(frame);
         }
+      }
 
-        // Local storage syncs. In batch mode the native layer owns writing the
-        // .bin files, so the Dart WAL writer must stay off to avoid double-writes.
-        var checkWalSupported = !SharedPreferencesUtil().batchModeEnabled &&
-            (_recordingDevice?.type == DeviceType.omi || _recordingDevice?.type == DeviceType.openglass) &&
-            codec.isOpusSupported() &&
-            (_socket?.state != SocketServiceState.connected || SharedPreferencesUtil().unlimitedLocalStorageEnabled);
-        if (checkWalSupported != _isWalSupported) {
-          setIsWalSupported(checkWalSupported);
-        }
+      // Send WS
+      if (_socket?.state == SocketServiceState.connected) {
+        final socketPayload = _activeSource?.getSocketPayload(snapshot) ?? snapshot;
+        _socket?.send(socketPayload);
 
-        // Process bytes through audio source and feed to WAL
-        final frames = _activeSource?.processBytes(snapshot) ?? [];
+        // Track bytes sent to websocket
+        _metrics.addSocketBytes(socketPayload.length);
+
+        // Mark frames as synced
         if (_isWalSupported) {
           for (final frame in frames) {
-            _wal.getSyncs().phone.onFrameCaptured(frame);
+            _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
           }
         }
+      }
+    }
 
-        // Send WS
-        if (_socket?.state == SocketServiceState.connected) {
-          final socketPayload = _activeSource?.getSocketPayload(snapshot) ?? snapshot;
-          _socket?.send(socketPayload);
-
-          // Track bytes sent to websocket
-          _metrics.addSocketBytes(socketPayload.length);
-
-          // Mark frames as synced
-          if (_isWalSupported) {
-            for (final frame in frames) {
-              _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
-            }
-          }
-        }
-      },
-    );
+    final StreamSubscription? subscription;
+    if (starting != null) {
+      if (starting.invalidated || starting.deviceId != deviceId) return false;
+      starting.forwardTo(receive);
+      subscription = starting.subscription;
+    } else {
+      subscription = await _getBleAudioBytesListener(deviceId, onAudioBytesReceived: receive);
+    }
     _bleBytesStream = subscription;
     notifyListeners();
     return subscription != null;
@@ -1167,11 +1196,20 @@ class CaptureController extends ChangeNotifier
 
   Future<void> _resetState() async {
     Logger.debug('resetState');
-    await _cleanupCurrentState();
+    final starting = _localDeviceAudioStart;
+    if (starting == null) {
+      await _cleanupCurrentState();
+    } else {
+      _socketReconnectPending = false;
+      _stopInProgressConversationRefresh();
+      _activeSource = null;
+    }
 
     // Always try to stream audio if a device is present
     await _ensureDeviceSocketConnection();
+    if (starting?.invalidated ?? false) return;
     await _initiateDeviceAudioStreaming();
+    if (starting?.invalidated ?? false) return;
 
     // Additionally, stream photos if the device supports it
     if (_recordingDevice != null) {
@@ -1213,6 +1251,7 @@ class CaptureController extends ChangeNotifier
     String deviceId, {
     required void Function(List<int>) onAudioBytesReceived,
   }) async {
+    if (_audioListenerLoader != null) return _audioListenerLoader!(deviceId, onAudioBytesReceived);
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return Future.value(null);
@@ -1236,7 +1275,12 @@ class CaptureController extends ChangeNotifier
     if (_recordingDevice == null || _temporaryRecordingStopped) {
       return;
     }
+    final starting = _localDeviceAudioStart;
     BleAudioCodec codec = await _getAudioCodec(_recordingDevice!.id);
+    if (starting != null) {
+      if (starting.invalidated || starting.deviceId != _recordingDevice?.id) return;
+      starting.codec = codec;
+    }
     var language =
         SharedPreferencesUtil().hasSetPrimaryLanguage ? SharedPreferencesUtil().userPrimaryLanguage : "multi";
     final customSttConfig = SharedPreferencesUtil().customSttConfig;
@@ -1252,6 +1296,7 @@ class CaptureController extends ChangeNotifier
   }
 
   Future<void> _initiateDeviceAudioStreaming() async {
+    final starting = _localDeviceAudioStart;
     final device = _recordingDevice;
     if (device == null || _temporaryRecordingStopped) {
       return;
@@ -1260,14 +1305,20 @@ class CaptureController extends ChangeNotifier
     if (deviceId.isEmpty) {
       return;
     }
-    final connection = await ServiceManager.instance().device.ensureConnection(deviceId);
-    if (connection == null) return;
-    final codec = await _getAudioCodec(deviceId);
+    if (starting != null && (starting.invalidated || starting.deviceId != deviceId)) return;
+    final connection = starting == null ? await ServiceManager.instance().device.ensureConnection(deviceId) : null;
+    if (starting == null && connection == null) return;
+    final codec = starting?.codec ?? await _getAudioCodec(deviceId);
+    if (starting != null && _socket?.state != SocketServiceState.connected) {
+      throw StateError('Local audio socket did not connect');
+    }
     await _wal.getSyncs().phone.onAudioCodecChanged(codec);
+    if (starting?.invalidated ?? false) return;
     await _saveNativeBleStreamConfig(device, codec);
+    if (starting?.invalidated ?? false) return;
 
     // Create audio source for BLE device
-    final pd = await device.getDeviceInfo(connection);
+    final pd = starting != null ? device : await device.getDeviceInfo(connection!);
     final deviceModel = pd.modelNumber.isNotEmpty ? pd.modelNumber : "Omi";
     if (device.type == DeviceType.omi || device.type == DeviceType.openglass) {
       _activeSource = BleDeviceSource(codec: codec, deviceId: deviceId, deviceModel: deviceModel);
@@ -1276,7 +1327,7 @@ class CaptureController extends ChangeNotifier
 
     await streamButton(deviceId);
     final foregroundAudioReady = await streamAudioToWs(deviceId, codec);
-    if (foregroundAudioReady) {
+    if (foregroundAudioReady && !_isPaused && !(starting?.stopping ?? false)) {
       await SharedPreferencesUtil().saveBool('nativeBleForegroundReady', true);
     }
 
@@ -1289,7 +1340,7 @@ class CaptureController extends ChangeNotifier
       _offlineMuteStartedAt = null;
       if (SharedPreferencesUtil().batchMuted) SharedPreferencesUtil().batchMuted = false;
     }
-    updateRecordingState(RecordingState.deviceRecord);
+    if (!_isPaused && !(starting?.stopping ?? false)) updateRecordingState(RecordingState.deviceRecord);
     notifyListeners();
   }
 
@@ -1563,6 +1614,8 @@ class CaptureController extends ChangeNotifier
 
   @override
   void dispose() {
+    _localDeviceAudioStart?.discard();
+    _websocketInitGeneration++;
     _phoneBatchGeolocationPreference.invalidateSession();
     _clearSessionLocation();
     _recordingTelemetry.complete(reason: 'pipeline_closed');
@@ -1646,6 +1699,11 @@ class CaptureController extends ChangeNotifier
   }
 
   streamRecording() async {
+    if (TemporaryCaptureControls.enabled) {
+      if (havingRecordingDevice) throw StateError('Disconnect the recording device before starting the phone mic');
+      // Local preview has no ConversationEvent to clear the preceding draft.
+      await _resetStateVariables();
+    }
     _sessionRecordingDevice = null;
     // Drain any tail from the preceding phone session before replacing its
     // location. A stale session snapshot must never be applied to a later WAL.
@@ -1883,14 +1941,22 @@ class CaptureController extends ChangeNotifier
 
   // Temporary explicit session boundary for the local WAV workflow (G12).
   bool _temporaryRecordingRequested = false;
+  LocalDeviceAudioStart? _localDeviceAudioStart;
+  Future<void>? _localDeviceStop;
   bool get _temporaryRecordingStopped => TemporaryCaptureControls.enabled && !_temporaryRecordingRequested;
 
   Future streamDeviceRecording({BtDevice? device, bool userInitiated = false}) async {
     Logger.debug("streamDeviceRecording $device");
+    if (userInitiated) {
+      await _localDeviceStop;
+      await _localDeviceAudioStart?.completed.future;
+    }
     if (device != null) _updateRecordingDevice(device);
+    if (!userInitiated && _localDeviceAudioStart != null) return;
     if (TemporaryCaptureControls.enabled) {
       if (_recordingDevice != null) await streamButton(_recordingDevice!.id);
       if (userInitiated && _recordingDevice != null) {
+        if (_temporaryRecordingRequested && recordingState == RecordingState.deviceRecord) return;
         _temporaryRecordingRequested = true;
         _isPaused = false;
         SharedPreferencesUtil().deviceMuted = false;
@@ -1902,44 +1968,100 @@ class CaptureController extends ChangeNotifier
         return; // Home re-entry must not restart an explicitly started session.
       }
     }
-    if (deviceOnboardingProvider == null && SharedPreferencesUtil().batchModeSuspendedForOnboarding) {
-      await restoreBatchModeAfterOnboarding();
-    }
-    _sessionRecordingDevice = _recordingDevice;
+    final recordingDevice = _recordingDevice;
+    final starting = TemporaryCaptureControls.enabled &&
+            userInitiated &&
+            !SharedPreferencesUtil().batchModeEnabled &&
+            recordingDevice != null &&
+            (recordingDevice.type == DeviceType.omi || recordingDevice.type == DeviceType.openglass)
+        ? LocalDeviceAudioStart(recordingDevice.id)
+        : null;
+    if (starting != null) _localDeviceAudioStart = starting;
+    try {
+      if (starting != null) {
+        await _bleBytesStream?.cancel();
+        final subscribed = await starting.attach(
+          _getBleAudioBytesListener(starting.deviceId, onAudioBytesReceived: starting.receive),
+        );
+        if (starting.invalidated) return;
+        if (!subscribed) throw StateError('Local audio subscription unavailable');
+        _bleBytesStream = starting.subscription;
+        if (!starting.stopping) updateRecordingState(RecordingState.deviceRecord);
+      }
+      if (deviceOnboardingProvider == null && SharedPreferencesUtil().batchModeSuspendedForOnboarding) {
+        await restoreBatchModeAfterOnboarding();
+      }
+      _sessionRecordingDevice = _recordingDevice;
 
-    _recordingTelemetry.prepare(
-      source: SharedPreferencesUtil().batchModeEnabled ? 'pendant_batch' : 'pendant_live',
-    );
+      _recordingTelemetry.prepare(
+        source: SharedPreferencesUtil().batchModeEnabled ? 'pendant_batch' : 'pendant_live',
+      );
 
-    bool wasPaused = _isPaused;
+      bool wasPaused = _isPaused;
 
-    // Product: recording is the tap; location is metadata. Do not block
-    // device connect/start on the OS location dialog. Location still PATCHes
-    // when the grant/fix lands and stamps the recording-owned WAL snapshot.
-    // HomePage calls this with device == null on every entry — check-only so
-    // a fresh install cannot hit deniedForever before the user records.
-    // Drain the old session's in-memory WAL tail before replacing its location
-    // snapshot; otherwise those frames could be flushed under the next session's
-    // location.
-    await _wal.getSyncs().phone.finalizeCurrentSession();
-    _clearSessionLocation();
-    unawaited(_captureSessionLocation(promptIfDenied: device != null));
+      // Product: recording is the tap; location is metadata. Do not block
+      // device connect/start on the OS location dialog. Location still PATCHes
+      // when the grant/fix lands and stamps the recording-owned WAL snapshot.
+      // HomePage calls this with device == null on every entry — check-only so
+      // a fresh install cannot hit deniedForever before the user records.
+      // Drain the old session's in-memory WAL tail before replacing its location
+      // snapshot; otherwise those frames could be flushed under the next session's
+      // location.
+      await _wal.getSyncs().phone.finalizeCurrentSession();
+      _clearSessionLocation();
+      unawaited(_captureSessionLocation(promptIfDenied: device != null));
 
-    await _resetStateVariables();
-    await _resetState();
+      await _resetStateVariables();
+      await _resetState();
+      if (starting?.invalidated ?? false) return;
 
-    if (recordingState == RecordingState.deviceRecord) {
-      _recordingTelemetry.markStarted();
-    } else {
-      _recordingTelemetry.failStart(failureClass: 'capture_unavailable');
-    }
+      if (recordingState == RecordingState.deviceRecord || starting != null) {
+        _recordingTelemetry.markStarted();
+      } else {
+        _recordingTelemetry.failStart(failureClass: 'capture_unavailable');
+      }
 
-    if (wasPaused) {
-      await pauseDeviceRecording();
+      if (wasPaused) {
+        await pauseDeviceRecording();
+      }
+    } catch (_) {
+      starting?.discard();
+      if (starting != null && !starting.stopping) await _stopStreamDeviceRecordingNow();
+      rethrow;
+    } finally {
+      if (starting != null) {
+        starting.completed.complete();
+        if (identical(_localDeviceAudioStart, starting)) _localDeviceAudioStart = null;
+      }
     }
   }
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    if (_localDeviceStop != null) return _localDeviceStop;
+    final starting = _localDeviceAudioStart;
+    if (starting != null) {
+      starting.stopping = true;
+      updateRecordingState(RecordingState.stop);
+      final stopping = _finishLocalDeviceStart(starting, cleanDevice: cleanDevice);
+      _localDeviceStop = stopping;
+      try {
+        await stopping;
+      } finally {
+        if (identical(_localDeviceStop, stopping)) _localDeviceStop = null;
+      }
+      return;
+    }
+    await _stopStreamDeviceRecordingNow(cleanDevice: cleanDevice);
+  }
+
+  Future<void> _finishLocalDeviceStart(LocalDeviceAudioStart starting, {required bool cleanDevice}) async {
+    await starting.stopInput();
+    await starting.completed.future;
+    await _stopStreamDeviceRecordingNow(cleanDevice: cleanDevice);
+    starting.discard();
+  }
+
+  Future<void> _stopStreamDeviceRecordingNow({bool cleanDevice = false}) async {
     _temporaryRecordingRequested = false;
     if (cleanDevice) await _cancelButtonStream();
     if (TemporaryCaptureControls.enabled) {
@@ -2693,6 +2815,7 @@ class CaptureController extends ChangeNotifier
     // Write mute state first — before BLE cancel which may fire other events
     await BatteryWidgetService().updateMuteState(true);
     // Pause the BLE stream but keep the device connection
+    await _localDeviceAudioStart?.stopInput();
     await _bleBytesStream?.cancel();
     await SharedPreferencesUtil().saveBool('nativeBleForegroundReady', false);
     await SharedPreferencesUtil().saveBool('nativeBleStreamingEnabled', false);
@@ -2706,6 +2829,7 @@ class CaptureController extends ChangeNotifier
   }
 
   Future<void> resumeDeviceRecording() async {
+    await _localDeviceAudioStart?.completed.future;
     if (_recordingDevice == null || _temporaryRecordingStopped) return;
     _isPaused = false;
     // Clear the persisted mute so we don't re-mute on the next restart.
