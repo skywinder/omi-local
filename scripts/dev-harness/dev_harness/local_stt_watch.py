@@ -121,7 +121,7 @@ def status(cfg) -> int:
     running = bool(cli._service_record(cfg, 'stt-worker')) and worker_ready(cfg)
     counts = Counter(job['state'] for job in read_queue(cfg).values())
     print(json.dumps({'automatic_transcription': settings(cfg)['enabled'], 'worker_running': running,
-                      **{state: counts[state] for state in ('pending', 'processing', 'completed', 'failed')}}))
+                      **{state: counts[state] for state in ('pending', 'processing', 'completed', 'no_speech', 'failed')}}))
     return 0
 
 
@@ -191,6 +191,9 @@ class Worker:
                 result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
                 if result != 0:
                     raise local_stt.TranscriptionError('Local transcription failed')
+            except local_stt.NoSpeechDetected:
+                job.update(state='no_speech', retry_at=0)
+                self.save()
             except (local_stt.TranscriptionBusy, KeyboardInterrupt) as error:
                 job.update(state='pending', attempts=job['attempts'] - 1, retry_at=clock() + POLL_SECONDS)
                 self.save()

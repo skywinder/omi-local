@@ -70,6 +70,7 @@ from utils.webhooks import get_audio_bytes_webhook_seconds
 from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
 from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture
+from utils.local_live_preview import LocalLivePreview, preview_url
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
 from .contracts import ListenLimits, ListenRequest, ListenSessionState
@@ -158,6 +159,7 @@ class ListenSessionRuntime:
         self.conversations: Any = None
         self.parity_capture = ListenParityCapture(None)
         self.capture_sink: OfflineAudioCapture | None = None
+        self.local_preview: LocalLivePreview | None = None
 
     def _build_components(self) -> None:
         channels = build_channel_config(self.request.source or 'phone_call') if self.is_multi_channel else []
@@ -254,6 +256,8 @@ class ListenSessionRuntime:
     def capture_decoded_audio(self, *, encoded_bytes: int, pcm: bytes) -> None:
         if self.capture_sink is not None:
             self.capture_sink.record_decoded_frame(encoded_bytes=encoded_bytes, pcm=pcm)
+            if self.local_preview is not None:
+                self.local_preview.feed(pcm)
 
     def capture_decode_error(self, *, encoded_bytes: int) -> None:
         if self.capture_sink is not None:
@@ -733,6 +737,12 @@ class ListenSessionRuntime:
                 await self.request.websocket.close(code=1011, reason='offline_capture_initialization_failed')
                 return
             self.task_supervisor.start_session()
+            if self.capture_sink is not None:
+                # Capture admits only PCM16 mono 16 kHz sources. Preview never
+                # enters TranscriptProcessor or persisted conversation state.
+                url = preview_url()
+                if url:
+                    self.local_preview = LocalLivePreview(url, self.request.websocket.send_json)
             await self.asend_event(
                 MessageServiceStatusEvent(status='stt_initiating', status_text='STT Service Starting')
             )
@@ -780,6 +790,8 @@ class ListenSessionRuntime:
                     await receive_task
                 except asyncio.CancelledError:
                     pass
+            if self.local_preview is not None:
+                self.local_preview.end_input()
             self.state.shutdown_event.set()
             await self.task_supervisor.drain_monitored(timeout=self.limits.bg_drain_timeout, cancel=False)
         except Exception as error:
@@ -790,7 +802,11 @@ class ListenSessionRuntime:
 
     async def _teardown(self) -> None:
         try:
-            await self._teardown_components()
+            try:
+                if getattr(self, 'local_preview', None) is not None:
+                    await self.local_preview.finish()
+            finally:
+                await self._teardown_components()
         finally:
             try:
                 if self.capture_sink is not None:

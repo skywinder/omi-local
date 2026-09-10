@@ -144,6 +144,56 @@ def test_delete_requires_explicit_same_origin_request(library):
     assert deleted == [library.get(record['id'])['audio']]
 
 
+def test_open_folders_uses_only_known_directories(library, monkeypatch):
+    from dev_harness import local_library
+    calls = []
+    monkeypatch.setattr(local_library.sys, 'platform', 'darwin')
+    monkeypatch.setattr(local_library.subprocess, 'run', lambda args, **kwargs: calls.append((args, kwargs)))
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder'}
+    for name, folder in [('audio', library.captures), ('transcripts', library.transcripts)]:
+        status, _, body = request(library, f'/api/folders/{name}/open', method='POST', headers=headers)
+        assert status == 200 and json.loads(body) == {'status': 'opened'}
+        assert calls[-1][0] == ['/usr/bin/open', '-a', 'Finder', str(folder.resolve())]
+        assert calls[-1][1]['check'] and calls[-1][1]['timeout'] == 5
+        assert str(folder).encode() not in body
+    for name in ['../../private', 'unknown', 'audio/open?path=/tmp']:
+        assert request(library, f'/api/folders/{name}/open', method='POST', headers=headers)[0] == 404
+    assert request(library, '/api/folders/audio/open')[0] == 404
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('override', [
+    {'Origin': ''}, {'Origin': 'https://example.com'}, {'Host': 'example.com'},
+    {'X-Omiloc-Request': ''}, {'Sec-Fetch-Site': 'cross-site'},
+    {'Forwarded': 'host=example.com'}, {'X-Forwarded-Host': '127.0.0.1'},
+])
+def test_open_folder_rejects_nonlocal_requests(library, monkeypatch, override):
+    calls = []
+    monkeypatch.setattr(library, 'open_folder', calls.append)
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder', **override}
+    assert request(library, '/api/folders/audio/open', method='POST', headers=headers)[0] == 403
+    assert calls == []
+
+
+def test_open_folder_failure_and_timeout_are_reported_without_paths(library, monkeypatch):
+    from dev_harness import local_library
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder'}
+    monkeypatch.setattr(local_library.sys, 'platform', 'darwin')
+    for error, expected in [(OSError('private-path'), 503),
+                            (local_library.subprocess.CalledProcessError(1, 'private-path'), 503),
+                            (local_library.subprocess.TimeoutExpired('private-path', 5), 504)]:
+        def fail(*args, **kwargs):
+            raise error
+        monkeypatch.setattr(local_library.subprocess, 'run', fail)
+        status, _, body = request(library, '/api/folders/audio/open', method='POST', headers=headers)
+        assert status == expected and b'private-path' not in body
+    calls = []
+    monkeypatch.setattr(local_library.subprocess, 'run', lambda *a, **k: calls.append(a))
+    library.captures = library.captures.parent / 'missing'
+    assert request(library, '/api/folders/audio/open', method='POST', headers=headers)[0] == 503
+    assert calls == []
+
+
 def test_delete_preserves_files_on_db_failure_and_busy_inference(library, monkeypatch):
     import fcntl
     from dev_harness import local_library_delete as deletion
@@ -169,3 +219,32 @@ def test_delete_preserves_files_on_db_failure_and_busy_inference(library, monkey
     assert len(calls) == 1 and calls[0][2] == ['b' * 64]
     assert not audio.exists() and not manifest.exists()
     assert library.scan() == []
+
+
+@pytest.mark.parametrize('cached', [False, True])
+def test_no_speech_result_keeps_audio_available(library, cached):
+    raw = library.transcripts / 'result/audio.json'
+    if cached:
+        raw.write_text(json.dumps({'outcome': 'no_speech', 'segments': []}))
+    else:
+        raw.unlink()
+        key = hashlib.sha256(next(library.captures.iterdir()).name.encode()).hexdigest()
+        (library.transcripts / 'watch-queue.json').write_text(json.dumps({key: {'state': 'no_speech'}}))
+    data = json.loads(request(library, '/api/recordings')[2])['recordings']
+    assert data[0]['status'] == ('no_speech' if cached else 'unavailable')
+    path = '/api/recordings/' + data[0]['id']
+    assert json.loads(request(library, path)[2])['segments'] == []
+    assert request(library, path + '/audio', headers={'Range': 'bytes=0-43'})[0] == 206
+
+
+def test_changed_wav_does_not_reuse_no_speech_queue_status(library):
+    raw = library.transcripts / 'result/audio.json'
+    raw.write_text(json.dumps({'outcome': 'no_speech', 'segments': []}))
+    folder = next(library.captures.iterdir())
+    key = hashlib.sha256(folder.name.encode()).hexdigest()
+    (library.transcripts / 'watch-queue.json').write_text(json.dumps({key: {'state': 'no_speech'}}))
+    assert library.scan()[0]['status'] == 'no_speech'
+    with (folder / 'audio.wav').open('r+b') as audio:
+        audio.seek(44)
+        audio.write(b'\1\0')
+    assert library.scan()[0]['status'] == 'unavailable'

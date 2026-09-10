@@ -3,7 +3,7 @@ import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
 const $ = id => document.getElementById(id);
 const audio = $('audio');
 const state = {records: [], selected: null, detail: null, filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
-const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Распознаётся', failed: 'Ошибка распознавания', unavailable: 'Без транскрипта'};
+const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Распознаётся', no_speech: 'Речь не обнаружена', failed: 'Ошибка распознавания', unavailable: 'Без транскрипта'};
 const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
@@ -52,7 +52,7 @@ function renderTranscript(record) {
     fragment.append(button);
   });
   if (!record.segments.length) {
-    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь на Mac. Текст появится автоматически.', failed: 'Распознавание не завершилось. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
+    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь на Mac. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Распознавание не завершилось. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
     fragment.append(node('p', 'empty-transcript', copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
@@ -150,6 +150,26 @@ $('speed').addEventListener('change', () => { audio.playbackRate = Number($('spe
 for (const event of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'seeked']) audio.addEventListener(event, syncPlayer);
 audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Не удалось загрузить аудио. Обновите запись и попробуйте ещё раз.'); });
 $('refresh').addEventListener('click', refresh);
+for (const button of document.querySelectorAll('[data-folder]')) button.addEventListener('click', async () => {
+  const buttons = document.querySelectorAll('[data-folder]');
+  buttons.forEach(item => { item.disabled = true; });
+  $('folder-message').hidden = true;
+  try {
+    const response = await fetch(`/api/folders/${button.dataset.folder}/open`, {
+      method: 'POST', headers: {'X-Omiloc-Request': 'open-folder'}, signal: AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось открыть папку.');
+    $('folder-message').textContent = 'Папка открыта в Finder.';
+  } catch (error) {
+    $('folder-message').textContent = error instanceof TypeError || error instanceof SyntaxError
+      ? 'Нет ответа от аудиотеки. Обновите страницу и попробуйте ещё раз.'
+      : error.name === 'TimeoutError' ? 'Ответ задерживается. Проверьте Finder.' : error.message;
+  } finally {
+    $('folder-message').hidden = false;
+    buttons.forEach(item => { item.disabled = false; });
+  }
+});
 $('delete').addEventListener('click', () => {
   if (!state.detail) return;
   state.deleteId = state.selected;

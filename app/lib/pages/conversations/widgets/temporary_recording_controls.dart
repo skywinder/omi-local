@@ -34,10 +34,13 @@ class _TemporaryRecordingControlsState extends State<TemporaryRecordingControls>
   @override
   Widget build(BuildContext context) {
     final provider = widget.provider;
-    final active =
+    final deviceActive =
         provider.recordingState == RecordingState.deviceRecord || provider.recordingState == RecordingState.pause;
-    final paused = active && provider.isPaused;
-    final available = provider.havingRecordingDevice && !_busy;
+    final phoneActive =
+        provider.recordingState == RecordingState.record || provider.recordingState == RecordingState.interrupted;
+    final active = deviceActive || phoneActive;
+    final paused = deviceActive && provider.isPaused;
+    final available = !_busy && provider.recordingState != RecordingState.initialising;
     return Row(
       children: [
         const SizedBox(width: 8),
@@ -55,7 +58,7 @@ class _TemporaryRecordingControlsState extends State<TemporaryRecordingControls>
           color: Colors.white,
           disabledColor: Colors.grey.shade700,
           icon: const Icon(Icons.play_arrow_rounded),
-          onPressed: available && !active
+          onPressed: available && provider.havingRecordingDevice && !active
               ? () => _run(() async {
                     try {
                       await provider.streamDeviceRecording(userInitiated: true);
@@ -74,7 +77,15 @@ class _TemporaryRecordingControlsState extends State<TemporaryRecordingControls>
           color: const Color(0xFFFE5D50),
           disabledColor: Colors.grey.shade700,
           icon: const Icon(Icons.stop_rounded),
-          onPressed: available && active ? () => _run(() async => provider.stopStreamDeviceRecording()) : null,
+          onPressed: available && active
+              ? () => _run(() async {
+                    if (phoneActive) {
+                      await provider.stopStreamRecording();
+                    } else {
+                      await provider.stopStreamDeviceRecording();
+                    }
+                  })
+              : null,
         ),
         IconButton(
           key: const Key('temporary_recording_mute'),
@@ -82,7 +93,7 @@ class _TemporaryRecordingControlsState extends State<TemporaryRecordingControls>
           color: paused ? const Color(0xFFFE5D50) : Colors.white,
           disabledColor: Colors.grey.shade700,
           icon: Icon(paused ? Icons.mic_off : Icons.mic, size: 20),
-          onPressed: available && active
+          onPressed: available && provider.havingRecordingDevice && deviceActive
               ? () => _run(() => paused ? provider.resumeDeviceRecording() : provider.pauseDeviceRecording())
               : null,
         ),

@@ -1,5 +1,4 @@
 import 'package:omi/utils/platform/platform_manager.dart';
-import 'package:omi/services/capture/temporary_capture_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -276,20 +275,6 @@ class _HomeRecordButtonState extends State<HomeRecordButton> {
 
   @override
   Widget build(BuildContext context) {
-    if (TemporaryCaptureControls.enabled) {
-      return Semantics(
-        key: const Key('temporary_phone_recording_disabled'),
-        button: true,
-        enabled: false,
-        label: context.l10n.startRecording,
-        child: Container(
-          width: 62,
-          height: 62,
-          decoration: const BoxDecoration(color: Color(0xFF35343B), shape: BoxShape.circle),
-          child: const Icon(Icons.add, size: 28, color: Colors.grey),
-        ),
-      );
-    }
     return Consumer<CaptureProvider>(
       builder: (context, captureProvider, _) {
         final isRecording = captureProvider.recordingState == RecordingState.record;

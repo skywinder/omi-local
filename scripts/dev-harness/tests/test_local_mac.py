@@ -415,3 +415,16 @@ def test_fresh_personal_setup_creates_required_custom_config(tmp_path):
             plistlib.loads((tmp_path / folder / 'GoogleService-Info.plist').read_bytes())['BUNDLE_ID']
             == 'com.example.omi.local'
         )
+
+
+def test_manual_no_speech_is_successful_and_content_free(monkeypatch, capsys):
+    from dev_harness import local_mac, local_stt
+    monkeypatch.setattr(sys, 'argv', ['local-mac', 'transcribe', 'synthetic.wav'])
+    monkeypatch.setattr(config, 'load_config', lambda *a, **kw: object())
+    def no_speech(*a, **kw):
+        raise local_stt.NoSpeechDetected('No speech detected; original WAV retained')
+    monkeypatch.setattr(local_stt, 'transcribe', no_speech)
+    assert local_mac.main() == 0
+    output = capsys.readouterr()
+    assert output.out.strip() == 'Речь не обнаружена. Аудиозапись сохранена.'
+    assert not output.err

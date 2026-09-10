@@ -181,7 +181,7 @@ def test_reenable_preserves_backlog_boundary(setup):
     assert calls == ['large-v3-turbo']
 
 
-@pytest.mark.parametrize('job_state', ['pending', 'completed', 'failed'])
+@pytest.mark.parametrize('job_state', ['pending', 'completed', 'failed', 'no_speech'])
 def test_deleted_recording_leaves_queue_without_retry(setup, monkeypatch, job_state):
     cfg, _, _, _ = setup
     watch.enable(cfg)
@@ -256,3 +256,43 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     monkeypatch.setattr(watch, 'start_if_enabled', starts.append)
     assert local_mac.up(cfg) == 0
     assert starts == [cfg]
+
+
+@pytest.mark.parametrize('crash_before_queue_save', [False, True])
+def test_no_speech_is_cached_terminal_without_import_or_retry(setup, monkeypatch, tmp_path, crash_before_queue_save):
+    from dev_harness import local_whisperkit, local_library
+    cfg, calls, documents, _ = setup
+    cfg.repo_root = tmp_path
+    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps({'engine': 'whisperkit', 'language': 'auto'}))
+    monkeypatch.setattr(local_stt, 'check_model', lambda *_: None)
+    monkeypatch.setattr(local_whisperkit.shutil, 'which', lambda _: '/usr/bin/sandbox-exec')
+    def infer(command, **kwargs):
+        calls.append('whisperkit')
+        assert '(deny network*)' in command[2] and kwargs['capture_output']
+        output = Path(command[command.index('--report-path') + 1])
+        (output / 'audio.json').write_text(json.dumps({'language': 'en', 'segments': []}))
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(local_whisperkit.subprocess, 'run', infer)
+    watch.enable(cfg)
+    folder = capture(cfg, 'short-synthetic')
+    original = (folder / 'audio.wav').read_bytes()
+    worker = watch.Worker(cfg)
+    save = worker.save
+    def lose_power():
+        if any(job['state'] == 'no_speech' for job in worker.jobs.values()):
+            raise KeyboardInterrupt
+        save()
+    if crash_before_queue_save:
+        monkeypatch.setattr(worker, 'save', lose_power)
+        with pytest.raises(KeyboardInterrupt):
+            worker.tick(0)
+    else:
+        worker.tick(0)
+    watch.Worker(cfg).tick(1000)
+    job = next(iter(watch.read_queue(cfg).values()))
+    assert job['state'] == 'no_speech' and job['attempts'] == 1 and job['retry_at'] == 0
+    with pytest.raises(local_stt.NoSpeechDetected):
+        local_stt.transcribe(cfg, str(folder / 'audio.wav'))
+    assert calls == ['whisperkit'] and not documents
+    assert (folder / 'audio.wav').read_bytes() == original
+    assert local_library.Library(cfg.layout.services_dir).scan()[0]['status'] == 'no_speech'

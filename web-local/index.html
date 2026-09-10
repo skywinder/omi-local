@@ -18,7 +18,17 @@
       <div class="filters" aria-label="Фильтр записей"><button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button><button id="filter-ready" class="filter" aria-pressed="false">С транскриптом</button></div>
       <p id="connection" class="connection" role="status" hidden></p>
       <div id="recordings" class="recordings"><p class="empty-list">Загружаем записи…</p></div>
-      <p class="library-note">Звук и текст хранятся локально.</p>
+      <footer class="library-footer">
+        <p class="library-note">Звук и текст хранятся локально.</p>
+        <details class="library-folders">
+          <summary>Папки</summary>
+          <div class="folder-actions">
+            <button type="button" data-folder="audio">Открыть папку с аудио</button>
+            <button type="button" data-folder="transcripts">Открыть папку с транскриптами</button>
+          </div>
+          <p id="folder-message" class="folder-message" role="status" hidden></p>
+        </details>
+      </footer>
     </aside>
     <section class="detail" aria-label="Просмотр записи">
       <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
