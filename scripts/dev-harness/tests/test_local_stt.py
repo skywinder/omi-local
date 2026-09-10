@@ -510,3 +510,65 @@ def test_managed_stt_detects_failed_start_without_waiting_for_model_timeout(tmp_
     monkeypatch.setattr(services.time, 'sleep', lambda *a: pytest.fail('must fail promptly'))
     with pytest.raises(ValueError, match='process exited'):
         services.start_configured(cfg)
+
+
+def test_independent_speakers_split_words_without_losing_timing():
+    from dev_harness.local_diarization import reconcile
+    words = [{'word': 'Hello.', 'start': 0, 'end': 1}, {'word': 'Reply.', 'start': 1.2, 'end': 2}]
+    result = reconcile([{'text': 'Hello. Reply.', 'start': 0, 'end': 2, 'words': words}],
+                       [(0, 1.1, 'SPEAKER_00'), (1.1, 2.2, 'SPEAKER_01')])
+    assert [(s['text'], s['speaker'], s['start'], s['end']) for s in result] == [
+        ('Hello.', 'SPEAKER_00', 0, 1), ('Reply.', 'SPEAKER_01', 1.2, 2)]
+    assert 'speaker' not in words[0]
+    assert reconcile([{'text': 'Unknown', 'start': 3, 'end': 4}], [])[0]['speaker'] is None
+
+
+@pytest.mark.parametrize('name', ['openai-compatible', 'whisperkit', 'parakeet-mlx', 'whisperx'])
+def test_independent_diarization_keeps_all_stt_profiles_separate(tmp_path, monkeypatch, name):
+    settings = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path))
+    monkeypatch.setattr(local_whisperkit, 'runtime_revision', lambda _: 'fixture')
+    data = {'engine': name, 'diarization_model': 'none',
+            'speaker_model': 'pyannote/speaker-diarization-community-1'}
+    if name == 'openai-compatible':
+        data['provider_url'] = 'http://127.0.0.1:10301/v1'
+    (tmp_path / 'stt-engine.json').write_text(json.dumps(data))
+    engine = local_stt.EngineConfig.load(settings)
+    assert engine.profile()['speaker_model'] == data['speaker_model']
+    assert engine.speaker_python.endswith('diarization/venv/bin/python')
+    assert 'speaker_python' not in engine.profile()
+
+
+def test_independent_diarization_failure_preserves_asr(tmp_path, monkeypatch):
+    from dataclasses import replace
+    settings = SimpleNamespace(provider_mode='offline', local_transport='ngrok',
+                               layout=SimpleNamespace(services_dir=tmp_path))
+    audio = tmp_path / 'fixture.wav'
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        wav.writeframes(b'\0\0' * 16000)
+    calls = []
+    monkeypatch.setattr(local_stt, 'backend_step', lambda *a: {})
+    def asr(*args):
+        calls.append(True)
+        return {'segments': [{'text': 'Hello', 'start': 0, 'end': 1}]}
+    monkeypatch.setattr(local_stt, 'run_openai', asr)
+    engine = local_stt.EngineConfig(engine='openai-compatible', diarization_model='none',
+                                    speaker_model='pyannote/speaker-diarization-community-1',
+                                    speaker_python=str(tmp_path / 'missing'))
+    for _ in range(2):
+        with pytest.raises(local_stt.TranscriptionError, match='Python is unavailable'):
+            local_stt.transcribe(settings, str(audio), engine=engine)
+    assert len(calls) == 1
+    assert len(list(tmp_path.glob('local-transcripts/*/asr.json'))) == 1
+    assert not list(tmp_path.glob('local-transcripts/*/audio.json'))
+
+
+def test_old_queued_profile_does_not_inherit_new_diarization(tmp_path):
+    settings = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path))
+    data = {'engine': 'openai-compatible', 'provider_url': 'http://127.0.0.1:10301/v1',
+            'model': 'turbo', 'diarization_model': 'none'}
+    (tmp_path / 'stt-engine.json').write_text(json.dumps({**data,
+        'speaker_model': 'pyannote/speaker-diarization-3.1', 'speaker_device': 'mps'}))
+    old = local_stt.EngineConfig.load(settings, profile=data)
+    assert old.speaker_model == ''
+    assert 'speaker_model' not in old.profile()
