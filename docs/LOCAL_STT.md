@@ -170,5 +170,7 @@ uv pip install --python .local/diarization/venv/bin/python 'pyannote.audio==4.0.
 ```
 
 Это дополнительные поля существующего профиля, а не его полная замена.
-После завершения текущей обработки примените его через `bash scripts/local-mac.sh apply-stt`.
+После завершения текущей обработки перезапустите только её worker через
+`bash scripts/local-mac.sh auto-transcribe-off`, затем
+`bash scripts/local-mac.sh auto-transcribe-on`.
 Старые задания сохраняют прежний режим; для старой записи используйте `transcribe`.
