@@ -31,7 +31,11 @@ def main():
     parser.add_argument('--model-dir', type=Path, required=True)
     parser.add_argument('--inference-lock', type=Path, required=True)
     parser.add_argument('--port', type=int, default=18090)
+    parser.add_argument('--language', choices=['ru', 'en', 'auto'], default='ru')
+    parser.add_argument('--chunk-seconds', type=float, default=4)
     args = parser.parse_args()
+    if not 1 <= args.chunk_seconds <= 10:
+        parser.error('chunk-seconds must be between 1 and 10')
     # Third-party libraries print decoded text even at reduced log levels.
     # Keep only our explicit, content-free lifecycle records.
     output = os.fdopen(os.dup(1), 'w', buffering=1)
@@ -78,8 +82,8 @@ def main():
             raise RuntimeError('metal_unavailable')
         config = WhisperLiveKitConfig(
             backend='mlx-whisper', backend_policy='localagreement',
-            model_size='large-v3-turbo', model_dir=str(model_dir), lan='ru',
-            pcm_input=True, min_chunk_size=1, asr_coalesce_min_s=4,
+            model_size='large-v3-turbo', model_dir=str(model_dir), lan=args.language,
+            pcm_input=True, min_chunk_size=1, asr_coalesce_min_s=args.chunk_seconds,
             vac=True, warmup_file='', diarization=False,
         )
         engine = TranscriptionEngine(config=config)
@@ -129,7 +133,7 @@ def main():
         @app.get('/health')
         async def health():
             return {'ready': True, 'active': active, 'completed': completed, 'last': last,
-                    'profile': 'turbo-q4-ru-localagreement', 'mlx_cache_limit_bytes': 256 * 2**20}
+                    'profile': f'turbo-q4-{args.language}-localagreement', 'chunk_s': args.chunk_seconds, 'mlx_cache_limit_bytes': 256 * 2**20}
 
         @app.websocket('/asr')
         async def asr(socket: WebSocket):

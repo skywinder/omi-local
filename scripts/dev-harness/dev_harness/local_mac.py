@@ -240,6 +240,8 @@ def up(cfg) -> int:
     pairing = load_pairing()
     if cli.cmd_check(argparse.Namespace()):
         return 1
+    from .local_stt_services import start_configured
+    start_configured(cfg)
     if cli.cmd_up(argparse.Namespace()):
         return 1
     ensure_owner_profile(cfg, pairing["owner_uid"])
@@ -316,6 +318,7 @@ def main() -> int:
             "auto-transcribe-on",
             "auto-transcribe-off",
             "transcription-status",
+            "apply-stt",
             "library",
             "start",
             "setup-check",
@@ -369,6 +372,10 @@ def main() -> int:
             return local_stt_watch.enable(cfg)
         elif args.command == "auto-transcribe-off":
             return local_stt_watch.disable(cfg)
+        elif args.command == "apply-stt":
+            from .local_stt_services import apply
+            apply(cfg)
+            return 0
         elif args.command == "transcription-status":
             return local_stt_watch.status(cfg)
         elif args.command == "audio-smoke":
@@ -395,9 +402,10 @@ def main() -> int:
     except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
         from .local_env import LocalEnvError
+        from .local_stt_services import ServiceError
         message = (
             str(error)
-            if isinstance(error, (LocalMacError, LocalEnvError, local_stt.TranscriptionError))
+            if isinstance(error, (LocalMacError, LocalEnvError, local_stt.TranscriptionError, ServiceError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )
         print(f"Local Mac operation failed: {message}", file=sys.stderr)
