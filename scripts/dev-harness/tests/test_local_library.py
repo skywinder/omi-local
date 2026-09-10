@@ -33,7 +33,7 @@ def library(tmp_path):
     return Library(tmp_path)
 
 
-def request(library, path, *, headers=None, method='GET', delete=None):
+def request(library, path, *, headers=None, method='GET', delete=None, runtime=None):
     """Exercise the real HTTP handler with in-memory transport; no live server."""
     raw = f'{method} {path} HTTP/1.0\r\n'
     raw += ''.join(f'{k}: {v}\r\n' for k, v in {'Host': '127.0.0.1:20001', **(headers or {})}.items())
@@ -49,7 +49,7 @@ def request(library, path, *, headers=None, method='GET', delete=None):
 
     sock = Socket()
     assets = Path(__file__).resolve().parents[3] / 'web-local'
-    handler(library, assets, delete)(sock, ('127.0.0.1', 1234), SimpleNamespace(server_port=20001))
+    handler(library, assets, delete, runtime)(sock, ('127.0.0.1', 1234), SimpleNamespace(server_port=20001))
     head, body = sock.output.getvalue().split(b'\r\n\r\n', 1)
     lines = head.decode().split('\r\n')
     return int(lines[0].split()[1]), dict(line.split(': ', 1) for line in lines[1:]), body
@@ -248,3 +248,63 @@ def test_changed_wav_does_not_reuse_no_speech_queue_status(library):
         audio.seek(44)
         audio.write(b'\1\0')
     assert library.scan()[0]['status'] == 'unavailable'
+
+
+def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, monkeypatch):
+    import httpx
+    from dev_harness import local_library_runtime as live
+    from dev_harness.local_library_runtime import Runtime
+    cfg = SimpleNamespace(repo_root=library.captures.parent.parent, backend_port=20000,
+                          layout=SimpleNamespace(state_root=library.captures.parent.parent))
+    runtime = Runtime(cfg)
+    monkeypatch.setattr(live.local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': 'synthetic-private-key'})
+    def serve(req):
+        assert req.headers['authorization'] == 'Bearer synthetic-private-key'
+        assert str(req.url) == 'http://127.0.0.1:20000/v1/local/preview'
+        return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
+            'live_transcript': {'state': 'streaming', 'updates': 1},
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+    factory = httpx.Client
+    def client(**kwargs):
+        assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
+        return factory(transport=httpx.MockTransport(serve), **kwargs)
+    monkeypatch.setattr(live.httpx, 'Client', client)
+    monkeypatch.setattr(runtime, '_final', lambda: {'state': 'ready', 'provider': 'Argmax',
+        'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)})
+    status, headers, body = request(library, '/api/runtime', runtime=runtime)
+    assert status == 200 and headers['Cache-Control'] == 'no-store'
+    data = json.loads(body)
+    assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert b'synthetic-private-key' not in body
+    assert 'Синтетический черновик' not in json.dumps(data['events'], ensure_ascii=False)
+    assert 'text' not in runtime.previous['sessions'][0]
+    for headers in [{'Host': 'attacker.example'}, {'Origin': 'https://attacker.example'},
+                    {'X-Forwarded-For': '127.0.0.1'}, {'Sec-Fetch-Site': 'cross-site'}]:
+        assert request(library, '/api/runtime', headers=headers, runtime=runtime)[0] == 403
+    def disconnected():
+        raise httpx.ConnectError('synthetic-private-error')
+    monkeypatch.setattr(runtime, '_preview', disconnected)
+    runtime.checked_at = 0
+    status, _, body = request(library, '/api/runtime', runtime=runtime)
+    assert status == 200 and json.loads(body)['backend'] == 'unavailable'
+    assert json.loads(body)['sessions'] == []
+    assert b'synthetic-private-error' not in body
+
+
+def test_runtime_journal_observes_final_completion_without_transcript(library):
+    from copy import deepcopy
+    from dev_harness.local_library_runtime import Runtime
+    runtime = Runtime(None)
+    current = {'backend': 'ready', 'sessions': [{'source': 'omi', 'preview_id': 'draft', 'text': 'Синтетическая речь'}],
+               'capture': {'state': 'received'}, 'live_transcript': {'state': 'streaming', 'updates': 1},
+               'final_stt': {'state': 'ready', 'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)}}
+    runtime._observe(deepcopy(current))
+    current['sessions'] = []
+    current['final_stt']['jobs']['processing'] = 1
+    runtime._observe(deepcopy(current))
+    current['final_stt']['jobs'].update(processing=0, completed=1)
+    runtime._observe(deepcopy(current))
+    messages = [event['message'] for event in runtime.events]
+    assert 'Началось финальное распознавание.' in messages
+    assert 'Финальный транскрипт сохранён и доступен в аудиотеке.' in messages
+    assert 'Синтетическая речь' not in json.dumps(messages, ensure_ascii=False)

@@ -48,4 +48,4 @@ test-library:
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_setup.py scripts/dev-harness/tests/test_ios_setup.py scripts/dev-harness/tests/test_local_launcher.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_recording_delete.py
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_library.py
-	node --test web-local/player.test.mjs
+	node --test web-local/*.test.mjs

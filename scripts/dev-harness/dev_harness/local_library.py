@@ -1,4 +1,4 @@
-"""Loopback-only audio library. No keys, cloud calls or content logs."""
+"""Loopback-only audio library. No browser credentials or content logs."""
 
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ def byte_range(value, size):
     return start, end
 
 
-def handler(library, assets, delete=None):
+def handler(library, assets, delete=None, runtime=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass  # URLs, transcript text and filesystem identifiers never enter logs.
@@ -261,6 +261,7 @@ def handler(library, assets, delete=None):
             assets_map = {'/': ('index.html', 'text/html; charset=utf-8'),
                           '/style.css': ('style.css', 'text/css; charset=utf-8'),
                           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+                          '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
                           '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8')}
             if path in assets_map:
                 name, mime = assets_map[path]
@@ -272,6 +273,8 @@ def handler(library, assets, delete=None):
                 self.send_json({'service': 'omi-local-library', 'status': 'ok'})
             elif path == '/api/recordings':
                 self.send_json({'recordings': library.scan()})
+            elif path == '/api/runtime' and runtime is not None:
+                self.send_json(runtime.snapshot())
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])
@@ -318,7 +321,7 @@ def start(cfg):
     if not 1024 <= port(cfg) <= 65535:
         raise ValueError('Library port outside supported range')
     assets = cfg.repo_root / 'web-local'
-    if not all((assets / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs')):
+    if not all((assets / f).is_file() for f in ('index.html', 'style.css', 'app.js', 'player.mjs', 'live.mjs')):
         raise ValueError('Library assets missing')
     cli._require_port_available_or_owned(cfg, 'library', port(cfg))
     if cli._service_record(cfg, 'library'):
@@ -340,11 +343,12 @@ def start(cfg):
 
 def main():
     from .local_library_delete import delete_recording
+    from .local_library_runtime import Runtime
 
     cfg = config.load_config(Path.cwd(), create_layout=False)
     safety.read_and_validate_sentinel(cfg.layout.state_root, repo_root=cfg.repo_root, instance=cfg.instance)
     server = ThreadingHTTPServer(('127.0.0.1', port(cfg)), handler(
-        Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio)))
+        Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio), Runtime(cfg)))
     server.daemon_threads = True
     try:
         server.serve_forever()

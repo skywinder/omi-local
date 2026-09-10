@@ -241,3 +241,36 @@ async def test_local_status_reports_actual_preview_updates_and_forgets_closed_se
     finally:
         registry.unregister(owner)
         await preview.finish()
+
+
+@pytest.mark.anyio
+async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypatch, tmp_path):
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+    owners = []
+    for uid, text in [('synthetic-owner', 'первый черновик'), ('synthetic-other', 'чужая речь')]:
+        sink = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=tmp_path)
+        sink.record_decoded_frame(encoded_bytes=640, pcm=b'\0\0' * 320)
+        segment = PreviewSegment()
+        segment.update({'lines': [], 'buffer_transcription': text}, .02)
+        preview = SimpleNamespace(segment=segment, updates=1, failed=False)
+        owner = StatusSession(uid, sink, preview)
+        owners.append(owner)
+        registry.register(owner)
+    try:
+        data = await local_status.preview_snapshot('synthetic-owner')
+        assert len(data['sessions']) == 1
+        draft = data['sessions'][0]
+        assert draft['source'] == 'phone' and draft['codec'] == 'pcm16'
+        assert draft['text'] == 'первый черновик' and draft['frames_received'] == 1
+        assert owners[0].capture_sink.session_id not in json.dumps(data)
+        assert 'чужая речь' not in json.dumps(data, ensure_ascii=False)
+        status = await local_status.snapshot('synthetic-owner')
+        assert 'sessions' not in status and 'text' not in status['live_transcript']
+        owners[0].local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, .02)
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]['text'] == 'исправлено'
+        owners[0].state.shutdown_event.set()
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
+    finally:
+        for owner in owners:
+            registry.unregister(owner)
+            owner.capture_sink.finalize()
