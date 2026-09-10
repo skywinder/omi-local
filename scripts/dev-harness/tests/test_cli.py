@@ -276,6 +276,30 @@ def test_offline_start_stops_services_outside_minimal_stack(monkeypatch: pytest.
     assert stopped == ["typesense", "llm-gateway", "desktop-backend"]
 
 
+@pytest.mark.parametrize("transport", ["lan", "ngrok"])
+def test_offline_start_preserves_local_mac_services_only_for_its_transport(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, transport: str
+) -> None:
+    monkeypatch.setenv("PROVIDER_MODE", "offline")
+    monkeypatch.setenv("OMI_LOCAL_TRANSPORT", transport)
+    monkeypatch.setenv("OMI_DEV_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("OMI_LOCAL_STATE_ROOT", str(tmp_path / "state"))
+    cfg = config.load_config(REPO_ROOT, create_layout=True)
+    local_services = ["library", "ngrok", "argmax-stt", "live-stt", "live-diarization", "provider-relay", "stt-worker"]
+    cloud_services = ["typesense", "llm-gateway", "desktop-backend"]
+    records = [{"service": service} for service in ["backend", "firestore", "auth", "redis", *local_services, *cloud_services]]
+    stopped = []
+    monkeypatch.setattr(cli, "_process_records", lambda _cfg: records)
+    monkeypatch.setattr(cli, "_stop_single_service", lambda _cfg, record: stopped.append(record["service"]))
+    monkeypatch.setattr(cli, "_start_infrastructure", lambda _cfg: None)
+    monkeypatch.setattr(cli, "_start_app_services", lambda _cfg: None)
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    cli._start_services(cfg)
+
+    assert stopped == (cloud_services if transport == "ngrok" else local_services + cloud_services)
+
+
 def test_wait_health_returns_services_that_exhaust_their_deadlines(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
