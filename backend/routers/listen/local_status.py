@@ -113,6 +113,8 @@ async def preview_snapshot(uid: str) -> dict:
             # it is not the persisted recording or owner's identifier.
             'preview_id': preview.segment.id if preview is not None else None,
             'text': text[-100000:], 'text_truncated': len(text) > 100000,
+            'segments': preview.segment.segments if preview is not None and len(text) <= 100000 else [],
+            'revision': preview.segment.revision if preview is not None else 0,
             'updates': preview.updates if preview is not None else 0,
         })
     return result

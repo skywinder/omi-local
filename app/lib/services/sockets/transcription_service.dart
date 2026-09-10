@@ -261,6 +261,11 @@ class TranscriptSegmentSocketService implements IPureSocketListener {
 
     // Message event
     if (jsonEvent.containsKey("type")) {
+      if (jsonEvent['type'] == 'local_transcript_snapshot' && jsonEvent['segments'] is List) {
+        // Apply the same privacy boundary as ordinary transcript frames. Even
+        // an all-filtered snapshot must reach the listener to clear old text.
+        jsonEvent['segments'] = _dropSecretSegments(jsonEvent['segments']);
+      }
       var event = MessageEvent.fromJson(jsonEvent);
       _listeners.forEach((k, v) {
         v.onMessageEventReceived(event);
