@@ -12,7 +12,7 @@ be restored only after a failed request, never after a confirmed empty response.
 Local input selection is independent of Bluetooth connection. Starting the phone mic
 finishes the Omi session without disconnecting Bluetooth; an explicit Omi Start
 finishes the phone session. Home entry/BLE reconnect must not take over phone audio.
-Stop fences pending phone startup and reconnect.
+Stop fences pending phone startup and reconnect; native Start waits for native Stop.
 Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.

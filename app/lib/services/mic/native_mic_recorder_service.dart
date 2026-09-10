@@ -44,6 +44,8 @@ class NativeMicRecorderService implements IMicRecorderService, PhoneMicFlutterAp
   Function()? _onBatchStalled;
   Function(String code, String message)? _onError;
 
+  Future<void>? _pendingStop;
+  int _startGeneration = 0;
   bool _sessionActive = false;
   // Dart-minted session identity, bumped on every start()/startBatch(). Events
   // are dropped unless they carry this id (see the FlutterApi handlers below).
@@ -77,6 +79,9 @@ class NativeMicRecorderService implements IMicRecorderService, PhoneMicFlutterAp
     Function()? onStalled,
     Function(bool began)? onInterruption,
   }) async {
+    final generation = ++_startGeneration;
+    if (_pendingStop != null) await _pendingStop;
+    if (generation != _startGeneration) return;
     _onByteReceived = onByteReceived;
     _onRecording = onRecording;
     _onStop = onStop;
@@ -107,6 +112,9 @@ class NativeMicRecorderService implements IMicRecorderService, PhoneMicFlutterAp
     Function()? onBatchStalled,
     Function(String code, String message)? onError,
   }) async {
+    final generation = ++_startGeneration;
+    if (_pendingStop != null) await _pendingStop;
+    if (generation != _startGeneration) return;
     _onStop = onStop;
     _onInterruption = onInterruption;
     _onBatchStalled = onBatchStalled;
@@ -130,12 +138,14 @@ class NativeMicRecorderService implements IMicRecorderService, PhoneMicFlutterAp
 
   @override
   void stop() {
+    ++_startGeneration;
+    final previousStop = _pendingStop;
     // Always forward to native — even when Dart already thinks the session is
     // inactive. A de-synced Dart state must never leave a native session
     // capturing forever; native resolves harmlessly when it is already idle.
-    () async {
+    _pendingStop = () async {
       try {
-        await _hostApi.stop();
+        await Future.wait([_hostApi.stop(), if (previousStop != null) previousStop]);
       } catch (e) {
         Logger.error('[NativeMic] native stop failed: $e');
       }
@@ -158,7 +168,7 @@ class NativeMicRecorderService implements IMicRecorderService, PhoneMicFlutterAp
 
   @override
   void onAudioFrame(Uint8List pcm16leMono16k, int sessionId) {
-    if (sessionId != _sessionId) {
+    if (!_sessionActive || sessionId != _sessionId) {
       Logger.debug('[NativeMic] dropping frame from session $sessionId (current $_sessionId)');
       return;
     }
