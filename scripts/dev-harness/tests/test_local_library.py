@@ -231,7 +231,20 @@ def test_no_speech_result_keeps_audio_available(library, cached):
         key = hashlib.sha256(next(library.captures.iterdir()).name.encode()).hexdigest()
         (library.transcripts / 'watch-queue.json').write_text(json.dumps({key: {'state': 'no_speech'}}))
     data = json.loads(request(library, '/api/recordings')[2])['recordings']
-    assert data[0]['status'] == 'no_speech'
+    assert data[0]['status'] == ('no_speech' if cached else 'unavailable')
     path = '/api/recordings/' + data[0]['id']
     assert json.loads(request(library, path)[2])['segments'] == []
     assert request(library, path + '/audio', headers={'Range': 'bytes=0-43'})[0] == 206
+
+
+def test_changed_wav_does_not_reuse_no_speech_queue_status(library):
+    raw = library.transcripts / 'result/audio.json'
+    raw.write_text(json.dumps({'outcome': 'no_speech', 'segments': []}))
+    folder = next(library.captures.iterdir())
+    key = hashlib.sha256(folder.name.encode()).hexdigest()
+    (library.transcripts / 'watch-queue.json').write_text(json.dumps({key: {'state': 'no_speech'}}))
+    assert library.scan()[0]['status'] == 'no_speech'
+    with (folder / 'audio.wav').open('r+b') as audio:
+        audio.seek(44)
+        audio.write(b'\1\0')
+    assert library.scan()[0]['status'] == 'unavailable'

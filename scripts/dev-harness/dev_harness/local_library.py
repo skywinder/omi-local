@@ -107,7 +107,7 @@ class Library:
                     token = self.tokens.setdefault(audio, secrets.token_urlsafe(18))
                     job = queue.get(hashlib.sha256(folder.name.encode()).hexdigest(), {})
                     state = job.get('state', 'unavailable')
-                    state = state if state in {'pending', 'processing', 'failed', 'no_speech'} else 'unavailable'
+                    state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
                     segments = []
                     if digest in results:
                         try:
