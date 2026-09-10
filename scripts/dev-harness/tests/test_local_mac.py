@@ -241,7 +241,7 @@ def test_wizard_preserves_pairing_on_repeat_and_address_edit(monkeypatch, tmp_pa
     from types import SimpleNamespace
     from dev_harness import local_mac
 
-    cfg = SimpleNamespace(layout=SimpleNamespace(state_root=tmp_path), backend_port=20000)
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path), backend_port=20000)
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: True)
     monkeypatch.setattr(sys.stdout, 'isatty', lambda: True)
     monkeypatch.setattr(local_mac.cli, '_service_record', lambda *a: None)
@@ -261,6 +261,109 @@ def test_wizard_preserves_pairing_on_repeat_and_address_edit(monkeypatch, tmp_pa
     local_mac.configure(cfg, rotate=True)
     assert json.loads((tmp_path / 'pairing.json').read_text()) == pairing_data('b' * 43)
     assert 'synthetic-token-for-unit-test' not in capsys.readouterr().out
+
+
+@pytest.fixture
+def env_wizard(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from dev_harness import local_mac
+
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path / 'state'),
+                          backend_port=20000)
+    monkeypatch.setattr(local_mac, 'sys', SimpleNamespace(
+        stdin=SimpleNamespace(isatty=lambda: True), stdout=SimpleNamespace(isatty=lambda: True),
+    ))
+    monkeypatch.setattr(local_mac.cli, '_service_record', lambda *a: None)
+    monkeypatch.setattr(local_mac.secrets, 'token_urlsafe', lambda _: 'a' * 43)
+
+    def unexpected_prompt(*args):
+        pytest.fail('Values present in .env must not require interactive entry')
+
+    monkeypatch.setattr('builtins.input', unexpected_prompt)
+    monkeypatch.setattr(local_mac.getpass, 'getpass', unexpected_prompt)
+    path = tmp_path / '.env'
+    path.write_text('NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=synthetic-agent-token-123456\n')
+    path.chmod(0o600)
+    return cfg, path
+
+
+def test_env_wizard_reads_both_values_and_only_explicit_edit_reloads(env_wizard, monkeypatch, capsys):
+    from dev_harness import local_mac
+
+    cfg, path = env_wizard
+    monkeypatch.delenv('NGROK_AUTHTOKEN', raising=False)
+    local_mac.configure(cfg)
+    state = cfg.layout.state_root
+    assert local_mac.read_config(cfg)['url'] == 'https://synthetic.ngrok.app'
+    saved = json.loads((state / 'ngrok-agent.yml').read_text())
+    assert saved['agent']['authtoken'] == 'synthetic-agent-token-123456'
+    assert (state / 'ngrok-agent.yml').stat().st_mode & 0o777 == 0o600
+    assert 'NGROK_AUTHTOKEN' not in local_mac.os.environ
+    pairing = (state / 'pairing.json').read_bytes()
+    path.write_text('NGROK_URL=https://changed.ngrok.app\nNGROK_AUTHTOKEN=synthetic-replacement-123456\n')
+    local_mac.configure(cfg)
+    assert local_mac.read_config(cfg)['url'] == 'https://synthetic.ngrok.app'
+    local_mac.configure(cfg, edit=True)
+    assert local_mac.read_config(cfg)['url'] == 'https://changed.ngrok.app'
+    assert json.loads((state / 'ngrok-agent.yml').read_text())['agent']['authtoken'] == 'synthetic-replacement-123456'
+    assert (state / 'pairing.json').read_bytes() == pairing
+    output = capsys.readouterr()
+    assert 'synthetic-agent-token' not in output.out + output.err
+    assert 'synthetic-replacement' not in output.out + output.err
+
+
+@pytest.mark.parametrize('contents', [
+    'NGROK_URL=http://synthetic.ngrok.app\nNGROK_AUTHTOKEN=synthetic-agent-token-123456\n',
+    'NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=bad-token\n',
+    'NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=${SYNTHETIC_TOKEN}\n',
+])
+def test_env_wizard_rejects_invalid_values_before_writing(env_wizard, monkeypatch, contents):
+    from dev_harness import local_mac
+
+    cfg, path = env_wizard
+    path.write_text(contents)
+    monkeypatch.setenv('SYNTHETIC_TOKEN', 'synthetic-agent-token-123456')
+    with pytest.raises(local_mac.LocalMacError):
+        local_mac.configure(cfg)
+    assert not cfg.layout.state_root.exists()
+
+
+@pytest.mark.parametrize('unsafe_path', ['readable', 'symlink'])
+def test_env_wizard_requires_private_regular_file(env_wizard, unsafe_path):
+    from dev_harness import local_mac
+
+    cfg, path = env_wizard
+    if unsafe_path == 'readable':
+        path.chmod(0o644)
+    else:
+        target = path.with_name('secret-env')
+        path.rename(target)
+        path.symlink_to(target)
+    with pytest.raises(local_mac.LocalMacError, match=r'\.env'):
+        local_mac.configure(cfg)
+    assert not cfg.layout.state_root.exists()
+
+
+def test_env_wizard_prompts_only_for_missing_value(env_wizard, monkeypatch):
+    from dev_harness import local_mac
+
+    cfg, path = env_wizard
+    path.write_text('NGROK_URL=https://synthetic.ngrok.app\n')
+    prompts = []
+    monkeypatch.setattr(local_mac.getpass, 'getpass', lambda prompt: prompts.append(prompt) or 'synthetic-token-123456')
+    local_mac.configure(cfg)
+    assert len(prompts) == 1
+    assert local_mac.read_config(cfg)['url'] == 'https://synthetic.ngrok.app'
+
+
+def test_env_wizard_still_requires_terminal_for_pairing_key(env_wizard, monkeypatch):
+    from dev_harness import local_mac
+
+    cfg, _ = env_wizard
+    monkeypatch.setattr(local_mac.sys.stdout, 'isatty', lambda: False)
+    with pytest.raises(local_mac.LocalMacError, match='local interactive terminal'):
+        local_mac.configure(cfg)
+    assert not cfg.layout.state_root.exists()
 
 
 @pytest.mark.parametrize('native_cache', [False, True])

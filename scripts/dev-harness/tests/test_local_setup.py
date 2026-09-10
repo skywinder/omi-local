@@ -64,7 +64,7 @@ def test_first_pairing_shows_box_once_and_repeat_preserves_hash(monkeypatch, tmp
     monkeypatch.setattr(local_mac.getpass, 'getpass', lambda _: 'synthetic-agent-token-123456')
     monkeypatch.setattr(local_mac.cli, '_service_record', lambda *a: None)
     monkeypatch.setattr(local_mac.secrets, 'token_urlsafe', lambda _: 'x' * 43)
-    cfg = SimpleNamespace(layout=SimpleNamespace(state_root=tmp_path), backend_port=20000)
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path), backend_port=20000)
     local_mac.configure(cfg)
     saved = (tmp_path / 'pairing.json').read_bytes()
     assert '┌' in output.getvalue() and 'x' * 43 in output.getvalue()

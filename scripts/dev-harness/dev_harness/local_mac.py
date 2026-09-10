@@ -80,6 +80,24 @@ def read_config(cfg) -> dict:
     return data
 
 
+def ngrok_env(cfg) -> dict[str, str]:
+    """Read only connection inputs; never export secrets into child environments."""
+    from dotenv import dotenv_values
+
+    path = cfg.repo_root / ".env"
+    try:
+        if path.is_symlink():
+            raise LocalMacError(".env must be a regular file, not a symlink")
+        if not path.exists():
+            return {}
+        if not path.is_file() or path.stat().st_mode & 0o077:
+            raise LocalMacError(".env must be a private regular file; run chmod 600 .env")
+        values = dotenv_values(path, interpolate=False)
+    except (OSError, UnicodeError):
+        raise LocalMacError("Unable to read .env; check its permissions and UTF-8 encoding") from None
+    return {name: (values.get(name) or "").strip() for name in ("NGROK_URL", "NGROK_AUTHTOKEN")}
+
+
 def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
     from .local_setup import show_frame
 
@@ -89,11 +107,14 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
     if edit and (cli._service_record(cfg, "backend") or cli._service_record(cfg, "ngrok")):
         raise LocalMacError("Stop this local stack before changing its connection")
     if not current.exists() or edit:
+        values = ngrok_env(cfg)
         existing = read_config(cfg)["url"] if current.exists() else ""
         print('Ngrok: https://dashboard.ngrok.com — адрес в Domains, токен в Your Authtoken.')
         print('Если аккаунта ещё нет: docs/NGROK.md')
-        url = endpoint(input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
-        token = getpass.getpass("Authtoken ngrok (скрыт; Enter — использовать сохранённый): ").strip()
+        url = endpoint(values.get("NGROK_URL") or input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
+        token = values.get("NGROK_AUTHTOKEN") or getpass.getpass(
+            "Authtoken ngrok (скрыт; Enter — использовать сохранённый): "
+        ).strip()
         if not token:
             import yaml
 
