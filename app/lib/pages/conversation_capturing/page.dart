@@ -22,6 +22,7 @@ import 'package:omi/services/wals/wal.dart';
 import 'package:omi/widgets/confirmation_dialog.dart';
 import 'package:omi/widgets/conversation_photo_image.dart';
 import 'package:omi/widgets/media_viewer_page.dart';
+import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/widgets/transcript.dart';
 
 class ConversationCapturingPage extends StatefulWidget {
@@ -227,6 +228,11 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
             ),
             body: Column(
               children: [
+                if (Env.isOfflineRuntime)
+                  RecordingSourceLabel(
+                    source: provider.activeRecordingSource,
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  ),
                 if (Env.isOfflineRuntime)
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 12),

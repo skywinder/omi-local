@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
+import 'package:omi/env/env.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/message_event.dart';
@@ -23,6 +24,7 @@ import 'package:omi/utils/logger.dart';
 import 'package:omi/utils/other/temp.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/providers/phone_call_provider.dart';
+import 'package:omi/widgets/recording_source_label.dart';
 
 class ConversationCaptureWidget extends StatefulWidget {
   const ConversationCaptureWidget({super.key});
@@ -122,7 +124,14 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [_buildUnifiedRecordingUI(provider, header)],
+                children: [
+                  if (Env.isOfflineRuntime)
+                    RecordingSourceLabel(
+                      source: provider.activeRecordingSource,
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    ),
+                  _buildUnifiedRecordingUI(provider, header),
+                ],
               ),
             ),
           ),

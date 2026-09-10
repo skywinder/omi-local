@@ -9,6 +9,8 @@ import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/env/env.dart';
+import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
 import 'package:omi/pages/conversations/widgets/processing_capture.dart';
@@ -108,6 +110,41 @@ void main() {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
   });
   tearDown(() => Env.setRuntimeModeForTesting(null));
+
+  testWidgets('source label follows the current input and clears when capture stops', (tester) async {
+    Widget sourceApp(ConversationSource? source, {String language = 'ru', double scale = 1}) => MaterialApp(
+          locale: Locale(language),
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: SizedBox(width: 240, child: RecordingSourceLabel(source: source)),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(sourceApp(ConversationSource.omi));
+    await tester.pumpAndSettle();
+    expect(find.text('Omi'), findsOneWidget);
+
+    await tester.pumpWidget(sourceApp(ConversationSource.phone, scale: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('Микрофон · iPhone'), findsOneWidget);
+    expect(find.text('Omi'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(sourceApp(ConversationSource.phone, language: 'en'));
+    await tester.pumpAndSettle();
+    expect(find.text('Microphone · iPhone'), findsOneWidget);
+
+    for (final source in [null, ConversationSource.desktop]) {
+      await tester.pumpWidget(sourceApp(source));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recording_source_label')), findsNothing);
+    }
+  });
 
   testWidgets('start, mute, unmute and stop use existing functions; idle mute is disabled', (tester) async {
     final capture = _Capture();

@@ -345,6 +345,25 @@ class CaptureController extends ChangeNotifier
   BtDevice? _recordingDevice;
   BtDevice? _sessionRecordingDevice;
 
+  /// The source owned by the current capture, independent of Bluetooth status.
+  ConversationSource? get activeRecordingSource {
+    switch (recordingState) {
+      case RecordingState.initialising:
+      case RecordingState.record:
+      case RecordingState.interrupted:
+        return ConversationSource.phone;
+      case RecordingState.deviceRecord:
+      case RecordingState.pause:
+        final device = _sessionRecordingDevice ?? _recordingDevice;
+        return ConversationSource.values.asNameMap()[conversationSourceForDeviceType(device?.type)];
+      case RecordingState.systemAudioRecord:
+        return ConversationSource.desktop;
+      case RecordingState.stop:
+      case RecordingState.error:
+        return null;
+    }
+  }
+
   String? _getConversationSourceFromDevice() {
     return conversationSourceForDeviceType(_recordingDevice?.type);
   }

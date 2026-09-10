@@ -430,6 +430,26 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('active recording source follows capture state, not the connected device', () {
+    final provider = CaptureProvider();
+    addTearDown(provider.dispose);
+    provider.updateRecordingDevice(_device(id: 'synthetic-cv1', type: DeviceType.omi));
+    expect(provider.havingRecordingDevice, isTrue);
+    expect(provider.activeRecordingSource, isNull);
+
+    for (final state in [RecordingState.initialising, RecordingState.record, RecordingState.interrupted]) {
+      provider.updateRecordingState(state);
+      expect(provider.activeRecordingSource, ConversationSource.phone);
+    }
+    provider.updateRecordingState(RecordingState.systemAudioRecord);
+    expect(provider.activeRecordingSource, ConversationSource.desktop);
+    provider.updateRecordingState(RecordingState.error);
+    expect(provider.activeRecordingSource, isNull);
+    provider.updateRecordingState(RecordingState.stop);
+    expect(provider.activeRecordingSource, isNull);
+    expect(provider.havingRecordingDevice, isTrue);
+  });
+
   test('local single tap starts, stops muted session, and starts again using the idle subscription', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
     final buttons = StreamController<List<int>>.broadcast(sync: true);
@@ -587,6 +607,7 @@ void main() {
         audioCodecLoader: (_) => codec.future,
       );
       await provider.streamDeviceRecording(device: _device(id: 'synthetic-buffered', type: DeviceType.omi));
+      expect(provider.activeRecordingSource, isNull);
     });
 
     tearDown(() async {
@@ -606,6 +627,7 @@ void main() {
       await pumpEventQueue();
       expect(audio.hasListener, isTrue);
       expect(provider.recordingState, RecordingState.deviceRecord);
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       expect(provider.gates, isEmpty);
       final packet = [0, 0, 0, 11];
       audio.add(packet);
@@ -614,6 +636,8 @@ void main() {
       audio.add([1, 0, 0, 22]);
       final socket = provider.connect(0);
       await start;
+      provider.updateRecordingDevice(_device(id: 'synthetic-replacement', type: DeviceType.openglass));
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       audio.add([2, 0, 0, 33]);
       expect(socket.packets, [
         [11],
@@ -623,6 +647,7 @@ void main() {
       await provider.stopStreamDeviceRecording();
       expect(socket.stopped, isTrue);
       expect(audio.hasListener, isFalse);
+      expect(provider.activeRecordingSource, isNull);
     });
 
     test('Stop during connect drains accepted audio and keeps the next session separate', () async {
@@ -634,6 +659,7 @@ void main() {
       await pumpEventQueue();
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       audio.add([1, 0, 0, 99]);
       final nextStart = provider.streamDeviceRecording(userInitiated: true);
       final first = provider.connect(0);
@@ -664,6 +690,7 @@ void main() {
       await failure;
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       await provider.stopStreamDeviceRecording();
       expect(provider.recordingState, RecordingState.stop);
     });
@@ -680,6 +707,7 @@ void main() {
       expect(socket.stopped, isTrue);
       expect(audio.hasListener, isFalse);
       expect(provider.recordingState, RecordingState.stop);
+      expect(provider.activeRecordingSource, isNull);
       await provider.stopStreamDeviceRecording();
     });
 
@@ -693,6 +721,7 @@ void main() {
       final socket = provider.connect(0);
       await start;
       expect(provider.recordingState, RecordingState.pause);
+      expect(provider.activeRecordingSource, ConversationSource.omi);
       expect(socket.packets, [
         [11]
       ]);
