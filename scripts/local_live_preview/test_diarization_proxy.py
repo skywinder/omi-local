@@ -52,6 +52,36 @@ class SpeakerMappingTests(unittest.TestCase):
         self.assertEqual(result[0], silence)
         self.assertEqual(result[1]['end'], 2)
 
+    def test_only_published_text_assigns_consecutive_session_speaker_numbers(self):
+        aliases = {}
+        turns = [(0, 0.9, 5), (1, 2, 7)]
+        labeled_snapshot({'lines': [], 'buffer_transcription': 'unfinished'}, turns, 2, 'ready',
+                         speaker_aliases=aliases)
+        self.assertEqual(aliases, {})
+        first = labeled_snapshot(MESSAGE, turns, 2, 'ready', speaker_aliases=aliases)
+        self.assertEqual([line['speaker'] for line in first['lines']], [1, 2])
+        self.assertEqual([word['speaker'] for line in first['lines'] for word in line['words']], [1, 1, 2])
+        self.assertEqual(aliases, {5: 1, 7: 2})
+        self.assertEqual(turns, [(0, 0.9, 5), (1, 2, 7)])
+
+        reordered = labeled_snapshot(MESSAGE, [(0, 0.9, 7), (1, 2, 5)], 2, 'ready', speaker_aliases=aliases)
+        self.assertEqual([line['speaker'] for line in reordered['lines']], [2, 1])
+        corrected = labeled_snapshot(MESSAGE, [(0, 2, 5)], 2, 'ready', speaker_aliases=aliases)
+        self.assertEqual([line['speaker'] for line in corrected['lines']], [1])
+        self.assertEqual(aliases, {5: 1, 7: 2})
+
+    def test_unknown_draft_silence_and_empty_rows_do_not_consume_visible_numbers(self):
+        aliases = {}
+        rows = [{'text': 'unknown', 'start': 2, 'end': 3},
+                {'text': 'draft', 'start': 0, 'end': 1, 'is_draft': True},
+                {'text': '', 'start': 0, 'end': 1, 'speaker': -2},
+                {'text': ' ', 'start': 0, 'end': 1}]
+        result = labeled_snapshot({'lines': rows}, [(0, 1, 5)], 1, 'pending', speaker_aliases=aliases)
+        self.assertEqual([line['speaker'] for line in result['lines'][:3]], [-1, -1, -2])
+        self.assertEqual(aliases, {})
+        visible = labeled_snapshot(MESSAGE, [(0, 0.9, 7), (1, 2, 9)], 2, 'ready', speaker_aliases=aliases)
+        self.assertEqual([line['speaker'] for line in visible['lines']], [1, 2])
+
 
 class FakeUpstream:
     def __init__(self):
