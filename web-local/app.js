@@ -150,6 +150,26 @@ $('speed').addEventListener('change', () => { audio.playbackRate = Number($('spe
 for (const event of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'seeked']) audio.addEventListener(event, syncPlayer);
 audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Не удалось загрузить аудио. Обновите запись и попробуйте ещё раз.'); });
 $('refresh').addEventListener('click', refresh);
+for (const button of document.querySelectorAll('[data-folder]')) button.addEventListener('click', async () => {
+  const buttons = document.querySelectorAll('[data-folder]');
+  buttons.forEach(item => { item.disabled = true; });
+  $('folder-message').hidden = true;
+  try {
+    const response = await fetch(`/api/folders/${button.dataset.folder}/open`, {
+      method: 'POST', headers: {'X-Omiloc-Request': 'open-folder'}, signal: AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось открыть папку.');
+    $('folder-message').textContent = 'Папка открыта в Finder.';
+  } catch (error) {
+    $('folder-message').textContent = error instanceof TypeError || error instanceof SyntaxError
+      ? 'Нет ответа от аудиотеки. Обновите страницу и попробуйте ещё раз.'
+      : error.name === 'TimeoutError' ? 'Ответ задерживается. Проверьте Finder.' : error.message;
+  } finally {
+    $('folder-message').hidden = false;
+    buttons.forEach(item => { item.disabled = false; });
+  }
+});
 $('delete').addEventListener('click', () => {
   if (!state.detail) return;
   state.deleteId = state.selected;

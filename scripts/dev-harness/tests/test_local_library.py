@@ -144,6 +144,56 @@ def test_delete_requires_explicit_same_origin_request(library):
     assert deleted == [library.get(record['id'])['audio']]
 
 
+def test_open_folders_uses_only_known_directories(library, monkeypatch):
+    from dev_harness import local_library
+    calls = []
+    monkeypatch.setattr(local_library.sys, 'platform', 'darwin')
+    monkeypatch.setattr(local_library.subprocess, 'run', lambda args, **kwargs: calls.append((args, kwargs)))
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder'}
+    for name, folder in [('audio', library.captures), ('transcripts', library.transcripts)]:
+        status, _, body = request(library, f'/api/folders/{name}/open', method='POST', headers=headers)
+        assert status == 200 and json.loads(body) == {'status': 'opened'}
+        assert calls[-1][0] == ['/usr/bin/open', '-a', 'Finder', str(folder.resolve())]
+        assert calls[-1][1]['check'] and calls[-1][1]['timeout'] == 5
+        assert str(folder).encode() not in body
+    for name in ['../../private', 'unknown', 'audio/open?path=/tmp']:
+        assert request(library, f'/api/folders/{name}/open', method='POST', headers=headers)[0] == 404
+    assert request(library, '/api/folders/audio/open')[0] == 404
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize('override', [
+    {'Origin': ''}, {'Origin': 'https://example.com'}, {'Host': 'example.com'},
+    {'X-Omiloc-Request': ''}, {'Sec-Fetch-Site': 'cross-site'},
+    {'Forwarded': 'host=example.com'}, {'X-Forwarded-Host': '127.0.0.1'},
+])
+def test_open_folder_rejects_nonlocal_requests(library, monkeypatch, override):
+    calls = []
+    monkeypatch.setattr(library, 'open_folder', calls.append)
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder', **override}
+    assert request(library, '/api/folders/audio/open', method='POST', headers=headers)[0] == 403
+    assert calls == []
+
+
+def test_open_folder_failure_and_timeout_are_reported_without_paths(library, monkeypatch):
+    from dev_harness import local_library
+    headers = {'Origin': 'http://127.0.0.1:20001', 'X-Omiloc-Request': 'open-folder'}
+    monkeypatch.setattr(local_library.sys, 'platform', 'darwin')
+    for error, expected in [(OSError('private-path'), 503),
+                            (local_library.subprocess.CalledProcessError(1, 'private-path'), 503),
+                            (local_library.subprocess.TimeoutExpired('private-path', 5), 504)]:
+        def fail(*args, **kwargs):
+            raise error
+        monkeypatch.setattr(local_library.subprocess, 'run', fail)
+        status, _, body = request(library, '/api/folders/audio/open', method='POST', headers=headers)
+        assert status == expected and b'private-path' not in body
+    calls = []
+    monkeypatch.setattr(local_library.subprocess, 'run', lambda *a, **k: calls.append(a))
+    library.captures = library.captures.parent / 'missing'
+    assert request(library, '/api/folders/audio/open', method='POST', headers=headers)[0] == 503
+    assert calls == []
+
+
 def test_delete_preserves_files_on_db_failure_and_busy_inference(library, monkeypatch):
     import fcntl
     from dev_harness import local_library_delete as deletion

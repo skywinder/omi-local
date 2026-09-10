@@ -8,6 +8,7 @@ import math
 import os
 import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
@@ -47,6 +48,14 @@ class Library:
         self.tokens = {}
         self.digests = {}
         self.records = {}
+
+    def open_folder(self, name):
+        path = {'audio': self.captures, 'transcripts': self.transcripts}[name]
+        if (sys.platform != 'darwin' or not path.is_dir() or path.is_symlink()
+                or not path.resolve().is_relative_to(self.captures.parent.parent.resolve())):
+            raise OSError('Folder unavailable')
+        subprocess.run(['/usr/bin/open', '-a', 'Finder', str(path.resolve())], check=True, timeout=5,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def scan(self):
         """Match exact WAV content to the newest completed model result in memory."""
@@ -189,6 +198,24 @@ def handler(library, assets, delete=None):
 
         def do_HEAD(self):
             self.do_GET()
+
+        def do_POST(self):
+            expected = f'127.0.0.1:{self.server.server_port}'
+            if (self.headers.get('Host') != expected or self.headers.get('Origin') != f'http://{expected}'
+                    or self.headers.get('X-Omiloc-Request') != 'open-folder'
+                    or self.headers.get('Sec-Fetch-Site', 'none') not in {'same-origin', 'none'}
+                    or any(k.lower() == 'forwarded' or k.lower().startswith('x-forwarded-') for k in self.headers)):
+                return self.send_json({'error': 'Открыть папку можно только на этом Mac.'}, 403)
+            match = re.fullmatch(r'/api/folders/(audio|transcripts)/open', self.path)
+            if not match:
+                return self.send_json({'error': 'Папка не найдена.'}, 404)
+            try:
+                library.open_folder(match[1])
+                self.send_json({'status': 'opened'})
+            except subprocess.TimeoutExpired:
+                self.send_json({'error': 'Ответ задерживается. Проверьте Finder.'}, 504)
+            except (OSError, subprocess.CalledProcessError):
+                self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
 
         def do_DELETE(self):
             expected = f'127.0.0.1:{self.server.server_port}'
