@@ -33,7 +33,8 @@ def test_existing_wire_format_case_times_speakers_and_stable_identity():
 
 
 @pytest.mark.parametrize('engine,provider', [('parakeet-mlx', 'parakeet-mlx-local'),
-                                           ('whisperkit', 'whisperkit-local')])
+                                           ('whisperkit', 'whisperkit-local'),
+                                           ('openai-compatible', 'openai-compatible-local')])
 def test_alternative_engine_provenance_uses_same_mobile_contract(engine, provider):
     data = manifest()
     data['profile'] = {'engine': engine, 'model': 'synthetic-model'}

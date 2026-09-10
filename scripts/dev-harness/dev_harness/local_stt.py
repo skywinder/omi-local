@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from . import config, stt_install, local_whisperkit
+from . import config, stt_install, local_whisperkit, local_openai_stt
 
 
 class TranscriptionError(ValueError):
@@ -41,6 +41,7 @@ class EngineConfig:
     the same. Models must already be installed; this command never installs them.
     """
 
+    provider_url: str = ''
     engine: str = 'whisperx'
     model: str = 'large-v3-turbo'
     language: str = 'ru'
@@ -83,13 +84,19 @@ class EngineConfig:
             data = {'model': local_whisperkit.MODEL, 'device': 'cpuAndNeuralEngine',
                     'diarization_model': 'none', **data, 'assets_path': str(root),
                     'runtime_revision': local_whisperkit.runtime_revision(root)}
+        if data.get('engine') == 'openai-compatible':
+            data = {'language': 'auto', 'device': 'server', 'diarization_model': 'none', **data}
+            local_openai_stt.validate_url(data.get('provider_url', ''))
         engine = cls(**data)
-        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit', 'openai-compatible'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
                 or not (re.fullmatch(r'[a-z]{2,3}', engine.language) or engine.language == 'auto')
                 or engine.compute_type not in {'float32', 'int8', 'int8_float32'}
                 or type(engine.batch_size) is not int or not 1 <= engine.batch_size <= 8):
             raise TranscriptionError('Invalid local STT engine settings')
-        if engine.engine == 'whisperkit':
+        if engine.engine == 'openai-compatible':
+            if engine.device != 'server' or engine.diarization_model != 'none':
+                raise TranscriptionError('Custom STT requires server device and single-speaker mode')
+        elif engine.engine == 'whisperkit':
             if (engine.model != local_whisperkit.MODEL or engine.device != 'cpuAndNeuralEngine'
                     or engine.diarization_model != 'none' or engine.python or engine.library_path):
                 raise TranscriptionError('WhisperKit requires the prepared Core ML turbo model and single-speaker mode')
@@ -106,6 +113,10 @@ class EngineConfig:
 
     def profile(self):
         excluded = {'python', 'library_path', 'assets_path'}
+        if self.engine != 'openai-compatible':
+            excluded.add('provider_url')
+        else:
+            excluded.update({'compute_type', 'batch_size', 'chunk_duration', 'overlap_duration'})
         if not self.runtime_revision:
             excluded.add('runtime_revision')
         if self.engine == 'whisperx':
@@ -205,6 +216,12 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
 
 
 def check_model(engine: EngineConfig) -> Path:
+    if engine.engine == 'openai-compatible':
+        try:
+            local_openai_stt.check(engine.provider_url, engine.model)
+        except local_openai_stt.ProviderError as error:
+            raise TranscriptionError(str(error)) from None
+        return Path(sys.executable)
     if engine.engine == 'whisperkit':
         try:
             binary = local_whisperkit.installed(Path(engine.assets_path))
@@ -324,6 +341,20 @@ def run_whisperkit(engine: EngineConfig, audio: Path, folder: Path, manifest: di
             raise TranscriptionError(str(error)) from None
 
 
+def run_openai(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
+    check_model(engine)
+    with tempfile.TemporaryDirectory(dir=folder, prefix='.inference-') as temporary:
+        snapshot = Path(temporary) / 'audio.wav'
+        shutil.copyfile(audio, snapshot)
+        if stt_install.digest(snapshot) != manifest['audio_sha256']:
+            raise TranscriptionError('WAV changed during preparation')
+        try:
+            return local_openai_stt.transcribe(engine.provider_url, engine.model, engine.language,
+                                               snapshot, manifest['duration_seconds'])
+        except local_openai_stt.ProviderError as error:
+            raise TranscriptionError(str(error)) from None
+
+
 def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> int:
     if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
         raise TranscriptionError('Use the paired local Mac offline stack')
@@ -356,7 +387,7 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         reused = raw_path.exists()
         if not reused:
             started = time.monotonic()
-            adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit}[engine.engine]
+            adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit, 'openai-compatible': run_openai}[engine.engine]
             raw = adapter(engine, audio, folder, manifest)
             atomic_json(raw_path, raw)
         else:

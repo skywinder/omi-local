@@ -358,3 +358,155 @@ def test_model_uses_libraries_next_to_ffmpeg_when_no_brew(tmp_path, monkeypatch)
     (binary.parent.parent / 'lib').mkdir()
     monkeypatch.setattr(local_stt.shutil, 'which', lambda name: str(binary) if name == 'ffmpeg' else None)
     assert local_stt.ffmpeg_library_path(local_stt.EngineConfig()) == str(binary.parent.parent / 'lib')
+
+
+def test_custom_provider_request_and_profile_are_timed_and_local(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import local_openai_stt
+    cfg = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path))
+    (tmp_path / 'stt-engine.json').write_text(json.dumps({
+        'engine': 'openai-compatible', 'model': 'turbo', 'provider_url': 'http://127.0.0.1:10301/v1'}))
+    engine = local_stt.EngineConfig.load(cfg)
+    assert engine.language == 'auto' and engine.diarization_model == 'none'
+    assert engine.profile()['provider_url'] == 'http://127.0.0.1:10301/v1'
+    assert 'provider_url' not in local_stt.EngineConfig().profile()
+    requests = []
+    def respond(request):
+        requests.append(request)
+        if request.url.path.endswith('/models'):
+            return httpx.Response(200, json={'data': [{'id': 'turbo'}]})
+        body = request.read()
+        assert b'name="language"' not in body
+        assert b'filename="audio.wav"' in body
+        assert b'verbose_json' in body
+        return httpx.Response(200, json={'language': 'ru', 'text': 'Проверка.', 'segments': [
+            {'text': ' Проверка.', 'start': 0, 'end': 1}],
+            'words': [{'word': ' Проверка.', 'start': 0, 'end': 1}]})
+    factory = httpx.Client
+    def client(**kwargs):
+        assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
+        return factory(transport=httpx.MockTransport(respond), **kwargs)
+    monkeypatch.setattr(local_openai_stt.httpx, 'Client', client)
+    audio = tmp_path / 'source.wav'
+    audio.write_bytes(b'synthetic wav')
+    import hashlib
+    report = local_stt.run_openai(engine, audio, tmp_path,
+        {'audio_sha256': hashlib.sha256(audio.read_bytes()).hexdigest(), 'duration_seconds': 1})
+    assert report['segments'][0]['words'][0]['word'] == ' Проверка.'
+    assert len(requests) == 2
+
+
+@pytest.mark.parametrize('url', ['https://example.com/v1', 'http://127.0.0.1:9/v1?secret=x',
+                                 'http://u:secret@127.0.0.1:9/v1', 'http://localhost:9/v1'])
+def test_custom_provider_never_routes_off_host(url):
+    from dev_harness.local_openai_stt import ProviderError, validate_url
+    with pytest.raises(ProviderError):
+        validate_url(url)
+
+
+def test_custom_provider_failure_is_sanitized_and_original_is_retained(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import local_openai_stt
+    audio = tmp_path / 'audio.wav'
+    audio.write_bytes(b'synthetic')
+    factory = httpx.Client
+    monkeypatch.setattr(local_openai_stt.httpx, 'Client', lambda **kwargs:
+        factory(transport=httpx.MockTransport(lambda request: httpx.Response(503, text='private speech')), **kwargs))
+    with pytest.raises(local_openai_stt.ProviderError) as error:
+        local_openai_stt.transcribe('http://127.0.0.1:9/v1', 'turbo', 'ru', audio, 1)
+    assert 'private' not in str(error.value) and audio.read_bytes() == b'synthetic'
+    with pytest.raises(local_openai_stt.ProviderError):
+        local_openai_stt.normalize({'text': 'un-timed', 'segments': []}, 1)
+    assert local_openai_stt.normalize({'text': '', 'segments': []}, 1)['outcome'] == 'no_speech'
+
+
+def test_live_provider_is_persisted_independently_and_legacy_is_off(tmp_path):
+    from dev_harness import local_stt_services
+    cfg = SimpleNamespace(layout=SimpleNamespace(state_root=tmp_path))
+    assert local_stt_services.live_url(cfg) == ''
+    path = tmp_path / 'live-stt.json'
+    path.write_text(json.dumps({'enabled': True, 'provider': 'external', 'url': 'ws://127.0.0.1:18090/asr'}))
+    assert local_stt_services.live_url(cfg) == 'ws://127.0.0.1:18090/asr'
+    path.write_text(json.dumps({'enabled': True, 'provider': 'external', 'url': 'wss://example.com/asr'}))
+    with pytest.raises(ValueError):
+        local_stt_services.live_url(cfg)
+
+
+def test_apply_live_rechecks_capture_after_model_startup(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import cli, local_env, local_stt_services as services
+    cfg = SimpleNamespace(repo_root=tmp_path, backend_url='http://127.0.0.1:20000')
+    monkeypatch.setattr(local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': 'synthetic-key'})
+    states = iter(['idle', 'received'])
+    factory = httpx.Client
+    monkeypatch.setattr(services.httpx, 'Client', lambda **kwargs:
+        factory(transport=httpx.MockTransport(lambda request: httpx.Response(
+            200, json={'capture': {'state': next(states)}})), **kwargs))
+    started = []
+    monkeypatch.setattr(services, 'start_configured', lambda cfg: started.append(True))
+    monkeypatch.setattr(cli, '_stop_single_service', lambda *a: pytest.fail('must preserve active recording'))
+    with pytest.raises(ValueError, match='Stop the current recording'):
+        services.apply(cfg)
+    assert started == [True]
+
+
+def test_managed_live_preserves_virtualenv_interpreter_path(tmp_path, monkeypatch):
+    from dev_harness import cli, config, local_stt_services as services
+    runtime = tmp_path / 'runtime'
+    runtime.write_text('synthetic')
+    venv = tmp_path / 'venv/bin'
+    venv.mkdir(parents=True)
+    python = venv / 'python'
+    python.symlink_to(runtime)
+    model = tmp_path / 'model'
+    model.mkdir()
+    cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
+                          layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
+    (tmp_path / 'live-stt.json').write_text(json.dumps({
+        'enabled': True, 'provider': 'whisperlivekit', 'url': 'ws://127.0.0.1:18090/asr',
+        'python': str(python), 'model_dir': str(model)}))
+    starts = []
+    monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
+    monkeypatch.setattr(cli, '_start_process', lambda cfg, service, command, **kw: starts.append(command))
+    monkeypatch.setattr(cli, '_service_record', lambda *a: None)
+    monkeypatch.setattr(services, 'health', lambda *a: (True, 'ready'))
+    services.start_configured(cfg)
+    assert starts[0][0] == str(python)  # Resolving this symlink loses the venv packages.
+
+    # A healthy process must still reload when the requested language changes.
+    recorded = {'command': starts[0]}
+    monkeypatch.setattr(cli, '_service_record', lambda *a: recorded)
+    stops = []
+    monkeypatch.setattr(cli, '_stop_single_service', lambda *a: stops.append(True))
+    services.start_configured(cfg)
+    assert stops == []
+    path = tmp_path / 'live-stt.json'
+    changed = json.loads(path.read_text())
+    changed['language'] = 'auto'
+    path.write_text(json.dumps(changed))
+    import fcntl
+    with (cfg.layout.services_dir / 'local-transcripts/.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(services.ServiceError, match='Stop recording'):
+            services.start_configured(cfg)
+        assert stops == []
+    services.start_configured(cfg)
+    assert stops == [True] and 'auto' in starts[-1]
+
+
+def test_managed_stt_detects_failed_start_without_waiting_for_model_timeout(tmp_path, monkeypatch):
+    from dev_harness import cli, config, local_stt_services as services
+    cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
+                          layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
+    (tmp_path / 'argmax-stt.json').write_text(json.dumps({
+        'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(tmp_path),
+        'model_dir': str(tmp_path), 'tokenizer_dir': str(tmp_path)}))
+    monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
+    records = iter([None, {'pid': 123}])
+    monkeypatch.setattr(cli, '_service_record', lambda *a: next(records))
+    monkeypatch.setattr(services, 'health', lambda *a: (False, 'unavailable'))
+    monkeypatch.setattr(services.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout='Z'))
+    monkeypatch.setattr(services.time, 'sleep', lambda *a: pytest.fail('must fail promptly'))
+    with pytest.raises(ValueError, match='process exited'):
+        services.start_configured(cfg)

@@ -63,6 +63,13 @@ def endpoint(cfg) -> str:
     return data.get('url') or f'ws://127.0.0.1:{port(cfg)}/asr'
 
 
+def selected_endpoint(cfg) -> str:
+    """Return the live endpoint selected for the backend child process."""
+    from .local_stt_services import live_url
+
+    return live_url(cfg) or endpoint(cfg)
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -100,7 +107,7 @@ def require_backend_environment(cfg) -> None:
     from . import cli
 
     record = cli._service_record(cfg, 'backend')
-    if record and record.get('local_live_preview_url') != endpoint(cfg):
+    if record and record.get('local_live_preview_url') != selected_endpoint(cfg):
         raise LocalLiveError('Backend uses earlier live settings; finish recording, run local-mac.sh down, then start again')
 
 

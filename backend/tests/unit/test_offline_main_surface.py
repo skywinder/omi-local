@@ -93,6 +93,7 @@ print(json.dumps({
         '/v1/conversations/{conversation_id}',
         '/v1/goals/all',
         '/v1/health',
+        '/v1/local/status',
         '/v1/users/available-languages',
         '/v1/users/daily-summaries',
         '/v1/users/language',

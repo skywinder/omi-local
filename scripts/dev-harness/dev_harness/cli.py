@@ -177,6 +177,9 @@ def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]
         from .local_live import health
         ready = health(cfg).get('ready', False)
         return ready, "live model ready" if ready else "live model unavailable"
+    if service in {"live-stt", "argmax-stt"}:
+        from .local_stt_services import health
+        return health(cfg, service)
     if service == "library":
         from .local_library import ready
         return ready(cfg), "local library readiness"
@@ -786,7 +789,7 @@ def _typesense_command(cfg: config.HarnessConfig) -> list[str]:
 # finished binding its port.
 _INFRA_SETTLE_DELAY = 2.0
 _OFFLINE_SERVICES = frozenset({"firestore", "auth", "redis", "backend"})
-_LOCAL_MAC_SERVICES = frozenset({"ngrok", "library", "stt-worker", "live-preview"})
+_LOCAL_MAC_SERVICES = frozenset({"ngrok", "library", "stt-worker", "live-preview", "live-stt", "argmax-stt"})
 
 
 def _stop_unused_offline_services(cfg: config.HarnessConfig) -> None:

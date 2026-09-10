@@ -17,6 +17,7 @@ _ALLOWED_HTTP = frozenset(
         ("GET", "/v1/conversations"),
         ("GET", "/v1/goals/all"),
         ("GET", "/v1/health"),
+        ("GET", "/v1/local/status"),
         ("HEAD", "/v1/health"),
         ("GET", "/v1/users/available-languages"),
         ("GET", "/v1/users/daily-summaries"),

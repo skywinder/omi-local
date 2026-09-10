@@ -11,6 +11,16 @@ refresh. A successful empty server page must clear the cache; cached rows may
 be restored only after a failed request, never after a confirmed empty response.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
+Local Mac form settings are a separate Keychain draft, not an authenticated session.
+Saving or revealing a key must not switch the active origin or send network requests.
+The optional iOS launch handoff passes only the local URL/app key through the existing
+environment channel into Keychain. Never embed `.env` or the ngrok authtoken in the app.
+Local runtime status uses authenticated `/v1/local/status`, not the public health probe.
+Keep Mac reachability, received-audio counters and live-ASR readiness distinct; errors
+must clear stale successful status. Poll only on the visible foreground screen.
+The status card starts collapsed; keep confirmed values during an in-flight poll,
+but clear them on failure or an authenticated pairing change. Draft notifications
+must not restart polling. Error details remain visible when collapsed.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.
@@ -49,6 +59,10 @@ For physical-device builds, use the wrapper: it owns `dev + local_dev` and
 `prod + mobile_beta` pairing plus auth env setup. Direct builds must first run
 `scripts/validate_mobile_build_config.sh --flavor <dev|prod> --profile <profile>`
 with the matching `OMI_APP_PROFILE`; release/profile helpers do this too.
+For a prepared local checkout, `../dev-iphone.command` owns Debug build,
+attestation and `flutter run --use-application-binary` with identical offline
+defines. Do not launch a Debug iPhone bundle with plain devicectl before attach;
+Flutter must establish the native debugger for JIT. See `../docs/DEVELOPMENT.md`.
 
 ### Firebase Config
 Never run `flutterfire configure` — it overwrites prod credentials. Config files:

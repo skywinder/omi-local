@@ -57,7 +57,9 @@ def require_transcription_ready(cfg):
 def run(cfg, *, open_browser=True):
     from . import local_mac
 
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    repo = getattr(cfg, 'repo_root', None)
+    if not interactive and (repo is None or not (repo / '.env').is_file()):
         raise SetupError('Запустите ./start.command в локальном Terminal.')
     print('Проверяем готовность…', flush=True)
     check(cfg, preparing=True)
@@ -85,6 +87,6 @@ def run(cfg, *, open_browser=True):
         print('Автоматическое финальное распознавание выключено в настройках.')
     print('Live-транскрипция готова.' if local_live.settings(cfg)['enabled'] else 'Live-транскрипция выключена в настройках.')
     print('Остановка: bash scripts/local-mac.sh down')
-    if open_browser:
+    if open_browser and interactive:
         webbrowser.open(local_library.url(cfg))
     return 0

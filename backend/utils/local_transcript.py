@@ -87,7 +87,7 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
         raise ValueError('Invalid result key')
     conversation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
     provider = {'whisperx': 'whisperx-local', 'parakeet-mlx': 'parakeet-mlx-local',
-                'whisperkit': 'whisperkit-local'}[manifest['profile']['engine']]
+                'whisperkit': 'whisperkit-local', 'openai-compatible': 'openai-compatible-local'}[manifest['profile']['engine']]
     segments = normalize_segments(raw, duration, conversation_id, provider)
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,

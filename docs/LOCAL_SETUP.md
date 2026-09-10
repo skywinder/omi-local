@@ -76,4 +76,5 @@ bash setup.sh ios personal
 и CocoaPods 1.16.2. Полный повтор установки на чистом Mac ещё не проверен.
 
 [Повторная установка и проверка сборки](DEVELOPMENT.md#сборка-iphone) ·
+[Debug и hot reload](DEVELOPMENT.md#debug-на-iphone-и-hot-reload) ·
 [Запуск и запись с CV1](START.md).

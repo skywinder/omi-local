@@ -17,6 +17,7 @@ from firebase_admin.auth import InvalidIdTokenError
 
 from models.geolocation import Geolocation, geolocation_from_private_header
 from routers.listen.contracts import CustomSttMode, ListenRequest
+from routers.listen.local_status import require_local_status, snapshot as local_status_snapshot
 from routers.listen.runtime import run_listen_session
 from utils.client_device import (
     ClientDeviceContext,
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _ACCOUNT_DELETION_RECHECK_SECONDS = 30
+
+
+@router.get('/v1/local/status', dependencies=[Depends(require_local_status)])
+async def local_status(uid: str = Depends(auth.get_current_user_uid)) -> dict:
+    return await local_status_snapshot(uid)
 
 
 async def _wait_for_account_deletion_recheck() -> None:

@@ -4,12 +4,17 @@ import os
 import pty
 import select
 import subprocess
+import sys
 import time
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+import plistlib
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / 'scripts/dev-harness'))
+from dev_harness import ios_debug
 
 
 @pytest.fixture
@@ -209,3 +214,92 @@ def test_check_only_entry_does_not_build_or_generate_config(ios):
     assert 'Сборка и установка не запускались' in result.stdout
     assert 'TEST-PHONE' not in result.stdout + result.stderr
     assert {p: p.read_bytes() for p in checkout.rglob('*') if p.is_file()} == before
+
+
+def test_debug_build_attest_run_and_reuse_order(monkeypatch, tmp_path, capsys):
+    events = []
+    artifact = tmp_path / 'app/build/ios/Debug-dev-iphoneos/Runner.app'
+    monkeypatch.setattr(ios_debug, 'prepare', lambda root: ({}, 'TEAM', 'com.omi.local.test', 'PHONE', [], b'tools'))
+    monkeypatch.setattr(ios_debug, 'fingerprint', lambda *args: 'inputs')
+    monkeypatch.setattr(ios_debug, 'capture', lambda *args, **kwargs: b'synthetic-commit')
+    monkeypatch.setattr(sys.stdin, 'isatty', lambda: True)
+
+    def run(args, *unused):
+        events.append(args[1])
+        assert '--debug' in args and '--profile' not in args and '--release' not in args
+        assert all(define in args for define in ios_debug.DEFINES)
+        assert not any('KEY=' in arg for arg in args)
+        if args[1] == 'build':
+            artifact.mkdir(parents=True)
+        else:
+            assert '--use-application-binary=' + str(artifact) in args
+
+    def attest(*args):
+        events.append('attest')
+        assert args[0] == artifact
+        return 'digest', ['get-task-allow']
+
+    monkeypatch.setattr(ios_debug, 'run_flutter', run)
+    monkeypatch.setattr(ios_debug, 'attest', attest)
+    ios_debug.session(tmp_path)
+    assert events == ['build', 'attest', 'run']
+    events.clear()
+    ios_debug.session(tmp_path)
+    assert events == ['attest', 'attest', 'run']
+    record = tmp_path / '.local/ios-debug.json'
+    assert record.stat().st_mode & 0o077 == 0
+    assert 'PHONE' not in record.read_text() and 'TEAM' not in record.read_text()
+    assert 'Decision: reuse' in capsys.readouterr().out
+
+
+def test_debug_failed_attestation_never_launches_or_records_success(monkeypatch, tmp_path):
+    events = []
+    monkeypatch.setattr(ios_debug, 'prepare', lambda root: ({}, 'TEAM', 'bundle', 'PHONE', [], b'tools'))
+    monkeypatch.setattr(ios_debug, 'fingerprint', lambda *args: 'inputs')
+    monkeypatch.setattr(ios_debug, 'capture', lambda *args, **kwargs: b'commit')
+    monkeypatch.setattr(sys.stdin, 'isatty', lambda: True)
+    monkeypatch.setattr(ios_debug, 'run_flutter', lambda args, *rest: events.append(args[1]))
+
+    def reject(*args):
+        raise ios_debug.LocalEnvError('Invalid signature')
+
+    monkeypatch.setattr(ios_debug, 'attest', reject)
+    with pytest.raises(ios_debug.LocalEnvError):
+        ios_debug.session(tmp_path)
+    assert events == ['build']
+    assert not (tmp_path / '.local/ios-debug.json').exists()
+
+
+@pytest.mark.parametrize('defect', [None, 'locked-entitlement', 'expired', 'wrong-phone', 'profile-build'])
+def test_debug_attestation_contract(monkeypatch, tmp_path, defect):
+    artifact = tmp_path / 'Runner.app'
+    assets = artifact / 'Frameworks/App.framework/flutter_assets'
+    assets.mkdir(parents=True)
+    if defect != 'profile-build':
+        (assets / 'kernel_blob.bin').write_bytes(b'synthetic kernel')
+    (artifact / 'Runner').write_bytes(b'synthetic executable')
+    (artifact / 'Info.plist').write_bytes(plistlib.dumps({
+        'CFBundleExecutable': 'Runner', 'CFBundleIdentifier': 'com.omi.local.test'}))
+    ent = {'application-identifier': 'TEAM.com.omi.local.test', 'com.apple.developer.team-identifier': 'TEAM',
+           'get-task-allow': defect != 'locked-entitlement'}
+    expiry = datetime.now(timezone.utc) + timedelta(days=-1 if defect == 'expired' else 1)
+    profile = {'ExpirationDate': expiry.replace(tzinfo=None), 'TeamIdentifier': ['TEAM'],
+               'ProvisionedDevices': ['OTHER' if defect == 'wrong-phone' else 'PHONE']}
+
+    def capture(args, **kwargs):
+        if args[0] == 'security':
+            return plistlib.dumps(profile)
+        return plistlib.dumps(ent) if '-d' in args else b''
+
+    monkeypatch.setattr(ios_debug, 'capture', capture)
+    if defect:
+        with pytest.raises(ios_debug.LocalEnvError):
+            ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test', 'PHONE')
+    else:
+        assert len(ios_debug.attest(artifact, 'TEAM', 'com.omi.local.test', 'PHONE')[0]) == 64
+
+
+def test_debug_output_redacts_identifiers_and_vm_capability_url():
+    text = ios_debug.redact('PHONE TEAM user@example.com ws://127.0.0.1:1234/private-token=/ws', ['PHONE', 'TEAM'])
+    assert 'PHONE' not in text and 'TEAM' not in text and 'user@example' not in text
+    assert 'private-token' not in text and '127.0.0.1' not in text
