@@ -13,6 +13,9 @@ Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
 Local Mac form settings are a separate Keychain draft, not an authenticated session.
 Saving or revealing a key must not switch the active origin or send network requests.
+Reveal the key inline; hide it on background without navigating. Check and connect
+keeps the form open with its values and an inline result, then refreshes runtime
+status even for unchanged credentials. Edits clear previous form results.
 The optional iOS launch handoff passes only the local URL/app key through the existing
 environment channel into Keychain. Never embed `.env` or the ngrok authtoken in the app.
 Local runtime status uses authenticated `/v1/local/status`, not the public health probe.
