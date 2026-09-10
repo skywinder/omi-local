@@ -7,12 +7,14 @@ import 'package:provider/provider.dart';
 import 'package:omi/backend/http/api/users.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/daily_summary.dart';
+import 'package:omi/env/env.dart';
 import 'package:omi/pages/conversations/widgets/conversation_list_item.dart';
 import 'package:omi/pages/conversations/widgets/processing_capture.dart';
 import 'package:omi/pages/conversations/widgets/today_tasks_widget.dart';
 import 'package:omi/pages/home/widgets/daily_summary_card.dart';
 import 'package:omi/pages/memories/widgets/memory_graph_page.dart';
 import 'package:omi/pages/settings/daily_summary_detail_page.dart';
+import 'package:omi/pages/settings/local_runtime_status_card.dart';
 import 'package:omi/providers/conversation_provider.dart';
 import 'package:omi/providers/home_provider.dart';
 import 'package:omi/utils/l10n_extensions.dart';
@@ -80,6 +82,13 @@ class HomeContentPageState extends State<HomeContentPage> with AutomaticKeepAliv
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
+              if (Env.isOfflineRuntime)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: LocalRuntimeStatusCard(active: context.watch<HomeProvider>().selectedIndex == 0),
+                  ),
+                ),
               // Live capture widget — shows when device or phone mic is recording
               const SliverToBoxAdapter(child: ConversationCaptureWidget()),
 

@@ -1,5 +1,9 @@
 import hashlib
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 from fastapi import FastAPI, WebSocket
@@ -142,3 +146,67 @@ def test_listen_auth_rejection_is_observed_before_accept(pairing, caplog):
                 pass
     messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
     assert messages == ["Local Mac listen: opened", "Local Mac listen: server_closed code=1008"]
+
+
+def test_local_status_route_auth_and_runtime_boundary(pairing, tmp_path):
+    # Import the actual public router in an isolated offline process; no module
+    # stubs leak into other tests and no real Firestore/emulator is contacted.
+    backend = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.update({
+        'PROVIDER_MODE': 'offline',
+        'OMI_HARNESS_STATE_ROOT': str(tmp_path),
+        'OMI_LOCAL_STORAGE_ROOT': str(tmp_path / 'services/storage'),
+        'FIRESTORE_EMULATOR_HOST': '127.0.0.1:8085',
+        'FIREBASE_AUTH_EMULATOR_HOST': '127.0.0.1:9099',
+        'FIREBASE_AUTH_PROJECT_ID': 'demo-omi-local',
+        'FIREBASE_PROJECT_ID': 'demo-omi-local',
+        'REDIS_DB_HOST': '127.0.0.1',
+        'REDIS_DB_PORT': '6380',
+        'BASE_API_URL': 'http://127.0.0.1:8000',
+        'API_BASE_URL': 'http://127.0.0.1:8000',
+        'PYTHONPATH': str(backend),
+    })
+    env.pop('OMI_LOCAL_LIVE_PREVIEW_URL', None)
+    probe = '''
+import os
+import main
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from utils.other import endpoints as auth
+from utils.local_transport_auth import LocalTransportAuthMiddleware
+from utils.offline_route_policy import OfflineRoutePolicyMiddleware
+
+# Preserve real key verification; isolate unrelated persistence/telemetry.
+auth.get_user_deletion_wipe_status = lambda uid: None
+auth._enforce_cutover_http_if_request = lambda *args: None
+auth.record_user_platform = lambda *args: None
+auth.record_client_device = lambda *args, **kwargs: None
+auth.validate_byok_request = lambda uid: None
+app = FastAPI()
+app.include_router(main.transcribe.router)
+app.add_middleware(OfflineRoutePolicyMiddleware)
+app.add_middleware(LocalTransportAuthMiddleware)
+with TestClient(app) as client:
+    for headers in ({}, {'Authorization': 'Bearer wrong'}, {'Authorization': 'Basic ' + 'a' * 43}):
+        assert client.get('/v1/local/status', headers=headers).status_code == 401
+    response = client.get('/v1/local/status?uid=synthetic-attacker', headers={'Authorization': 'Bearer ' + 'a' * 43})
+    assert response.status_code == 200, response.status_code
+    assert response.json() == {
+        'backend': 'ready',
+        'capture': {'state': 'idle', 'audio_seconds': 0, 'frames_received': 0},
+        'live_transcript': {'state': 'disabled', 'updates': 0},
+    }
+    def forbidden_auth():
+        raise AssertionError('Unavailable local status must not contact cloud auth')
+    app.dependency_overrides[auth.get_current_user_uid] = forbidden_auth
+    os.environ['OMI_LOCAL_TRANSPORT'] = 'lan'
+    assert client.get('/v1/local/status').status_code == 404
+    os.environ['OMI_ENV_STAGE'] = 'prod'
+    assert client.get('/v1/local/status').status_code == 404
+print('local_status_auth_passed')
+'''
+    result = subprocess.run([sys.executable, '-c', probe], cwd=backend, env=env,
+                            text=True, capture_output=True, timeout=45)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'local_status_auth_passed'

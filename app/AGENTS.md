@@ -15,6 +15,9 @@ Local Mac form settings are a separate Keychain draft, not an authenticated sess
 Saving or revealing a key must not switch the active origin or send network requests.
 The optional iOS launch handoff passes only the local URL/app key through the existing
 environment channel into Keychain. Never embed `.env` or the ngrok authtoken in the app.
+Local runtime status uses authenticated `/v1/local/status`, not the public health probe.
+Keep Mac reachability, received-audio counters and live-ASR readiness distinct; errors
+must clear stale successful status. Poll only on the visible foreground screen.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.

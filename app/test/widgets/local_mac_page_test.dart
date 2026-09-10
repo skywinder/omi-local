@@ -10,6 +10,7 @@ import 'package:omi/env/env.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/pages/settings/local_mac_page.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
+import 'package:omi/services/local_runtime_status.dart';
 import 'package:omi/utils/offline_network_policy.dart';
 
 void main() {
@@ -28,6 +29,26 @@ void main() {
     Env.localTunnelConfigured = false;
     OfflineNetworkPolicy.resetForTesting();
   });
+
+  Future<LocalRuntimeStatus> status() async => const LocalRuntimeStatus(
+        captureState: LocalCaptureState.idle,
+        audioSeconds: 0,
+        framesReceived: 0,
+        liveTranscriptState: LocalLiveTranscriptState.disabled,
+        transcriptUpdates: 0,
+      );
+
+  Future<void> tapFormButton(WidgetTester tester, String key) async {
+    final button = find.byKey(ValueKey(key));
+    final formScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
+    // The status card places these controls beyond the small test viewport;
+    // scrolling must also build lazy ListView children before tapping them.
+    await tester.scrollUntilVisible(button, 160, scrollable: formScroll);
+    await tester.pumpAndSettle();
+    expect(button.hitTestable(), findsOneWidget);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('pairing screen hides key and stops capture before connecting', (tester) async {
     final order = <String>[];
@@ -50,6 +71,7 @@ void main() {
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => LocalMacPage(
                           session: session,
+                          statusFetcher: status,
                           stopRecording: () async {
                             order.add('stop');
                           },
@@ -60,13 +82,12 @@ void main() {
     ));
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    expect(find.text('Локальный Mac'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Локальный Mac')), findsOneWidget);
     final field = tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key')));
     expect(field.obscureText, isTrue);
     await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
     await tester.enterText(find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
-    await tester.tap(find.byKey(const ValueKey('local-mac-connect')));
-    await tester.pumpAndSettle();
+    await tapFormButton(tester, 'local-mac-connect');
     expect(order, ['stop', 'probe']);
     expect(session.isSignedIn, isTrue);
     expect(find.text('Open'), findsOneWidget);
@@ -82,7 +103,8 @@ void main() {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: LocalMacPage(session: session, stopRecording: () async {}, refreshConnection: () async {}),
+      home: LocalMacPage(
+          session: session, statusFetcher: status, stopRecording: () async {}, refreshConnection: () async {}),
     ));
     await tester.pumpAndSettle();
   }
@@ -106,8 +128,7 @@ void main() {
     expect(tester.widget<TextField>(keyField).obscureText, isTrue);
     expect(find.byKey(const ValueKey('local-mac-visible-key')), findsNothing);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.tap(find.byKey(const ValueKey('local-mac-save')));
-    await tester.pumpAndSettle();
+    await tapFormButton(tester, 'local-mac-save');
     expect(session.isSignedIn, isFalse);
     await tester.pumpWidget(const SizedBox());
     await openPage(tester, LocalMacSession());
@@ -122,8 +143,7 @@ void main() {
     final key = List.filled(43, 's').join();
     await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
     await tester.enterText(find.byKey(const ValueKey('local-mac-key')), key);
-    await tester.tap(find.byKey(const ValueKey('local-mac-connect')));
-    await tester.pumpAndSettle();
+    await tapFormButton(tester, 'local-mac-connect');
     expect(session.isSignedIn, isFalse);
     await tester.pumpWidget(const SizedBox());
     await openPage(tester, LocalMacSession());

@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:omi/pages/settings/local_runtime_status_card.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
+import 'package:omi/services/local_runtime_status.dart';
 import 'package:omi/services/connectivity_service.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/utils/enums.dart';
 
 class LocalMacPage extends StatefulWidget {
-  const LocalMacPage({super.key, this.session, this.stopRecording, this.refreshConnection});
+  const LocalMacPage({super.key, this.session, this.stopRecording, this.refreshConnection, this.statusFetcher});
   final LocalMacSession? session;
   final Future<void> Function()? stopRecording;
   final Future<void> Function()? refreshConnection;
+  final Future<LocalRuntimeStatus> Function()? statusFetcher;
   @override
   State<LocalMacPage> createState() => _LocalMacPageState();
 }
@@ -151,6 +154,8 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
         appBar: AppBar(title: Text(context.l10n.localMacTitle)),
         body: ListView(padding: const EdgeInsets.all(24), children: [
           Text(context.l10n.localMacHelp),
+          const SizedBox(height: 16),
+          LocalRuntimeStatusCard(session: _session, fetcher: widget.statusFetcher),
           const SizedBox(height: 24),
           TextField(
               key: const ValueKey('local-mac-address'),

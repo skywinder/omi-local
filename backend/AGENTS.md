@@ -11,6 +11,9 @@ Ngrok profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
+Authenticated `/v1/local/status` is ngrok/offline-only. Its capture counters come
+from the caller's active listen sessions; live-ASR health is separate from WAV
+capture. Never return transcript text, identifiers, filesystem paths or credentials.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
