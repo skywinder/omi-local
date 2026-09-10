@@ -17,8 +17,6 @@ import 'package:omi/pages/capture/widgets/widgets.dart';
 import 'package:omi/pages/conversations/widgets/capture.dart';
 import 'package:omi/pages/processing_conversations/page.dart';
 import 'package:omi/providers/capture_provider.dart';
-import 'package:omi/services/capture/temporary_capture_controls.dart';
-import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
 import 'package:omi/utils/alerts/app_snackbar.dart';
 import 'package:omi/utils/enums.dart';
 import 'package:omi/utils/logger.dart';
@@ -86,7 +84,6 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
 
         return GestureDetector(
           onTap: () async {
-            if (TemporaryCaptureControls.enabled) return;
             // Offline/batch mode has no live transcript — the card is informational,
             // so swallow taps instead of opening the (empty) capturing page. Covers both
             // device batch and the phone-mic Transcribe Later session.
@@ -351,9 +348,6 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
   }
 
   Widget _buildUnifiedRecordingUI(CaptureProvider provider, Widget? header) {
-    if (TemporaryCaptureControls.enabled && provider.havingRecordingDevice) {
-      return TemporaryRecordingControls(provider: provider);
-    }
     bool isDeviceRecording = provider.havingRecordingDevice &&
         (provider.recordingState == RecordingState.deviceRecord || provider.recordingState == RecordingState.pause);
 

@@ -3,23 +3,35 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
+import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/env/env.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
+import 'package:omi/pages/conversations/widgets/processing_capture.dart';
 import 'package:omi/pages/home/widgets/battery_info_widget.dart';
 import 'package:omi/providers/capture_provider.dart';
+import 'package:omi/providers/phone_call_provider.dart';
+import 'package:omi/services/capture/conversation_location_capture.dart';
 import 'package:omi/utils/enums.dart';
 
 class _Capture extends CaptureProvider {
+  _Capture()
+      : super(
+          inProgressConversationLoader: () async {},
+          conversationLocationCapture: ConversationLocationCapture(isLocationServiceEnabled: () async => false),
+        );
   final calls = <String>[];
+  bool deviceConnected = true;
   bool muted = false;
   bool failStart = false;
   Completer<void>? startGate;
 
   @override
-  bool get havingRecordingDevice => true;
+  bool get havingRecordingDevice => deviceConnected;
   @override
   bool get isPaused => muted;
   @override
@@ -50,6 +62,36 @@ class _Capture extends CaptureProvider {
     muted = false;
     updateRecordingState(RecordingState.deviceRecord);
   }
+
+  @override
+  Future<void> streamRecording() async {
+    calls.add('phone:start');
+    updateRecordingState(RecordingState.initialising);
+    await startGate?.future;
+    if (failStart) {
+      updateRecordingState(RecordingState.stop);
+      throw StateError('Synthetic phone permission failure');
+    }
+    updateRecordingState(RecordingState.record);
+  }
+
+  @override
+  Future<void> forceProcessingCurrentConversation() async {
+    calls.add('phone:finalize');
+  }
+
+  @override
+  Future<void> stopStreamRecording({String reason = 'user_stopped'}) async {
+    calls.add('phone:stop');
+    updateRecordingState(RecordingState.stop);
+  }
+}
+
+class _IdleCalls extends ChangeNotifier implements PhoneCallProvider {
+  @override
+  PhoneCallState get callState => PhoneCallState.idle;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Widget _app(Widget child) => MaterialApp(
@@ -61,7 +103,7 @@ Widget _app(Widget child) => MaterialApp(
 
 void main() {
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'batchModeEnabled': false});
     await SharedPreferencesUtil.init();
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
   });
@@ -123,17 +165,73 @@ void main() {
     expect(tester.widget<IconButton>(find.byKey(const Key('temporary_recording_mute'))).onPressed, isNull);
   });
 
-  testWidgets('phone button is gray and offers no tap or long press in local mode', (tester) async {
-    await tester.pumpWidget(_app(const HomeRecordButton()));
+  testWidgets('original home plus opens record choices in local mode', (tester) async {
+    final capture = _Capture()..deviceConnected = false;
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
     await tester.pumpAndSettle();
-    final button = find.byKey(const Key('temporary_phone_recording_disabled'));
-    expect(tester.widget<Semantics>(button).properties.enabled, isFalse);
-    expect(find.descendant(of: button, matching: find.byType(GestureDetector)), findsNothing);
-    expect(tester.widget<Icon>(find.descendant(of: button, matching: find.byType(Icon))).color, Colors.grey);
-    await tester.tap(button);
-    await tester.longPress(button);
+    final plus = find.byIcon(Icons.add);
+    expect(plus, findsOneWidget);
+    expect(find.byKey(const Key('local_phone_recording')), findsNothing);
+    expect(find.byKey(const Key('temporary_phone_recording_disabled')), findsNothing);
+    await tester.longPress(plus);
     await tester.pumpAndSettle();
-    expect(find.byType(RecordOptionsSheet), findsNothing);
+    expect(find.byType(RecordOptionsSheet), findsOneWidget);
+    expect(capture.calls, isEmpty);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('original home button shows busy and stops an active phone recording', (tester) async {
+    final capture = _Capture()
+      ..deviceConnected = false
+      ..updateRecordingState(RecordingState.initialising);
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.tap(find.byType(HomeRecordButton));
+    await tester.pump();
+    expect(capture.calls, isEmpty);
+    capture.updateRecordingState(RecordingState.record);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.pumpAndSettle();
+    expect(capture.calls, ['phone:stop', 'phone:finalize']);
+    expect(find.byIcon(Icons.add), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('original Omi card uses mute and resume without temporary home controls', (tester) async {
+    final capture = _Capture()..updateRecordingState(RecordingState.deviceRecord);
+    final calls = _IdleCalls();
+    addTearDown(capture.dispose);
+    addTearDown(calls.dispose);
+    await tester.pumpWidget(_app(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CaptureProvider>.value(value: capture),
+        ChangeNotifierProvider<PhoneCallProvider>.value(value: calls),
+      ],
+      child: const ConversationCaptureWidget(),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byType(TemporaryRecordingControls), findsNothing);
+    expect(find.byKey(const Key('local_live_transcript_open')), findsNothing);
+    Finder icon(FaIconData data) => find.byWidgetPredicate((widget) => widget is FaIcon && widget.icon == data.data);
+    await tester.tap(icon(FontAwesomeIcons.microphone));
+    await tester.pumpAndSettle();
+    expect(capture.calls, ['mute']);
+    expect(capture.isPaused, isTrue);
+    await tester.tap(icon(FontAwesomeIcons.microphoneSlash));
+    await tester.pumpAndSettle();
+    expect(capture.calls, ['mute', 'unmute']);
+    expect(capture.isPaused, isFalse);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }

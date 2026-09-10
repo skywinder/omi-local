@@ -44,7 +44,7 @@ def test_whisperkit_failure_has_no_transcript_and_does_not_fall_back(tmp_path, m
         local_whisperkit.transcribe(tmp_path, tmp_path / 'audio.wav', tmp_path, 'ru', 1)
 
 
-@pytest.mark.parametrize('end', [float('nan'), 3, -1, True])
+@pytest.mark.parametrize('end', [float('nan'), 3, -1, 0.05, True])
 def test_whisperkit_rejects_invalid_timestamps(end):
     with pytest.raises(local_whisperkit.WhisperKitError):
         local_whisperkit.normalize({'language': 'ru', 'segments': [
@@ -66,10 +66,19 @@ def test_whisperkit_keeps_valid_speech_when_padding_produces_an_extra_segment():
     }]
 
 
-def test_whisperkit_does_not_create_a_transcript_from_padding_only():
-    with pytest.raises(local_whisperkit.WhisperKitError, match='No speech segments'):
-        local_whisperkit.normalize({'language': 'ru', 'segments': [
-            {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12}]}, 10.6)
+@pytest.mark.parametrize('segments', [[], [
+    {'text': 'Synthetic padding', 'start': 29.1, 'end': 29.12},
+]])
+def test_whisperkit_empty_or_padding_only_report_is_no_speech(segments):
+    # A real short CV1 WAV returned a successful WhisperKit report with zero segments.
+    result = local_whisperkit.normalize({'language': 'en', 'segments': segments}, 2.9)
+    assert result == {'language': 'en', 'segments': [], 'outcome': 'no_speech'}
+
+
+@pytest.mark.parametrize('segments', [None, {}, '', [None]])
+def test_whisperkit_malformed_segments_are_not_no_speech(segments):
+    with pytest.raises(local_whisperkit.WhisperKitError, match='invalid report'):
+        local_whisperkit.normalize({'language': 'en', 'segments': segments}, 2.9)
 
 
 def test_whisperkit_ignores_padding_before_checking_order_of_real_segments():
@@ -78,6 +87,58 @@ def test_whisperkit_ignores_padding_before_checking_order_of_real_segments():
         {'text': 'Synthetic speech', 'start': 0, 'end': 1},
     ]}, 2)
     assert [segment['text'] for segment in result['segments']] == ['Synthetic speech']
+
+
+def test_whisperkit_drops_internal_chunk_padding_and_preserves_real_speech_timing():
+    # The VAD split is 26 seconds. A first-chunk hypothesis at 28.72 seconds
+    # is padding, even though its timestamps are inside the complete WAV.
+    raw = {'language': 'ru', 'segments': [
+        {'text': 'First', 'seek': 0, 'start': 22.34, 'end': 23.76,
+         'words': [{'word': 'First', 'start': 22.34, 'end': 23.76, 'probability': 0.8}]},
+        {'text': 'Synthetic padding', 'seek': 0, 'start': 28.72, 'end': 29.92,
+         'words': [{'word': 'Synthetic padding', 'start': 28.72, 'end': 29.92, 'probability': 0.9}]},
+        {'text': 'Second', 'seek': 416000, 'start': 26.78, 'end': 28.56,
+         'words': [{'word': 'Second', 'start': 26.78, 'end': 28.56, 'probability': 0.8}]},
+        {'text': 'Third', 'seek': 416000, 'start': 29.52, 'end': 31.62,
+         'words': [{'word': 'Third', 'start': 29.52, 'end': 31.62, 'probability': 0.7}]},
+    ]}
+    result = local_whisperkit.normalize(raw, 43.49)
+    assert [segment['text'] for segment in result['segments']] == ['First', 'Second', 'Third']
+    originals = {segment['text']: segment for segment in raw['segments']}
+    for segment in result['segments']:
+        original = originals[segment['text']]
+        assert (segment['start'], segment['end']) == (original['start'], original['end'])
+        assert segment['words'] == [{
+            'word': word['word'], 'start': word['start'], 'end': word['end'],
+            'score': word['probability'], 'speaker': 'SPEAKER_00',
+        } for word in original['words']]
+
+
+@pytest.mark.parametrize('internal_boundary', [False, True])
+def test_whisperkit_keeps_speech_at_stop_and_excludes_padding_words(internal_boundary):
+    raw = {'language': 'en', 'segments': [
+        {'text': ' Earlier.', 'seek': 0, 'start': 1, 'end': 2,
+         'words': [{'word': ' Earlier.', 'start': 1, 'end': 2, 'probability': 0.9}]},
+        {'text': ' Final word padding.', 'seek': 0, 'start': 37.23, 'end': 39.66,
+         'words': [
+             {'word': ' Final', 'start': 37.23, 'end': 38.2, 'probability': 0.9},
+             {'word': ' word', 'start': 38.68, 'end': 39.1, 'probability': 0.98},
+             {'word': ' padding.', 'start': 39.1, 'end': 39.66, 'probability': 0.2},
+         ]},
+    ]}
+    if internal_boundary:
+        raw['segments'].append({'text': ' Next.', 'seek': 623840, 'start': 40, 'end': 41,
+                                'words': [{'word': ' Next.', 'start': 40, 'end': 41, 'probability': 0.9}]})
+    result = local_whisperkit.normalize(raw, 45 if internal_boundary else 38.99)
+    final = result['segments'][1]
+    assert final['text'] == 'Final word'
+    assert (final['start'], final['end']) == (37.23, 38.99)
+    assert len(final['words']) == 2
+    assert final['words'][-1]['end'] == 38.99
+    assert result['segments'][0]['text'] == 'Earlier.'
+    assert result['segments'][0]['end'] == 2
+    if internal_boundary:
+        assert result['segments'][2]['text'] == 'Next.'
 
 
 def test_pinned_queue_profile_does_not_inherit_another_engine_runtime(tmp_path):
