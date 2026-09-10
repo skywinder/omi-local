@@ -56,8 +56,10 @@ class Worker:
         await self.process.stdin.drain()
 
     async def close(self):
-        if self.process is not None and self.process.returncode is None:
-            self.process.kill()
+        if self.process is not None:
+            if self.process.returncode is None:
+                with suppress(ProcessLookupError):
+                    self.process.kill()
             await self.process.wait()  # No inference survives lock release.
 
 
@@ -74,17 +76,17 @@ def create_app(worker, lock_path, emit):
     @asynccontextmanager
     async def lifespan(app):
         nonlocal ready
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             await worker.start()
             ready = True
-        finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
-        emit('model_ready')
-        try:
+            emit('model_ready')
             yield
         finally:
             ready = False
+            # Startup failures/cancellation must reap the child while the
+            # inference lock is still held, just like failed ASR sessions.
             await worker.close()
             lock.close()
 

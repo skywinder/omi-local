@@ -1,5 +1,6 @@
 """Wire/lifecycle tests with synthetic text; Core ML is exercised by local replay."""
 import asyncio
+import fcntl
 import json
 from pathlib import Path
 import sys
@@ -125,6 +126,47 @@ class WorkerProcessTests(unittest.IsolatedAsyncioTestCase):
         worker.process = SimpleNamespace(stdout=reader)
         with self.assertRaisesRegex(RuntimeError, 'parakeet_worker_closed'):
             await worker.read()
+
+    async def test_startup_failure_reaps_child_before_releasing_inference_lock(self):
+        for error in (asyncio.TimeoutError, RuntimeError, asyncio.CancelledError):
+            with self.subTest(error=error.__name__), tempfile.TemporaryDirectory() as directory:
+                lock_path = Path(directory) / 'lock'
+                lock_path.touch()
+                checked = []
+                case = self
+
+                class FailingWorker(Worker):
+                    async def start(self):
+                        self.process = await asyncio.create_subprocess_exec(
+                            sys.executable, '-c', 'import sys; sys.stdin.buffer.read()',
+                            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL,
+                        )
+                        raise error('synthetic startup failure')
+
+                    async def close(self):
+                        with lock_path.open('r+') as observer:
+                            with case.assertRaises(BlockingIOError):
+                                fcntl.flock(observer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            await super().close()
+                            case.assertIsNotNone(self.process.returncode)
+                            with case.assertRaises(BlockingIOError):
+                                fcntl.flock(observer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        checked.append(True)
+
+                worker = FailingWorker(None, None)
+                app = create_app(worker, lock_path, lambda *args, **kwargs: None)
+                try:
+                    with self.assertRaises(error):
+                        async with app.router.lifespan_context(app):
+                            self.fail('Startup must not succeed')
+                    self.assertEqual(checked, [True])
+                    with lock_path.open('r+') as observer:
+                        fcntl.flock(observer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                finally:
+                    # Also reap the synthetic child when testing the broken code.
+                    await Worker.close(worker)
+
 
 if __name__ == '__main__':
     unittest.main()
