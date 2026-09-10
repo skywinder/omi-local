@@ -187,6 +187,14 @@ class _BufferedStartProvider extends CaptureProvider {
 
   final gates = <Completer<TranscriptSegmentSocketService?>>[];
   final sockets = <_AudioPacketSocket>[];
+  final stopOperations = <Future<dynamic>>[];
+
+  @override
+  Future<dynamic> stopStreamDeviceRecording({bool cleanDevice = false}) {
+    final stop = super.stopStreamDeviceRecording(cleanDevice: cleanDevice);
+    stopOperations.add(stop);
+    return stop;
+  }
 
   @override
   Future<TranscriptSegmentSocketService?> openConversationSocket({
@@ -709,8 +717,10 @@ void main() {
       buttons.add([1, 0, 0, 0]);
       await pumpEventQueue();
       expect(audio.hasListener, isFalse);
+      expect(provider.stopOperations, hasLength(1));
       final socket = provider.connect(0);
-      await pumpEventQueue();
+      // Draining may await file/platform work; event-loop turns do not prove Stop finished.
+      await provider.stopOperations.single;
       expect(socket.packets, [
         [11]
       ]);
