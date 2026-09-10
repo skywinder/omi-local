@@ -150,6 +150,7 @@ class LocalLivePreview:
         self.accepting = True
         self.deliver = True
         self.failed = False
+        self.disabled = False
         self.updates = 0
         self.eof_ack = False
         self.task = create_named_task(self._run(), name='local-preview-session')
@@ -222,9 +223,15 @@ class LocalLivePreview:
         try:
             async with websockets.connect(self.url, open_timeout=3, close_timeout=2,
                                           max_size=self.MAX_SNAPSHOT_BYTES) as socket:
-                config = json.loads(await asyncio.wait_for(socket.recv(), 3))
+                # The loopback relay may first negotiate TLS and the selected
+                # remote WLK handshake; only that relay can contact the provider.
+                handshake_timeout = 12 if os.getenv('OMI_LOCAL_LIVE_PROVIDER_RELAY') == '1' else 3
+                config = json.loads(await asyncio.wait_for(socket.recv(), handshake_timeout))
                 if config.get('type') != 'config' or config.get('useAudioWorklet') is not True:
                     raise RuntimeError('local_preview_pcm_contract')
+                if config.get('enabled') is False:
+                    self.disabled = True
+                    return
                 self.segment.configure(config)
                 sender = create_named_task(self._send(socket), name='local-preview-send')
                 receiver = create_named_task(self._receive(socket), name='local-preview-receive')

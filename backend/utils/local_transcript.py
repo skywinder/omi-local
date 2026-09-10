@@ -88,12 +88,22 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
     conversation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
     provider = {'whisperx': 'whisperx-local', 'parakeet-mlx': 'parakeet-mlx-local',
                 'whisperkit': 'whisperkit-local', 'openai-compatible': 'openai-compatible-local'}[manifest['profile']['engine']]
+    if manifest['profile'].get('pipeline') and manifest['profile']['engine'] == 'openai-compatible':
+        provider = 'openai-compatible'
     segments = normalize_segments(raw, duration, conversation_id, provider)
+    structured = {'title': 'Локальная запись', 'overview': ''}
+    if 'structured' in raw:
+        summary = raw['structured']
+        if (not isinstance(summary, dict) or not isinstance(summary.get('title'), str)
+                or not isinstance(summary.get('overview'), str) or not summary['title'].strip()
+                or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
+            raise ValueError('Invalid local recording summary')
+        structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
         finished_at=started + timedelta(seconds=duration),
         source=manifest['source'], language=raw.get('language'),
-        structured=Structured(title='Локальная запись', overview='', emoji='🎙️'),
+        structured=Structured(**structured, emoji='🎙️'),
         transcript_segments=segments, status='completed', uses_custom_stt=True,
         discarded=False, deferred=False,
         external_data={'local_transcript': {'version': 1, 'audio_sha256': digest, 'result_key': result_key,

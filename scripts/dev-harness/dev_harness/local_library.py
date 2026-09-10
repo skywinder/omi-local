@@ -27,6 +27,8 @@ ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/style.css': ('style.css', 'text/css; charset=utf-8'),
           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
           '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
+          '/settings.mjs': ('settings.mjs', 'text/javascript; charset=utf-8'),
+          '/recording-processing.mjs': ('recording-processing.mjs', 'text/javascript; charset=utf-8'),
           '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8'),
           '/reload.mjs': ('reload.mjs', 'text/javascript; charset=utf-8')}
 
@@ -82,14 +84,19 @@ class Library:
         with self.lock:
             results = {}
             for folder in self.transcripts.glob('*'):
-                manifest, raw = folder / 'manifest.json', folder / 'audio.json'
-                if folder.is_symlink() or not all(safe_file(p, self.transcripts) for p in (manifest, raw)):
+                manifest = folder / 'manifest.json'
+                if folder.is_symlink() or not safe_file(manifest, self.transcripts):
                     continue
                 try:
                     data = read_json(manifest)
                     digest = data['audio_sha256']
-                    if digest not in results or raw.stat().st_mtime_ns > results[digest].stat().st_mtime_ns:
-                        results[digest] = raw
+                    candidates = [folder / name for name in ('audio.json', 'diarized.json', 'asr.json')]
+                    raw = next((p for p in candidates if safe_file(p, self.transcripts)), None)
+                    progress = folder / 'processing.json'
+                    stamp = max(p.stat().st_mtime_ns for p in (manifest, raw, progress)
+                                if p is not None and safe_file(p, self.transcripts))
+                    if digest not in results or stamp > results[digest][2]:
+                        results[digest] = (raw, progress, stamp)
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
             try:
@@ -128,10 +135,24 @@ class Library:
                     job = queue.get(hashlib.sha256(folder.name.encode()).hexdigest(), {})
                     state = job.get('state', 'unavailable')
                     state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
-                    segments = []
+                    segments, summary, processing = [], None, {}
                     if digest in results:
                         try:
-                            transcript = read_json(results[digest])
+                            raw_path, progress_path, _stamp = results[digest]
+                            transcript = read_json(raw_path) if raw_path else {}
+                            progress = (read_json(progress_path) if safe_file(progress_path, self.transcripts)
+                                        else transcript.get('processing', {}))
+                            if isinstance(progress, dict):
+                                for stage in ('stt', 'diarization', 'summary'):
+                                    entry = progress.get(stage)
+                                    if not isinstance(entry, dict) or entry.get('status') not in {
+                                            'ready', 'processing', 'pending', 'failed', 'disabled', 'no_speech'}:
+                                        continue
+                                    processing[stage] = {'status': entry['status']}
+                                    for field in ('provider_name', 'model'):
+                                        value = entry.get(field)
+                                        if isinstance(value, str) and len(value) <= 256:
+                                            processing[stage][field] = value
                             for item in transcript.get('segments', []):
                                 start, end = float(item['start']), float(item['end'])
                                 if (not isinstance(item.get('text'), str) or not item['text'].strip()
@@ -144,13 +165,22 @@ class Library:
                                                  'text': item['text'].strip(), 'speaker': speaker})
                             segments.sort(key=lambda s: s['start'])
                             state = 'ready' if segments else 'unavailable'
+                            if (raw_path is None or raw_path.name != 'audio.json') and processing:
+                                states = {entry['status'] for entry in processing.values()}
+                                state = 'failed' if 'failed' in states else 'processing' if 'processing' in states else 'pending'
                             if not segments and transcript.get('outcome') == 'no_speech' and transcript.get('segments') == []:
                                 state = 'no_speech'
+                            structured = transcript.get('structured')
+                            if (raw_path and raw_path.name == 'audio.json' and isinstance(structured, dict)
+                                    and isinstance(structured.get('title'), str) and len(structured['title']) <= 500
+                                    and isinstance(structured.get('overview'), str) and len(structured['overview']) <= 20000):
+                                summary = {key: structured[key] for key in ('title', 'overview')}
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
                                       'source': 'CV1' if meta.get('source') == 'omi' else 'iPhone',
                                       'duration': duration, 'status': state, 'segments': segments,
+                                      'summary': summary, 'processing': processing,
                                       'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):
                     continue
@@ -193,7 +223,7 @@ def byte_range(value, size):
     return start, end
 
 
-def handler(library, assets, delete=None, runtime=None):
+def handler(library, assets, delete=None, runtime=None, settings=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             pass  # URLs, transcript text and filesystem identifiers never enter logs.
@@ -222,7 +252,39 @@ def handler(library, assets, delete=None, runtime=None):
         def do_HEAD(self):
             self.do_GET()
 
+        def settings_request(self):
+            from .local_providers import SettingsError
+            from .local_stt_services import ActivationIndeterminate
+            expected = f'127.0.0.1:{self.server.server_port}'
+            if (self.headers.get('Host') != expected or self.headers.get('Origin') != f'http://{expected}'
+                    or self.headers.get('X-Omiloc-Request') != 'settings'
+                    or self.headers.get('Sec-Fetch-Site', 'none') not in {'same-origin', 'none'}
+                    or any(k.lower() == 'forwarded' or k.lower().startswith('x-forwarded-') for k in self.headers)):
+                return self.send_json({'error': 'Настройки доступны только на этом Mac.'}, 403)
+            if settings is None:
+                return self.send_json({'error': 'Настройки недоступны.'}, 503)
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if (not 0 < length <= 64 * 1024 or self.headers.get('Transfer-Encoding')
+                        or self.headers.get_content_type() != 'application/json'):
+                    raise SettingsError('Некорректный запрос настроек.')
+                if hasattr(self.connection, 'settimeout'):
+                    self.connection.settimeout(15)
+                body = json.loads(self.rfile.read(length))
+                self.send_json(settings.dispatch(self.command, self.path, body))
+            except SettingsError as error:
+                self.send_json({'error': str(error), **({'field': error.field} if error.field else {})}, error.status)
+            except ActivationIndeterminate:
+                self.send_json({'error': 'Результат применения Live STT не подтверждён. Обновите настройки и проверьте состояние сервера.',
+                                'outcome': 'indeterminate'}, 503)
+            except (ValueError, TypeError, KeyError):
+                self.send_json({'error': 'Настройки не применены. Проверьте параметры и состояние записи.'}, 409)
+            except (OSError, subprocess.SubprocessError):
+                self.send_json({'error': 'Не удалось применить настройки. Проверьте готовность сервера.'}, 503)
+
         def do_POST(self):
+            if self.path.startswith('/api/settings/'):
+                return self.settings_request()
             expected = f'127.0.0.1:{self.server.server_port}'
             if (self.headers.get('Host') != expected or self.headers.get('Origin') != f'http://{expected}'
                     or self.headers.get('X-Omiloc-Request') != 'open-folder'
@@ -241,6 +303,8 @@ def handler(library, assets, delete=None, runtime=None):
                 self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
 
         def do_DELETE(self):
+            if self.path.startswith('/api/settings/'):
+                return self.settings_request()
             expected = f'127.0.0.1:{self.server.server_port}'
             if (self.headers.get('Host') != expected or self.headers.get('Origin') != f'http://{expected}'
                     or self.headers.get('X-Omiloc-Request') != 'delete'
@@ -295,6 +359,8 @@ def handler(library, assets, delete=None, runtime=None):
                 self.send_json(asset_versions(assets))
             elif path == '/api/runtime' and runtime is not None:
                 self.send_json(runtime.snapshot())
+            elif path == '/api/settings' and settings is not None:
+                self.send_json(settings.read())
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])
@@ -364,11 +430,13 @@ def start(cfg):
 def main():
     from .local_library_delete import delete_recording
     from .local_library_runtime import Runtime
+    from .local_provider_api import Settings
 
     cfg = config.load_config(Path.cwd(), create_layout=False)
     safety.read_and_validate_sentinel(cfg.layout.state_root, repo_root=cfg.repo_root, instance=cfg.instance)
     server = ThreadingHTTPServer(('127.0.0.1', port(cfg)), handler(
-        Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio), Runtime(cfg)))
+        Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio),
+        Runtime(cfg), Settings(cfg)))
     server.daemon_threads = True
     try:
         server.serve_forever()

@@ -14,7 +14,7 @@ import tempfile
 import time
 import wave
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from . import config, stt_install, local_whisperkit, local_openai_stt, local_diarization
@@ -32,6 +32,10 @@ class NoSpeechDetected(TranscriptionError):
     """A successful, cached inference found no speech; do not retry or import."""
 
 
+class TranscriptionDisabled(TranscriptionError):
+    """New recording admission is disabled; already admitted jobs remain pinned."""
+
+
 @dataclass(frozen=True)
 class EngineConfig:
     """Only the engine adapter consumes these settings; Omi receives segments.
@@ -41,6 +45,8 @@ class EngineConfig:
     the same. Models must already be installed; this command never installs them.
     """
 
+    pipeline: dict | None = None
+    credential_store: object = field(default=None, repr=False, compare=False)
     speaker_revision: str = 'exclusive-v1'
     speaker_model: str = ''
     speaker_python: str = ''
@@ -66,7 +72,30 @@ class EngineConfig:
     def load(cls, cfg, *, profile=None):
         path = cfg.layout.state_root / 'stt-engine.json'
         data = json.loads(path.read_text()) if path.exists() else {}
-        if profile is not None:
+        from .local_providers import Registry
+        registry = Registry(cfg)
+        pipeline = profile.get('pipeline') if profile is not None else (registry.pipeline() if registry.exists else None)
+        if pipeline is not None:
+            stt = pipeline.get('stt')
+            if not isinstance(stt, dict):
+                raise TranscriptionDisabled('Select a transcription provider before processing recordings')
+            data = {'diarization_model': 'none', **stt['settings'], 'engine': stt['kind'],
+                    'pipeline': pipeline}
+            if profile is not None:
+                data.update(profile)
+            diarization = pipeline.get('diarization')
+            # The selected diarization stage owns whether speakers run. An old
+            # STT draft cannot silently re-enable its embedded speaker setting.
+            data.update(diarization_model='none', speaker_model='')
+            if diarization is not None:
+                if diarization.get('embedded', False):
+                    if data['engine'] not in {'whisperx', 'parakeet-mlx'}:
+                        raise TranscriptionError('Select standalone diarization or disable it for this STT provider')
+                    data['diarization_model'] = diarization['settings']['speaker_model']
+                elif diarization['kind'] == 'pyannote':
+                    data.update(diarization['settings'])
+            data['credential_store'] = registry
+        elif profile is not None:
             # Queue profiles pin the engine, but runtime paths belong to that engine.
             # Never inherit a WhisperKit directory/Python override across providers.
             data = {**(data if data.get('engine', 'whisperx') == profile['engine'] else {}),
@@ -93,7 +122,11 @@ class EngineConfig:
                     'runtime_revision': local_whisperkit.runtime_revision(root)}
         if data.get('engine') == 'openai-compatible':
             data = {'language': 'auto', 'device': 'server', 'diarization_model': 'none', **data}
-            local_openai_stt.validate_url(data.get('provider_url', ''))
+            if pipeline is not None:
+                from .local_provider_http import validate_url
+                validate_url(data.get('provider_url', ''))
+            else:
+                local_openai_stt.validate_url(data.get('provider_url', ''))
         if data.get('speaker_model') and not data.get('speaker_python') and repo_root is not None:
             data['speaker_python'] = str(repo_root / '.local/diarization/venv/bin/python')
         engine = cls(**data)
@@ -105,7 +138,12 @@ class EngineConfig:
             raise TranscriptionError('Invalid independent diarization settings')
         if engine.speaker_model and engine.diarization_model != 'none':
             raise TranscriptionError('Select one diarization stage; set diarization_model to none')
-        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit', 'openai-compatible'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+        if pipeline is not None and engine.engine == 'openai-compatible':
+            valid_model = (isinstance(engine.model, str) and 0 < len(engine.model) <= 256
+                           and bool(engine.model.strip()) and engine.model.isprintable())
+        else:
+            valid_model = isinstance(engine.model, str) and re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit', 'openai-compatible'} or not valid_model
                 or not (re.fullmatch(r'[a-z]{2,3}', engine.language) or engine.language == 'auto')
                 or engine.compute_type not in {'float32', 'int8', 'int8_float32'}
                 or type(engine.batch_size) is not int or not 1 <= engine.batch_size <= 8):
@@ -129,7 +167,9 @@ class EngineConfig:
         return engine
 
     def profile(self):
-        excluded = {'python', 'library_path', 'assets_path', 'speaker_python'}
+        excluded = {'python', 'library_path', 'assets_path', 'speaker_python', 'credential_store'}
+        if self.pipeline is None:
+            excluded.add('pipeline')
         if not self.speaker_model:
             excluded.update({'speaker_revision', 'speaker_model', 'speaker_device', 'speaker_threads', 'speaker_count'})
         if self.engine != 'openai-compatible':
@@ -145,7 +185,11 @@ class EngineConfig:
                 excluded.add('diarization_model')
         if self.engine == 'whisperkit':
             excluded.update({'compute_type', 'batch_size', 'chunk_duration', 'overlap_duration'})
-        return {key: value for key, value in asdict(self).items() if key not in excluded}
+        return {item.name: getattr(self, item.name) for item in fields(self) if item.name not in excluded}
+
+    def provider_key(self, stage='stt'):
+        snapshot = self.pipeline.get(stage) if self.pipeline else None
+        return self.credential_store.key(snapshot) if snapshot and self.credential_store else ''
 
 
 def atomic_json(path: Path, data: dict) -> None:
@@ -237,7 +281,10 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
 def check_model(engine: EngineConfig) -> Path:
     if engine.engine == 'openai-compatible':
         try:
-            local_openai_stt.check(engine.provider_url, engine.model)
+            if engine.pipeline is None:
+                local_openai_stt.check(engine.provider_url, engine.model)
+            else:
+                local_openai_stt.check(engine.provider_url, engine.model, selected=True, key=engine.provider_key())
         except local_openai_stt.ProviderError as error:
             raise TranscriptionError(str(error)) from None
         return Path(sys.executable)
@@ -368,8 +415,9 @@ def run_openai(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) 
         if stt_install.digest(snapshot) != manifest['audio_sha256']:
             raise TranscriptionError('WAV changed during preparation')
         try:
+            options = {'selected': True, 'key': engine.provider_key()} if engine.pipeline is not None else {}
             return local_openai_stt.transcribe(engine.provider_url, engine.model, engine.language,
-                                               snapshot, manifest['duration_seconds'])
+                                               snapshot, manifest['duration_seconds'], **options)
         except local_openai_stt.ProviderError as error:
             raise TranscriptionError(str(error)) from None
 
@@ -436,14 +484,18 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         if not reused:
             started = time.monotonic()
             adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit, 'openai-compatible': run_openai}[engine.engine]
-            asr_path = folder / 'asr.json'
-            if asr_path.exists():
-                raw = json.loads(asr_path.read_text())
+            if engine.pipeline is not None:
+                from .local_pipeline import execute
+                raw = execute(engine, audio, folder, manifest, adapter, apply_diarization, atomic_json)
             else:
-                raw = adapter(engine, audio, folder, manifest)
-                if engine.speaker_model:
-                    atomic_json(asr_path, raw)
-            raw = apply_diarization(engine, audio, folder, manifest, raw)
+                asr_path = folder / 'asr.json'
+                if asr_path.exists():
+                    raw = json.loads(asr_path.read_text())
+                else:
+                    raw = adapter(engine, audio, folder, manifest)
+                    if engine.speaker_model:
+                        atomic_json(asr_path, raw)
+                raw = apply_diarization(engine, audio, folder, manifest, raw)
             atomic_json(raw_path, raw)
         else:
             raw = json.loads(raw_path.read_text())

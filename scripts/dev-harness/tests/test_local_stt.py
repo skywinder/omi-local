@@ -574,6 +574,266 @@ def test_old_queued_profile_does_not_inherit_new_diarization(tmp_path):
     assert 'speaker_model' not in old.profile()
 
 
+def selected_pipeline_cfg(tmp_path):
+    settings = cfg(tmp_path)
+    settings.repo_root = tmp_path
+    pipeline = {
+        'stt': {'id': 'speech', 'stage': 'stt', 'kind': 'openai-compatible', 'name': 'Speech server',
+                'credential_ref': 'speech-key', 'settings': {'provider_url': 'https://speech.example/v1',
+                                                          'model': 'turbo', 'language': 'auto'}},
+        'diarization': {'id': 'speakers', 'stage': 'diarization', 'kind': 'mycelia', 'name': 'Speaker server',
+                        'credential_ref': 'speaker-key', 'settings': {'base_url': 'https://speakers.example',
+                                                                    'min_speakers': 2, 'max_speakers': 2}},
+        'summary': {'id': 'summary', 'stage': 'summary', 'kind': 'openai-compatible', 'name': 'Summary server',
+                    'credential_ref': 'summary-key', 'settings': {'base_url': 'https://summary.example/v1',
+                                                                'model': 'local-model:latest'}},
+    }
+    path = settings.layout.state_root / 'providers.json'
+    path.write_text(json.dumps({'version': 1, 'revision': 1, 'profiles': list(pipeline.values()),
+                                'effective': pipeline}))
+    (settings.layout.state_root / 'provider-secrets.json').write_text(json.dumps({
+        'speech-key': 'synthetic-speech-private', 'speaker-key': 'synthetic-speaker-private',
+        'summary-key': 'synthetic-summary-private'}))
+    return settings
+
+
+def test_selected_pipeline_retries_only_failed_stage_and_pins_routes(tmp_path, monkeypatch):
+    import httpx
+    from collections import Counter
+    from dev_harness import local_provider_http, local_pipeline
+    settings = selected_pipeline_cfg(tmp_path)
+    engine = local_stt.EngineConfig.load(settings)
+    admitted = engine.profile()
+    audio = audio_file(tmp_path)
+    imported = []
+    monkeypatch.setattr(local_stt, 'backend_step', lambda cfg, folder=None:
+                        (imported.append(json.loads((folder / 'audio.json').read_text())) or {}) if folder else {})
+    attempts = Counter()
+    fail_summary = True
+
+    def respond(request):
+        nonlocal fail_summary
+        attempts[request.url.path] += 1
+        keys = {'speech.example': 'speech', 'speakers.example': 'speaker', 'summary.example': 'summary'}
+        assert request.headers['authorization'] == 'Bearer synthetic-' + keys[request.url.host] + '-private'
+        if request.url.path == '/v1/models':
+            return httpx.Response(200, json={'data': [{'id': 'turbo'}]})
+        if request.url.path == '/v1/audio/transcriptions':
+            assert b'filename="audio.wav"' in request.read()
+            return httpx.Response(200, json={'segments': [{'text': 'Hello. Reply.', 'start': 0, 'end': 1}],
+                'words': [{'word': 'Hello.', 'start': 0, 'end': .4}, {'word': 'Reply.', 'start': .6, 'end': 1}]})
+        if request.url.path == '/diarize':
+            assert request.url.params['min_speakers'] == request.url.params['max_speakers'] == '2'
+            return httpx.Response(200, json={'segments': [
+                {'start': 0, 'end': .5, 'speaker': 'external-person-a', 'embedding': [1, 2]},
+                {'start': .5, 'end': 1, 'speaker': 'external-person-b', 'embedding': [3, 4]}]})
+        assert request.url.path == '/v1/chat/completions'
+        if fail_summary:
+            return httpx.Response(503, text='private server response')
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {
+            'content': json.dumps({'title': 'Synthetic discussion', 'overview': 'Two short replies.'})}}]})
+
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(respond), **kwargs))
+    with pytest.raises(local_pipeline.PipelineError, match='Summary request failed'):
+        local_stt.transcribe(settings, str(audio), engine=engine)
+    root = settings.layout.services_dir / 'local-transcripts'
+    folder = next(path for path in root.iterdir() if path.is_dir())
+    assert json.loads((folder / 'processing.json').read_text())['summary']['status'] == 'failed'
+    assert (folder / 'asr.json').exists() and (folder / 'diarized.json').exists()
+    assert not (folder / 'audio.json').exists() and not imported
+    state_path = settings.layout.state_root / 'providers.json'
+    state = json.loads(state_path.read_text())
+    state['effective']['stt']['settings']['provider_url'] = 'https://changed.example/v1'
+    state['effective']['summary']['settings']['model'] = 'new-model'
+    state_path.write_text(json.dumps(state))
+    retried = local_stt.EngineConfig.load(settings, profile=admitted)
+    assert retried.provider_url == 'https://speech.example/v1' and retried.profile() == admitted
+    fail_summary = False
+    assert local_stt.transcribe(settings, str(audio), engine=retried) == 0
+    assert attempts == {'/v1/models': 1, '/v1/audio/transcriptions': 1, '/diarize': 1, '/v1/chat/completions': 2}
+    assert imported[0]['structured']['title'] == 'Synthetic discussion'
+    assert [s['speaker'] for s in imported[0]['segments']] == ['SPEAKER_00', 'SPEAKER_01']
+    assert all(item['status'] == 'ready' for item in imported[0]['processing'].values())
+    checkpoints = ''.join(path.read_text() for path in folder.rglob('*.json'))
+    assert not any(secret in checkpoints for secret in ('synthetic-speech-private', 'synthetic-speaker-private',
+                                                        'synthetic-summary-private', 'external-person-a', 'embedding'))
+
+
+def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import local_pipeline, local_provider_http
+    text = ('One synthetic sentence. ' * 1500) + 'UNIQUE_END'
+    assert ''.join(local_pipeline.text_chunks(text)) == text
+    assert all(len(part) <= local_pipeline.SUMMARY_CHARS for part in local_pipeline.text_chunks(text))
+    snapshot = {'settings': {'base_url': 'https://summary.example/v1', 'model': 'synthetic'}}
+    raw = {'segments': [{'start': 0, 'end': 1, 'text': text}]}
+    seen, failed_once = [], False
+
+    def respond(request):
+        nonlocal failed_once
+        content = json.loads(request.read())['messages'][1]['content']
+        seen.append(content)
+        if len(seen) == 2 and not failed_once:
+            failed_once = True
+            return httpx.Response(503)
+        return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps({
+            'title': 'Synthetic', 'overview': 'Synthetic facts and decisions.'})}}]})
+
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(respond), **kwargs))
+    with pytest.raises(local_pipeline.PipelineError):
+        local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
+    result = local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
+    assert result['title'] == 'Synthetic'
+    assert seen.count(seen[0]) == 1
+    assert any('UNIQUE_END' in part for part in seen)
+    before = len(seen)
+    assert local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json) == result
+    assert len(seen) == before
+
+
+@pytest.mark.parametrize('response', [
+    {'segments': [{'start': -1, 'end': .5, 'speaker': 'one'}]},
+    {'segments': [{'start': 0, 'end': 3, 'speaker': 'one'}]},
+    {'segments': [{'start': False, 'end': .5, 'speaker': 'one'}]},
+    {'segments': 'invalid'},
+])
+def test_remote_diarization_rejects_invalid_turns_without_replacing_asr(tmp_path, monkeypatch, response):
+    import httpx
+    from dev_harness import local_pipeline, local_provider_http
+    audio = audio_file(tmp_path)
+    raw = {'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1}]}
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=response)), **kwargs))
+    with pytest.raises(local_pipeline.PipelineError, match='transcription retained'):
+        local_pipeline.remote_diarization({'settings': {'base_url': 'https://speakers.example'}}, '',
+            audio, tmp_path, local_stt.inspect_audio(audio), raw)
+    assert raw == {'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1}]}
+
+
+def test_selected_legacy_embedded_diarization_runs_once(tmp_path, monkeypatch):
+    settings = selected_pipeline_cfg(tmp_path)
+    path = settings.layout.state_root / 'providers.json'
+    state = json.loads(path.read_text())
+    state['effective']['stt'] = {'id': 'legacy', 'name': 'WhisperX', 'stage': 'stt', 'kind': 'whisperx',
+        'settings': {'model': 'large-v3-turbo', 'language': 'ru',
+                     'diarization_model': 'pyannote/speaker-diarization-community-1'}}
+    state['effective']['diarization'] = {'id': 'legacy-speakers', 'name': 'Embedded speakers',
+        'stage': 'diarization', 'kind': 'pyannote', 'embedded': True,
+        'settings': {'speaker_model': 'pyannote/speaker-diarization-community-1'}}
+    state['effective']['summary'] = None
+    path.write_text(json.dumps(state))
+    calls = []
+    def infer(engine, *args):
+        assert engine.diarization_model == 'pyannote/speaker-diarization-community-1'
+        calls.append(True)
+        return {'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1, 'speaker': 'SPEAKER_01'}]}
+    monkeypatch.setattr(local_stt, 'run_whisperx', infer)
+    monkeypatch.setattr(local_stt, 'apply_diarization', lambda *args: pytest.fail('embedded stage ran twice'))
+    monkeypatch.setattr(local_stt, 'backend_step', lambda *args: {})
+    assert local_stt.transcribe(settings, str(audio_file(tmp_path))) == 0
+    output = next(settings.layout.services_dir.glob('local-transcripts/*/audio.json'))
+    raw = json.loads(output.read_text())
+    assert calls == [True] and raw['segments'][0]['speaker'] == 'SPEAKER_01'
+    assert raw['processing']['diarization']['status'] == 'ready'
+    assert raw['processing']['summary']['status'] == 'disabled'
+
+
+def test_incompatible_embedded_snapshot_cannot_report_diarization_ready(tmp_path, monkeypatch):
+    from dev_harness.local_pipeline import PipelineError
+    settings = selected_pipeline_cfg(tmp_path)
+    path = settings.layout.state_root / 'providers.json'
+    state = json.loads(path.read_text())
+    state['effective']['diarization'] = {'id': 'legacy-speakers', 'name': 'Embedded speakers',
+        'stage': 'diarization', 'kind': 'pyannote', 'embedded': True,
+        'settings': {'speaker_model': 'pyannote/speaker-diarization-community-1'}}
+    state['effective']['summary'] = None
+    path.write_text(json.dumps(state))
+    monkeypatch.setattr(local_stt, 'run_openai', lambda *args: {
+        'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1, 'speaker': 'SPEAKER_00'}]})
+    monkeypatch.setattr(local_stt, 'backend_step', lambda *args: {})
+    with pytest.raises(local_stt.TranscriptionError, match='standalone diarization'):
+        local_stt.EngineConfig.load(settings)
+    engine = local_stt.EngineConfig(engine='openai-compatible', diarization_model='none', pipeline=state['effective'])
+    with pytest.raises(PipelineError, match='does not supply'):
+        local_stt.transcribe(settings, str(audio_file(tmp_path)), engine=engine)
+    folder = next(settings.layout.services_dir.glob('local-transcripts/*/asr.json')).parent
+    assert json.loads((folder / 'processing.json').read_text())['diarization']['status'] == 'failed'
+    assert not (folder / 'audio.json').exists()
+
+
+def test_selected_diarization_stage_controls_old_stt_embedded_setting(tmp_path):
+    settings = selected_pipeline_cfg(tmp_path)
+    path = settings.layout.state_root / 'providers.json'
+    state = json.loads(path.read_text())
+    state['effective']['stt'] = {'id': 'legacy', 'name': 'WhisperX', 'stage': 'stt', 'kind': 'whisperx',
+        'settings': {'model': 'small', 'language': 'ru',
+                     'diarization_model': 'pyannote/speaker-diarization-community-1'}}
+    state['effective']['diarization'] = None
+    path.write_text(json.dumps(state))
+    assert local_stt.EngineConfig.load(settings).diarization_model == 'none'
+    state['effective']['stt']['settings']['diarization_model'] = 'none'
+    state['effective']['diarization'] = {'id': 'legacy-speakers', 'name': 'Embedded speakers',
+        'stage': 'diarization', 'kind': 'pyannote', 'embedded': True,
+        'settings': {'speaker_model': 'pyannote/speaker-diarization-community-1'}}
+    path.write_text(json.dumps(state))
+    assert local_stt.EngineConfig.load(settings).diarization_model == 'pyannote/speaker-diarization-community-1'
+
+
+def test_independent_speakers_preserve_untimed_word_and_complete_sentence():
+    from dev_harness.local_diarization import reconcile
+    from dev_harness.local_pipeline import validate_transcript
+    words = [{'word': 'Hello', 'start': 0, 'end': .4, 'speaker': 'SPEAKER_00'},
+             {'word': 'API', 'speaker': 'SPEAKER_01'},
+             {'word': 'works.', 'start': .6, 'end': 1, 'speaker': 'SPEAKER_02'}]
+    original = {'segments': [{'text': 'Hello API works.', 'start': 0, 'end': 1, 'words': words}]}
+    validate_transcript(original, 1)
+    result = reconcile(original['segments'], [(0, .1, 'SPEAKER_00'), (.1, 1, 'SPEAKER_01')])
+    assert len(result) == 1 and result[0]['text'] == 'Hello API works.'
+    assert (result[0]['start'], result[0]['end'], result[0]['speaker']) == (0, 1, 'SPEAKER_01')
+    assert {word['speaker'] for word in result[0]['words']} == {'SPEAKER_01'}
+    assert 'start' not in result[0]['words'][1] and words[0]['speaker'] == 'SPEAKER_00'
+
+
+def test_selected_manual_stt_model_can_transcribe_when_catalogue_is_unsupported(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import local_provider_http, local_openai_stt
+    paths = []
+    def respond(request):
+        paths.append(request.url.path)
+        if request.url.path == '/v1/models':
+            return httpx.Response(404)
+        assert b'namespace:model' in request.read()
+        return httpx.Response(200, json={'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1}]})
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(respond), **kwargs))
+    settings = selected_pipeline_cfg(tmp_path)
+    path = settings.layout.state_root / 'providers.json'
+    state = json.loads(path.read_text())
+    state['effective']['stt']['settings']['model'] = 'namespace:model'
+    path.write_text(json.dumps(state))
+    engine = local_stt.EngineConfig.load(settings)
+    audio = audio_file(tmp_path)
+    raw = local_stt.run_openai(engine, audio, tmp_path, local_stt.inspect_audio(audio))
+    assert raw['segments'][0]['text'] == 'Synthetic'
+    assert paths == ['/v1/models', '/v1/audio/transcriptions']
+    with pytest.raises(local_openai_stt.ProviderError):
+        local_openai_stt.check('http://127.0.0.1:9/v1', 'manual-model')
+    for invalid in ('', 'a' * 257, 'model\ncontrol', 'model\x7fcontrol'):
+        state['effective']['stt']['settings']['model'] = invalid
+        path.write_text(json.dumps(state))
+        with pytest.raises(local_stt.TranscriptionError):
+            local_stt.EngineConfig.load(settings)
+    with pytest.raises(local_stt.TranscriptionError):
+        local_stt.EngineConfig.load(settings, profile={'engine': 'openai-compatible',
+            'provider_url': 'http://127.0.0.1:9/v1', 'model': 'namespace:model', 'diarization_model': 'none'})
+
+
 @pytest.mark.parametrize('model', ['pyannote/speaker-diarization-3.1', 'pyannote/speaker-diarization-community-1'])
 def test_both_pyannote_models_use_exclusive_turns_for_text(tmp_path, monkeypatch, model):
     from dev_harness import local_diarization

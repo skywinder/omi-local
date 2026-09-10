@@ -19,12 +19,51 @@ class ServiceError(ValueError):
     """Content-free diagnostics suitable for the local launcher."""
 
 
+class ActivationIndeterminate(ServiceError):
+    """Runtime changed but readiness or restoration could not be verified."""
+
+
+_UNSET = object()
+
+
+def registry_exists(cfg):
+    from .local_providers import Registry
+    return Registry(cfg).exists
+
+
+def snapshot_settings(snapshot):
+    if snapshot is None:
+        return {}
+    from .local_provider_http import validate_url
+    data = dict(snapshot['settings'])
+    data.update(enabled=True, provider=snapshot['kind'])
+    try:
+        data['url'] = validate_url(data['url'], websocket=True)
+        parsed = urlsplit(data['url'])
+        if data['provider'] not in {'external', 'whisperlivekit'}:
+            raise ValueError()
+        if data['provider'] == 'whisperlivekit':
+            if parsed.scheme != 'ws' or parsed.hostname != '127.0.0.1' or not parsed.port or parsed.path != '/asr':
+                raise ValueError()
+            if (type(data.get('chunk_seconds', 4)) not in (int, float)
+                    or not 1 <= data.get('chunk_seconds', 4) <= 10
+                    or data.get('language', 'ru') not in {'ru', 'en', 'auto'}):
+                raise ValueError()
+        diarization_settings(data)
+        return data
+    except (KeyError, TypeError, ValueError):
+        raise ServiceError('Invalid live provider settings') from None
+
+
 def settings(cfg, filename):
     path = cfg.layout.state_root / filename
     return json.loads(path.read_text()) if path.exists() else {}
 
 
 def live_settings(cfg):
+    if registry_exists(cfg):
+        from .local_providers import Registry
+        return snapshot_settings(Registry(cfg).snapshot('live'))
     data = settings(cfg, 'live-stt.json')
     if not data or not data.get('enabled', False):
         return {}
@@ -65,6 +104,9 @@ def diarization_settings(live):
 
 
 def live_url(cfg):
+    if registry_exists(cfg):
+        from .local_provider_relay import url
+        return url(cfg)
     live = live_settings(cfg)
     diarization = diarization_settings(live)
     return f"ws://127.0.0.1:{diarization['port']}/asr" if diarization else live.get('url', '')
@@ -78,12 +120,20 @@ def live_runtime_revision(cfg):
     return digest.hexdigest()[:16]
 
 
-def health(cfg, service):
+def health(cfg, service, live=None):
     try:
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=2) as client:
+            if service == 'provider-relay':
+                from .local_provider_relay import port
+                response = client.get(f'http://127.0.0.1:{port(cfg)}/health')
+                data = response.json()
+                return response.status_code == 200 and data.get('relay') is True and data.get('ready') is True, 'live relay readiness'
             if service in {'live-stt', 'live-diarization'}:
-                endpoint = live_settings(cfg).get('url', '') if service == 'live-stt' else live_url(cfg)
-                url = endpoint.replace('ws://', 'http://').removesuffix('/asr') + '/health'
+                live = live_settings(cfg) if live is None else live
+                diarization = diarization_settings(live)
+                endpoint = live.get('url', '') if service == 'live-stt' else f"ws://127.0.0.1:{diarization['port']}/asr"
+                origin = urlsplit(endpoint)
+                url = origin._replace(scheme='https' if origin.scheme == 'wss' else 'http', path='/health').geturl()
                 response = client.get(url)
                 data = response.json()
                 return response.status_code == 200 and data.get('ready') is True, 'live STT readiness'
@@ -94,12 +144,16 @@ def health(cfg, service):
         return False, 'STT service unavailable'
 
 
-def start_configured(cfg):
+def start_configured(cfg, *, live_override=_UNSET, include_argmax=True, start_relay=True):
     from . import cli, config
     if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
         return
-    argmax = settings(cfg, 'argmax-stt.json')
-    live = live_settings(cfg)
+    # A legacy proxy may be repointed to the relay below. Establish that hop
+    # before replacing any owned worker, including on normal harness startup.
+    if start_relay and registry_exists(cfg):
+        start_provider_relay(cfg)
+    argmax = settings(cfg, 'argmax-stt.json') if include_argmax else {}
+    live = live_settings(cfg) if live_override is _UNSET else live_override
     diarization = diarization_settings(live)
     commands = []
     if argmax.get('enabled'):
@@ -130,8 +184,12 @@ def start_configured(cfg):
         python = Path(diarization['python']).expanduser().absolute()
         if not python.is_file():
             raise ServiceError('Live diarization Python is unavailable')
+        upstream = live['url']
+        if registry_exists(cfg) or live_override is not _UNSET:
+            from .local_provider_relay import url
+            upstream = url(cfg).removesuffix('/asr') + '/upstream'
         commands.append(('live-diarization', [str(python), '-m', 'local_live_preview.diarization_proxy',
-                         '--upstream', live['url'], '--port', str(diarization['port']),
+                         '--upstream', upstream, '--port', str(diarization['port']),
                          '--model', diarization.get('model', 'pyannote/speaker-diarization-3.1'),
                          '--device', diarization.get('device', 'mps'),
                          '--threads', str(diarization.get('threads', 4)),
@@ -154,7 +212,7 @@ def start_configured(cfg):
         cli._start_process(cfg, name, command, cwd=cwd, log_name=name + '.log', port=port, env=env)
         deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
-            if health(cfg, name)[0]:
+            if health(cfg, name, live)[0]:
                 break
             record = cli._service_record(cfg, name)
             if record is None:
@@ -166,6 +224,140 @@ def start_configured(cfg):
             time.sleep(1)
         else:
             raise ServiceError('Local STT startup did not become ready; inspect owned service diagnostics')
+
+
+def start_provider_relay(cfg):
+    from . import cli, config
+    from .local_provider_relay import port
+    command = [sys.executable, '-m', 'dev_harness.local_provider_relay']
+    env = config.child_env_for(cfg)
+    # Relay owns explicit external connections; no key appears in args or env.
+    env.update(OMI_LOCAL_INSTANCE=cfg.instance, OMI_LOCAL_TRANSPORT=cfg.local_transport,
+               PROVIDER_MODE=cfg.provider_mode, OMI_LOCAL_STATE_ROOT=str(cfg.layout.state_root.parent))
+    for name, value in [('backend', cfg.backend_port), ('firestore', cfg.firestore_port),
+                        ('auth', cfg.auth_port), ('redis', cfg.redis_port),
+                        ('desktop_backend', cfg.desktop_backend_port), ('typesense', cfg.typesense_port),
+                        ('llm_gateway', cfg.llm_gateway_port)]:
+        env[config.PORT_OVERRIDE_ENVS[name]] = str(value)
+    cli._start_process(cfg, 'provider-relay', command, cwd=cfg.repo_root,
+                       log_name='provider-relay.log', port=port(cfg), env=env)
+    for _ in range(30):
+        if health(cfg, 'provider-relay')[0]:
+            return
+        time.sleep(0.2)
+    raise ServiceError('Live relay did not become ready')
+
+
+def _capture_status(cfg):
+    from . import local_env
+    data = local_env.read_env(cfg.repo_root / '.env')
+    try:
+        with httpx.Client(trust_env=False, follow_redirects=False, timeout=5) as client:
+            response = client.get(cfg.backend_url + '/v1/local/status',
+                                  headers={'Authorization': 'Bearer ' + data['OMI_LOCAL_APP_KEY']})
+            if response.status_code != 200:
+                raise ValueError()
+            status = response.json()
+            if status['capture']['state'] != 'idle':
+                raise ServiceError('Stop the current recording before applying live settings')
+            return status
+    except ServiceError:
+        raise
+    except (httpx.HTTPError, KeyError, ValueError):
+        raise ServiceError('Capture idle state could not be verified') from None
+
+
+def _legacy_drain_idle(cfg, status, drained=None):
+    if status.get('live_transcript', {}).get('configurable'):
+        return
+    legacy = settings(cfg, 'live-stt.json')
+    if not legacy.get('enabled'):
+        return
+    diarization = diarization_settings(legacy)
+    endpoint = (f"ws://127.0.0.1:{diarization['port']}/asr" if diarization else legacy['url'])
+    origin = urlsplit(endpoint)
+    if origin.scheme != 'ws' or origin.hostname != '127.0.0.1':
+        raise ServiceError('Previous live provider drain could not be verified')
+    from . import cli
+    name = 'live-diarization' if diarization else 'live-stt'
+    record = cli._service_record(cfg, name)
+    if (drained and drained[0] == name and drained[2] == origin.port and record
+            and record.get('pid') != drained[1] and record.get('port') != origin.port):
+        # Preparation stopped this exact owned worker and moved its listener.
+        # Its old sessions ended with that process; probing the closed old port
+        # would reject every valid relocation. Capture is still rechecked above.
+        return drained
+    try:
+        with httpx.Client(trust_env=False, follow_redirects=False, timeout=5) as client:
+            result = client.get(origin._replace(scheme='http', path='/health').geturl())
+            if result.status_code != 200 or result.json().get('active') is not False:
+                raise ValueError()
+    except (httpx.HTTPError, KeyError, ValueError):
+        raise ServiceError('Wait for the previous live preview to finish before changing providers') from None
+    if record and record.get('port') == origin.port:
+        return name, record.get('pid'), origin.port
+
+
+def activate(cfg, snapshot, *, publish, rollback=None):
+    """Prepare, publish atomically while sessions are gated, then attach relay once."""
+    import asyncio
+    from . import cli
+    from .local_provider_relay import port, probe, session_gate
+    from .local_providers import Registry
+    if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
+        raise ServiceError('Live provider settings require the owned loopback stack')
+    live = snapshot_settings(snapshot)
+    if live:
+        destination = urlsplit(live['url'])
+        endpoints = [destination.port] if destination.hostname in {'127.0.0.1', 'localhost', '::1'} else []
+        if diarization_settings(live):
+            endpoints.append(live['diarization']['port'])
+        if port(cfg) in endpoints:
+            raise ServiceError('Live provider ports conflict with its relay')
+    with session_gate(cfg, exclusive=True):
+        status = _capture_status(cfg)
+        drained = _legacy_drain_idle(cfg, status)
+        previous = live_settings(cfg)
+        published = False
+        backend_changed = False
+        preparation_started = False
+        try:
+            start_provider_relay(cfg)
+            preparation_started = True
+            start_configured(cfg, live_override=live, include_argmax=False, start_relay=False)
+            if snapshot is not None:
+                asyncio.run(probe(snapshot, cfg, key=Registry(cfg).key(snapshot)))
+            status = _capture_status(cfg)
+            _legacy_drain_idle(cfg, status, drained)
+            published = True
+            publish()
+            if status.get('live_transcript', {}).get('configurable'):
+                return
+            record = cli._service_record(cfg, 'backend')
+            if record is None:
+                raise ServiceError('Owned backend is unavailable')
+            backend_changed = True
+            cli._stop_single_service(cfg, record)
+            cli._start_app_services(cfg)
+            for _ in range(30):
+                try:
+                    if _capture_status(cfg).get('live_transcript', {}).get('configurable'):
+                        return
+                except ServiceError:
+                    pass
+                time.sleep(1)
+            raise ActivationIndeterminate('Backend readiness is indeterminate after applying live settings')
+        except Exception:
+            if published and rollback is not None:
+                rollback()
+            try:
+                if preparation_started:
+                    start_configured(cfg, live_override=previous, include_argmax=False, start_relay=False)
+            except Exception:
+                raise ActivationIndeterminate('Live provider restoration is indeterminate; inspect owned services') from None
+            if backend_changed:
+                raise ActivationIndeterminate('Backend readiness is indeterminate after applying live settings') from None
+            raise
 
 
 def apply(cfg):

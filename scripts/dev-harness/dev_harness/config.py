@@ -418,6 +418,9 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
         from .local_stt_services import live_url
         if url := live_url(cfg):
             extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = url
+        from .local_stt_services import registry_exists
+        if registry_exists(cfg):
+            extra["OMI_LOCAL_LIVE_PROVIDER_RELAY"] = "1"
     if cfg.provider_mode != "offline":
         extra.update(
             {

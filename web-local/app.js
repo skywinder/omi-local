@@ -1,10 +1,13 @@
 import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
+import {mountSettings} from '/settings.mjs';
+import {renderProcessing} from '/recording-processing.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
+const providerSettings = mountSettings($('provider-settings'));
 const state = {records: [], selected: null, detail: null, view: 'live', filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
-const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Распознаётся', no_speech: 'Речь не обнаружена', failed: 'Ошибка распознавания', unavailable: 'Без транскрипта'};
+const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Обрабатывается', no_speech: 'Речь не обнаружена', failed: 'Ошибка обработки', unavailable: 'Без транскрипта'};
 const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
@@ -14,20 +17,23 @@ function message(text = '') { $('player-message').textContent = text; $('player-
 function showView(view = state.view) {
   state.view = view;
   const live = view === 'live';
+  const recording = view === 'recording';
   $('live-monitor').hidden = !live;
-  $('welcome').hidden = live || !!state.detail;
-  $('recording-detail').hidden = live || !state.detail;
-  $('player').hidden = live || !state.detail;
-  for (const mode of ['live', 'recording']) {
+  $('provider-settings').hidden = view !== 'settings';
+  $('welcome').hidden = !recording || !!state.detail;
+  $('recording-detail').hidden = !recording || !state.detail;
+  $('player').hidden = !recording || !state.detail;
+  for (const mode of ['live', 'recording', 'settings']) {
     $(`view-${mode}`).classList.toggle('selected', mode === view);
     $(`view-${mode}`).setAttribute('aria-pressed', String(mode === view));
   }
-  if (live) audio.pause();
+  if (!recording) audio.pause();
+  if (view === 'settings') providerSettings.show();
 }
 
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
-  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${r.source}`.toLocaleLowerCase('ru-RU').includes(query));
+  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.summary?.title || ''} ${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${r.source}`.toLocaleLowerCase('ru-RU').includes(query));
   $('count').textContent = state.records.length;
   const fragment = document.createDocumentFragment();
   let previous = '';
@@ -36,7 +42,7 @@ function renderList() {
     if (date !== previous) { fragment.append(node('p', 'group-label', date)); previous = date; }
     const button = node('button', `recording${state.selected === r.id ? ' active' : ''}`);
     button.setAttribute('aria-pressed', String(state.selected === r.id));
-    const top = node('span', 'recording-top', `Запись в ${hour(r.started_at)}`);
+    const top = node('span', 'recording-top', r.summary?.title || `Запись в ${hour(r.started_at)}`);
     top.append(node('span', 'recording-length', formatTime(r.duration)));
     button.append(top, node('p', 'recording-preview', r.preview || statuses[r.status]));
     const bottom = node('span', 'recording-bottom');
@@ -50,6 +56,8 @@ function renderList() {
 }
 
 function renderTranscript(record) {
+  $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
+  renderProcessing($('recording-processing'), $('recording-summary'), record);
   const fragment = document.createDocumentFragment();
   record.segments.forEach((segment, index) => {
     const button = node('button', 'segment');
@@ -67,7 +75,7 @@ function renderTranscript(record) {
     fragment.append(button);
   });
   if (!record.segments.length) {
-    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь на Mac. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Распознавание не завершилось. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
+    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Обработка не завершилась. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
     fragment.append(node('p', 'empty-transcript', copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
@@ -139,7 +147,7 @@ async function refresh() {
     else if (state.detail) {
       const id = state.selected;
       const record = await get(`/api/recordings/${id}`);
-      if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify(record.segments) !== JSON.stringify(state.detail.segments))) {
+      if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing]))) {
         state.detail = record;
         $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);
@@ -216,7 +224,7 @@ $('search').addEventListener('input', renderList);
 for (const [id, enabled] of [['filter-all', false], ['filter-ready', true]]) $(id).addEventListener('click', () => { state.filter = enabled; for (const name of ['filter-all', 'filter-ready']) { $(name).classList.toggle('selected', name === id); $(name).setAttribute('aria-pressed', String(name === id)); } renderList(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
-for (const view of ['live', 'recording']) $(`view-${view}`).addEventListener('click', () => showView(view));
+for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));
 mountLiveMonitor($('live-monitor'));
 showView();
 refresh();

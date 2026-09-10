@@ -14,6 +14,8 @@ its owned loopback stack; never expose the LAN development backend or emulators.
 Run `make test-offline` and `make test-transport-app` before the separate final iOS
 build/attestation. Finished-WAV WhisperKit/WhisperX/Parakeet transcription is documented in `docs/LOCAL_STT.md`;
 autonomous phone batch upload remains outside the current scope.
+Provider settings and explicit remote processing live in the harness; see
+`docs/PROVIDERS.md`. Keep backend egress loopback-only, with remote Live behind its owned relay.
 For graceful harness shutdown, signal the validated supervisor once: both guards
 forward signals, so group-wide SIGINT interrupts Firebase's export-on-exit.
 
