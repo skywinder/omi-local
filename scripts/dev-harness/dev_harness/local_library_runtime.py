@@ -38,12 +38,25 @@ class Runtime:
             return data
 
     def _final(self):
-        counts = Counter(job['state'] for job in local_stt_watch.read_queue(self.cfg).values())
+        jobs = local_stt_watch.read_queue(self.cfg)
+        counts = Counter(job['state'] for job in jobs.values())
         engine = self._settings('stt-engine.json')
+        from .local_providers import Registry
+        registry = Registry(self.cfg)
+        selected = registry.snapshot('stt') if registry.exists else None
+        active_job = next((job for job in jobs.values() if job['state'] == 'processing'), None)
+        if active_job:
+            pinned = active_job.get('profile', {})
+            if pinned:
+                selected = pinned.get('pipeline', {}).get('stt')
+                if not selected:
+                    engine = pinned
+        if selected:
+            engine = {'engine': selected['kind'], **selected['settings']}
         enabled = self._settings('stt-watch.json').get('enabled', False)
         ready = enabled and local_stt_watch.worker_ready(self.cfg)
         state = 'ready' if ready else 'stopped'
-        if ready and engine.get('engine') == 'openai-compatible':
+        if ready and not selected and engine.get('engine') == 'openai-compatible':
             try:
                 local_openai_stt.check(engine['provider_url'], engine['model'], timeout=1)
             except (httpx.HTTPError, ValueError, KeyError):
@@ -52,8 +65,10 @@ class Runtime:
             state = 'processing'
         label = {'openai-compatible': 'OpenAI-совместимый STT', 'whisperkit': 'WhisperKit',
                  'whisperx': 'WhisperX', 'parakeet-mlx': 'Parakeet MLX'}.get(engine.get('engine'), 'Не настроен')
+        if selected:
+            label = selected['name']
         argmax = self._settings('argmax-stt.json')
-        if (argmax.get('enabled') and engine.get('engine') == 'openai-compatible'
+        if (not selected and argmax.get('enabled') and engine.get('engine') == 'openai-compatible'
                 and engine.get('provider_url') == f"http://127.0.0.1:{argmax.get('port')}/v1"):
             label = 'Argmax · WhisperKit'
         return {'state': state, 'provider': label,
@@ -107,6 +122,14 @@ class Runtime:
                 live = self._settings('live-stt.json')
                 current['live_transcript']['provider'] = ('WhisperLiveKit · MLX'
                     if live.get('provider') == 'whisperlivekit' else 'Внешний live STT')
+                from .local_providers import Registry
+                registry = Registry(self.cfg)
+                if registry.exists:
+                    selected = registry.snapshot('live')
+                    current['live_transcript']['provider'] = selected['name'] if selected else 'Выключено'
+                    if current['live_transcript']['state'] == 'ready':
+                        # Relay readiness proves its transport, not upstream inference.
+                        current['live_transcript']['state'] = 'configured' if selected else 'disabled'
             except (OSError, ValueError, KeyError, TypeError):
                 current['final_stt'] = {'state': 'unavailable', 'provider': 'Недоступен',
                                         'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)}

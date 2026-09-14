@@ -1,4 +1,4 @@
-"""OpenAI-compatible local STT. No redirects, proxies, model downloads or cloud routing."""
+"""Timed OpenAI-compatible STT; remote routes require an explicit provider selection."""
 from __future__ import annotations
 
 import io
@@ -82,25 +82,41 @@ def normalize(raw, duration):
         raise ProviderError('STT provider returned an invalid timed transcript') from None
 
 
-def check(url, model, *, timeout=5):
+def check(url, model, *, timeout=5, selected=False, key=''):
     try:
-        with httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout) as client:
-            response = client.get(validate_url(url) + '/models')
-            response.raise_for_status()
-            if model not in {item['id'] for item in response.json()['data']}:
+        if selected:
+            from . import local_provider_http as transport
+            endpoint, session = transport.validate_url(url), transport.client(key=key, timeout=timeout)
+        else:
+            endpoint, session = validate_url(url), httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout)
+        with session as client:
+            response = transport.metadata_get(client, endpoint + '/models') if selected else client.get(endpoint + '/models')
+            if selected and response.status_code in {404, 405} and isinstance(model, str) and model.strip():
+                return  # Explicit manual model; inference remains the capability check.
+            if not selected:
+                response.raise_for_status()
+            catalogue = (transport.model_ids(transport.json_response(response)) if selected else
+                         {item['id'] for item in response.json()['data']})
+            if model not in catalogue:
                 raise ProviderError('Configured STT model is not served by this endpoint')
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
         raise ProviderError('STT endpoint/model preflight failed') from None
 
 
-def transcribe(url, model, language, audio, duration):
+def transcribe(url, model, language, audio, duration, *, selected=False, key=''):
     try:
-        with httpx.Client(trust_env=False, follow_redirects=False, timeout=3600) as client:
+        if selected:
+            from . import local_provider_http as transport
+            endpoint, session = transport.validate_url(url), transport.client(key=key, timeout=3600)
+        else:
+            endpoint, session = validate_url(url), httpx.Client(trust_env=False, follow_redirects=False, timeout=3600)
+        with session as client:
             with audio.open('rb') as source:
-                response = client.post(validate_url(url) + '/audio/transcriptions',
+                response = client.post(endpoint + '/audio/transcriptions',
                                        data=fields(model, language), files={'file': ('audio.wav', source, 'audio/wav')})
             response.raise_for_status()
-            return normalize(response.json(), duration)
+            raw = transport.json_response(response, limit=32 * 1024 * 1024) if selected else response.json()
+            return normalize(raw, duration)
     except (httpx.HTTPError, OSError, ValueError):
         raise ProviderError('STT request failed; original WAV retained') from None
 

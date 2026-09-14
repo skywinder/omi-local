@@ -67,9 +67,9 @@ def endpoint(cfg) -> str:
 
 def configured_endpoint(cfg) -> str | None:
     """None means no provider choice; an empty URL is an explicit off choice."""
-    from .local_stt_services import live_url
+    from .local_stt_services import live_url, registry_exists
 
-    if (cfg.layout.state_root / 'live-stt.json').exists():
+    if registry_exists(cfg) or (cfg.layout.state_root / 'live-stt.json').exists():
         return live_url(cfg)
     return None
 

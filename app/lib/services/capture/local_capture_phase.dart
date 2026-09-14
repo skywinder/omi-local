@@ -19,3 +19,6 @@ enum OmiButtonEvent {
     return null;
   }
 }
+
+/// Completed local button actions; raw BLE edges are diagnostic only.
+enum LocalOmiButtonAction { started, stopped, paused, resumed, starred, unstarred, processing, failed }

@@ -51,6 +51,8 @@ async def _worker_state(url: str) -> str:
                     health = json.loads(body)
         if not isinstance(health, dict) or health.get('ready') is not True:
             return 'unavailable'
+        if health.get('enabled') is False:
+            return 'disabled'
         if type(health.get('active')) is not bool:
             return 'unavailable'
         return 'busy' if health['active'] else 'ready'
@@ -74,7 +76,9 @@ async def snapshot(uid: str) -> dict:
         capture_state = 'decode_error'
     previews = [session.local_preview for session in sessions if session.local_preview is not None]
     updates = sum(preview.updates for preview in previews)
-    if any(preview.failed for preview in previews):
+    if previews and all(getattr(preview, 'disabled', False) for preview in previews):
+        live_state = 'disabled'
+    elif any(preview.failed for preview in previews):
         live_state = 'failed'
     elif updates:
         live_state = 'streaming'
@@ -92,7 +96,8 @@ async def snapshot(uid: str) -> dict:
             'audio_seconds': round(pcm_bytes / (OUTPUT_SAMPLE_RATE * OUTPUT_CHANNELS * OUTPUT_SAMPLE_WIDTH_BYTES), 3),
             'frames_received': frames,
         },
-        'live_transcript': {'state': live_state, 'updates': updates},
+        'live_transcript': {'state': live_state, 'updates': updates,
+                            **({'configurable': True} if os.getenv('OMI_LOCAL_LIVE_PROVIDER_RELAY') == '1' else {})},
     }
 
 

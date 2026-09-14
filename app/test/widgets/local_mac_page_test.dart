@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -52,40 +53,43 @@ void main() {
 
   testWidgets('pairing screen hides key and stops capture before connecting', (tester) async {
     final order = <String>[];
-    final session = LocalMacSession(probe: (_, __) async {
-      order.add('probe');
-      return {
-        'uid': 'alice',
-        'local_transcription': {
-          'live': {'status': 'ready'},
-          'final': {'status': 'ready'}
-        },
-      };
-    });
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('ru'),
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Builder(
+    final session = LocalMacSession(
+      probe: (_, __) async {
+        order.add('probe');
+        return {'uid': 'alice'};
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ru'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
           builder: (context) => Scaffold(
-                  body: TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => LocalMacPage(
-                          session: session,
-                          statusFetcher: status,
-                          stopRecording: () async {
-                            order.add('stop');
-                          },
-                          refreshConnection: () async {},
-                        ))),
-                child: const Text('Open'),
-              ))),
-    ));
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LocalMacPage(
+                    session: session,
+                    statusFetcher: status,
+                    stopRecording: () async {
+                      order.add('stop');
+                    },
+                    refreshConnection: () async {},
+                  ),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     expect(find.descendant(of: find.byType(AppBar), matching: find.text('Локальный Mac')), findsOneWidget);
@@ -96,8 +100,19 @@ void main() {
     await tapFormButton(tester, 'local-mac-connect');
     expect(order, ['stop', 'probe']);
     expect(session.isSignedIn, isTrue);
-    expect(find.text('Open'), findsOneWidget);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text,
+      List.filled(43, 's').join(),
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
+    final l10n = AppLocalizations.of(tester.element(find.byType(LocalMacPage)));
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('local-mac-result')), matching: find.text(l10n.connected)),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 
   for (final readiness in [
@@ -122,12 +137,14 @@ void main() {
       await tapFormButton(tester, 'local-mac-connect');
       await tester.pumpAndSettle();
       expect(session.isSignedIn, isTrue);
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
       expect(find.text(readiness == null ? 'Live Transcript: Unknown' : 'Live Transcript: Off'), findsOneWidget);
       expect(find.text(readiness == null ? 'Transcript: Unknown' : 'Transcript: Transcription unavailable'),
           findsOneWidget);
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+      expect(find.byType(LocalMacPage), findsOneWidget);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text,
+          List.filled(43, 's').join());
       expect(session.isSignedIn, isTrue);
       expect(find.byType(AlertDialog), findsNothing);
       expect(tester.takeException(), isNull);
@@ -135,17 +152,23 @@ void main() {
   }
 
   Future<void> openPage(WidgetTester tester, LocalMacSession session) async {
-    await tester.pumpWidget(MaterialApp(
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: LocalMacPage(
-          session: session, statusFetcher: status, stopRecording: () async {}, refreshConnection: () async {}),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+          session: session,
+          statusFetcher: status,
+          stopRecording: () async {},
+          refreshConnection: () async {},
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -159,14 +182,18 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('local-mac-show-key')));
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(keyField).obscureText, isFalse);
-    expect(tester.widget<SelectableText>(find.byKey(const ValueKey('local-mac-visible-url'))).data,
-        'https://synthetic.ngrok.app');
-    expect(
-        tester.widget<SelectableText>(find.byKey(const ValueKey('local-mac-visible-key'))).data, 'synthetic-draft-key');
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.widget<TextField>(keyField).controller!.text, 'synthetic-draft-key');
+    await tester.tap(find.byKey(const ValueKey('local-mac-show-key')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(keyField).obscureText, isTrue);
+    await tester.tap(find.byKey(const ValueKey('local-mac-show-key')));
+    await tester.pumpAndSettle();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(keyField).obscureText, isTrue);
-    expect(find.byKey(const ValueKey('local-mac-visible-key')), findsNothing);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tapFormButton(tester, 'local-mac-save');
     expect(session.isSignedIn, isFalse);
@@ -185,11 +212,95 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('local-mac-key')), key);
     await tapFormButton(tester, 'local-mac-connect');
     expect(session.isSignedIn, isFalse);
+    expect(find.byKey(const ValueKey('local-mac-result')), findsOneWidget);
+    expect(find.byType(LocalMacPage), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await openPage(tester, LocalMacSession());
-    expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-address'))).controller!.text,
-        'https://synthetic.ngrok.app');
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('local-mac-address'))).controller!.text,
+      'https://synthetic.ngrok.app',
+    );
     expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text, key);
+  });
+
+  testWidgets('rechecking unchanged credentials refreshes status and keeps expanded details', (tester) async {
+    var statusCalls = 0;
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    final key = List.filled(43, 's').join();
+    await session.connect('https://synthetic.ngrok.app', key);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+          session: session,
+          stopRecording: () async {},
+          refreshConnection: () async {},
+          statusFetcher: () {
+            statusCalls++;
+            return status();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+    await tester.pumpAndSettle();
+    final before = statusCalls;
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(statusCalls, greaterThan(before));
+    expect(find.byKey(const ValueKey('local-runtime-details')), findsOneWidget);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
+    expect(find.text('Connected'), findsOneWidget);
+    final keyField = find.byKey(const ValueKey('local-mac-key'));
+    await tester.ensureVisible(keyField);
+    await tester.enterText(keyField, 'edited-draft');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('local-mac-result')), findsNothing);
+    expect(session.accessKey, key); // Editing does not switch the live origin/key.
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('pending check disables actions; rejection stays inline and can be retried', (tester) async {
+    final probe = Completer<Map<String, dynamic>>();
+    var attempts = 0;
+    final session = LocalMacSession(probe: (_, __) => ++attempts == 1 ? probe.future : Future.value({'uid': 'alice'}));
+    await openPage(tester, session);
+    await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
+    await tester.enterText(find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+    final connect = find.byKey(const ValueKey('local-mac-connect'));
+    await tester.ensureVisible(connect);
+    await tester.pumpAndSettle();
+    await tester.tap(connect);
+    await tester.pump();
+    expect(tester.widget<FilledButton>(connect).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(find.byKey(const ValueKey('local-mac-save'))).onPressed, isNull);
+    expect(find.descendant(of: connect, matching: find.byType(CircularProgressIndicator)), findsOneWidget);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    probe.completeError(LocalMacUnauthorized());
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
+    expect(find.text('The access key was rejected. Check the key on your Mac.'), findsOneWidget);
+    await tapFormButton(tester, 'local-mac-connect');
+    await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('The access key was rejected. Check the key on your Mac.'), findsNothing);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('form and actions fit a narrow phone with large text', (tester) async {
+    tester.view.physicalSize = const Size(320, 780);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await openPage(tester, LocalMacSession());
+    await tapFormButton(tester, 'local-mac-save');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('edits autosave without pressing a button and pasted whitespace is removed', (tester) async {

@@ -37,6 +37,8 @@ class RecordingSourceLabel extends StatelessWidget {
           Flexible(
             child: Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70),
             ),
           ),

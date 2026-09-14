@@ -37,6 +37,9 @@ class _Capture extends CaptureProvider {
   bool failStart = false;
   Completer<void>? startGate;
   OmiButtonEvent? buttonEvent;
+  LocalOmiButtonAction? buttonAction;
+  @override
+  LocalOmiButtonAction? get localOmiButtonFeedback => buttonAction;
   @override
   OmiButtonEvent? get lastOmiButtonEvent => buttonEvent;
   @override
@@ -188,10 +191,18 @@ void main() {
       capture.buttonEvent = event;
       capture.notifyListeners();
       await tester.pump();
-      expect(find.byKey(const Key('local_omi_button_feedback')), findsOneWidget);
+      expect(find.byKey(const Key('local_omi_button_feedback')), findsNothing);
       expect(find.text('Запись не идёт'), findsOneWidget);
     }
-    expect(find.text('Omi · Короткое нажатие'), findsOneWidget);
+    capture.buttonAction = LocalOmiButtonAction.started;
+    capture.notifyListeners();
+    await tester.pump();
+    final actionL10n = AppLocalizations.of(tester.element(find.byKey(const Key('local_omi_button_feedback'))));
+    expect(find.text('Omi · ${actionL10n.recordingStartedSuccessfully}'), findsOneWidget);
+    capture.buttonAction = null;
+    capture.notifyListeners();
+    await tester.pump();
+    expect(find.byKey(const Key('local_omi_button_feedback')), findsNothing);
     capture.updateRecordingState(RecordingState.deviceRecord);
     await tester.pump();
     final label = tester.widget<Text>(find.byKey(const Key('local_capture_state'))).data;
@@ -230,7 +241,7 @@ void main() {
     await tester.pump();
     final l10n = AppLocalizations.of(tester.element(find.byKey(const Key('local_capture_page_state'))));
     expect(tester.widget<Text>(find.byKey(const Key('local_capture_page_state'))).data, l10n.paused);
-    expect(find.text('Omi · Кнопка отпущена'), findsOneWidget);
+    expect(find.text('Omi · Кнопка отпущена'), findsNothing);
     expect(find.text(l10n.listening), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -325,6 +336,35 @@ void main() {
     expect(capture.calls, ['start:true', 'stop:false']);
     expect(find.byType(SnackBar), findsOneWidget);
     expect(tester.widget<IconButton>(find.byKey(const Key('temporary_recording_mute'))).onPressed, isNull);
+  });
+
+  testWidgets('home microphone failure shows feedback without opening the capture page', (tester) async {
+    final capture = _Capture()..failStart = true;
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
+    await tester.tap(find.byType(HomeRecordButton));
+    await tester.pumpAndSettle();
+    expect(capture.calls, ['phone:start']);
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.byType(ConversationCapturingPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home button stops an interrupted phone session while Omi stays connected', (tester) async {
+    final capture = _Capture()..updateRecordingState(RecordingState.interrupted);
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(_app(ChangeNotifierProvider<CaptureProvider>.value(
+      value: capture,
+      child: const HomeRecordButton(),
+    )));
+    await tester.tap(find.byIcon(Icons.stop_rounded));
+    await tester.pumpAndSettle();
+    expect(capture.calls.first, 'phone:stop');
+    expect(capture.calls, isNot(contains('phone:start')));
+    expect(capture.recordingState, RecordingState.stop);
   });
 
   testWidgets('original home plus opens record choices in local mode', (tester) async {

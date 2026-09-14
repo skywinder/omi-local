@@ -1,89 +1,98 @@
-# Пробный live preview на Mac
+# Experimental live preview on Mac
 
-## Наблюдение в веб-аудиотеке
+Live STT is also configurable under **Settings → Live STT** in the library.
+See [supported providers and applying settings](PROVIDERS.md#live-stt).
+After the first UI save, the registry controls the active profile;
+the earlier `live-stt.json` remains a copy of the original settings.
 
-Откройте `http://127.0.0.1:20001` на Mac и выберите **Сейчас**. Экран показывает
-фактический источник звука, длительность принятого аудио, live-текст,
-состояние обоих STT и события. Если счётчик кадров не меняется более пяти секунд,
-появляется сообщение о паузе потока. Отправка live-текста сервером не является
-подтверждением его отображения на iPhone.
+## Monitoring in the web library
 
-**События** — ограниченный журнал наблюдений в памяти процесса аудиотеки.
-Он начинается с первого открытия монитора; время означает момент наблюдения.
-В него не попадают слова, ключи, адреса или идентификаторы записей.
-После Stop черновик исчезает; окончательный текст доступен в списке слева,
-в разделе **Запись**, по завершении финального STT. Нажатие на фразу включает
-соответствующий фрагмент аудио.
+Open `http://127.0.0.1:20001` on the Mac and select **Now**.
+The screen shows the actual audio source, received audio duration, live text,
+both STT states, and events. If the frame counter does not change for more than
+five seconds, a stream-paused message appears. Server transmission of live text
+does not prove that the iPhone displayed it.
 
-Технические логи находятся в `.local/dev-harness/ngrok/logs/`:
-`live-stt.log` — события и время работы live STT;
-`stt-worker.log` — финальная обработка и импорт;
-`backend.log` — соединение, приём кадров и отправка сегментов.
-Текст распознавания следует смотреть в интерфейсе, а не искать в логах.
+**Events** is a bounded observation log held in the library process's memory.
+It begins when the monitor is first opened; timestamps indicate observation time.
+It contains no words, keys, addresses, or recording identifiers.
+After Stop, the draft disappears. Once final STT finishes, the completed transcript
+is available in the left-hand list under **Recording**.
+Clicking a phrase plays the corresponding audio segment.
 
-Аудиотека получает снимки через свой `/api/runtime` каждую секунду, пока вкладка
-видима. Ключ читается только её сервером из приватного `.env`. Backend предоставляет
-отдельный `/v1/local/preview` с прежней проверкой ключа и дополнительным запретом
-доступа через прокси или с удалённого адреса. Текст остаётся в памяти до окончания
-сессии; `/v1/local/status` по-прежнему возвращает только диагностику без текста.
-После возврата на страницу обновление возобновляется автоматически. Задержка
-проверки финального STT ограничена отдельно и не скрывает доступный live-текст.
+Technical logs are in `.local/dev-harness/ngrok/logs/`:
+`live-stt.log` contains live STT events and timing;
+`stt-worker.log` covers final processing and import;
+`backend.log` covers connections, received frames, and sent segments.
+Read recognized text in the interface, not in logs.
 
-При обновлении этой функции требуется обновить процессы backend и аудиотеки
-после остановки записи. Само обновление страницы не меняет Python-код серверов.
+While the tab is visible, the library gets snapshots from its own `/api/runtime`
+every second. Only its server reads the key from private `.env`.
+The backend supplies a separate `/v1/local/preview` endpoint with the existing
+key check and additional rejection of proxy or remote access. Text stays in memory
+until the session ends; `/v1/local/status` still returns text-free diagnostics.
+Updates resume automatically when returning to the page. Final-STT checks have a
+separate timeout and do not hide available live text.
 
-## Поток live preview
+After updating this feature, stop recording and update the backend and library
+processes. Refreshing the page alone does not change server-side Python code.
 
-Приложение принимает полные снимки `local_transcript_snapshot` по `/v4/listen`:
-`preview_id`, возрастающий `revision` и массив `segments`. Новый снимок атомарно
-заменяет строки этой live-сессии, включая исправления и удалённые фразы.
-Первый переход с прежнего единого сегмента требует обновления приложения iOS
-вместе с backend. Последующая смена STT не требует новой сборки.
-На главном экране восстановлен исходный интерфейс Omi; текст открывается
-нажатием карточки записи. Временной кнопки «Транскрипт» нет.
+## Live preview flow
 
-CV1 передаёт Opus; backend декодирует его в PCM16 little-endian, mono, 16 kHz.
-Телефонный микрофон передаёт PCM16. Копия PCM уходит по локальному WebSocket
-`/asr`, WAV сохраняется прежним обработчиком. Live-текст остаётся в памяти;
-готовый WAV по-прежнему обрабатывает независимо выбранный финальный STT.
-Доступны Core ML Parakeet TDT v3 INT8 через FluidAudio и WhisperLiveKit/MLX
-(выбор провайдера описан ниже). Следующие параметры относятся к Parakeet.
-Новые токены каждого окна добавляются к накопленному тексту, а приложение
-получает весь обновлённый черновик. Низкая уверенность
-нового окна не стирает предыдущие фразы. Этот текст не заменяет финальную
-расшифровку WhisperKit.
+The app receives complete `local_transcript_snapshot` messages over `/v4/listen`:
+`preview_id`, an increasing `revision`, and a `segments` array. A new snapshot
+atomically replaces that live session's lines, including corrections and deletions.
+The first transition from the old single-segment format requires updating both
+the iOS app and backend. Later STT changes do not require a new build.
+The home screen uses the original Omi interface; tap the recording card to open
+text. There is no temporary **Transcript** button.
 
-## Подготовка и запуск
+CV1 sends Opus; the backend decodes it to little-endian PCM16, mono, 16 kHz.
+The phone microphone sends PCM16. A copy of the PCM goes over local WebSocket
+`/asr`, while the existing handler saves the WAV. Live text remains in memory;
+the independently selected final STT engine processes completed WAVs.
+Available engines include Core ML Parakeet TDT v3 INT8 through FluidAudio and
+WhisperLiveKit/MLX; provider selection is described below.
+The following parameters apply to Parakeet. New tokens from each window are
+appended to accumulated text, and the app receives the updated complete draft.
+Low confidence in a new window does not erase earlier phrases.
+This text does not replace the final WhisperKit transcript.
 
-На новом Mac запустите `./start.command`. Он подготавливает и запускает live вместе
-с backend и финальным распознаванием. Нужны Apple Silicon, macOS 14+, Xcode со Swift 6.0+
-и свободное место. Сначала проверяются предпосылки обеих моделей; при ошибке запуск
-останавливается с причиной. Существующие проверенные файлы используются повторно.
+## Preparation and startup
 
-Для отдельной подготовки: `bash scripts/install-local-live.sh`. Проверка готовых
-файлов без сборки/загрузки: `bash scripts/install-local-live.sh --check`.
-Файлы находятся в `.local/parakeet-live/`; сборка и модели закреплены manifest и
-`Package.resolved`. Установка проверяет реальный Start/PCM/Stop на синтетической речи
-с запрещённой сетью. Общая проверка работающего live и final: `./start.command --check`.
+On a new Mac, run `./start.command`. It prepares and starts live transcription
+alongside the backend and final transcription. Requirements: Apple Silicon,
+macOS 14+, Xcode with Swift 6.0+, and free disk space. Prerequisites for both
+models are checked first; a failure stops startup with a reason.
+Existing verified files are reused.
 
-Сервис `live-preview` принадлежит тому же экземпляру, что backend. Повторный запуск
-сохраняет готовый сервис; `bash scripts/local-mac.sh down` останавливает его вместе
-с остальными. Backend получает адрес автоматически. После изменения настроек
-уже работающего backend завершите запись/обработку, выполните `down` и снова `start.command`.
+For separate preparation: `bash scripts/install-local-live.sh`.
+To check prepared files without building or downloading:
+`bash scripts/install-local-live.sh --check`.
+Files are stored in `.local/parakeet-live/`; the manifest and `Package.resolved`
+pin the build and models. Installation verifies real Start/PCM/Stop behavior on
+synthetic speech with networking denied. To check running live and final STT:
+`./start.command --check`.
 
-## Обработчик
+The `live-preview` service belongs to the same instance as the backend.
+Repeated startup preserves a ready service; `bash scripts/local-mac.sh down`
+stops it with the other services. The backend receives its address automatically.
+After changing settings for a running backend, finish recording/processing,
+run `down`, and run `start.command` again.
 
-Установщик использует FluidAudio v0.15.6 (закреплённый commit), локальную модель
-`FluidInference/parakeet-tdt-0.6b-v3-coreml` и `ParakeetWorker.swift`.
-Используется INT8 encoder, `cpuAndNeuralEngine`, автоматический язык без hint.
-Штатный `SlidingWindowAsrManager.default` обрабатывает окна последовательно:
-11 секунд нового аудио, 2 секунды слева и 2 секунды справа. Параметры пакетной
-обработки `parallelChunkConcurrency` и `melChunkContext` в этом пути не используются.
-Модели загружаются один раз из проверенных локальных файлов; новой сессии
-создаётся отдельное состояние. Загрузок из сети нет, сеть worker запрещена
-системной sandbox-политикой. Подкачка не служит критерием остановки.
+## Worker
 
-Для отдельного вручную управляемого процесса из папки `scripts/`:
+The installer uses FluidAudio v0.15.6 at a pinned commit, the local
+`FluidInference/parakeet-tdt-0.6b-v3-coreml` model, and `ParakeetWorker.swift`.
+It uses the INT8 encoder, `cpuAndNeuralEngine`, and automatic language detection
+without a hint. Standard `SlidingWindowAsrManager.default` processes windows
+sequentially: 11 seconds of new audio, 2 seconds of left context, and 2 seconds
+of right context. Batch parameters `parallelChunkConcurrency` and `melChunkContext`
+are not used in this path. Models load once from verified local files; each new
+session gets separate state. There are no network downloads, and the OS sandbox
+policy denies the worker network access. Swap usage is not a stopping criterion.
+
+For a separate manually managed process, from `scripts/`:
 
 ```bash
 "$BACKEND_PYTHON" -m local_live_preview.serve_parakeet \
@@ -93,65 +102,66 @@ CV1 передаёт Opus; backend декодирует его в PCM16 little-e
   --port 18090
 ```
 
-Переменные обозначают пути к существующему backend Python, собранному worker
-и папке `parakeet-tdt-0.6b-v3` с моделями. Подготовленные компоненты
-переиспользуются; WLK-код и его модель сохранены для отдельного явного возврата.
-Файл блокировки должен принадлежать тому же экземпляру локального backend,
-который выполняет финальное распознавание. Дождитесь `model_ready`;
-`http://127.0.0.1:18090/health` содержит только технические показатели.
+The variables point to the existing backend Python, compiled worker, and
+`parakeet-tdt-0.6b-v3` model directory. Prepared components are reused;
+WLK code and its model remain available for an explicit switch back.
+The lock file must belong to the same local backend instance that performs final
+transcription. Wait for `model_ready`; `http://127.0.0.1:18090/health` contains
+only technical metrics.
 
-Для такого внешнего процесса сохраните в `.local/dev-harness/ngrok/live-preview.json`
-`{"enabled":true,"url":"ws://127.0.0.1:18090/asr"}`. Только loopback `/asr` допускается
-как внешний endpoint. Launcher проверяет его готовность, но не устанавливает и
-не перезапускает внешний процесс. Для штатного управления используйте `{"enabled":true}`;
-для явного выключения — `{"enabled":false}`. Настройки применяются после Stop/`down`/запуска.
-Прежняя переменная `OMI_LOCAL_LIVE_PREVIEW_URL` сохраняется как внешний URL при первой настройке.
-Если используется `live-stt.json` ниже, выберите для ручного процесса `provider: "external"`;
-этот файл имеет приоритет над `live-preview.json`.
+For that external process, save
+`{"enabled":true,"url":"ws://127.0.0.1:18090/asr"}` in
+`.local/dev-harness/ngrok/live-preview.json`. Only a loopback `/asr` endpoint is
+allowed. The launcher checks readiness but does not install or restart the external
+process. Use `{"enabled":true}` for normal managed operation or
+`{"enabled":false}` to disable explicitly. Settings apply after Stop/`down`/startup.
+The earlier `OMI_LOCAL_LIVE_PREVIEW_URL` variable is retained as an external URL
+during initial setup. If using `live-stt.json` below, set `provider: "external"`
+for a manual process; that file takes precedence over `live-preview.json`.
 
-## Проверка на iPhone
+## Checking on iPhone
 
-В карточке текущей записи и над транскриптом указан источник: «Omi» или
-«Микрофон · iPhone». Подпись относится к запущенной записи; одно лишь
-подключение Omi по Bluetooth не меняет источник. После Stop подпись скрывается.
+The current recording card and transcript header show the source: **Omi** or
+**Microphone · iPhone**. This label belongs to the active recording;
+Bluetooth connection alone does not change the source. The label disappears after Stop.
 
-Начните запись одиночным нажатием физической кнопки CV1, затем нажмите карточку
-записи в приложении. Говорите30–60 секунд, сделав паузу.
-Первый текст ожидается примерно через13 секунд, следующие обновления — через11 секунд.
-Проверьте, что новые фразы добавляются и ранние остаются. Нажмите кнопку CV1 ещё раз и проверьте WAV и появление
-финального текста в аудиотеке.
+Start recording with a single press of the physical CV1 button, then tap the
+recording card in the app. Speak for 30–60 seconds, including a pause.
+The first text is expected after about 13 seconds, with updates about every
+11 seconds. Check that new phrases are added and earlier ones remain.
+Press the CV1 button again, then verify the WAV and final text in the library.
 
-Для отдельной пробы микрофона iPhone отключите Omi, оставьте связь с Mac и
-выключенный Transcribe Later. Исходная нижняя кнопка «+» запускает микрофон
-и открывает штатный экран записи; длительное нажатие показывает меню.
-Локальный capture controller запрещает запуск телефона при подключённом Omi;
-переключение источников во время записи не входит в пробу.
-Без сети штатный телефонный fallback может записывать локально, но доставка
-таких записей в эту аудиотеку пока не подключена.
+For a separate iPhone-microphone check, keep the Mac connection and disable
+Transcribe Later. The original bottom **+** button starts the microphone and
+opens the recording screen; a long press opens the menu.
+Switching to the phone microphone finishes the Omi recording while preserving
+Bluetooth. An explicit Omi start switches the input back; reconnection alone does not.
+The normal phone fallback can record locally without a network connection,
+but delivering those recordings into this library is not connected yet.
 
-Телефон при Stop сразу закрывает `/v4/listen`; backend отдельно отправляет EOF
-в Parakeet и завершает сессию. Поэтому остаток текста после Stop может уже не попасть
-на экран. Следующая сессия получает новый сегмент и пустой контекст распознавания.
-Без отдельного live-диаризатора говорящий в этих ASR-движках неизвестен.
-WhisperLiveKit сохраняет границы фраз и их предварительные таймкоды; Parakeet
-передаёт единый черновик без таймкодов фраз. Ожидающий подтверждения текст
-помечен `is_draft`, его время и говорящий не выдаются за установленный результат.
-Ранние токены сохраняются без последующего пересмотра. Это пробная выдача по
-окнам, а не пословное обновление; человеческая оценка качества ещё требуется.
+On Stop, the phone closes `/v4/listen` immediately; the backend separately sends
+EOF to Parakeet and completes the session. Remaining text after Stop may therefore
+never reach the screen. The next session gets a new segment and empty recognition
+context. Without a separate live diarizer, speakers in these ASR engines are unknown.
+WhisperLiveKit preserves phrase boundaries and preliminary timestamps;
+Parakeet sends one combined draft without phrase timestamps. Unconfirmed text is
+marked `is_draft`; its timing and speaker are not presented as established results.
+Earlier tokens are retained without later revision. This is experimental windowed
+output, not word-by-word updates; human quality evaluation is still required.
 
-Одновременно распознаётся одна запись. Если live или финальное распознавание
-заняты, preview нового соединения недоступен; сохранение WAV продолжается.
-После отказа `/asr` повторного подключения внутри записи нет; приложение сообщает
-о недоступной транскрипции, а WAV продолжает сохраняться. Адаптер пробует восстановить
-обработчик для следующей записи; загрузка, занятость и окончательная недоступность различаются.
-Ошибки запуска дают безопасное событие `startup_failed` в логе `live-preview`, без аудио/текста.
-Лимиты транспортного
-буфера и ожидания завершения защищают запись от зависшего preview и не являются
-критериями качества распознавания. Аудио и текст не записываются в live-логи.
+Only one recording is recognized at a time. If live or final transcription is busy,
+preview is unavailable for a new connection, while WAV storage continues.
+After `/asr` fails, it is not reconnected within that recording; the app reports
+unavailable transcription while the WAV continues to be saved.
+The adapter attempts to recover the worker for the next recording; loading, busy,
+and permanently unavailable states are distinct. Startup errors produce a safe
+`startup_failed` event in the `live-preview` log without audio or text.
+Transport-buffer and final-drain limits protect recording from a stuck preview;
+they are not recognition-quality criteria. Live logs contain neither audio nor text.
 
-## Сменяемый live-провайдер
+## Selecting a live provider
 
-Финальный STT и live выбираются независимо. Сохраните приватный
+Select final STT and live STT independently. Save private
 `.local/dev-harness/ngrok/live-stt.json`:
 
 ```json
@@ -162,58 +172,58 @@ WhisperLiveKit сохраняет границы фраз и их предвар
 }
 ```
 
-Этот файл имеет приоритет над `live-preview.json`: запуск и проверка готовности
-используют выбранного провайдера, а Parakeet дополнительно не устанавливается.
-`enabled: false` сохраняет live выключенным; без `live-stt.json` используются
-прежние настройки `live-preview.json`.
+This file takes precedence over `live-preview.json`: startup and readiness checks
+use the selected provider, without installing another Parakeet instance.
+`enabled: false` keeps live disabled. Without `live-stt.json`, the previous
+`live-preview.json` settings apply.
 
-Подходит любой локальный сервер с существующим контрактом: бинарный PCM16 mono
-16 kHz; пустой бинарный пакет завершает поток. Сервер сначала отправляет
+Any local server implementing the existing contract is supported: binary PCM16,
+mono, 16 kHz; an empty binary frame ends the stream. The server first sends
 `{"type":"config","useAudioWorklet":true,"diarization":true,"stt_provider":"my-local-stt"}`,
-затем полные снимки
-`{"lines":[{"text":"подтверждённый текст","speaker":0,"start":0.0,"end":1.5}],"buffer_transcription":"черновик"}`,
-в конце `{"type":"ready_to_stop"}`. `/health` возвращает `ready` и `active`.
-`diarization: true` допустимо только если сервер действительно определяет голоса;
-без этого поля или с `false` числовые заглушки спикеров считаются неизвестными.
-Время строки принимается в секундах или `H:MM:SS.cc`. `speaker: -2` означает тишину.
-`buffer_diarization` и `buffer_transcription` показываются отдельным неизвестным
-черновиком; снимок может исправлять и удалять ранние строки. Реальные переводы
-строки можно передать как `translations: [{"lang":"en","text":"..."}]`;
-без них перевод не создаётся. URL допускает только `127.0.0.1` и `/asr`.
+then complete snapshots such as
+`{"lines":[{"text":"confirmed text","speaker":0,"start":0.0,"end":1.5}],"buffer_transcription":"draft"}`,
+and finally `{"type":"ready_to_stop"}`. `/health` returns `ready` and `active`.
+`diarization: true` is valid only if the server actually distinguishes voices;
+without it, or with `false`, numeric placeholder speakers are treated as unknown.
+Line times may be seconds or `H:MM:SS.cc`. `speaker: -2` means silence.
+`buffer_diarization` and `buffer_transcription` appear as a separate unknown draft;
+a snapshot may correct or remove earlier lines. Actual translations can be supplied
+as `translations: [{"lang":"en","text":"..."}]`; otherwise no translation is created.
+The URL allows only `127.0.0.1` and `/asr`.
 
-Подготовка отдельного окружения на Mac (после установки backend):
+Prepare a separate Mac environment after installing the backend:
 
 ```bash
 uv venv --python backend/.venv/bin/python .local/live-stt/venv
 uv pip install --python .local/live-stt/venv/bin/python -r scripts/dev-harness/requirements-live-stt-macos.txt
 ```
 
-Модель скачивается отдельно: `config.json` и `weights.npz` из указанной ниже
-revision репозитория Hugging Face в `.local/live-stt/model/`.
-Пути к Python и модели в настройке должны быть абсолютными.
+Download the model separately: place `config.json` and `weights.npz` from the
+Hugging Face revision below into `.local/live-stt/model/`.
+Python and model paths in the configuration must be absolute.
 
-Для управляемого WhisperLiveKit задайте `provider: "whisperlivekit"`, добавьте
-`python`, `model_dir`, `chunk_seconds: 2` и `language` (`ru`, `en` или `auto`). Используется существующий
-адаптер MLX/LocalAgreement: WhisperLiveKit 0.2.26, mlx-whisper 0.4.3, MLX 0.32.2,
-модель `mlx-community/whisper-large-v3-turbo-q4`, revision
-`660c343bbf4e52ac257f0b7d952e5388e6f93bef`. Проверочная SHA-256 весов закреплена
-в `scripts/local_live_preview/serve.py`. Это обработка перекрывающихся окон;
-`chunk_seconds` задаёт минимальный интервал инференса (1–10 с, по умолчанию 4),
-а не гарантированную задержку. Для коротких обновлений начните с 2 секунд.
-После загрузки локальных моделей адаптер запрещает сетевые подключения.
+For managed WhisperLiveKit, set `provider: "whisperlivekit"` and add `python`,
+`model_dir`, `chunk_seconds: 2`, and `language` (`ru`, `en`, or `auto`).
+This uses the existing MLX/LocalAgreement adapter: WhisperLiveKit 0.2.26,
+mlx-whisper 0.4.3, MLX 0.32.2, model `mlx-community/whisper-large-v3-turbo-q4`,
+revision `660c343bbf4e52ac257f0b7d952e5388e6f93bef`.
+The weights' SHA-256 is pinned in `scripts/local_live_preview/serve.py`.
+Processing uses overlapping windows. `chunk_seconds` sets the minimum inference
+interval (1–10 seconds, default 4), not guaranteed latency.
+Start with 2 seconds for short updates. After loading local models, the adapter
+denies network connections.
 
-`bash scripts/local-mac.sh apply-stt` поднимает настроенные STT-сервисы и применяет
-live-настройку к принадлежащему стеку backend. Перед перезапуском проверяется,
-что запись завершена. При обычном `up` сервисы запускаются автоматически.
-`enabled: false` выключает live для новых подключений после `apply-stt`.
-iPhone переустанавливать не нужно. Логи содержат только технические счётчики;
-физический CV1/iPhone и качество речи проверяются отдельно от готовности сервера.
+`bash scripts/local-mac.sh apply-stt` starts the configured STT services and applies
+live settings to the stack-owned backend. It verifies that recording has finished
+before restarting. Normal `up` starts the services automatically.
+`enabled: false` disables live for new connections after `apply-stt`.
+No iPhone reinstallation is needed. Logs contain only technical counters;
+physical CV1/iPhone behavior and speech quality are checked separately from server readiness.
 
-## Спикеры во время записи
+## Speakers during recording
 
-Поверх управляемого WhisperLiveKit или внешнего совместимого `/asr` включается
-независимый локальный pyannote. Дополните существующий `live-stt.json`, сохранив
-его `url` и остальные поля:
+Independent local pyannote can run over managed WhisperLiveKit or a compatible
+external `/asr`. Extend the existing `live-stt.json`, preserving its `url` and other fields:
 
 ```json
 {
@@ -229,33 +239,36 @@ iPhone переустанавливать не нужно. Логи содерж
 }
 ```
 
-Установите зависимости в отдельное подготовленное окружение командой
+Install dependencies into the separate prepared environment with
 `uv pip install --python .local/diarization/venv/bin/python -r scripts/dev-harness/requirements-live-diarization-macos.txt`.
-Модели заранее скачиваются согласно [LOCAL_STT.md](LOCAL_STT.md).
-Поддерживается также Community-1 при наличии полного кеша.
-`apply-stt` запускает диаризатор на отдельном loopback-порту и направляет backend
-через него к исходному ASR. Диаризатор загружает модель один раз; текст продолжает
-приходить независимо от определения голосов. `/health` сообщает готовность и
-занятость, `live-diarization.log` содержит только технические события.
+Prepare models beforehand following [LOCAL_STT.md](LOCAL_STT.md).
+Community-1 is also supported when its complete cache is available.
+`apply-stt` starts the diarizer on a separate loopback port and routes the backend
+through it to the original ASR. The diarizer loads its model once; text continues
+arriving independently of speaker detection. `/health` reports readiness and
+activity; `live-diarization.log` contains only technical events.
 
-Каждые минимум 15 секунд нового аудио пересчитываются границы голосов по
-накопленной записи. Номера сопоставляются с предыдущей разметкой по пересечению
-интервалов. Одновременно выполняется только один расчёт; с ростом записи задержка
-увеличивается, очередь расчётов не накапливается. Таймкоды слов WhisperLiveKit
-позволяют разделять фразу между голосами. Внешний ASR может передать
-`words: [{"word":" слово", "start":0.0, "end":0.5}]`; их полный текст должен совпадать
-с `text` строки. Без таймкодов слов метка назначается целой фразе.
+After at least 15 seconds of new audio, speaker boundaries are recalculated over
+the accumulated recording. Voices are matched to earlier turns by interval overlap;
+visible numbers are assigned when the first actual utterance appears.
+Noise clusters before speech do not consume speaker numbers. Only one calculation
+runs at a time; latency grows with recording length, without accumulating a queue
+of calculations. WhisperLiveKit word timestamps allow phrases to be split between
+voices. An external ASR may supply
+`words: [{"word":" word", "start":0.0, "end":0.5}]`; their complete text must match
+the line's `text`. Without word timestamps, the label applies to the entire phrase.
 
-На iPhone появляются штатные цветные карточки Speaker 1, Speaker 2 и далее,
-название ASR и реальные границы фраз. Ранние карточки могут уточняться.
-До определения голоса показывается «Неизвестно»; незавершённый черновик не получает
-выдуманного времени. Перевод появляется только при наличии перевода от провайдера.
-При отказе диаризатора спикеры становятся неизвестными, текст и запись продолжаются.
-После четырёх часов диаризация этой сессии отключается, сохраняя ASR; PCM временный
-и удаляется при закрытии сессии. Это предел ресурса, а не проверенная длительность работы.
+The iPhone displays standard colored Speaker 1, Speaker 2, and later cards,
+the ASR name, and actual phrase boundaries. Earlier cards may be refined.
+Until a voice is determined, it shows **Unknown**; unfinished drafts do not receive
+invented timestamps. Translations appear only when supplied by the provider.
+If diarization fails, speakers become unknown while text and recording continue.
+After four hours, diarization for that session is disabled while ASR continues;
+temporary PCM is removed when the session closes. This is a resource limit,
+not a verified operating duration.
 
-Проверка 10 сентября 2026: синтетический CV1 Opus через ngrok дал первый
-live-текст через 3,6 с, девять обновлений и WAV 19,04 с без ошибок декодирования.
-Argmax автоматически импортировал финальный текст (шесть сегментов).
-Это проверка программной цепочки; физическая запись с CV1 после переключения
-и длительная надёжность ещё не проверены.
+Recorded verification on September 10, 2026: synthetic CV1 Opus sent through ngrok
+produced its first live text after 3.6 seconds, nine updates, and a 19.04-second WAV
+without decoding errors. Argmax automatically imported the final text (six segments).
+This verified the software path; physical CV1 recording after switching providers
+and long-session reliability remain unverified.

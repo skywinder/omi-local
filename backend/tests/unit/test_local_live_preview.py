@@ -125,6 +125,37 @@ class Socket:
 
 
 @pytest.mark.anyio
+async def test_disabled_relay_handshake_is_not_preview_failure(monkeypatch):
+    socket = Socket(config={'enabled': False})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock())
+    preview.feed(b'\0\0' * 100)
+    await preview.finish()
+    assert preview.disabled and not preview.failed and socket.sent == []
+    assert preview.pending_bytes == 0
+
+
+@pytest.mark.parametrize('relay_enabled,expected', [(False, 3), (True, 12)])
+@pytest.mark.anyio
+async def test_only_relay_gets_remote_handshake_allowance(monkeypatch, relay_enabled, expected):
+    if relay_enabled:
+        monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
+    else:
+        monkeypatch.delenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', raising=False)
+    socket = Socket(config={'enabled': False})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    original = asyncio.wait_for
+    observed = []
+    async def wait_for(awaitable, timeout):
+        observed.append(timeout)
+        return await original(awaitable, timeout)
+    monkeypatch.setattr(asyncio, 'wait_for', wait_for)
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock())
+    await preview.finish()
+    assert expected in observed and (12 if expected == 3 else 3) not in observed
+
+
+@pytest.mark.anyio
 async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch):
     socket = Socket()
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)

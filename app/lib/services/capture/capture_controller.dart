@@ -84,7 +84,8 @@ class CaptureController extends ChangeNotifier
   final Future<StreamSubscription?> Function(String, void Function(List<int>))? _buttonListenerLoader;
   final Future<StreamSubscription?> Function(String, void Function(List<int>))? _audioListenerLoader;
   final Future<bool> Function()? _microphonePermissionRequester;
-  final IMicRecorderService? _phoneMicBatchRecorder;
+  final IMicRecorderService? _phoneMicRecorder;
+  IMicRecorderService get _phoneMic => _phoneMicRecorder ?? ServiceManager.instance().phoneMic;
   Geolocation? _sessionGeolocation;
   int _sessionGeolocationGeneration = 0;
   bool _sessionGeolocationPublishedToWal = false;
@@ -211,7 +212,7 @@ class CaptureController extends ChangeNotifier
     Future<StreamSubscription?> Function(String, void Function(List<int>))? buttonListenerLoader,
     Future<StreamSubscription?> Function(String, void Function(List<int>))? audioListenerLoader,
     Future<bool> Function()? microphonePermissionRequester,
-    IMicRecorderService? phoneMicBatchRecorder,
+    IMicRecorderService? phoneMicRecorder,
     RecordingLifecycleTelemetry? recordingTelemetry,
   })  : externalActions = externalActions ?? const NoopCaptureExternalActions(),
         _conversationLocationCapture = conversationLocationCapture ??
@@ -221,7 +222,7 @@ class CaptureController extends ChangeNotifier
         _buttonListenerLoader = buttonListenerLoader,
         _audioListenerLoader = audioListenerLoader,
         _microphonePermissionRequester = microphonePermissionRequester,
-        _phoneMicBatchRecorder = phoneMicBatchRecorder,
+        _phoneMicRecorder = phoneMicRecorder,
         _recordingTelemetry = recordingTelemetry ?? RecordingLifecycleTelemetry() {
     // Restore a persisted device mute so it survives an app kill/restart. When
     // the device reconnects, streamDeviceRecording() reads _isPaused as
@@ -266,10 +267,10 @@ class CaptureController extends ChangeNotifier
   bool _phoneMicBatchRestartInFlight = false;
 
   Future<void> _restartPhoneMicRecording() async {
-    if (_phoneMicRestartInFlight) return;
+    if (_phoneMicRestartInFlight || _phoneStop != null) return;
     _phoneMicRestartInFlight = true;
     try {
-      ServiceManager.instance().phoneMic.stop();
+      _phoneMic.stop();
       // Re-assert interrupted so the recorder's stop callback doesn't overwrite it.
       updateRecordingState(RecordingState.interrupted);
       // _activeSource is cleared if the user manually stopped — bail in that case.
@@ -285,34 +286,40 @@ class CaptureController extends ChangeNotifier
 
   // Restarts mic only — preserves existing socket and conversation segments.
   Future<void> _resumeMicRecording() async {
+    final generation = _phoneGeneration;
+    if (_phoneStop != null) return;
     updateRecordingState(RecordingState.initialising);
     _activeSource = PhoneMicSource();
     _phoneMicWalActive = true;
-    await ServiceManager.instance().phoneMic.start(
-          onByteReceived: (bytes) {
-            final frames = _activeSource?.processBytes(bytes) ?? [];
-            for (final frame in frames) {
-              _wal.getSyncs().phone.onFrameCaptured(frame);
-              if (_socket?.state == SocketServiceState.connected) {
-                _socket?.send(frame.payload);
-                _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
-              }
-            }
-          },
-          onRecording: () {
-            updateRecordingState(RecordingState.record);
-          },
-          onStop: () {
-            if (!_micInterrupted) {
-              updateRecordingState(RecordingState.stop);
-            }
-          },
-          onInitializing: () {
-            updateRecordingState(RecordingState.initialising);
-          },
-          onStalled: _onMicStalled,
-          onInterruption: _onMicInterruption,
-        );
+    await _phoneMic.start(
+      onByteReceived: (bytes) {
+        if (generation != _phoneGeneration) return;
+        final frames = _activeSource?.processBytes(bytes) ?? [];
+        for (final frame in frames) {
+          _wal.getSyncs().phone.onFrameCaptured(frame);
+          if (_socket?.state == SocketServiceState.connected) {
+            _socket?.send(frame.payload);
+            _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
+          }
+        }
+      },
+      onRecording: () {
+        if (generation != _phoneGeneration) return;
+        updateRecordingState(RecordingState.record);
+      },
+      onStop: () {
+        if (generation != _phoneGeneration) return;
+        if (!_micInterrupted) {
+          updateRecordingState(RecordingState.stop);
+        }
+      },
+      onInitializing: () {
+        if (generation != _phoneGeneration) return;
+        updateRecordingState(RecordingState.initialising);
+      },
+      onStalled: _onMicStalled,
+      onInterruption: _onMicInterruption,
+    );
   }
 
   void _onMicStalled() {
@@ -336,7 +343,7 @@ class CaptureController extends ChangeNotifier
   void onAppResumed() {
     if (_activeSource is! PhoneMicSource && !_phoneMicBatchActive) return;
     if (_micInterrupted || _phoneMicRestartInFlight) return;
-    ServiceManager.instance().phoneMic.probeStallAfterForeground();
+    _phoneMic.probeStallAfterForeground();
   }
 
   void updateExternalActions(CaptureExternalActions? actions) {
@@ -513,6 +520,21 @@ class CaptureController extends ChangeNotifier
   bool _isProcessingButtonEvent = false; // Guard to prevent overlapping button operations
   OmiButtonEvent? _lastOmiButtonEvent;
   OmiButtonEvent? get lastOmiButtonEvent => _lastOmiButtonEvent;
+  LocalOmiButtonAction? _localOmiButtonFeedback;
+  LocalOmiButtonAction? get localOmiButtonFeedback => _localOmiButtonFeedback;
+  Timer? _localButtonFeedbackTimer;
+
+  void _showLocalButtonFeedback(LocalOmiButtonAction action, int generation) {
+    if (!TemporaryCaptureControls.enabled || generation != _buttonStreamGeneration) return;
+    _localButtonFeedbackTimer?.cancel();
+    _localOmiButtonFeedback = action;
+    notifyListeners();
+    _localButtonFeedbackTimer = Timer(const Duration(seconds: 4), () {
+      _localOmiButtonFeedback = null;
+      notifyListeners();
+    });
+  }
+
   LocalCapturePhase? _localButtonAction;
   bool _localButtonFailed = false;
   bool _hasRecentLocalAudio = false;
@@ -523,7 +545,8 @@ class CaptureController extends ChangeNotifier
   static const localAudioFreshness = Duration(seconds: 3);
 
   LocalCapturePhase get localCapturePhase {
-    if (_localDeviceStop != null ||
+    if (_phoneStop != null ||
+        _localDeviceStop != null ||
         (_localDeviceAudioStart?.stopping ?? false) ||
         _localButtonAction == LocalCapturePhase.stopping) return LocalCapturePhase.stopping;
     if (_localButtonFailed || recordingState == RecordingState.error) return LocalCapturePhase.failed;
@@ -638,6 +661,8 @@ class CaptureController extends ChangeNotifier
     }
     if (_recordingDevice?.id != device?.id) {
       _lastOmiButtonEvent = null;
+      _localButtonFeedbackTimer?.cancel();
+      _localOmiButtonFeedback = null;
       _localButtonAction = null;
       _localButtonFailed = false;
       _resetLocalAudioEvidence();
@@ -645,7 +670,7 @@ class CaptureController extends ChangeNotifier
     }
     Logger.debug('connected device changed from ${_recordingDevice?.id} to ${device?.id}');
     _recordingDevice = device;
-    if (device == null) _endOfflineSession();
+    if (device == null && !isPhoneMicSelected) _endOfflineSession();
     notifyListeners();
   }
 
@@ -777,7 +802,7 @@ class CaptureController extends ChangeNotifier
     await _reconcileNativeBackgroundStreamingPolicy();
 
     // Handle device recording
-    if (_recordingDevice != null) {
+    if (_recordingDevice != null && !isPhoneMicSelected) {
       if (_temporaryRecordingStopped) return;
       await _socket?.stop(reason: 'transcription settings changed');
       BleAudioCodec codec = await _getAudioCodec(_recordingDevice!.id);
@@ -1055,9 +1080,15 @@ class CaptureController extends ChangeNotifier
       notifyListeners();
       if (active) {
         await stopStreamDeviceRecording();
+        if (recordingState == RecordingState.stop) {
+          _showLocalButtonFeedback(LocalOmiButtonAction.stopped, generation);
+        }
       } else {
         try {
           await streamDeviceRecording(userInitiated: true);
+          if (recordingState == RecordingState.deviceRecord || recordingState == RecordingState.pause) {
+            _showLocalButtonFeedback(LocalOmiButtonAction.started, generation);
+          }
           if (_temporaryRecordingRequested &&
               _localDeviceStop == null &&
               recordingState != RecordingState.deviceRecord &&
@@ -1071,6 +1102,7 @@ class CaptureController extends ChangeNotifier
       }
     } catch (error) {
       if (generation == _buttonStreamGeneration) _localButtonFailed = true;
+      _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
       Logger.debug('Local recording button failed: ${error.runtimeType}');
     } finally {
       _isProcessingButtonEvent = false;
@@ -1144,16 +1176,24 @@ class CaptureController extends ChangeNotifier
             if (_isPaused) {
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'unmute');
               resumeDeviceRecording().then((_) {
+                if (recordingState == RecordingState.deviceRecord && !isPaused) {
+                  _showLocalButtonFeedback(LocalOmiButtonAction.resumed, generation);
+                }
                 _isProcessingButtonEvent = false;
               }).catchError((e) {
+                _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
                 Logger.debug("Error resuming device recording: $e");
                 _isProcessingButtonEvent = false;
               });
             } else {
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'mute');
               pauseDeviceRecording().then((_) {
+                if (recordingState == RecordingState.pause && isPaused) {
+                  _showLocalButtonFeedback(LocalOmiButtonAction.paused, generation);
+                }
                 _isProcessingButtonEvent = false;
               }).catchError((e) {
+                _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
                 Logger.debug("Error pausing device recording: $e");
                 _isProcessingButtonEvent = false;
               });
@@ -1163,12 +1203,14 @@ class CaptureController extends ChangeNotifier
             Logger.debug("Double tap: marking conversation for starring");
             if (!_starOngoingConversation) {
               markConversationForStarring();
+              _showLocalButtonFeedback(LocalOmiButtonAction.starred, generation);
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'star_conversation');
               // Haptic feedback to confirm
               HapticFeedback.mediumImpact();
             } else {
               // Toggle off if already marked
               unmarkConversationForStarring();
+              _showLocalButtonFeedback(LocalOmiButtonAction.unstarred, generation);
               PlatformManager.instance.analytics.omiDoubleTap(feature: 'unstar_conversation');
               HapticFeedback.lightImpact();
             }
@@ -1176,7 +1218,11 @@ class CaptureController extends ChangeNotifier
             // End conversation and process (default)
             Logger.debug("Double tap: processing conversation");
             PlatformManager.instance.analytics.omiDoubleTap(feature: 'process_conversation');
-            forceProcessingCurrentConversation();
+            forceProcessingCurrentConversation().then((_) {
+              _showLocalButtonFeedback(LocalOmiButtonAction.processing, generation);
+            }).catchError((Object error) {
+              _showLocalButtonFeedback(LocalOmiButtonAction.failed, generation);
+            });
           }
           return;
         }
@@ -1320,7 +1366,7 @@ class CaptureController extends ChangeNotifier
     if (starting?.invalidated ?? false) return;
 
     // Additionally, stream photos if the device supports it
-    if (_recordingDevice != null) {
+    if (_recordingDevice != null && !isPhoneMicSelected) {
       var connection = await ServiceManager.instance().device.ensureConnection(_recordingDevice!.id);
       if (connection != null && await connection.hasPhotoStreamingCharacteristic()) {
         await _initiateDevicePhotoStreaming();
@@ -1726,6 +1772,7 @@ class CaptureController extends ChangeNotifier
 
   @override
   void dispose() {
+    _localButtonFeedbackTimer?.cancel();
     _resetLocalAudioEvidence();
     _localDeviceAudioStart?.discard();
     _websocketInitGeneration++;
@@ -1813,9 +1860,43 @@ class CaptureController extends ChangeNotifier
     }
   }
 
-  streamRecording() async {
+  // Selected local input is independent of the connected Bluetooth device.
+  ConversationSource? _localInputSource;
+  bool get isPhoneMicSelected => TemporaryCaptureControls.enabled && _localInputSource == ConversationSource.phone;
+  Future<void>? _phoneStart;
+  Future<void>? _phoneStop;
+  int _phoneGeneration = 0;
+
+  Future<void> streamRecording() async {
+    if (_phoneStop != null) await _phoneStop;
+    if (_phoneStart != null) return _phoneStart;
+    if (_phoneMicWalActive || _phoneMicBatchActive) return;
+    final generation = ++_phoneGeneration;
+    final start = _startStreamRecording(generation);
+    _phoneStart = start;
+    try {
+      await start;
+    } catch (_) {
+      _phoneMic.stop();
+      await _socket?.stop(reason: 'phone startup failed');
+      _activeSource = null;
+      _phoneMicWalActive = false;
+      _clearSessionLocation();
+      updateRecordingState(RecordingState.stop);
+      _recordingTelemetry.failStart(failureClass: 'capture_unavailable');
+      rethrow;
+    } finally {
+      if (identical(_phoneStart, start)) _phoneStart = null;
+    }
+  }
+
+  Future<void> _startStreamRecording(int generation) async {
     if (TemporaryCaptureControls.enabled) {
-      if (havingRecordingDevice) throw StateError('Disconnect the recording device before starting the phone mic');
+      await stopStreamDeviceRecording();
+      if (generation != _phoneGeneration) return;
+      _localInputSource = ConversationSource.phone;
+      _isPaused = false;
+      updateRecordingState(RecordingState.initialising);
       // Local preview has no ConversationEvent to clear the preceding draft.
       await _resetStateVariables();
     }
@@ -1828,6 +1909,7 @@ class CaptureController extends ChangeNotifier
     // mic can capture Transcribe Later (batch) audio: explicitly when the user
     // enabled it, or automatically as an offline fallback when there is no
     // network. Both write .bin files natively instead of opening the realtime socket.
+    if (generation != _phoneGeneration) return;
     final mode = selectPhoneMicSessionMode(
       supportsBatch: phoneMicSupportsTranscribeLater,
       batchModeEnabled: SharedPreferencesUtil().batchModeEnabled,
@@ -1844,8 +1926,10 @@ class CaptureController extends ChangeNotifier
     _recordingTelemetry.prepare(source: 'phone_mic_live');
 
     updateRecordingState(RecordingState.initialising);
-    final micPermission = await Permission.microphone.request();
-    if (!micPermission.isGranted) {
+    final micPermissionGranted =
+        await _microphonePermissionRequester?.call() ?? (await Permission.microphone.request()).isGranted;
+    if (generation != _phoneGeneration) return;
+    if (!micPermissionGranted) {
       Logger.error('[CaptureProvider] microphone permission denied, not starting phone mic');
       _clearSessionLocation();
       updateRecordingState(RecordingState.stop);
@@ -1860,6 +1944,11 @@ class CaptureController extends ChangeNotifier
       source: ConversationSource.phone.name,
     );
 
+    if (generation != _phoneGeneration) return;
+    if (TemporaryCaptureControls.enabled && _socket?.state != SocketServiceState.connected) {
+      throw StateError('Local phone audio socket did not connect');
+    }
+
     // Initialize WAL for phone mic recording
     _activeSource = PhoneMicSource();
     _phoneMicWalActive = true;
@@ -1867,37 +1956,42 @@ class CaptureController extends ChangeNotifier
     _wal.getSyncs().phone.setDeviceInfo('phone-mic', 'Phone Microphone');
     setIsWalSupported(true);
 
+    if (generation != _phoneGeneration) return;
     // record
     try {
-      await ServiceManager.instance().phoneMic.start(
-            onByteReceived: (bytes) {
-              // Process through AudioSource for frame splitting and sync key generation
-              final frames = _activeSource?.processBytes(bytes) ?? [];
+      await _phoneMic.start(
+        onByteReceived: (bytes) {
+          if (generation != _phoneGeneration) return;
+          // Process through AudioSource for frame splitting and sync key generation
+          final frames = _activeSource?.processBytes(bytes) ?? [];
 
-              for (final frame in frames) {
-                _wal.getSyncs().phone.onFrameCaptured(frame);
+          for (final frame in frames) {
+            _wal.getSyncs().phone.onFrameCaptured(frame);
 
-                if (_socket?.state == SocketServiceState.connected) {
-                  _socket?.send(frame.payload);
-                  _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
-                }
-              }
-            },
-            onRecording: () {
-              updateRecordingState(RecordingState.record);
-              _recordingTelemetry.markStarted();
-            },
-            onStop: () {
-              if (!_micInterrupted) {
-                updateRecordingState(RecordingState.stop);
-              }
-            },
-            onInitializing: () {
-              updateRecordingState(RecordingState.initialising);
-            },
-            onStalled: _onMicStalled,
-            onInterruption: _onMicInterruption,
-          );
+            if (_socket?.state == SocketServiceState.connected) {
+              _socket?.send(frame.payload);
+              _wal.getSyncs().phone.markFrameSynced(frame.syncKey);
+            }
+          }
+        },
+        onRecording: () {
+          if (generation != _phoneGeneration) return;
+          updateRecordingState(RecordingState.record);
+          _recordingTelemetry.markStarted();
+        },
+        onStop: () {
+          if (generation != _phoneGeneration) return;
+          if (!_micInterrupted) {
+            updateRecordingState(RecordingState.stop);
+          }
+        },
+        onInitializing: () {
+          if (generation != _phoneGeneration) return;
+          updateRecordingState(RecordingState.initialising);
+        },
+        onStalled: _onMicStalled,
+        onInterruption: _onMicInterruption,
+      );
       // Product: recording is the tap; location is metadata. Do not hold
       // RecordingState.initialising for the OS location dialog, and do not
       // prompt location before the microphone. The async capture still stamps
@@ -1914,16 +2008,45 @@ class CaptureController extends ChangeNotifier
       updateRecordingState(RecordingState.stop);
       await _socket?.stop(reason: 'phone mic start failed');
       _recordingTelemetry.failStart(failureClass: 'capture_unavailable');
+      rethrow;
     }
   }
 
-  stopStreamRecording({String reason = 'user_stopped'}) async {
+  Future<void> stopStreamRecording({String reason = 'user_stopped'}) async {
+    if (_phoneStop != null) return _phoneStop;
+    ++_phoneGeneration;
+    ++_websocketInitGeneration;
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
+    final stop = _finishPhoneStop(_phoneStart, reason);
+    _phoneStop = stop;
+    notifyListeners();
+    try {
+      await stop;
+    } finally {
+      if (identical(_phoneStop, stop)) {
+        _phoneStop = null;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _finishPhoneStop(Future<void>? starting, String reason) async {
+    try {
+      await starting;
+    } catch (_) {
+      // Startup owns reporting the error; Stop still closes its resources.
+    }
+    await _stopStreamRecording(reason: reason);
+  }
+
+  Future<void> _stopStreamRecording({required String reason}) async {
     // Batch (Transcribe Later) phone-mic session: no WAL flush or socket to
     // close. Native stop() finalizes the current .bin before it resolves; the
     // recordings list refreshes from onBatchRecordingFinalized.
     if (_phoneMicBatchActive) {
       _micInterrupted = false;
-      ServiceManager.instance().phoneMic.stop();
+      _phoneMic.stop();
       _phoneBatchGeolocationPreference.invalidateSession();
       _endOfflineSession();
       await _cleanupCurrentState();
@@ -1934,6 +2057,8 @@ class CaptureController extends ChangeNotifier
       return;
     }
 
+    _micInterrupted = false;
+    _phoneMic.stop();
     // Flush remaining phone mic WAL buffer before stopping
     if (_phoneMicWalActive) {
       final flushed = _activeSource?.flush() ?? [];
@@ -1948,7 +2073,6 @@ class CaptureController extends ChangeNotifier
     }
     await _cleanupCurrentState(disableNativeBackground: true);
     _micInterrupted = false;
-    ServiceManager.instance().phoneMic.stop();
     await _wal.getSyncs().phone.finalizeCurrentSession();
     _clearSessionLocation();
     updateRecordingState(RecordingState.stop);
@@ -1996,7 +2120,7 @@ class CaptureController extends ChangeNotifier
     _offlineMuteStartedAt = null;
 
     try {
-      await (_phoneMicBatchRecorder ?? ServiceManager.instance().phoneMic).startBatch(
+      await _phoneMic.startBatch(
         onStop: () {
           if (!_micInterrupted && !_phoneMicBatchRestartInFlight) {
             updateRecordingState(RecordingState.stop);
@@ -2034,7 +2158,7 @@ class CaptureController extends ChangeNotifier
     if (!_phoneMicBatchActive || _phoneMicBatchRestartInFlight) return;
     _phoneMicBatchRestartInFlight = true;
     try {
-      ServiceManager.instance().phoneMic.stop();
+      _phoneMic.stop();
       if (!_phoneMicBatchActive) return; // user stopped while restarting
       await _startPhoneMicBatch(auto: SharedPreferencesUtil().phoneBatchAuto);
     } catch (e, st) {
@@ -2063,6 +2187,10 @@ class CaptureController extends ChangeNotifier
   Future streamDeviceRecording({BtDevice? device, bool userInitiated = false}) async {
     Logger.debug("streamDeviceRecording $device");
     if (userInitiated) {
+      if (isPhoneMicSelected || _phoneStart != null || _phoneStop != null) {
+        await stopStreamRecording(reason: 'source_changed');
+      }
+      _localInputSource = ConversationSource.omi;
       await _localDeviceStop;
       await _localDeviceAudioStart?.completed.future;
     }
@@ -2160,6 +2288,10 @@ class CaptureController extends ChangeNotifier
   }
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    if (isPhoneMicSelected && _localDeviceAudioStart == null && !_temporaryRecordingRequested) {
+      if (cleanDevice) _updateRecordingDevice(null);
+      return;
+    }
     final generation = _buttonStreamGeneration;
     if (_localDeviceStop != null) return _localDeviceStop;
     final starting = _localDeviceAudioStart;
@@ -2178,7 +2310,16 @@ class CaptureController extends ChangeNotifier
       }
       return;
     }
-    await _stopStreamDeviceRecordingNow(cleanDevice: cleanDevice);
+    final stopping = _stopStreamDeviceRecordingNow(cleanDevice: cleanDevice);
+    _localDeviceStop = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (identical(_localDeviceStop, stopping)) {
+        _localDeviceStop = null;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> _finishLocalDeviceStart(LocalDeviceAudioStart starting, {required bool cleanDevice}) async {
@@ -2227,7 +2368,7 @@ class CaptureController extends ChangeNotifier
     // looked like active capture to the user (issue #6499). Only flip when we
     // were actively phone-mic recording — device/system-audio flows have their
     // own state lanes.
-    if (recordingState == RecordingState.record) {
+    if (_phoneStop == null && recordingState == RecordingState.record) {
       updateRecordingState(RecordingState.interrupted);
       final ctx = globalNavigatorKey.currentContext;
       if (ctx != null) {
@@ -2261,7 +2402,7 @@ class CaptureController extends ChangeNotifier
   void _startKeepAliveServices() {
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
-    if (!_shouldReconnectTranscriptionSocket) return;
+    if (_phoneStop != null || !_shouldReconnectTranscriptionSocket) return;
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 15), (t) async {
       Logger.debug("[Provider] keep alive");
       if (!_shouldReconnectTranscriptionSocket) {

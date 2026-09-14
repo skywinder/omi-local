@@ -1,109 +1,109 @@
-# Подключение iPhone к Mac
+# Connecting an iPhone to your Mac
 
-Ngrok даёт Mac постоянный HTTPS-адрес, доступный телефону в том числе через
-мобильную сеть. Аудио проходит через ngrok и сохраняется на Mac.
-Веб-аудиотека открывается отдельно и доступна только на самом Mac.
+Ngrok gives the Mac a persistent HTTPS address that the phone can reach,
+including over a mobile network. Audio passes through ngrok and is saved on the Mac.
+The web library opens separately and is accessible only on the Mac itself.
 
-## Настройка
+## Setup
 
-### Без интерактивного ввода: `.env`
+### Noninteractive setup: `.env`
 
-В корне проекта выполните `bash scripts/local-mac.sh init-env`.
-Команда создаёт приватный `.env` (права `600`), берёт уже сохранённые настройки
-ngrok, если они есть, и генерирует отдельный ключ приложения. Существующий `.env`
-не перезаписывается. Образец полей — [omiloc.env.example](../omiloc.env.example).
+Run `bash scripts/local-mac.sh init-env` from the project root.
+It creates a private `.env` with mode `600`, reuses saved ngrok settings when
+available, and generates a separate app key. It does not overwrite an existing
+`.env`. See [omiloc.env.example](../omiloc.env.example) for the fields.
 
-- `OMI_NGROK_URL`: HTTPS-адрес из [Domains](https://dashboard.ngrok.com/domains).
-- `NGROK_AUTHTOKEN`: значение из [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken), не API Key.
-- `OMI_LOCAL_APP_KEY`: сгенерированный 43-символьный ключ приложения, не токен ngrok.
+- `OMI_NGROK_URL`: the HTTPS address from [Domains](https://dashboard.ngrok.com/domains).
+- `NGROK_AUTHTOKEN`: the value from [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken), not an API Key.
+- `OMI_LOCAL_APP_KEY`: the generated 43-character app key, not the ngrok token.
 
-При переходе со старого мастера остановите сервисы: `bash scripts/local-mac.sh down`.
-Затем запустите `./start.command`: при наличии заполненного `.env` вопросы и вывод
-секретов отсутствуют. Если настроек ещё нет, заполните пустые поля `.env` в редакторе.
-Файл не выполняется как shell-код; подстановки и лишние поля не поддерживаются.
-Изменённые настройки применяются только при остановленном стеке, записи сохраняются.
+When switching from the old wizard, stop services with `bash scripts/local-mac.sh down`.
+Then run `./start.command`: a complete `.env` avoids prompts and secret output.
+If settings are missing, fill in the empty fields in a text editor.
+The file is read as data, not executed as shell code; substitutions and extra
+fields are unsupported. Changed settings apply only while the stack is stopped;
+recordings are preserved.
 
-После установки обновлённого приложения подключите разблокированный iPhone и выполните
-`./start.command --iphone-configure`. Это перезапустит приложение с адресом и ключом
-из `.env`; они сохранятся в Keychain и появятся на экране «Локальный Mac».
-Нажмите «Проверить и подключить» для проверки сервера. Authtoken остаётся на Mac;
-ключ приложения не встраивается в бинарный файл и не передаётся в аргументах команд.
-Для настройки через Wi-Fi iPhone должен быть заранее сопряжён с Mac и доступен
-в той же сети. Скрипт проверяет живое подключение, даже если список устройств
-показывает старый статус. Разблокируйте телефон и оставьте экран включённым до запуска.
+After installing the updated app, connect the unlocked iPhone and run
+`./start.command --iphone-configure`. This relaunches the app with the address
+and key from `.env`; it saves them in Keychain and displays them on **Local Mac**.
+Tap **Check and connect** to verify the server. The authtoken stays on the Mac;
+the app key is neither embedded in the binary nor passed in command arguments.
+For Wi-Fi configuration, the iPhone must already be paired with the Mac and
+reachable on the same network. The script checks the live connection even if the
+device list shows a stale status. Keep the phone unlocked and its screen on until launch.
 
-`.env` содержит настоящие секреты: не добавляйте его в Git, не отправляйте в чат
-и не публикуйте сборочные логи с окружением. На backend по-прежнему хранится только
-проверочный хеш ключа; открытый ключ теперь также хранится в вашем приватном `.env`.
+`.env` contains real secrets: do not commit it, send it in chat, or publish build
+logs containing its environment. The backend still stores only a verification
+hash of the key; the plaintext key is also stored in your private `.env`.
 
-### Интерактивный мастер без `.env`
+### Interactive wizard without `.env`
 
-1. [Создайте аккаунт ngrok](https://dashboard.ngrok.com/signup) и завершите
-   подтверждение аккаунта по его запросам.
-2. В [Domains](https://dashboard.ngrok.com/domains) возьмите выданный аккаунту
-   **dev domain**. Покупать домен не нужно: бесплатный план включает один такой адрес.
-   Используйте именно его — произвольное имя на бесплатном плане не подойдёт.
-3. Откройте [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)
-   и скопируйте только значение токена, без команды. API Key здесь не используется.
-4. Запустите `start.command`: он установит ngrok и попросит HTTPS-адрес
-   вида `https://ваш-домен.ngrok-free.app` и authtoken. Используйте домен и токен
-   одного аккаунта; токен вводится скрыто. На новом Mac введите его обязательно.
-5. В приложении на iPhone откройте «Локальный Mac», введите домен и ключ из рамки
-   в Terminal, затем проверьте подключение.
+1. [Create an ngrok account](https://dashboard.ngrok.com/signup) and complete any
+   account-verification prompts.
+2. Get the account's **dev domain** from [Domains](https://dashboard.ngrok.com/domains).
+   You do not need to purchase a domain: the free plan includes one such address.
+   Use that assigned address; an arbitrary name will not work on the free plan.
+3. Open [Your Authtoken](https://dashboard.ngrok.com/get-started/your-authtoken)
+   and copy only the token value, without the command. An API Key is not used here.
+4. Run `start.command`: it installs ngrok and asks for an HTTPS address such as
+   `https://your-domain.ngrok-free.app` and an authtoken. Use the domain and token
+   from the same account. Token input is hidden; enter it on a new Mac.
+5. On the iPhone, open **Local Mac**, enter the domain and key from the boxed
+   Terminal output, and check the connection.
 
-Ключ приложения создаётся скриптом и отличается от authtoken ngrok.
-Скрипт показывает его один раз. Повторный запуск сохраняет ключ и записи.
-На экране «Локальный Mac» значок глаза открывает окно с полным URL и ключом.
-При закрытии окна или уходе приложения в фон ключ снова скрывается.
-Кнопка сохранения сохраняет адрес и ключ на iPhone в Keychain без проверки сети.
-Изменения полей также сохраняются автоматически. Пробелы и переносы строк при
-вставке ключа удаляются; счётчик показывает длину относительно требуемых 43 символов.
-Проверка подключения также сохраняет ввод, даже если сервер недоступен.
-Сохранение не переключает рабочий сервер: он меняется только после успешной проверки.
-Не передавайте ключ и authtoken другим людям.
-Бесплатный план имеет [лимиты трафика и запросов](https://ngrok.com/docs/pricing-limits/free-plan-limits);
-при их исчерпании передача может остановиться до сброса лимита или смены плана.
+The script creates the app key separately from the ngrok authtoken and shows it
+once. Subsequent launches preserve the key and recordings.
+On **Local Mac**, the eye icon reveals the key inline. Tap it again to hide the
+key; moving the app to the background also hides it.
+The save button stores the address and key in the iPhone's Keychain without a
+network check. Field edits are also saved automatically. Pasted spaces and line
+breaks are removed from the key; the counter shows its length against the required
+43 characters. Connection checks preserve your input even if the server is unavailable.
+Saving does not switch the active server; only a successful connection check does.
+Do not share your app key or authtoken.
+The free plan has [traffic and request limits](https://ngrok.com/docs/pricing-limits/free-plan-limits);
+reaching them may stop transfers until the limit resets or the plan changes.
 
-### Подстановка адреса и токена из `.env`
+### Supplying the address and token through `.env`
 
-Вместо ручного ввода при первой настройке можно заполнить `.env` рядом с
-`start.command`. Создайте его из шаблона (команда сохраняет существующий файл):
+Instead of entering values manually during initial setup, create `.env` beside
+`start.command` from the template. This command preserves an existing file:
 
 ```bash
 (umask 077; cp -n .env.example .env)
 chmod 600 .env
 ```
 
-Впишите свой адрес целиком с `https://` в `NGROK_URL`, а authtoken того же
-аккаунта — в `NGROK_AUTHTOKEN`. Затем запустите `./start.command` в Terminal:
-оба значения подставятся автоматически. Токен нужно взять из кабинета один раз;
-сам `.env` его не запрашивает у ngrok. Пустые поля запрашиваются вручную.
-Файл читается как данные, без выполнения shell-команд и подстановки `${...}`.
+Set `NGROK_URL` to your full address, including `https://`, and set
+`NGROK_AUTHTOKEN` to the token from the same account. Run `./start.command` in
+Terminal to supply both values automatically. Obtain the token from the dashboard
+once; `.env` itself does not request it from ngrok. Empty fields are prompted for.
+The file is read as data, without shell execution or `${...}` substitution.
 
-`.env` исключён из Git; токен не выводится в Terminal. Ключ для iPhone
-по-прежнему создаётся отдельно и показывается один раз. Уже настроенное подключение
-используется без повторного чтения `.env`. Чтобы применить изменённые значения,
-выполните команды из раздела «Смена настроек» ниже.
+`.env` is excluded from Git, and the token is not printed in Terminal. The iPhone
+key is still created separately and displayed once. An existing configured
+connection is reused without rereading `.env`. To apply changed values, follow
+**Changing settings** below.
 
-Для проверки записи подключите CV1, нажмите кнопку CV1 один раз, произнесите
-несколько фраз и нажмите её ещё раз. Откройте `omiloc` на Mac
-и прослушайте файл. Мьют не завершает запись.
+To test recording, connect the CV1, press its button once, say a few phrases,
+and press it again. Open `omiloc` on the Mac and play the file. Mute does not finish recording.
 
-## Если соединения нет
+## When the connection fails
 
-В приложении смотрите раздельные статусы Mac, принятого аудио и live-транскрипта.
-[Что они означают и где смотреть логи](CONNECTION_DIAGNOSTICS.md).
+The app shows separate states for the Mac, received audio, and live transcription.
+See [what they mean and where to find logs](CONNECTION_DIAGNOSTICS.md).
 
-- Убедитесь, что Mac включён, не спит и на нём запущен `start.command`.
-- Проверьте домен и ключ в «Локальный Mac» на iPhone.
-- Откройте `https://<ваш-адрес>/v1/health`: ответ `{"status":"ok"}` означает,
-  что сервер доступен. Ключ проверяется отдельно кнопкой в приложении.
-- Для проверки сервисов выполните `bash scripts/local-mac.sh status` из папки проекта.
-  Более подробная проверка — `bash scripts/local-mac.sh check`.
+- Ensure the Mac is on, awake, and running services started by `start.command`.
+- Check the domain and key in **Local Mac** on the iPhone.
+- Open `https://<your-address>/v1/health`: `{"status":"ok"}` means the server
+  is reachable. The app button verifies the key separately.
+- Run `bash scripts/local-mac.sh status` from the project directory to check services.
+  For more detail, run `bash scripts/local-mac.sh check`.
 
-## Смена настроек
+## Changing settings
 
-Сначала остановите сервисы. Все команды выполняются из папки проекта:
+Stop services first. Run all commands from the project directory:
 
 ```bash
 bash scripts/local-mac.sh down
@@ -111,13 +111,13 @@ bash scripts/local-mac.sh edit-connection
 ./start.command
 ```
 
-`edit-connection` меняет адрес или authtoken, сохраняя ключ приложения.
-После смены адреса обновите его на iPhone; переустанавливать приложение не нужно.
-Для замены потерянного ключа используйте `rotate-key` вместо `edit-connection`.
-Новый ключ нужно ввести на телефоне.
+`edit-connection` changes the address or authtoken while preserving the app key.
+After an address change, update it on the iPhone; you do not need to reinstall
+the app. To replace a lost key, use `rotate-key` instead of `edit-connection`
+and enter the new key on the phone.
 
-Отдельные команды для ручной установки и запуска: `bash scripts/local-mac.sh install`,
-затем `configure` и `up`. Для обычной работы достаточно [start.command](START.md).
+For manual installation and startup, run `bash scripts/local-mac.sh install`,
+then `configure` and `up`. For daily use, [start.command](START.md) is sufficient.
 
-[Распознавание записей](LOCAL_STT.md) · [Установка приложения](LOCAL_SETUP.md) ·
-[Технические проверки](DEVELOPMENT.md).
+[Transcribing recordings](LOCAL_STT.md) · [App installation](LOCAL_SETUP.md) ·
+[Technical checks](DEVELOPMENT.md).

@@ -122,6 +122,26 @@ def test_opt_in_skips_archive_and_existing_capture_waits_for_finalization_then_p
     assert watch.queue_path(cfg).stat().st_mode & 0o777 == 0o600
 
 
+def test_disabled_selected_stt_pauses_admission_but_keeps_existing_job(setup, monkeypatch):
+    cfg, calls, documents, _ = setup
+    watch.enable(cfg)
+    capture(cfg, 'admitted')
+    worker = watch.Worker(cfg)
+    transcribe = local_stt.transcribe
+    def busy(*args, **kwargs):
+        raise local_stt.TranscriptionBusy('Synthetic occupied inference slot')
+    monkeypatch.setattr(local_stt, 'transcribe', busy)
+    worker.tick(0)
+    (cfg.layout.state_root / 'providers.json').write_text(json.dumps({
+        'version': 1, 'revision': 1, 'profiles': [],
+        'effective': {'stt': None, 'diarization': None, 'summary': None}}))
+    capture(cfg, 'new-while-disabled')
+    monkeypatch.setattr(local_stt, 'transcribe', transcribe)
+    worker.tick(3)
+    assert calls == ['large-v3-turbo'] and len(documents) == 1
+    assert len(worker.jobs) == 1 and next(iter(worker.jobs.values()))['state'] == 'completed'
+
+
 @pytest.mark.parametrize('new_settings', [{'model': 'small'}, {'model': 'small', 'diarization_model': 'none'}])
 def test_import_outage_keeps_json_and_pins_model_across_restart(setup, monkeypatch, new_settings):
     cfg, calls, documents, backend = setup

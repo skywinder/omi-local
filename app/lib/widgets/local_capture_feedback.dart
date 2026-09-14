@@ -13,29 +13,32 @@ String localCaptureStatusText(BuildContext context, LocalCapturePhase phase) => 
       LocalCapturePhase.failed => context.l10n.somethingWentWrong,
     };
 
-/// Only displays events actually received from the device; never infers a press.
+/// Brief result supplied by the controller after a button action completes.
 class LocalOmiButtonFeedback extends StatelessWidget {
-  const LocalOmiButtonFeedback({super.key, required this.event});
+  const LocalOmiButtonFeedback({super.key, required this.action});
 
-  final OmiButtonEvent? event;
+  final LocalOmiButtonAction? action;
 
   @override
   Widget build(BuildContext context) {
-    final event = this.event;
-    if (event == null) return const SizedBox.shrink();
-    final text = switch (event) {
-      OmiButtonEvent.pressed => context.l10n.omiButtonPressed,
-      OmiButtonEvent.released => context.l10n.omiButtonReleased,
-      OmiButtonEvent.singleTap => context.l10n.omiButtonSingleTap,
-      OmiButtonEvent.doubleTap => context.l10n.doubleTap,
-      OmiButtonEvent.longPress => context.l10n.omiButtonLongPress,
+    final action = this.action;
+    if (action == null) return const SizedBox.shrink();
+    final text = switch (action) {
+      LocalOmiButtonAction.started => context.l10n.recordingStartedSuccessfully,
+      LocalOmiButtonAction.stopped => context.l10n.localCaptureIdle,
+      LocalOmiButtonAction.paused => context.l10n.recordingPaused,
+      LocalOmiButtonAction.resumed => context.l10n.recording,
+      LocalOmiButtonAction.starred => context.l10n.starred,
+      LocalOmiButtonAction.unstarred => '${context.l10n.starred} · ${context.l10n.off}',
+      LocalOmiButtonAction.processing => context.l10n.processing,
+      LocalOmiButtonAction.failed => context.l10n.somethingWentWrong,
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         key: const Key('local_omi_button_feedback'),
         children: [
-          Icon(event == OmiButtonEvent.pressed ? Icons.touch_app : Icons.check_circle_outline,
+          Icon(action == LocalOmiButtonAction.failed ? Icons.error_outline : Icons.check_circle_outline,
               size: 18, color: Colors.white70),
           const SizedBox(width: 8),
           Expanded(

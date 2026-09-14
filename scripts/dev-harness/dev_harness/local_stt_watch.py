@@ -174,8 +174,11 @@ class Worker:
                 continue  # Capture publishes final metadata after WAV, atomically.
             if metadata.get('status') != 'completed':
                 continue
-            self.jobs[key] = {'state': 'pending', 'attempts': 0, 'retry_at': 0,
-                              'profile': local_stt.EngineConfig.load(self.cfg).profile()}
+            try:
+                profile = local_stt.EngineConfig.load(self.cfg).profile()
+            except local_stt.TranscriptionDisabled:
+                break  # Existing queued snapshots still finish with their selected provider.
+            self.jobs[key] = {'state': 'pending', 'attempts': 0, 'retry_at': 0, 'profile': profile}
             self.save()
 
         for key, job in self.jobs.items():

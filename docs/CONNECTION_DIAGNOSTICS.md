@@ -1,84 +1,83 @@
-# Подключение и live-транскрипт
+# Connection and live transcription
 
-В локальном приложении карточка состояния есть на главном экране, в «Локальный
-Mac» и на экране текущей записи. По умолчанию это компактная плашка: нажмите,
-чтобы раскрыть подробности, и ещё раз — чтобы свернуть. Ошибки видны и в свёрнутом виде.
-Данные обновляются примерно раз в 5 секунд, пока экран открыт, и по кнопке
-обновления в подробностях. Во время запроса остаются последние подтверждённые
-значения, без мигания `Loading / Unknown`; ошибка или смена подключения очищает их.
-Сначала выполните «Проверить и подключить».
+The local app has a status card on the home screen, in **Local Mac**, and on the
+current recording screen. It starts collapsed: tap to expand details, then tap
+again to collapse. Errors remain visible when collapsed.
+Data refreshes about every 5 seconds while the screen is open, or when you tap
+the refresh button in the details. During a request, the last confirmed values
+remain visible without flashing `Loading / Unknown`; an error or connection
+change clears them. Run **Check and connect** first.
 
-## Кнопка Omi и состояние записи
+## The Omi button and recording state
 
-На главном экране и в текущей записи отдельно показаны последнее событие кнопки
-и состояние захвата. Короткое нажатие запускает запись, следующее останавливает;
-само отпускание не запускает и не останавливает её повторно.
-«Кнопка нажата» / «Кнопка отпущена» появляются только при получении этих событий
-от прошивки. Некоторые версии сообщают только распознанное короткое нажатие
-и отпускание — показать физический момент нажатия без события нельзя.
+The home and recording screens show capture state and brief feedback for completed
+button actions separately. A short press starts recording; the next one stops it.
+Releasing the button does not start or stop recording again.
+Raw button events remain diagnostic: some firmware versions report only a recognized
+short press and release, so the physical press time cannot be inferred without an event.
 
-Подключённый, но не записывающий Omi показывает **«Запись не идёт»**, а не Listening.
-При запуске видна подготовка, до первого аудиопакета — ожидание данных.
-В локальном live-режиме статус записи подтверждается аудиопакетами на iPhone:
-если их нет 3 секунды, возвращается ожидание данных. Это не останавливает сессию;
-при возобновлении потока статус восстанавливается. Пауза и ошибка показаны отдельно.
-Статус телефона не подтверждает сохранение на Mac или успешное распознавание.
+A connected Omi that is not recording shows **Not recording**, not Listening.
+Startup shows preparation, followed by waiting for data until the first audio packet.
+In local live mode, audio packets received on the iPhone confirm recording activity:
+after 3 seconds without packets, the status returns to waiting for data. This does
+not stop the session; the status recovers when audio resumes. Pause and errors have
+separate states. Phone status does not prove Mac storage or successful transcription.
 
-## Состояние Mac
+## Mac status
 
-- **Mac**: успешный запрос с ключом приложения. Ответ публичного `/v1/health`
-  сам по себе не подтверждает авторизацию или работу распознавания.
-- **Аудио**: количество звука, которое backend уже получил в текущей активной
-  сессии. Рост счётчика подтверждает приём; неизменное число не доказывает, что
-  новые пакеты продолжают приходить. После Stop активная сессия исчезает.
-- **Live-транскрипт**: выключен, недоступен, модель готова, занята, получен текст
-  или ошибка сессии. Готовность модели ещё не доказывает распознавание вашей речи.
-  Ошибка live-процесса не означает остановку сохранения WAV.
+- **Mac**: a successful request authenticated with the app key. A public
+  `/v1/health` response alone proves neither authentication nor transcription.
+- **Audio**: the amount of audio the backend has received in the current active
+  session. A rising counter confirms receipt; an unchanged value does not prove
+  that new packets are arriving. The active session disappears after Stop.
+- **Live transcript**: disabled, unavailable, model ready, busy, text received,
+  or session error. Model readiness does not prove recognition of your speech.
+  A live-process error does not mean WAV storage has stopped.
 
-Если live выключен, одного запуска backend/ngrok недостаточно: нужен отдельный
-локальный ASR-процесс и модели. См. [LIVE_PREVIEW.md](LIVE_PREVIEW.md).
-Автоматическая обработка законченного WAV — отдельный механизм:
-[LOCAL_STT.md](LOCAL_STT.md). Карточка live не подтверждает его готовность.
+If live transcription is disabled, starting backend/ngrok alone is not enough:
+a separate local ASR process and models are required. See [LIVE_PREVIEW.md](LIVE_PREVIEW.md).
+Automatic processing of completed WAVs is separate: [LOCAL_STT.md](LOCAL_STT.md).
+The live card does not verify its readiness.
 
-## Логи на Mac
+## Mac logs
 
-В Terminal перейдите в папку проекта. Для наблюдения за подключениями:
+In Terminal, enter the project directory. To watch connection events:
 
 ```bash
 tail -n 40 -F .local/dev-harness/ngrok/logs/backend.log
 ```
 
-`Ctrl+C` останавливает просмотр, но не backend. В журнале:
+`Ctrl+C` stops viewing the log, not the backend. Log entries include:
 
-- `Local Mac profile check: status=200` — проверка ключа успешна;
-  `401` — ключ отвергнут.
-- `Local Mac listen: opened` / `accepted` — запрос WebSocket / принятое соединение.
-- `first_binary_frame` — получен первый аудиопакет, но это ещё не результат ASR.
-- `peer_closed` — код закрытия и суммарные счётчики пакетов/байтов;
-  `server_closed` — соединение закрыл backend.
-- `Local preview: first_segment_sent` — отправлен первый фрагмент live-текста.
-- `Local preview ended` — количество обновлений, подтверждение EOF и ошибка сессии.
+- `Local Mac profile check: status=200`: the key check succeeded;
+  `401`: the key was rejected.
+- `Local Mac listen: opened` / `accepted`: a WebSocket request / accepted connection.
+- `first_binary_frame`: the first audio packet arrived; this is not an ASR result.
+- `peer_closed`: the close code and total packet/byte counters;
+  `server_closed`: the backend closed the connection.
+- `Local preview: first_segment_sent`: the first live-text segment was sent.
+- `Local preview ended`: update count, EOF acknowledgement, and any session error.
 
-Туннель и аудиотека имеют отдельные журналы:
+The tunnel and library have separate logs:
 
 ```bash
 tail -n 40 -F .local/dev-harness/ngrok/logs/ngrok.log
 tail -n 40 -F .local/dev-harness/ngrok/logs/library.log
 ```
 
-Логи ASR появляются в терминале, где запущен `serve_parakeet`; он выводит
-технические JSON-события `model_ready`, `session_started`, `session_finished`.
-Проверка готового worker: `http://127.0.0.1:18090/health`.
-Если worker не запущен, отсутствие ответа ожидаемо.
+ASR logs appear in the terminal running `serve_parakeet`. It emits technical JSON
+events such as `model_ready`, `session_started`, and `session_finished`.
+Check a prepared worker at `http://127.0.0.1:18090/health`.
+If the worker is not running, no response is expected.
 
-Состояние сервисов и финальной очереди:
+Check service and final-transcription queue status:
 
 ```bash
 bash scripts/local-mac.sh status
 bash scripts/local-mac.sh transcription-status
 ```
 
-Не публикуйте `.env`, полные журналы или снимки окна с открытым ключом.
-Счётчики в старом журнале относятся к предыдущим запускам. Для новой проверки
-начните просмотр, запишите 30–60 секунд с CV1, откройте карточку записи на iPhone
-и проверьте новый текст. После Stop отдельно проверьте WAV в аудиотеке.
+Do not publish `.env`, complete logs, or screenshots showing a revealed key.
+Counters in old logs refer to earlier runs. For a fresh check, start viewing the
+log, record 30–60 seconds with the CV1, open the recording card on the iPhone,
+and verify new text. After Stop, check the WAV separately in the library.

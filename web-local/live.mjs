@@ -1,6 +1,6 @@
 import {formatTime} from './player.mjs';
 
-const states = {ready: 'Готов', busy: 'Ожидаем текст', streaming: 'Live-текст получен', disabled: 'Выключен',
+const states = {ready: 'Готов', configured: 'Провайдер выбран', busy: 'Ожидаем текст', streaming: 'Live-текст получен', disabled: 'Выключен',
   failed: 'Ошибка', unavailable: 'Недоступен', stopped: 'Остановлен', processing: 'Распознаёт запись'};
 
 export function audioActivity(current, previous, now, lastProgress) {

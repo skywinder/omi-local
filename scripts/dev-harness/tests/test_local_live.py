@@ -151,3 +151,28 @@ def test_explicit_provider_off_disables_live_without_falling_back_to_parakeet(cf
     local_live.start(cfg)
     local_stt_services.start_configured(cfg)
     local_setup.require_transcription_ready(cfg)
+
+
+@pytest.mark.parametrize('enabled', [False, True])
+def test_registry_owns_live_without_legacy_file(cfg, monkeypatch, enabled):
+    from dev_harness.local_providers import Registry
+    from dev_harness.local_provider_relay import url
+
+    registry = Registry(cfg)
+    saved = registry.save({'revision': 0, 'profile': {
+        'name': 'Synthetic live', 'stage': 'live', 'kind': 'external',
+        'settings': {'url': 'ws://127.0.0.1:19090/asr'},
+    }})
+    if enabled:
+        registry.activate({'revision': 1, 'stage': 'live', 'id': saved['profiles'][-1]['id']},
+                          prepare=lambda _snapshot, publish: publish())
+    assert not (cfg.layout.state_root / 'live-stt.json').exists()
+    assert not local_live.managed(cfg)
+    child = config.child_env_for(cfg)
+    assert child['OMI_LOCAL_LIVE_PREVIEW_URL'] == url(cfg)
+    assert child['OMI_LOCAL_LIVE_PROVIDER_RELAY'] == '1'
+    monkeypatch.setattr(cli, '_require_port_available_or_owned', lambda *_: pytest.fail('unused Parakeet port'))
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **k: pytest.fail('relay owns configured live'))
+    monkeypatch.setattr(local_live, 'require_ready', lambda _: None)
+    local_live.preflight_start(cfg)
+    local_live.start(cfg)

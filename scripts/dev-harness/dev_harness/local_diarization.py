@@ -40,6 +40,13 @@ def reconcile(segments, turns):
         if not words:
             output.append({**segment, 'speaker': speaker(segment)})
             continue
+        if any(word.get('start') is None or word.get('end') is None for word in words):
+            # Alignment can leave names or punctuation untimed. Keep the whole
+            # sentence rather than splitting it and losing unaligned text.
+            label = speaker(segment)
+            output.append({**segment, 'speaker': label,
+                           'words': [{**word, 'speaker': label} for word in words]})
+            continue
         groups = []
         for word in words:
             word = {**word, 'speaker': speaker(word)}

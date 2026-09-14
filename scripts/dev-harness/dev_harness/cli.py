@@ -177,7 +177,7 @@ def _service_health(cfg: config.HarnessConfig, service: str) -> tuple[bool, str]
         from .local_live import health
         ready = health(cfg).get('ready', False)
         return ready, "live model ready" if ready else "live model unavailable"
-    if service in {"live-stt", "argmax-stt", "live-diarization"}:
+    if service in {"live-stt", "argmax-stt", "live-diarization", "provider-relay"}:
         from .local_stt_services import health
         return health(cfg, service)
     if service == "library":
@@ -789,12 +789,16 @@ def _typesense_command(cfg: config.HarnessConfig) -> list[str]:
 # finished binding its port.
 _INFRA_SETTLE_DELAY = 2.0
 _OFFLINE_SERVICES = frozenset({"firestore", "auth", "redis", "backend"})
-_LOCAL_MAC_SERVICES = frozenset({"ngrok", "library", "stt-worker", "live-preview", "live-stt", "argmax-stt"})
+_LOCAL_MAC_SERVICES = frozenset({
+    "library", "ngrok", "argmax-stt", "live-stt", "live-diarization", "provider-relay", "stt-worker", "live-preview",
+})
 
 
 def _stop_unused_offline_services(cfg: config.HarnessConfig) -> None:
     if cfg.provider_mode != "offline":
         return
+    # local_mac.up prepares its providers before starting the core harness.
+    # They belong to this stack and must survive both startup and repeated up.
     allowed = _OFFLINE_SERVICES | (_LOCAL_MAC_SERVICES if cfg.local_transport == "ngrok" else frozenset())
     for record in _process_records(cfg):
         if str(record.get("service")) not in allowed:

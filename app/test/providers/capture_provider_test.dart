@@ -164,7 +164,7 @@ class _PhoneStartProbe extends CaptureProvider {
 }
 
 class _CountingSocketCaptureProvider extends CaptureProvider {
-  _CountingSocketCaptureProvider({super.audioCodecLoader});
+  _CountingSocketCaptureProvider({super.audioCodecLoader, super.microphonePermissionRequester, super.phoneMicRecorder});
 
   int openCalls = 0;
 
@@ -184,7 +184,12 @@ class _CountingSocketCaptureProvider extends CaptureProvider {
 }
 
 class _BufferedStartProvider extends CaptureProvider {
-  _BufferedStartProvider({required super.audioListenerLoader, super.audioCodecLoader, super.buttonListenerLoader})
+  _BufferedStartProvider(
+      {required super.audioListenerLoader,
+      super.audioCodecLoader,
+      super.buttonListenerLoader,
+      super.microphonePermissionRequester,
+      super.phoneMicRecorder})
       : super(inProgressConversationLoader: () async {});
 
   final gates = <Completer<TranscriptSegmentSocketService?>>[];
@@ -213,10 +218,10 @@ class _BufferedStartProvider extends CaptureProvider {
     return gate.future;
   }
 
-  _AudioPacketSocket connect(int index) {
+  _AudioPacketSocket connect(int index, {BleAudioCodec codec = BleAudioCodec.opusFS320}) {
     final socket = _AudioPacketSocket();
     sockets.add(socket);
-    gates[index].complete(TranscriptSegmentSocketService.withSocket(16000, BleAudioCodec.opusFS320, 'en', socket));
+    gates[index].complete(TranscriptSegmentSocketService.withSocket(16000, codec, 'en', socket));
     return socket;
   }
 }
@@ -299,6 +304,32 @@ class _HangingConversationLocationCapture extends ConversationLocationCapture {
     if (!_done.isCompleted) {
       _done.complete(Geolocation(latitude: 1, longitude: 2, time: DateTime.utc(2026)));
     }
+  }
+}
+
+class _FakeLiveMicRecorder extends _FakeBatchMicRecorder {
+  int starts = 0;
+  int stops = 0;
+  Function(Uint8List)? receive;
+  Function()? stopped;
+  @override
+  Future<void> start(
+      {required Function(Uint8List) onByteReceived,
+      Function()? onRecording,
+      Function()? onStop,
+      Function()? onInitializing,
+      Function()? onStalled,
+      Function(bool)? onInterruption}) async {
+    starts++;
+    receive = onByteReceived;
+    stopped = onStop;
+    onRecording?.call();
+  }
+
+  @override
+  void stop() {
+    stops++;
+    stopped?.call();
   }
 }
 
@@ -432,6 +463,30 @@ void main() {
   // Existing tests (preserved verbatim from the original file)          //
   // ------------------------------------------------------------------ //
 
+  test('completed button feedback expires even when no further BLE event arrives', () {
+    fakeAsync((async) {
+      Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      final buttons = StreamController<List<int>>.broadcast(sync: true);
+      final provider = _ButtonCaptureProvider(
+        buttonListenerLoader: (_, callback) async => buttons.stream.listen(callback),
+      );
+      provider.streamDeviceRecording(device: _device(id: 'synthetic-button', type: DeviceType.omi));
+      async.flushMicrotasks();
+      buttons.add([1, 0, 0, 0]);
+      async.flushMicrotasks();
+      expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+      async.elapse(const Duration(seconds: 3));
+      buttons.add([5, 0, 0, 0]);
+      expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+      async.elapse(const Duration(seconds: 1));
+      expect(provider.localOmiButtonFeedback, isNull);
+      provider.dispose();
+      buttons.close();
+      async.flushMicrotasks();
+      Env.setRuntimeModeForTesting(null);
+    });
+  });
+
   test('local button edges are visible without starting recording or a voice command', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
     final buttons = StreamController<List<int>>.broadcast(sync: true);
@@ -446,6 +501,7 @@ void main() {
     for (final event in [OmiButtonEvent.pressed, OmiButtonEvent.longPress, OmiButtonEvent.released]) {
       buttons.add([event.code, 0, 0, 0]);
       expect(provider.lastOmiButtonEvent, event);
+      expect(provider.localOmiButtonFeedback, isNull);
       expect(provider.localCapturePhase, LocalCapturePhase.idle);
     }
     buttons.add([99, 0, 0, 0]);
@@ -454,13 +510,18 @@ void main() {
     provider.startGate = Completer<void>();
     buttons.add([1, 0, 0, 0]);
     expect(provider.localCapturePhase, LocalCapturePhase.starting);
+    expect(provider.localOmiButtonFeedback, isNull);
     expect(provider.lastOmiButtonEvent, OmiButtonEvent.singleTap);
     buttons.add([5, 0, 0, 0]);
     expect(provider.calls, ['start']); // Release is not a second toggle.
     provider.startGate!.complete();
     await pumpEventQueue();
     expect(provider.localCapturePhase, LocalCapturePhase.waitingAudio);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
+    buttons.add([5, 0, 0, 0]);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.started);
     provider.updateRecordingDevice(null);
+    expect(provider.localOmiButtonFeedback, isNull);
     expect(provider.lastOmiButtonEvent, isNull);
   });
 
@@ -552,6 +613,7 @@ void main() {
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.recordingState, RecordingState.stop);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.stopped);
     expect(provider.recordingDevice, same(device));
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
@@ -581,6 +643,7 @@ void main() {
     expect(provider.recordingState, RecordingState.stop);
     provider.failStart = false;
     expect(provider.localCapturePhase, LocalCapturePhase.failed);
+    expect(provider.localOmiButtonFeedback, LocalOmiButtonAction.failed);
     buttons.add([1, 0, 0, 0]);
     await pumpEventQueue();
     expect(provider.calls, ['start', 'stop', 'start']);
@@ -987,15 +1050,141 @@ void main() {
     });
   });
 
-  test('local phone start refuses a connected device and preserves its draft', () async {
+  test('local Omi to phone to Omi handoff owns one input and survives Bluetooth reconnect', () async {
     Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
     addTearDown(() => Env.setRuntimeModeForTesting(null));
-    final provider = CaptureProvider();
+    final mic = _FakeLiveMicRecorder();
+    final audio = StreamController<List<int>>.broadcast();
+    final provider = _BufferedStartProvider(
+      audioListenerLoader: (_, receive) async => audio.stream.listen(receive),
+      audioCodecLoader: (_) async => BleAudioCodec.opusFS320,
+      buttonListenerLoader: (_, __) async => null,
+      microphonePermissionRequester: () async => true,
+      phoneMicRecorder: mic,
+    );
+    addTearDown(() async {
+      provider.dispose();
+      await audio.close();
+    });
+    final device = _device(id: 'synthetic-omi', type: DeviceType.omi);
+    final omiStart = provider.streamDeviceRecording(device: device, userInitiated: true);
+    while (provider.gates.isEmpty) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    final omiSocket = provider.connect(0);
+    await omiStart;
+    await provider.stopStreamDeviceRecording();
+    expect(omiSocket.stopped, isTrue);
+    final phoneStart = provider.streamRecording();
+    while (provider.gates.length < 2) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    final phoneSocket = provider.connect(1, codec: BleAudioCodec.pcm16);
+    await phoneStart;
+    expect(provider.recordingState, RecordingState.record);
+    expect(provider.havingRecordingDevice, isTrue);
+    expect(provider.activeRecordingSource, ConversationSource.phone);
+    mic.receive!(Uint8List(320));
+    expect(phoneSocket.packets, hasLength(1));
+    provider.updateRecordingDevice(null);
+    await provider.streamDeviceRecording(device: device);
+    expect(provider.recordingState, RecordingState.record);
+    expect(provider.gates, hasLength(2));
+    final nextOmi = provider.streamDeviceRecording(userInitiated: true);
+    while (provider.gates.length < 3) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    provider.connect(2);
+    await nextOmi;
+    expect(phoneSocket.stopped, isTrue);
+    expect(mic.stops, greaterThan(0));
+    expect(provider.activeRecordingSource, ConversationSource.omi);
+    expect(provider.isPhoneMicSelected, isFalse);
+    // A queued callback from the stopped microphone cannot write into Omi.
+    mic.receive!(Uint8List(320));
+    expect(provider.sockets.last.packets, isEmpty);
+    await provider.stopStreamDeviceRecording();
+  });
+
+  test('local phone start keeps Bluetooth connected and stops device input before permission', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    late CaptureProvider provider;
+    provider = CaptureProvider(microphonePermissionRequester: () async {
+      expect(provider.havingRecordingDevice, isTrue);
+      expect(provider.isPhoneMicSelected, isTrue);
+      expect(provider.isPaused, isFalse);
+      expect(SharedPreferencesUtil().getBool('nativeBleStreamingEnabled'), isFalse);
+      return false;
+    });
     addTearDown(provider.dispose);
     provider.updateRecordingDevice(_device(id: 'synthetic-device', type: DeviceType.omi));
-    provider.segments.add(_segment('old', 'Synthetic device draft'));
+    provider.updateRecordingState(RecordingState.deviceRecord);
+    await provider.pauseDeviceRecording();
+    await provider.streamRecording();
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.havingRecordingDevice, isTrue);
+    expect(provider.isPhoneMicSelected, isTrue);
+    // A reconnect/home entry can restore button subscription, never steal input.
+    await provider.streamDeviceRecording(device: provider.recordingDevice);
+    expect(provider.isPhoneMicSelected, isTrue);
+    expect(provider.recordingState, RecordingState.stop);
+  });
+
+  test('local phone socket failure does not start the mic and permits a fresh retry', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    final mic = _FakeLiveMicRecorder();
+    final provider = _CountingSocketCaptureProvider(
+      microphonePermissionRequester: () async => true,
+      phoneMicRecorder: mic,
+    );
+    addTearDown(provider.dispose);
     await expectLater(provider.streamRecording(), throwsStateError);
-    expect(provider.segments.single.id, 'old');
+    await expectLater(provider.streamRecording(), throwsStateError);
+    expect(provider.openCalls, 2);
+    expect(mic.starts, 0);
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.keepAliveScheduledForTesting, isFalse);
+  });
+
+  test('immediate phone Stop cancels Start before permission or a socket opens', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    var requests = 0;
+    final provider = CaptureProvider(microphonePermissionRequester: () async {
+      requests++;
+      return false;
+    });
+    addTearDown(provider.dispose);
+    final start = provider.streamRecording();
+    final stop = provider.stopStreamRecording();
+    await Future.wait([start, stop]);
+    expect(requests, 0);
+    expect(provider.recordingState, RecordingState.stop);
+  });
+
+  test('phone Stop cancels a pending permission request and serializes the next Start', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    final permission = Completer<bool>();
+    var requests = 0;
+    final provider = CaptureProvider(microphonePermissionRequester: () {
+      requests++;
+      return requests == 1 ? permission.future : Future.value(false);
+    });
+    addTearDown(provider.dispose);
+    final start = provider.streamRecording();
+    while (requests == 0) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    final stop = provider.stopStreamRecording();
+    final restart = provider.streamRecording();
+    permission.complete(true);
+    await Future.wait([start, stop, restart]);
+    expect(requests, 2);
+    expect(provider.recordingState, RecordingState.stop);
+    expect(provider.isPhoneMicSelected, isTrue);
   });
 
   test('local phone start clears the previous preview before requesting microphone permission', () async {
@@ -1043,7 +1232,7 @@ void main() {
     final provider = CaptureProvider(
       conversationLocationCapture: locationCapture,
       microphonePermissionRequester: () async => true,
-      phoneMicBatchRecorder: micRecorder,
+      phoneMicRecorder: micRecorder,
     );
 
     await provider.startPhoneMicBatchForTesting().timeout(

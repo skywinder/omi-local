@@ -419,6 +419,9 @@ def _harness_service_extra(cfg: HarnessConfig) -> dict[str, str]:
         extra["ADMIN_KEY_AUTH_ENABLED"] = "false"
         # Preserve explicit provider choices, including disabled live STT.
         extra["OMI_LOCAL_LIVE_PREVIEW_URL"] = local_live.selected_endpoint(cfg)
+        from .local_stt_services import registry_exists
+        if registry_exists(cfg):
+            extra["OMI_LOCAL_LIVE_PROVIDER_RELAY"] = "1"
     if cfg.provider_mode != "offline":
         extra.update(
             {

@@ -24,7 +24,6 @@ import 'package:omi/utils/logger.dart';
 import 'package:omi/utils/other/temp.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/providers/phone_call_provider.dart';
-import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/widgets/local_capture_feedback.dart';
 import 'package:omi/services/capture/local_capture_phase.dart';
 
@@ -128,14 +127,9 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (Env.isOfflineRuntime)
-                    RecordingSourceLabel(
-                      source: provider.activeRecordingSource,
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                    ),
-                  if (Env.isOfflineRuntime)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: LocalOmiButtonFeedback(event: provider.lastOmiButtonEvent),
+                      child: LocalOmiButtonFeedback(action: provider.localOmiButtonFeedback),
                     ),
                   _buildUnifiedRecordingUI(provider, header),
                 ],
@@ -155,10 +149,21 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
     }
   }
 
-  _toggleRecording(BuildContext context, CaptureProvider provider) async {
+  Future<void> _toggleRecording(BuildContext context, CaptureProvider provider) async {
+    try {
+      await _performToggleRecording(context, provider);
+    } catch (_) {
+      if (mounted && context.mounted) {
+        setState(() => _isPhoneMicPaused = true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+    }
+  }
+
+  Future<void> _performToggleRecording(BuildContext context, CaptureProvider provider) async {
     var recordingState = provider.recordingState;
 
-    if (provider.havingRecordingDevice) {
+    if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
       // Device recording logic - add pause/resume for device recording
       if (recordingState == RecordingState.deviceRecord && !provider.isPaused) {
         // Pause device recording
