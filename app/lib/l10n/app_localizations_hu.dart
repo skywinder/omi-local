@@ -9,6 +9,21 @@ class AppLocalizationsHu extends AppLocalizations {
   AppLocalizationsHu([String locale = 'hu']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Nincs felvétel';
+
+  @override
+  String get omiButtonPressed => 'Gomb lenyomva';
+
+  @override
+  String get omiButtonReleased => 'Gomb felengedve';
+
+  @override
+  String get omiButtonSingleTap => 'Rövid gombnyomás';
+
+  @override
+  String get omiButtonLongPress => 'Hosszú gombnyomás';
+
+  @override
   String get sessionExpiredSignInAgain => 'A munkamenet lejárt — jelentkezz be újra.';
 
   @override

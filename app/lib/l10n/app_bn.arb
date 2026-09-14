@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "রেকর্ড হচ্ছে না",
+    "omiButtonPressed": "বোতাম চাপা হয়েছে",
+    "omiButtonReleased": "বোতাম ছেড়ে দেওয়া হয়েছে",
+    "omiButtonSingleTap": "সংক্ষিপ্ত চাপ",
+    "omiButtonLongPress": "দীর্ঘ চাপ",
     "@@locale": "bn",
     "sessionExpiredSignInAgain": "সেশনের মেয়াদ শেষ হয়েছে — আবার সাইন ইন করুন।",
     "@@last_modified": "2024-12-26",

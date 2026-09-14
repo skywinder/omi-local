@@ -16,6 +16,7 @@ from . import config, local_stt, safety
 
 POLL_SECONDS = 2
 MAX_ATTEMPTS = 3
+START_TIMEOUT_SECONDS = 120  # Includes the configured engine's bounded 30–90s probe.
 
 
 def settings(cfg) -> dict:
@@ -72,20 +73,24 @@ def start_if_enabled(cfg, *, checked: bool = False) -> None:
         return
     from . import cli
 
-    if not checked:
-        preflight(cfg)
-    env = config.child_env_for(cfg)
-    env.update({'OMI_LOCAL_STATE_ROOT': str(cfg.layout.state_root.parent),
-                'OMI_LOCAL_INSTANCE': cfg.instance, 'OMI_HARNESS_PRIVATE_UMASK': '077',
-                'OMI_DEV_BIND_HOST': cfg.dev_bind_host,
-                'OMI_HARNESS_PORT_OFFSET': str(cfg.backend_port - 8000)})
-    cli._start_process(cfg, 'stt-worker', [sys.executable, '-m', 'dev_harness.local_stt_watch'],
-                       cwd=cfg.repo_root, log_name='stt-worker.log', port=0, env=env)
-    for _ in range(25):
-        if cli._service_record(cfg, 'stt-worker') and worker_ready(cfg):
+    if not cli._service_record(cfg, 'stt-worker'):
+        if not checked:
+            preflight(cfg)
+        env = config.child_env_for(cfg)
+        env.update({'OMI_LOCAL_STATE_ROOT': str(cfg.layout.state_root.parent),
+                    'OMI_LOCAL_INSTANCE': cfg.instance, 'OMI_HARNESS_PRIVATE_UMASK': '077',
+                    'OMI_DEV_BIND_HOST': cfg.dev_bind_host,
+                    'OMI_HARNESS_PORT_OFFSET': str(cfg.backend_port - 8000)})
+        cli._start_process(cfg, 'stt-worker', [sys.executable, '-m', 'dev_harness.local_stt_watch'],
+                           cwd=cfg.repo_root, log_name='stt-worker.log', port=0, env=env)
+    deadline = time.monotonic() + START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if not cli._service_record(cfg, 'stt-worker'):
+            raise local_stt.TranscriptionError('Automatic transcription worker stopped during model validation')
+        if worker_ready(cfg):
             return
         time.sleep(0.2)
-    raise local_stt.TranscriptionError('Automatic transcription worker did not become ready')
+    raise local_stt.TranscriptionError('Automatic transcription readiness is indeterminate; inspect the owned worker')
 
 
 def enable(cfg) -> int:
@@ -121,7 +126,7 @@ def status(cfg) -> int:
     running = bool(cli._service_record(cfg, 'stt-worker')) and worker_ready(cfg)
     counts = Counter(job['state'] for job in read_queue(cfg).values())
     print(json.dumps({'automatic_transcription': settings(cfg)['enabled'], 'worker_running': running,
-                      **{state: counts[state] for state in ('pending', 'processing', 'completed', 'failed')}}))
+                      **{state: counts[state] for state in ('pending', 'processing', 'completed', 'no_speech', 'failed')}}))
     return 0
 
 
@@ -169,8 +174,11 @@ class Worker:
                 continue  # Capture publishes final metadata after WAV, atomically.
             if metadata.get('status') != 'completed':
                 continue
-            self.jobs[key] = {'state': 'pending', 'attempts': 0, 'retry_at': 0,
-                              'profile': local_stt.EngineConfig.load(self.cfg).profile()}
+            try:
+                profile = local_stt.EngineConfig.load(self.cfg).profile()
+            except local_stt.TranscriptionDisabled:
+                break  # Existing queued snapshots still finish with their selected provider.
+            self.jobs[key] = {'state': 'pending', 'attempts': 0, 'retry_at': 0, 'profile': profile}
             self.save()
 
         for key, job in self.jobs.items():
@@ -191,6 +199,9 @@ class Worker:
                 result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
                 if result != 0:
                     raise local_stt.TranscriptionError('Local transcription failed')
+            except local_stt.NoSpeechDetected:
+                job.update(state='no_speech', retry_at=0)
+                self.save()
             except (local_stt.TranscriptionBusy, KeyboardInterrupt) as error:
                 job.update(state='pending', attempts=job['attempts'] - 1, retry_at=clock() + POLL_SECONDS)
                 self.save()
@@ -222,6 +233,8 @@ def main() -> int:
         safety.read_and_validate_sentinel(cfg.layout.state_root, repo_root=cfg.repo_root, instance=cfg.instance)
         if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok' or not settings(cfg)['enabled']:
             raise local_stt.TranscriptionError('Automatic transcription is not enabled for this local stack')
+        # The held readiness lock must follow validation in the actual child.
+        local_stt.check_model(local_stt.EngineConfig.load(cfg))
         root = queue_path(cfg).parent
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
         with (root / '.watch.lock').open('a') as lock:

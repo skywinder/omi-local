@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "لا يجري التسجيل",
+    "omiButtonPressed": "الزر مضغوط",
+    "omiButtonReleased": "تم تحرير الزر",
+    "omiButtonSingleTap": "ضغطة قصيرة",
+    "omiButtonLongPress": "ضغطة مطولة",
     "@@locale": "ar",
     "sessionExpiredSignInAgain": "انتهت صلاحية الجلسة — سجّل الدخول مرة أخرى.",
     "appTitle": "Omi",

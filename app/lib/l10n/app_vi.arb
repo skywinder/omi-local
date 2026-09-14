@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Không ghi âm",
+    "omiButtonPressed": "Đã nhấn nút",
+    "omiButtonReleased": "Đã thả nút",
+    "omiButtonSingleTap": "Nhấn ngắn",
+    "omiButtonLongPress": "Nhấn giữ",
     "@@locale": "vi",
     "sessionExpiredSignInAgain": "Phiên đã hết hạn — hãy đăng nhập lại.",
     "appTitle": "Omi",

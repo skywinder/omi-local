@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Hindi nagre-record",
+    "omiButtonPressed": "Pinindot ang button",
+    "omiButtonReleased": "Binitiwan ang button",
+    "omiButtonSingleTap": "Maikling pindot",
+    "omiButtonLongPress": "Matagal na pindot",
     "@@locale": "tl",
     "sessionExpiredSignInAgain": "Nag-expire ang session — mag-sign in ulit.",
     "@@last_modified": "2024-12-26",

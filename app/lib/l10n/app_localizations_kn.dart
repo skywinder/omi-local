@@ -9,6 +9,21 @@ class AppLocalizationsKn extends AppLocalizations {
   AppLocalizationsKn([String locale = 'kn']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'ರೆಕಾರ್ಡಿಂಗ್ ನಡೆಯುತ್ತಿಲ್ಲ';
+
+  @override
+  String get omiButtonPressed => 'ಬಟನ್ ಒತ್ತಲಾಗಿದೆ';
+
+  @override
+  String get omiButtonReleased => 'ಬಟನ್ ಬಿಡಲಾಗಿದೆ';
+
+  @override
+  String get omiButtonSingleTap => 'ಸಣ್ಣ ಒತ್ತುವಿಕೆ';
+
+  @override
+  String get omiButtonLongPress => 'ದೀರ್ಘ ಒತ್ತುವಿಕೆ';
+
+  @override
   String get sessionExpiredSignInAgain => 'ಸೆಷನ್ ಅವಧಿ ಮುಗಿದಿದೆ — ಮತ್ತೆ ಸೈನ್ ಇನ್ ಮಾಡಿ.';
 
   @override

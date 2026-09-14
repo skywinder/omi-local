@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Optager ikke",
+    "omiButtonPressed": "Knap trykket ned",
+    "omiButtonReleased": "Knap sluppet",
+    "omiButtonSingleTap": "Kort tryk",
+    "omiButtonLongPress": "Langt tryk",
     "@@locale": "da",
     "sessionExpiredSignInAgain": "Sessionen er udløbet — log ind igen.",
     "appTitle": "Omi",

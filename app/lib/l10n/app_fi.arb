@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Ei tallenneta",
+    "omiButtonPressed": "Painike painettu",
+    "omiButtonReleased": "Painike vapautettu",
+    "omiButtonSingleTap": "Lyhyt painallus",
+    "omiButtonLongPress": "Pitkä painallus",
     "@@locale": "fi",
     "sessionExpiredSignInAgain": "Istunto on vanhentunut — kirjaudu uudelleen.",
     "appTitle": "Omi",

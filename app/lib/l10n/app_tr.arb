@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Kayıt yapılmıyor",
+    "omiButtonPressed": "Düğmeye basıldı",
+    "omiButtonReleased": "Düğme bırakıldı",
+    "omiButtonSingleTap": "Kısa basış",
+    "omiButtonLongPress": "Uzun basış",
     "@@locale": "tr",
     "sessionExpiredSignInAgain": "Oturumun süresi doldu — tekrar giriş yapın.",
     "appTitle": "Omi",

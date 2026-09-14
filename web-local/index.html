@@ -4,9 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Ваши аудиозаписи и транскрипты на этом Mac.">
+  <meta name="omiloc-assets" content="__OMILOC_ASSETS__">
   <title>omiloc · Записи</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/reload.mjs"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -18,12 +20,27 @@
       <div class="filters" aria-label="Фильтр записей"><button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button><button id="filter-ready" class="filter" aria-pressed="false">С транскриптом</button></div>
       <p id="connection" class="connection" role="status" hidden></p>
       <div id="recordings" class="recordings"><p class="empty-list">Загружаем записи…</p></div>
-      <p class="library-note">Звук и текст хранятся локально.</p>
+      <footer class="library-footer">
+        <p class="library-note">Звук и текст хранятся локально.</p>
+        <details class="library-folders">
+          <summary>Папки</summary>
+          <div class="folder-actions">
+            <button type="button" data-folder="audio">Открыть папку с аудио</button>
+            <button type="button" data-folder="transcripts">Открыть папку с транскриптами</button>
+          </div>
+          <p id="folder-message" class="folder-message" role="status" hidden></p>
+        </details>
+      </footer>
     </aside>
     <section class="detail" aria-label="Просмотр записи">
+      <nav class="detail-tabs" aria-label="Режим просмотра"><button id="view-live" class="selected" aria-pressed="true">Сейчас</button><button id="view-recording" aria-pressed="false">Запись</button><button id="view-settings" aria-pressed="false">Настройки</button></nav>
+      <section id="live-monitor" class="live-monitor" aria-label="Текущее распознавание"></section>
+      <section id="provider-settings" class="provider-settings" aria-label="Настройки провайдеров" hidden></section>
       <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>
         <header class="detail-heading"><div class="detail-actions"><p id="recording-date" class="eyebrow"></p><button id="delete" class="delete-button">Удалить запись</button></div><h2 id="recording-title"></h2><div id="recording-meta" class="recording-meta"></div></header>
+        <section id="recording-processing" class="recording-processing" aria-label="Этапы обработки" hidden></section>
+        <section id="recording-summary" class="recording-summary" aria-label="Краткое содержание" hidden></section>
         <div class="transcript-heading"><h3>Транскрипт</h3><span>Нажмите на фразу, чтобы послушать</span></div>
         <div id="transcript" class="transcript"></div>
       </div>

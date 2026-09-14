@@ -9,6 +9,21 @@ class AppLocalizationsBg extends AppLocalizations {
   AppLocalizationsBg([String locale = 'bg']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Не се записва';
+
+  @override
+  String get omiButtonPressed => 'Бутонът е натиснат';
+
+  @override
+  String get omiButtonReleased => 'Бутонът е отпуснат';
+
+  @override
+  String get omiButtonSingleTap => 'Кратко натискане';
+
+  @override
+  String get omiButtonLongPress => 'Продължително натискане';
+
+  @override
   String get sessionExpiredSignInAgain => 'Сесията изтече — влезте отново.';
 
   @override

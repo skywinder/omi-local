@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "No se está grabando",
+    "omiButtonPressed": "Botón pulsado",
+    "omiButtonReleased": "Botón soltado",
+    "omiButtonSingleTap": "Pulsación corta",
+    "omiButtonLongPress": "Pulsación larga",
     "@@locale": "es",
     "sessionExpiredSignInAgain": "La sesión ha caducado — vuelve a iniciar sesión.",
     "appTitle": "Omi",

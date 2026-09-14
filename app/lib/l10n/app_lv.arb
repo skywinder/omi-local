@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Ierakstīšana nenotiek",
+    "omiButtonPressed": "Poga nospiesta",
+    "omiButtonReleased": "Poga atlaista",
+    "omiButtonSingleTap": "Īss spiediens",
+    "omiButtonLongPress": "Ilgs spiediens",
     "@@locale": "lv",
     "sessionExpiredSignInAgain": "Sesija ir beigusies — pierakstieties vēlreiz.",
     "appTitle": "Omi",

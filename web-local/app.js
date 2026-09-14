@@ -1,18 +1,39 @@
 import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
+import {mountLiveMonitor} from '/live.mjs';
+import {mountSettings} from '/settings.mjs';
+import {renderProcessing} from '/recording-processing.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
-const state = {records: [], selected: null, detail: null, filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
-const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Распознаётся', failed: 'Ошибка распознавания', unavailable: 'Без транскрипта'};
+const providerSettings = mountSettings($('provider-settings'));
+const state = {records: [], selected: null, detail: null, view: 'live', filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
+const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Обрабатывается', no_speech: 'Речь не обнаружена', failed: 'Ошибка обработки', unavailable: 'Без транскрипта'};
 const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
 async function get(path) { const response = await fetch(path, {cache: 'no-store', signal: AbortSignal.timeout(10000)}); if (!response.ok) throw new Error('Unavailable'); return response.json(); }
 function message(text = '') { $('player-message').textContent = text; $('player-message').hidden = !text; }
 
+function showView(view = state.view) {
+  state.view = view;
+  const live = view === 'live';
+  const recording = view === 'recording';
+  $('live-monitor').hidden = !live;
+  $('provider-settings').hidden = view !== 'settings';
+  $('welcome').hidden = !recording || !!state.detail;
+  $('recording-detail').hidden = !recording || !state.detail;
+  $('player').hidden = !recording || !state.detail;
+  for (const mode of ['live', 'recording', 'settings']) {
+    $(`view-${mode}`).classList.toggle('selected', mode === view);
+    $(`view-${mode}`).setAttribute('aria-pressed', String(mode === view));
+  }
+  if (!recording) audio.pause();
+  if (view === 'settings') providerSettings.show();
+}
+
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
-  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${r.source}`.toLocaleLowerCase('ru-RU').includes(query));
+  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.summary?.title || ''} ${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${r.source}`.toLocaleLowerCase('ru-RU').includes(query));
   $('count').textContent = state.records.length;
   const fragment = document.createDocumentFragment();
   let previous = '';
@@ -21,7 +42,7 @@ function renderList() {
     if (date !== previous) { fragment.append(node('p', 'group-label', date)); previous = date; }
     const button = node('button', `recording${state.selected === r.id ? ' active' : ''}`);
     button.setAttribute('aria-pressed', String(state.selected === r.id));
-    const top = node('span', 'recording-top', `Запись в ${hour(r.started_at)}`);
+    const top = node('span', 'recording-top', r.summary?.title || `Запись в ${hour(r.started_at)}`);
     top.append(node('span', 'recording-length', formatTime(r.duration)));
     button.append(top, node('p', 'recording-preview', r.preview || statuses[r.status]));
     const bottom = node('span', 'recording-bottom');
@@ -35,6 +56,8 @@ function renderList() {
 }
 
 function renderTranscript(record) {
+  $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
+  renderProcessing($('recording-processing'), $('recording-summary'), record);
   const fragment = document.createDocumentFragment();
   record.segments.forEach((segment, index) => {
     const button = node('button', 'segment');
@@ -52,7 +75,7 @@ function renderTranscript(record) {
     fragment.append(button);
   });
   if (!record.segments.length) {
-    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь на Mac. Текст появится автоматически.', failed: 'Распознавание не завершилось. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
+    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Обработка не завершилась. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
     fragment.append(node('p', 'empty-transcript', copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
@@ -60,25 +83,21 @@ function renderTranscript(record) {
   syncPlayer();
 }
 
-async function select(id) {
+async function select(id, open = true) {
   const request = ++state.request;
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
   state.selected = id;
   state.detail = null;
-  $('recording-detail').hidden = true;
-  $('welcome').hidden = false;
-  $('player').hidden = true;
+  showView(open ? 'recording' : state.view);
   message();
   renderList();
   try {
     const record = await get(`/api/recordings/${id}`);
     if (request !== state.request) return;
     state.detail = record;
-    $('welcome').hidden = true;
-    $('recording-detail').hidden = false;
-    $('player').hidden = false;
+    showView();
     $('recording-date').textContent = day(record.started_at).toLocaleUpperCase('ru-RU');
     $('recording-title').textContent = `Запись в ${hour(record.started_at)}`;
     $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
@@ -121,14 +140,14 @@ async function refresh() {
     $('connection').hidden = true;
     if (state.selected && !recordings.some(r => r.id === state.selected)) {
       audio.pause(); state.selected = null; state.detail = null; ++state.request;
-      $('recording-detail').hidden = true; $('player').hidden = true; $('welcome').hidden = false;
+      showView();
     }
     if (changed) renderList();
-    if (!state.selected && recordings.length) await select(recordings[0].id);
+    if (!state.selected && recordings.length) await select(recordings[0].id, false);
     else if (state.detail) {
       const id = state.selected;
       const record = await get(`/api/recordings/${id}`);
-      if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify(record.segments) !== JSON.stringify(state.detail.segments))) {
+      if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing]))) {
         state.detail = record;
         $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);
@@ -150,6 +169,26 @@ $('speed').addEventListener('change', () => { audio.playbackRate = Number($('spe
 for (const event of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'seeked']) audio.addEventListener(event, syncPlayer);
 audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Не удалось загрузить аудио. Обновите запись и попробуйте ещё раз.'); });
 $('refresh').addEventListener('click', refresh);
+for (const button of document.querySelectorAll('[data-folder]')) button.addEventListener('click', async () => {
+  const buttons = document.querySelectorAll('[data-folder]');
+  buttons.forEach(item => { item.disabled = true; });
+  $('folder-message').hidden = true;
+  try {
+    const response = await fetch(`/api/folders/${button.dataset.folder}/open`, {
+      method: 'POST', headers: {'X-Omiloc-Request': 'open-folder'}, signal: AbortSignal.timeout(10000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось открыть папку.');
+    $('folder-message').textContent = 'Папка открыта в Finder.';
+  } catch (error) {
+    $('folder-message').textContent = error instanceof TypeError || error instanceof SyntaxError
+      ? 'Нет ответа от аудиотеки. Обновите страницу и попробуйте ещё раз.'
+      : error.name === 'TimeoutError' ? 'Ответ задерживается. Проверьте Finder.' : error.message;
+  } finally {
+    $('folder-message').hidden = false;
+    buttons.forEach(item => { item.disabled = false; });
+  }
+});
 $('delete').addEventListener('click', () => {
   if (!state.detail) return;
   state.deleteId = state.selected;
@@ -185,6 +224,9 @@ $('search').addEventListener('input', renderList);
 for (const [id, enabled] of [['filter-all', false], ['filter-ready', true]]) $(id).addEventListener('click', () => { state.filter = enabled; for (const name of ['filter-all', 'filter-ready']) { $(name).classList.toggle('selected', name === id); $(name).setAttribute('aria-pressed', String(name === id)); } renderList(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));
+mountLiveMonitor($('live-monitor'));
+showView();
 refresh();
 
 if (document.modelContext?.registerTool) {

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Nenahráva sa",
+    "omiButtonPressed": "Tlačidlo stlačené",
+    "omiButtonReleased": "Tlačidlo uvoľnené",
+    "omiButtonSingleTap": "Krátke stlačenie",
+    "omiButtonLongPress": "Dlhé stlačenie",
     "@@locale": "sk",
     "sessionExpiredSignInAgain": "Platnosť relácie vypršala — prihláste sa znova.",
     "appTitle": "Omi",

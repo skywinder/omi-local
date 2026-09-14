@@ -9,6 +9,21 @@ class AppLocalizationsRo extends AppLocalizations {
   AppLocalizationsRo([String locale = 'ro']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Nu se înregistrează';
+
+  @override
+  String get omiButtonPressed => 'Buton apăsat';
+
+  @override
+  String get omiButtonReleased => 'Buton eliberat';
+
+  @override
+  String get omiButtonSingleTap => 'Apăsare scurtă';
+
+  @override
+  String get omiButtonLongPress => 'Apăsare lungă';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesiunea a expirat — autentifică-te din nou.';
 
   @override

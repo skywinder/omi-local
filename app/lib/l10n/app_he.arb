@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "אין הקלטה פעילה",
+    "omiButtonPressed": "הכפתור נלחץ",
+    "omiButtonReleased": "הכפתור שוחרר",
+    "omiButtonSingleTap": "לחיצה קצרה",
+    "omiButtonLongPress": "לחיצה ארוכה",
     "@@locale": "he",
     "sessionExpiredSignInAgain": "ההפעלה פגה — יש להתחבר שוב.",
     "@@last_modified": "2024-12-26",

@@ -9,11 +9,19 @@ components, upstream remotes, and `make setup`/PR automation do not apply here.
 Use the targets in this repository's Makefile. Do not recreate removed services
 or fetch/pull upstream as a prerequisite for work on this snapshot.
 
+The portable Compose runtime is documented in `docs/DOCKER.md`. Use `docker.sh`
+for its separate named volumes; never mount the native `.local` state into it.
+Keep backend/emulator loopback addresses in the shared container network namespace.
+`make test-docker` is included in the existing transport-unit CI lane. Docker changes
+need no iOS rebuild. The container supervisor must let Firebase export before exit.
+
 Ngrok transport is documented in `docs/NGROK.md`. Use `scripts/local-mac.sh` for
 its owned loopback stack; never expose the LAN development backend or emulators.
 Run `make test-offline` and `make test-transport-app` before the separate final iOS
 build/attestation. Finished-WAV WhisperKit/WhisperX/Parakeet transcription is documented in `docs/LOCAL_STT.md`;
 autonomous phone batch upload remains outside the current scope.
+Provider settings and explicit remote processing live in the harness; see
+`docs/PROVIDERS.md`. Keep backend egress loopback-only, with remote Live behind its owned relay.
 For graceful harness shutdown, signal the validated supervisor once: both guards
 forward signals, so group-wide SIGINT interrupts Firebase's export-on-exit.
 

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Geen opname actief",
+    "omiButtonPressed": "Knop ingedrukt",
+    "omiButtonReleased": "Knop losgelaten",
+    "omiButtonSingleTap": "Kort indrukken",
+    "omiButtonLongPress": "Lang indrukken",
     "@@locale": "nl",
     "sessionExpiredSignInAgain": "De sessie is verlopen — log opnieuw in.",
     "appTitle": "Omi",

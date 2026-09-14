@@ -33,7 +33,8 @@ def test_existing_wire_format_case_times_speakers_and_stable_identity():
 
 
 @pytest.mark.parametrize('engine,provider', [('parakeet-mlx', 'parakeet-mlx-local'),
-                                           ('whisperkit', 'whisperkit-local')])
+                                           ('whisperkit', 'whisperkit-local'),
+                                           ('openai-compatible', 'openai-compatible-local')])
 def test_alternative_engine_provenance_uses_same_mobile_contract(engine, provider):
     data = manifest()
     data['profile'] = {'engine': engine, 'model': 'synthetic-model'}
@@ -73,3 +74,17 @@ def test_empty_transcript_is_not_success_and_unknown_speaker_is_not_user():
     del data['segments'][0]['speaker']
     first = build_conversation(data, manifest()).transcript_segments[0]
     assert first.speaker is None and first.speaker_id == -1 and not first.is_user
+
+
+def test_selected_pipeline_summary_projects_into_existing_conversation_contract():
+    data, result = manifest(), raw()
+    data['profile']['pipeline'] = {'summary': {'kind': 'openai-compatible'}}
+    result['structured'] = {'title': 'Обсуждение API', 'overview': 'Проверили работу API.'}
+    conversation = build_conversation(result, data)
+    assert conversation.structured.title == 'Обсуждение API'
+    assert conversation.structured.overview == 'Проверили работу API.'
+    assert conversation.external_data['local_transcript']['profile'] == data['profile']
+    assert conversation.structured.action_items == []
+    result['structured']['overview'] = {'invalid': True}
+    with pytest.raises(ValueError, match='summary'):
+        build_conversation(result, data)

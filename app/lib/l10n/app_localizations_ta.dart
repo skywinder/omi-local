@@ -9,6 +9,21 @@ class AppLocalizationsTa extends AppLocalizations {
   AppLocalizationsTa([String locale = 'ta']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'பதிவு நடைபெறவில்லை';
+
+  @override
+  String get omiButtonPressed => 'பொத்தான் அழுத்தப்பட்டது';
+
+  @override
+  String get omiButtonReleased => 'பொத்தான் விடப்பட்டது';
+
+  @override
+  String get omiButtonSingleTap => 'குறுகிய அழுத்தம்';
+
+  @override
+  String get omiButtonLongPress => 'நீண்ட அழுத்தம்';
+
+  @override
   String get sessionExpiredSignInAgain => 'அமர்வு காலாவதியானது — மீண்டும் உள்நுழையவும்.';
 
   @override

@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# Use the repository's CocoaPods version without installing/upgrading gems.
+lock = File.expand_path('../../app/ios/Podfile.lock', __dir__)
+version = File.read(lock)[/^COCOAPODS: ([0-9.]+)$/, 1]
+abort('Missing pinned CocoaPods version in app/ios/Podfile.lock') unless version
+gem 'cocoapods', version
+load Gem.bin_path('cocoapods', 'pod', version)

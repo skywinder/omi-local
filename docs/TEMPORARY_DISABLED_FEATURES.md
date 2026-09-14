@@ -1,21 +1,21 @@
-# Текущие ограничения
+# Current limitations
 
-| Возможность | Сейчас |
+| Feature | Current behavior |
 |---|---|
-| Запись с CV1 | Одиночное нажатие CV1 начинает или завершает сессию. Кнопки на карточке устройства также доступны. |
-| Мьют | Временно выключает звук внутри записи. |
-| Микрофон iPhone | Отключён; нижняя кнопка `+` неактивна. |
-| Текст во время разговора | Пока недоступен. Распознаётся завершённая запись. |
-| Разделение по говорящим | В текущей настройке весь текст относится к одному говорящему. |
-| Запись без связи с Mac и последующая загрузка | Пока не подключена. |
-| Онлайн-функции Omi | Отключены в локальном режиме. |
+| CV1 recording | A single CV1 press starts or finishes a session. The original Omi controls are available on the home screen. |
+| Mute | Temporarily silences audio within a recording. |
+| iPhone microphone | Starts through the original **+** button. Switching inputs finishes the previous recording while preserving the Omi Bluetooth connection. |
+| Text during conversation | Experimental [live preview](LIVE_PREVIEW.md), with a separate Mac process. Tap the recording card to open its screen. Draft quality is still being evaluated. |
+| Speaker separation | Available through configured live or final diarization. Speaker numbers do not establish a person's identity. |
+| Recording without a Mac connection and uploading later | Not connected yet. |
+| Online Omi features | Disabled in local mode. |
 
-Нажмите кнопку CV1 один раз, чтобы начать запись, и ещё раз, чтобы завершить её.
-Одиночное нажатие завершает сессию и при включённом мьюте. В приложении iPhone
-можно использовать **▶ Начать запись** и **■ Остановить запись**.
-В браузере можно просматривать, слушать и удалять записи.
+Press the CV1 button once to start recording and again to finish.
+A single press finishes the session even when muted. In the iPhone app,
+the card button temporarily mutes and unmutes audio.
+The browser supports browsing, playback, and deletion.
 
-CV1 может записывать тихо. Переключение источников иногда создаёт короткие
-дополнительные файлы. Сохранность записи при обрывах связи пока не гарантируется.
+CV1 recordings can be quiet. Switching sources sometimes creates short additional
+files. Recording durability across connection loss is not yet guaranteed.
 
-[Запуск и использование](START.md) · [Настройка распознавания](LOCAL_STT.md).
+[Startup and usage](START.md) · [Transcription setup](LOCAL_STT.md).

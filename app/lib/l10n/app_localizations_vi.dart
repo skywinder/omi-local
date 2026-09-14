@@ -9,6 +9,21 @@ class AppLocalizationsVi extends AppLocalizations {
   AppLocalizationsVi([String locale = 'vi']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Không ghi âm';
+
+  @override
+  String get omiButtonPressed => 'Đã nhấn nút';
+
+  @override
+  String get omiButtonReleased => 'Đã thả nút';
+
+  @override
+  String get omiButtonSingleTap => 'Nhấn ngắn';
+
+  @override
+  String get omiButtonLongPress => 'Nhấn giữ';
+
+  @override
   String get sessionExpiredSignInAgain => 'Phiên đã hết hạn — hãy đăng nhập lại.';
 
   @override

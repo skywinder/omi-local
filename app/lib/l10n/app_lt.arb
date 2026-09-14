@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Neįrašoma",
+    "omiButtonPressed": "Mygtukas paspaustas",
+    "omiButtonReleased": "Mygtukas atleistas",
+    "omiButtonSingleTap": "Trumpas paspaudimas",
+    "omiButtonLongPress": "Ilgas paspaudimas",
     "@@locale": "lt",
     "sessionExpiredSignInAgain": "Seanso laikas baigėsi — prisijunkite dar kartą.",
     "@captureRecordingError": {

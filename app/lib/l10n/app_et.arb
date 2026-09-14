@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Ei salvesta",
+    "omiButtonPressed": "Nupp vajutatud",
+    "omiButtonReleased": "Nupp vabastatud",
+    "omiButtonSingleTap": "Lühike vajutus",
+    "omiButtonLongPress": "Pikk vajutus",
     "@@locale": "et",
     "sessionExpiredSignInAgain": "Seanss aegus — logige uuesti sisse.",
     "appTitle": "Omi",

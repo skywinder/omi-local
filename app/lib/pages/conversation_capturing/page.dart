@@ -9,8 +9,10 @@ import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/message_event.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
+import 'package:omi/env/env.dart';
 import 'package:omi/pages/capture/widgets/widgets.dart';
 import 'package:omi/pages/conversation_detail/widgets/name_speaker_sheet.dart';
+import 'package:omi/pages/settings/local_runtime_status_card.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/providers/connectivity_provider.dart';
 import 'package:omi/providers/device_provider.dart';
@@ -20,6 +22,8 @@ import 'package:omi/services/wals/wal.dart';
 import 'package:omi/widgets/confirmation_dialog.dart';
 import 'package:omi/widgets/conversation_photo_image.dart';
 import 'package:omi/widgets/media_viewer_page.dart';
+import 'package:omi/widgets/local_capture_feedback.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/widgets/transcript.dart';
 
 class ConversationCapturingPage extends StatefulWidget {
@@ -55,6 +59,18 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
   }
 
   Future<void> _toggleMute(CaptureProvider provider) async {
+    final wasMuted = _isMuted;
+    try {
+      await _performToggleMute(provider);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isMuted = wasMuted);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+    }
+  }
+
+  Future<void> _performToggleMute(CaptureProvider provider) async {
     if (_isMuted) {
       // Unmute - resume recording
       HapticFeedback.mediumImpact();
@@ -62,7 +78,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
         _isMuted = false;
       });
 
-      if (provider.havingRecordingDevice) {
+      if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
         // Device recording (Omi device)
         await provider.resumeDeviceRecording();
       } else {
@@ -79,7 +95,7 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
         _isMuted = true;
       });
 
-      if (provider.havingRecordingDevice) {
+      if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
         // Device recording (Omi device)
         await provider.pauseDeviceRecording();
       } else {
@@ -180,7 +196,8 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
   Widget build(BuildContext context) {
     return Consumer2<CaptureProvider, DeviceProvider>(
       builder: (context, provider, deviceProvider, child) {
-        final effectivelyMuted = _isMuted || provider.isCallActive;
+        final effectivelyMuted = _isMuted || provider.isPaused || provider.isCallActive;
+        final transcriptionUnavailable = provider.terminalTranscriptionFailure != null;
         final transcriptSessionId =
             provider.activeCaptureSessionId ?? widget.topConversationId ?? 'pending-live-capture';
         final transcriptScrollState = _scrollStateFor(transcriptSessionId);
@@ -206,18 +223,27 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    provider.photos.isNotEmpty
-                        ? "📸"
-                        : effectivelyMuted
-                            ? "🔇"
-                            : "🎙️",
+                    Env.isOfflineRuntime
+                        ? (provider.localCapturePhase == LocalCapturePhase.recording ? '🎙️' : '⏸')
+                        : provider.photos.isNotEmpty
+                            ? "📸"
+                            : effectivelyMuted
+                                ? "🔇"
+                                : "🎙️",
                   ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      provider.photos.isNotEmpty
-                          ? 'Capturing'
-                          : (effectivelyMuted ? context.l10n.muted : context.l10n.listening),
+                      Env.isOfflineRuntime
+                          ? localCaptureStatusText(context, provider.localCapturePhase)
+                          : provider.photos.isNotEmpty
+                              ? 'Capturing'
+                              : effectivelyMuted
+                                  ? context.l10n.muted
+                                  : transcriptionUnavailable
+                                      ? context.l10n.transcriptionUnavailable
+                                      : context.l10n.listening,
+                      key: Env.isOfflineRuntime ? const Key('local_capture_page_state') : null,
                     ),
                   ),
                 ],
@@ -225,6 +251,16 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
             ),
             body: Column(
               children: [
+                if (Env.isOfflineRuntime)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: LocalOmiButtonFeedback(action: provider.localOmiButtonFeedback),
+                  ),
+                if (Env.isOfflineRuntime)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: LocalRuntimeStatusCard(source: provider.activeRecordingSource),
+                  ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 0),
@@ -241,7 +277,12 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                                   ? Center(
                                       child: Padding(
                                         padding: const EdgeInsets.only(top: 50.0),
-                                        child: Text(context.l10n.waitingForTranscriptOrPhotos),
+                                        child: Text(
+                                            Env.isOfflineRuntime && provider.localCapturePhase == LocalCapturePhase.idle
+                                                ? context.l10n.startRecordingToSeeTranscript
+                                                : transcriptionUnavailable
+                                                    ? context.l10n.transcriptionUnavailable
+                                                    : context.l10n.waitingForTranscriptOrPhotos),
                                       ),
                                     )
                                   : provider.photos.isNotEmpty

@@ -34,6 +34,8 @@ abstract class MessageEvent {
         return FreemiumThresholdReachedEvent.fromJson(json);
       case 'segments_deleted':
         return SegmentsDeletedEvent.fromJson(json);
+      case 'local_transcript_snapshot':
+        return LocalTranscriptSnapshotEvent.fromJson(json);
       default:
         // Return a generic event or throw an error if the type is unknown
         return UnknownEvent(eventType: json['type'] ?? 'unknown');
@@ -43,6 +45,39 @@ abstract class MessageEvent {
 
 class UnknownEvent extends MessageEvent {
   UnknownEvent({required super.eventType});
+}
+
+/// Complete, revisioned transcript for one local live-preview session.
+/// An empty segment list explicitly retracts the previous hypothesis.
+class LocalTranscriptSnapshotEvent extends MessageEvent {
+  final String previewId;
+  final int revision;
+  final List<TranscriptSegment> segments;
+
+  LocalTranscriptSnapshotEvent({required this.previewId, required this.revision, required this.segments})
+      : super(eventType: 'local_transcript_snapshot');
+
+  factory LocalTranscriptSnapshotEvent.fromJson(Map<String, dynamic> json) {
+    final previewId = json['preview_id'];
+    final revision = json['revision'];
+    final segments = json['segments'];
+    if (previewId is! String ||
+        !previewId.startsWith('local-preview-') ||
+        previewId.length <= 'local-preview-'.length ||
+        revision is! int ||
+        revision <= 0 ||
+        segments is! List) {
+      throw const FormatException('Invalid local transcript snapshot envelope');
+    }
+    return LocalTranscriptSnapshotEvent(
+      previewId: previewId,
+      revision: revision,
+      segments: segments.map((segment) {
+        final row = Map<String, dynamic>.from(segment);
+        return TranscriptSegment.fromJson(row)..isDraft = row['is_draft'] == true;
+      }).toList(),
+    );
+  }
 }
 
 class MessageServiceStatusEvent extends MessageEvent {

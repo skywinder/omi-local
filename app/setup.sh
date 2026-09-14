@@ -124,6 +124,9 @@ function write_personal_team_config() {
     echo 'ASSET_PREFIX=personal'
     echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) OMI_PERSONAL_LOCAL'
     echo 'GCC_PREPROCESSOR_DEFINITIONS=$(inherited) OMI_PERSONAL_LOCAL=1'
+    echo "APP_BUNDLE_IDENTIFIER[config=Debug-dev]=${bundle_id}.dev"
+    echo 'BUNDLE_NAME[config=Debug-dev]=Omi Local Dev'
+    echo 'BUNDLE_DISPLAY_NAME[config=Debug-dev]=Omi Local Dev'
   } > ios/Flutter/PersonalTeam.xcconfig
 }
 

@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Запіс не вядзецца",
+    "omiButtonPressed": "Кнопка націснута",
+    "omiButtonReleased": "Кнопка адпушчана",
+    "omiButtonSingleTap": "Кароткае націсканне",
+    "omiButtonLongPress": "Доўгае націсканне",
     "@@locale": "be",
     "sessionExpiredSignInAgain": "Сеанс скончыўся — увайдзіце зноў.",
     "@@last_modified": "2024-12-26",

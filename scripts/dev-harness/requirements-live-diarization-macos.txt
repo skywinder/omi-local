@@ -1,0 +1,5 @@
+# Separate Python 3.11 environment; models must already be cached.
+pyannote.audio==4.0.7
+fastapi==0.121.0
+uvicorn==0.34.3
+websockets==12.0

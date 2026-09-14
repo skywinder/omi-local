@@ -9,6 +9,21 @@ class AppLocalizationsHi extends AppLocalizations {
   AppLocalizationsHi([String locale = 'hi']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'रिकॉर्डिंग नहीं हो रही';
+
+  @override
+  String get omiButtonPressed => 'बटन दबाया गया';
+
+  @override
+  String get omiButtonReleased => 'बटन छोड़ा गया';
+
+  @override
+  String get omiButtonSingleTap => 'छोटा दबाव';
+
+  @override
+  String get omiButtonLongPress => 'लंबा दबाव';
+
+  @override
   String get sessionExpiredSignInAgain => 'सत्र की समय-सीमा समाप्त हो गई — फिर से साइन इन करें।';
 
   @override

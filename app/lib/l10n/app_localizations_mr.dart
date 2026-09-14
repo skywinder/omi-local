@@ -9,6 +9,21 @@ class AppLocalizationsMr extends AppLocalizations {
   AppLocalizationsMr([String locale = 'mr']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'रेकॉर्डिंग सुरू नाही';
+
+  @override
+  String get omiButtonPressed => 'बटण दाबले';
+
+  @override
+  String get omiButtonReleased => 'बटण सोडले';
+
+  @override
+  String get omiButtonSingleTap => 'थोडक्यात दाबणे';
+
+  @override
+  String get omiButtonLongPress => 'दीर्घकाळ दाबणे';
+
+  @override
   String get sessionExpiredSignInAgain => 'सत्राची मुदत संपली — पुन्हा साइन इन करा.';
 
   @override

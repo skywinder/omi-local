@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
+import 'package:omi/env/env.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/message_event.dart';
@@ -17,14 +18,14 @@ import 'package:omi/pages/capture/widgets/widgets.dart';
 import 'package:omi/pages/conversations/widgets/capture.dart';
 import 'package:omi/pages/processing_conversations/page.dart';
 import 'package:omi/providers/capture_provider.dart';
-import 'package:omi/services/capture/temporary_capture_controls.dart';
-import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
 import 'package:omi/utils/alerts/app_snackbar.dart';
 import 'package:omi/utils/enums.dart';
 import 'package:omi/utils/logger.dart';
 import 'package:omi/utils/other/temp.dart';
 import 'package:omi/backend/schema/phone_call.dart';
 import 'package:omi/providers/phone_call_provider.dart';
+import 'package:omi/widgets/local_capture_feedback.dart';
+import 'package:omi/services/capture/local_capture_phase.dart';
 
 class ConversationCaptureWidget extends StatefulWidget {
   const ConversationCaptureWidget({super.key});
@@ -86,7 +87,6 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
 
         return GestureDetector(
           onTap: () async {
-            if (TemporaryCaptureControls.enabled) return;
             // Offline/batch mode has no live transcript — the card is informational,
             // so swallow taps instead of opening the (empty) capturing page. Covers both
             // device batch and the phone-mic Transcribe Later session.
@@ -125,7 +125,14 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [_buildUnifiedRecordingUI(provider, header)],
+                children: [
+                  if (Env.isOfflineRuntime)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: LocalOmiButtonFeedback(action: provider.localOmiButtonFeedback),
+                    ),
+                  _buildUnifiedRecordingUI(provider, header),
+                ],
               ),
             ),
           ),
@@ -142,10 +149,21 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
     }
   }
 
-  _toggleRecording(BuildContext context, CaptureProvider provider) async {
+  Future<void> _toggleRecording(BuildContext context, CaptureProvider provider) async {
+    try {
+      await _performToggleRecording(context, provider);
+    } catch (_) {
+      if (mounted && context.mounted) {
+        setState(() => _isPhoneMicPaused = true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+      }
+    }
+  }
+
+  Future<void> _performToggleRecording(BuildContext context, CaptureProvider provider) async {
     var recordingState = provider.recordingState;
 
-    if (provider.havingRecordingDevice) {
+    if (provider.havingRecordingDevice && !provider.isPhoneMicSelected) {
       // Device recording logic - add pause/resume for device recording
       if (recordingState == RecordingState.deviceRecord && !provider.isPaused) {
         // Pause device recording
@@ -186,6 +204,20 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
 
   Widget? _getConversationHeader(BuildContext context) {
     var captureProvider = context.read<CaptureProvider>();
+    if (Env.isOfflineRuntime) {
+      if (!captureProvider.havingRecordingDevice &&
+          captureProvider.localCapturePhase == LocalCapturePhase.idle &&
+          captureProvider.segments.isEmpty &&
+          captureProvider.photos.isEmpty) return null;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(
+          localCaptureStatusText(context, captureProvider.localCapturePhase),
+          key: const Key('local_capture_state'),
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+      );
+    }
     bool deviceServiceStateOk = captureProvider.recordingDeviceServiceReady;
     bool transcriptServiceStateOk = captureProvider.transcriptServiceReady;
     bool isHavingTranscript = captureProvider.segments.isNotEmpty;
@@ -351,9 +383,6 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
   }
 
   Widget _buildUnifiedRecordingUI(CaptureProvider provider, Widget? header) {
-    if (TemporaryCaptureControls.enabled && provider.havingRecordingDevice) {
-      return TemporaryRecordingControls(provider: provider);
-    }
     bool isDeviceRecording = provider.havingRecordingDevice &&
         (provider.recordingState == RecordingState.deviceRecord || provider.recordingState == RecordingState.pause);
 
@@ -404,31 +433,43 @@ class _ConversationCaptureWidgetState extends State<ConversationCaptureWidget> {
                         ? 'Capturing'
                         : context.l10n.listening;
 
+    if (Env.isOfflineRuntime) statusText = localCaptureStatusText(context, provider.localCapturePhase);
+
     // When recording is active, show the unified UI design
     if (isDeviceRecording || isPhoneRecording) {
       Widget statusRow = Row(
         children: [
           // Left: Status tag
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: const Color(0xFF35343B), borderRadius: BorderRadius.circular(20)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  statusText,
-                  style: const TextStyle(color: Color(0xFFC9CBCF), fontSize: 14, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: isPaused ? const Color(0xFFFF9500) : const Color(0xFFFE5D50),
-                    shape: BoxShape.circle,
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: const Color(0xFF35343B), borderRadius: BorderRadius.circular(20)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                      child: Text(
+                    statusText,
+                    key: Env.isOfflineRuntime ? const Key('local_capture_state') : null,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFFC9CBCF), fontSize: 14, fontWeight: FontWeight.w500),
+                  )),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Env.isOfflineRuntime && provider.localCapturePhase != LocalCapturePhase.recording
+                          ? Colors.white54
+                          : isPaused
+                              ? const Color(0xFFFF9500)
+                              : const Color(0xFFFE5D50),
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           // Star indicator when conversation is marked for starring

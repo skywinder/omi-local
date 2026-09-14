@@ -9,6 +9,21 @@ class AppLocalizationsTl extends AppLocalizations {
   AppLocalizationsTl([String locale = 'tl']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Hindi nagre-record';
+
+  @override
+  String get omiButtonPressed => 'Pinindot ang button';
+
+  @override
+  String get omiButtonReleased => 'Binitiwan ang button';
+
+  @override
+  String get omiButtonSingleTap => 'Maikling pindot';
+
+  @override
+  String get omiButtonLongPress => 'Matagal na pindot';
+
+  @override
   String get sessionExpiredSignInAgain => 'Nag-expire ang session — mag-sign in ulit.';
 
   @override

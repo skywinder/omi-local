@@ -9,6 +9,21 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Запись не идёт';
+
+  @override
+  String get omiButtonPressed => 'Кнопка нажата';
+
+  @override
+  String get omiButtonReleased => 'Кнопка отпущена';
+
+  @override
+  String get omiButtonSingleTap => 'Короткое нажатие';
+
+  @override
+  String get omiButtonLongPress => 'Долгое нажатие';
+
+  @override
   String get sessionExpiredSignInAgain => 'Сеанс истёк — войдите снова.';
 
   @override

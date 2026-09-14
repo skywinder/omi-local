@@ -5,10 +5,10 @@ umask 077
 cd "$(dirname "$0")"
 
 if [[ "${1:-}" == --help ]]; then
-  printf 'omiloc — запуск на Mac\n\n  ./start.command                 Подготовить и запустить\n  ./start.command --check         Проверить сервисы Mac\n  ./start.command --iphone-check  Проверить подготовку к установке на iPhone\n\nПояснения: docs/START.md\n'
+  printf 'omiloc — запуск на Mac\n\n  ./start.command                     Подготовить и запустить (без вопросов с .env)\n  ./start.command --check             Проверить сервисы Mac\n  ./start.command --iphone-check      Проверить подготовку к установке на iPhone\n  ./start.command --iphone-configure  Перезапустить iPhone с настройками из .env\n\nПояснения: docs/START.md\n'
   exit 0
 fi
-if [[ "${1:-}" != '' && "${1:-}" != --check && "${1:-}" != --iphone-check ]]; then
+if [[ "${1:-}" != '' && "${1:-}" != --check && "${1:-}" != --iphone-check && "${1:-}" != --iphone-configure ]]; then
   echo 'Доступные команды: ./start.command --help' >&2
   exit 1
 fi
@@ -18,6 +18,9 @@ for input in backend/.python-version backend/pylock.macos.toml package.json pack
   [[ -s "$input" ]] || { echo "Не хватает файла проекта: $input" >&2; exit 1; }
 done
 omi_macos_path
+if [[ "${1:-}" == --iphone-configure ]]; then
+  exec bash scripts/local-mac.sh launch-iphone
+fi
 if [[ "${1:-}" == --iphone-check ]]; then
   cd app
   exec bash setup.sh ios personal --check
@@ -25,7 +28,7 @@ fi
 if [[ "${1:-}" == --check ]]; then
   exec bash scripts/local-mac.sh setup-check
 fi
-if [[ ! -t 0 || ! -t 1 ]]; then
+if [[ ( ! -t 0 || ! -t 1 ) && ! -f .env ]]; then
   echo 'Откройте start.command в Terminal. Ключи показываются только в локальном терминале.' >&2
   exit 1
 fi

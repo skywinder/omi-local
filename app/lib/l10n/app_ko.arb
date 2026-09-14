@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "녹음 중이 아님",
+    "omiButtonPressed": "버튼 누름",
+    "omiButtonReleased": "버튼에서 손을 뗌",
+    "omiButtonSingleTap": "짧게 누름",
+    "omiButtonLongPress": "길게 누름",
     "@@locale": "ko",
     "sessionExpiredSignInAgain": "세션이 만료되었습니다. 다시 로그인하세요.",
     "appTitle": "Omi",

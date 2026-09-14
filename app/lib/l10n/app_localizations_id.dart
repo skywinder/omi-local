@@ -9,6 +9,21 @@ class AppLocalizationsId extends AppLocalizations {
   AppLocalizationsId([String locale = 'id']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Tidak merekam';
+
+  @override
+  String get omiButtonPressed => 'Tombol ditekan';
+
+  @override
+  String get omiButtonReleased => 'Tombol dilepas';
+
+  @override
+  String get omiButtonSingleTap => 'Tekan singkat';
+
+  @override
+  String get omiButtonLongPress => 'Tekan lama';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sesi berakhir — masuk lagi.';
 
   @override

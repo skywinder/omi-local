@@ -202,7 +202,23 @@ final class QuickActionsIconPatcher: NSObject {
 
     // TestFlight environment detection
     let envChannel = FlutterMethodChannel(name: "com.omi/environment", binaryMessenger: controller!.binaryMessenger)
+    #if OMI_PERSONAL_LOCAL
+    var localMacSettings: [String: String]? = nil
+    let launchEnvironment = ProcessInfo.processInfo.environment
+    if let url = launchEnvironment["OMI_LOCAL_MAC_URL"], let key = launchEnvironment["OMI_LOCAL_MAC_KEY"] {
+        localMacSettings = ["url": url, "key": key]
+    }
+    unsetenv("OMI_LOCAL_MAC_URL")
+    unsetenv("OMI_LOCAL_MAC_KEY")
+    #endif
     envChannel.setMethodCallHandler { (call, result) in
+        #if OMI_PERSONAL_LOCAL
+        if call.method == "takeLocalMacSettings" {
+            result(localMacSettings)
+            localMacSettings = nil
+            return
+        }
+        #endif
         if call.method == "isTestFlight" {
             let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
             result(isTestFlight)

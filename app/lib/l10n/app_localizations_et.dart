@@ -9,6 +9,21 @@ class AppLocalizationsEt extends AppLocalizations {
   AppLocalizationsEt([String locale = 'et']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Ei salvesta';
+
+  @override
+  String get omiButtonPressed => 'Nupp vajutatud';
+
+  @override
+  String get omiButtonReleased => 'Nupp vabastatud';
+
+  @override
+  String get omiButtonSingleTap => 'Lühike vajutus';
+
+  @override
+  String get omiButtonLongPress => 'Pikk vajutus';
+
+  @override
   String get sessionExpiredSignInAgain => 'Seanss aegus — logige uuesti sisse.';
 
   @override

@@ -9,6 +9,21 @@ class AppLocalizationsSl extends AppLocalizations {
   AppLocalizationsSl([String locale = 'sl']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Snemanje ni aktivno';
+
+  @override
+  String get omiButtonPressed => 'Gumb pritisnjen';
+
+  @override
+  String get omiButtonReleased => 'Gumb spuščen';
+
+  @override
+  String get omiButtonSingleTap => 'Kratek pritisk';
+
+  @override
+  String get omiButtonLongPress => 'Dolg pritisk';
+
+  @override
   String get sessionExpiredSignInAgain => 'Seja je potekla — znova se prijavite.';
 
   @override

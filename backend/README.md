@@ -1,8 +1,9 @@
-# Backend Omi Local
+# Omi Local backend
 
-Приём аудио с CV1 или микрофона iPhone на Mac описан в
-[README проекта](../README.md), [настройке ngrok](../docs/NGROK.md) и
-[инструкции iOS/LAN](../docs/LOCAL_SETUP.md).
+Receiving CV1 or iPhone microphone audio on a Mac is described in the
+[project README](../README.md), [ngrok setup](../docs/NGROK.md), and
+[iOS setup guide](../docs/LOCAL_SETUP.md).
 
-Общий upstream-код сохранён для совместимости. Поддерживаемый режим этого
-репозитория — `offline`; production setup и облачные провайдеры в MVP не входят.
+Shared upstream code is retained for compatibility. This repository supports
+`offline` mode; upstream production setup and cloud features are outside the MVP.
+Explicit processing providers are documented in [Providers](../docs/PROVIDERS.md).

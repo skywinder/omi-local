@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Registrazione non attiva",
+    "omiButtonPressed": "Pulsante premuto",
+    "omiButtonReleased": "Pulsante rilasciato",
+    "omiButtonSingleTap": "Pressione breve",
+    "omiButtonLongPress": "Pressione prolungata",
     "@@locale": "it",
     "sessionExpiredSignInAgain": "La sessione è scaduta — accedi di nuovo.",
     "appTitle": "Omi",

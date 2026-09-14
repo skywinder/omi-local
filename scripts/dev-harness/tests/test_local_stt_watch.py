@@ -11,6 +11,54 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dev_harness import local_stt, local_stt_watch as watch
 
 
+def test_worker_readiness_follows_validation_in_actual_child(tmp_path, monkeypatch):
+    from dev_harness import config
+
+    cfg = config.load_config(tmp_path, {'PROVIDER_MODE': 'offline', 'OMI_LOCAL_TRANSPORT': 'ngrok',
+                                       'OMI_DEV_BIND_HOST': '127.0.0.1'}, create_layout=True)
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": true, "excluded": []}')
+    monkeypatch.setattr(watch.config, 'load_config', lambda *_: cfg)
+    monkeypatch.setattr(local_stt.EngineConfig, 'load', lambda _: SimpleNamespace())
+
+    def fail(_):
+        assert not watch.worker_ready(cfg)
+        raise local_stt.TranscriptionError('Synthetic model not ready')
+
+    monkeypatch.setattr(local_stt, 'check_model', fail)
+    assert watch.main() == 1
+    assert not (watch.queue_path(cfg).parent / '.watch.lock').exists()
+    validated = []
+    monkeypatch.setattr(local_stt, 'check_model', lambda _: validated.append(True))
+    monkeypatch.setattr(watch.signal, 'signal', lambda *_: None)
+
+    def worker(_):
+        assert validated == [True]
+        assert watch.worker_ready(cfg)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(watch, 'Worker', worker)
+    assert watch.main() == 0
+    assert not watch.worker_ready(cfg)
+
+
+def test_existing_worker_can_finish_model_validation_after_five_seconds(tmp_path, monkeypatch):
+    from dev_harness import cli, config
+
+    cfg = config.load_config(tmp_path, {'PROVIDER_MODE': 'offline', 'OMI_LOCAL_TRANSPORT': 'ngrok',
+                                       'OMI_DEV_BIND_HOST': '127.0.0.1'}, create_layout=True)
+    (cfg.layout.state_root / 'stt-watch.json').write_text('{"enabled": true, "excluded": []}')
+    elapsed = [0.0]
+    monkeypatch.setattr(watch.time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(watch.time, 'sleep', lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(cli, '_service_record', lambda *_: {'service': 'stt-worker'})
+    monkeypatch.setattr(watch, 'worker_ready', lambda _: elapsed[0] >= 8.0)
+    starts = []
+    monkeypatch.setattr(cli, '_start_process', lambda *a, **k: starts.append(True))
+    watch.start_if_enabled(cfg, checked=True)
+    assert elapsed[0] >= 8.0
+    assert not starts, 'An owned worker validating its model must not be restarted'
+
+
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     state = tmp_path / 'state'
@@ -72,6 +120,26 @@ def test_opt_in_skips_archive_and_existing_capture_waits_for_finalization_then_p
     assert next(iter(watch.read_queue(cfg).values()))['state'] == 'completed'
     assert 'new' not in watch.queue_path(cfg).read_text()
     assert watch.queue_path(cfg).stat().st_mode & 0o777 == 0o600
+
+
+def test_disabled_selected_stt_pauses_admission_but_keeps_existing_job(setup, monkeypatch):
+    cfg, calls, documents, _ = setup
+    watch.enable(cfg)
+    capture(cfg, 'admitted')
+    worker = watch.Worker(cfg)
+    transcribe = local_stt.transcribe
+    def busy(*args, **kwargs):
+        raise local_stt.TranscriptionBusy('Synthetic occupied inference slot')
+    monkeypatch.setattr(local_stt, 'transcribe', busy)
+    worker.tick(0)
+    (cfg.layout.state_root / 'providers.json').write_text(json.dumps({
+        'version': 1, 'revision': 1, 'profiles': [],
+        'effective': {'stt': None, 'diarization': None, 'summary': None}}))
+    capture(cfg, 'new-while-disabled')
+    monkeypatch.setattr(local_stt, 'transcribe', transcribe)
+    worker.tick(3)
+    assert calls == ['large-v3-turbo'] and len(documents) == 1
+    assert len(worker.jobs) == 1 and next(iter(worker.jobs.values()))['state'] == 'completed'
 
 
 @pytest.mark.parametrize('new_settings', [{'model': 'small'}, {'model': 'small', 'diarization_model': 'none'}])
@@ -181,7 +249,7 @@ def test_reenable_preserves_backlog_boundary(setup):
     assert calls == ['large-v3-turbo']
 
 
-@pytest.mark.parametrize('job_state', ['pending', 'completed', 'failed'])
+@pytest.mark.parametrize('job_state', ['pending', 'completed', 'failed', 'no_speech'])
 def test_deleted_recording_leaves_queue_without_retry(setup, monkeypatch, job_state):
     cfg, _, _, _ = setup
     watch.enable(cfg)
@@ -238,15 +306,22 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     monkeypatch.setenv('OMI_LOCAL_TRANSPORT', 'ngrok')
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / 'backend'))
     cfg = SimpleNamespace(repo_root=Path(__file__).resolve().parents[3],
-                          layout=SimpleNamespace(state_root=tmp_path), backend_url='http://127.0.0.1:20000')
+                          layout=SimpleNamespace(state_root=tmp_path), backend_url='http://127.0.0.1:20000',
+                          provider_mode='offline', local_transport='ngrok')
     local_mac.private_json(tmp_path / 'pairing.json', local_mac.pairing_data('a' * 43))
     monkeypatch.setattr(local_mac, 'read_config', lambda _: {'url': 'https://synthetic.ngrok.app'})
     monkeypatch.setattr(local_mac, 'check_agent', lambda _: None)
+    lifecycle = []
+    monkeypatch.setattr(local_mac.local_live, 'require_backend_environment', lambda _: None)
+    monkeypatch.setattr(local_mac.local_live, 'preflight_start', lambda _: None)
+    monkeypatch.setattr(local_mac.local_transcription, 'check_models', lambda _: lifecycle.append('models'))
+    monkeypatch.setattr(local_mac.local_live, 'start', lambda _: lifecycle.append('live'))
+    monkeypatch.setattr(local_mac.local_live, 'require_ready', lambda _: lifecycle.append('ready'))
     monkeypatch.setattr(local_mac, 'ensure_owner_profile', lambda *a: None)
     monkeypatch.setattr(local_mac, 'require_auth_boundary', lambda _: None)
     monkeypatch.setattr(local_mac, 'ngrok_port', lambda _: 16040)
     monkeypatch.setattr(cli, 'cmd_check', lambda _: 0)
-    monkeypatch.setattr(cli, 'cmd_up', lambda _: 0)
+    monkeypatch.setattr(cli, 'cmd_up', lambda _: lifecycle.append('backend') or 0)
     monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
     monkeypatch.setattr(cli, '_service_health', lambda *a: (True, 'ready'))
     class Response(io.BytesIO):
@@ -255,4 +330,45 @@ def test_standard_up_starts_opted_in_worker_after_endpoint_ready(tmp_path, monke
     starts = []
     monkeypatch.setattr(watch, 'start_if_enabled', starts.append)
     assert local_mac.up(cfg) == 0
+    assert lifecycle == ['models', 'live', 'backend', 'ready']
     assert starts == [cfg]
+
+
+@pytest.mark.parametrize('crash_before_queue_save', [False, True])
+def test_no_speech_is_cached_terminal_without_import_or_retry(setup, monkeypatch, tmp_path, crash_before_queue_save):
+    from dev_harness import local_whisperkit, local_library
+    cfg, calls, documents, _ = setup
+    cfg.repo_root = tmp_path
+    (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps({'engine': 'whisperkit', 'language': 'auto'}))
+    monkeypatch.setattr(local_stt, 'check_model', lambda *_: None)
+    monkeypatch.setattr(local_whisperkit.shutil, 'which', lambda _: '/usr/bin/sandbox-exec')
+    def infer(command, **kwargs):
+        calls.append('whisperkit')
+        assert '(deny network*)' in command[2] and kwargs['capture_output']
+        output = Path(command[command.index('--report-path') + 1])
+        (output / 'audio.json').write_text(json.dumps({'language': 'en', 'segments': []}))
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(local_whisperkit.subprocess, 'run', infer)
+    watch.enable(cfg)
+    folder = capture(cfg, 'short-synthetic')
+    original = (folder / 'audio.wav').read_bytes()
+    worker = watch.Worker(cfg)
+    save = worker.save
+    def lose_power():
+        if any(job['state'] == 'no_speech' for job in worker.jobs.values()):
+            raise KeyboardInterrupt
+        save()
+    if crash_before_queue_save:
+        monkeypatch.setattr(worker, 'save', lose_power)
+        with pytest.raises(KeyboardInterrupt):
+            worker.tick(0)
+    else:
+        worker.tick(0)
+    watch.Worker(cfg).tick(1000)
+    job = next(iter(watch.read_queue(cfg).values()))
+    assert job['state'] == 'no_speech' and job['attempts'] == 1 and job['retry_at'] == 0
+    with pytest.raises(local_stt.NoSpeechDetected):
+        local_stt.transcribe(cfg, str(folder / 'audio.wav'))
+    assert calls == ['whisperkit'] and not documents
+    assert (folder / 'audio.wav').read_bytes() == original
+    assert local_library.Library(cfg.layout.services_dir).scan()[0]['status'] == 'no_speech'

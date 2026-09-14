@@ -9,6 +9,21 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get localCaptureIdle => '未在录音';
+
+  @override
+  String get omiButtonPressed => '按钮已按下';
+
+  @override
+  String get omiButtonReleased => '按钮已松开';
+
+  @override
+  String get omiButtonSingleTap => '短按';
+
+  @override
+  String get omiButtonLongPress => '长按';
+
+  @override
   String get sessionExpiredSignInAgain => '会话已过期，请重新登录。';
 
   @override

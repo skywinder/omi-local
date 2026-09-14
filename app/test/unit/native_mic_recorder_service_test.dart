@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +9,7 @@ import 'package:omi/services/mic/native_mic_recorder_service.dart';
 class FakePhoneMicHostApi extends PhoneMicHostApi {
   int startCalls = 0;
   int stopCalls = 0;
+  Completer<void>? stopGate;
   PhoneMicCaptureMode? lastStartMode;
   int lastStartSessionId = 0;
   PlatformException? startError;
@@ -22,6 +25,7 @@ class FakePhoneMicHostApi extends PhoneMicHostApi {
   @override
   Future<void> stop() async {
     stopCalls++;
+    await stopGate?.future;
   }
 
   @override
@@ -67,6 +71,33 @@ void main() {
         onBatchStalled: () => cb.batchStalls++,
         onError: (code, message) => cb.errors.add(code),
       );
+
+  test('new stream waits for native Stop and ignores the stopped session frames', () async {
+    await startService();
+    final oldId = host.lastStartSessionId;
+    host.stopGate = Completer<void>();
+    service.stop();
+    final restart = startService();
+    service.onAudioFrame(Uint8List(320), oldId);
+    expect(cb.bytes, isEmpty);
+    expect(host.startCalls, 1);
+    host.stopGate!.complete();
+    await restart;
+    expect(host.startCalls, 2);
+    expect(host.lastStartSessionId, greaterThan(oldId));
+    service.stop();
+  });
+
+  test('Stop cancels a Start waiting for an earlier native Stop', () async {
+    await startService();
+    host.stopGate = Completer<void>();
+    service.stop();
+    final restart = startService();
+    service.stop();
+    host.stopGate!.complete();
+    await restart;
+    expect(host.startCalls, 1);
+  });
 
   test('start calls host api and maps state events to callbacks', () async {
     await startService();

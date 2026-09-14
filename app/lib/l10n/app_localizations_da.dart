@@ -9,6 +9,21 @@ class AppLocalizationsDa extends AppLocalizations {
   AppLocalizationsDa([String locale = 'da']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Optager ikke';
+
+  @override
+  String get omiButtonPressed => 'Knap trykket ned';
+
+  @override
+  String get omiButtonReleased => 'Knap sluppet';
+
+  @override
+  String get omiButtonSingleTap => 'Kort tryk';
+
+  @override
+  String get omiButtonLongPress => 'Langt tryk';
+
+  @override
   String get sessionExpiredSignInAgain => 'Sessionen er udløbet — log ind igen.';
 
   @override

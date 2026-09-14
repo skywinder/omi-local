@@ -1,5 +1,9 @@
 import hashlib
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 from fastapi import FastAPI, WebSocket
@@ -142,3 +146,97 @@ def test_listen_auth_rejection_is_observed_before_accept(pairing, caplog):
                 pass
     messages = [record.getMessage() for record in caplog.records if record.name == "utils.local_transport_auth"]
     assert messages == ["Local Mac listen: opened", "Local Mac listen: server_closed code=1008"]
+
+
+def test_local_status_route_auth_and_runtime_boundary(pairing, tmp_path):
+    # Exercise the actual public router/auth dependency without importing the
+    # full backend application or requiring unrelated cloud SDKs in unit CI.
+    backend = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.update({
+        'PROVIDER_MODE': 'offline',
+        'OMI_HARNESS_STATE_ROOT': str(tmp_path),
+        'OMI_LOCAL_STORAGE_ROOT': str(tmp_path / 'services/storage'),
+        'FIRESTORE_EMULATOR_HOST': '127.0.0.1:8085',
+        'FIREBASE_AUTH_EMULATOR_HOST': '127.0.0.1:9099',
+        'FIREBASE_AUTH_PROJECT_ID': 'demo-omi-local',
+        'FIREBASE_PROJECT_ID': 'demo-omi-local',
+        'REDIS_DB_HOST': '127.0.0.1',
+        'REDIS_DB_PORT': '6380',
+        'BASE_API_URL': 'http://127.0.0.1:8000',
+        'API_BASE_URL': 'http://127.0.0.1:8000',
+        'PYTHONPATH': str(backend),
+    })
+    env.pop('OMI_LOCAL_LIVE_PREVIEW_URL', None)
+    probe = '''
+import os
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from testing.import_isolation import AutoMockModule, stub_modules
+from utils.local_transport_auth import LocalTransportAuthMiddleware
+from utils.offline_route_policy import OfflineRoutePolicyMiddleware
+
+def forbidden(*args, **kwargs):
+    raise AssertionError('Local status must not contact cloud auth or run a listen session')
+
+def run_probe():
+    # Keep route admission, local key verification, and status snapshot real.
+    # Stub only unrelated persistence, telemetry, and WebSocket runtime seams;
+    # the scoped helper and subprocess prevent these fakes leaking to tests.
+    fakes = {
+        name: AutoMockModule(name)
+        for name in (
+            'firebase_admin', 'firebase_admin.auth', 'redis',
+            'database.redis_db', 'database.users', 'utils.byok',
+            'utils.account_cutover.access', 'routers.listen.runtime',
+        )
+    }
+    for name in ('CertificateFetchError', 'ExpiredIdTokenError', 'InvalidIdTokenError', 'RevokedIdTokenError'):
+        setattr(fakes['firebase_admin.auth'], name, type(name, (Exception,), {}))
+    fakes['firebase_admin.auth'].verify_id_token = forbidden
+    fakes['firebase_admin.auth'].get_user = forbidden
+    fakes['database.users'].get_user_deletion_wipe_status.return_value = None
+    fakes['utils.account_cutover.access'].cutover_enforcement_enabled.return_value = False
+    fakes['routers.listen.runtime'].run_listen_session = forbidden
+    with stub_modules(fakes):
+        from routers import transcribe
+        from utils.other import endpoints as auth
+
+        app = FastAPI()
+        app.include_router(transcribe.router)
+        app.add_middleware(OfflineRoutePolicyMiddleware)
+        app.add_middleware(LocalTransportAuthMiddleware)
+        with TestClient(app, client=('127.0.0.1', 50000)) as client:
+            for headers in ({}, {'Authorization': 'Bearer wrong'}, {'Authorization': 'Basic ' + 'a' * 43}):
+                assert client.get('/v1/local/status', headers=headers).status_code == 401
+                assert client.get('/v1/local/preview', headers=headers).status_code == 401
+            response = client.get('/v1/local/status?uid=synthetic-attacker', headers={'Authorization': 'Bearer ' + 'a' * 43})
+            assert response.status_code == 200, response.status_code
+            assert response.json() == {
+                'backend': 'ready',
+                'capture': {'state': 'idle', 'audio_seconds': 0, 'frames_received': 0},
+                'live_transcript': {'state': 'disabled', 'updates': 0},
+            }
+            headers = {'Authorization': 'Bearer ' + 'a' * 43}
+            preview = client.get('/v1/local/preview?uid=synthetic-attacker', headers=headers)
+            assert preview.status_code == 200 and preview.json()['sessions'] == []
+            assert preview.headers['cache-control'] == 'no-store'
+            for forwarded in ('Forwarded', 'X-Forwarded-For', 'X-Forwarded-Proto'):
+                assert client.get('/v1/local/preview', headers={**headers, forwarded: 'synthetic-proxy'}).status_code == 404
+            with TestClient(app, client=('192.0.2.1', 50000)) as remote:
+                assert remote.get('/v1/local/preview', headers=headers).status_code == 404
+            app.dependency_overrides[auth.get_current_user_uid] = forbidden
+            os.environ['OMI_LOCAL_TRANSPORT'] = 'lan'
+            assert client.get('/v1/local/status').status_code == 404
+            assert client.get('/v1/local/preview').status_code == 404
+            os.environ['OMI_ENV_STAGE'] = 'prod'
+            assert client.get('/v1/local/status').status_code == 404
+            assert client.get('/v1/local/preview').status_code == 404
+
+run_probe()
+print('local_status_auth_passed')
+'''
+    result = subprocess.run([sys.executable, '-c', probe], cwd=backend, env=env,
+                            text=True, capture_output=True, timeout=45)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'local_status_auth_passed'

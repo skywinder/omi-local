@@ -162,6 +162,7 @@ Future _init() async {
   }
   await SharedPreferencesUtil.init();
   await LocalMacSession.instance.restore();
+  await LocalMacSession.instance.importLaunchSettings();
   Env.validateProfilePairing();
   validateApplicationStartupRouting();
   OfflineNetworkPolicy.installFromEnv();

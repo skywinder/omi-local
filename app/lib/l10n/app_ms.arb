@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "Tidak merakam",
+    "omiButtonPressed": "Butang ditekan",
+    "omiButtonReleased": "Butang dilepaskan",
+    "omiButtonSingleTap": "Tekan sebentar",
+    "omiButtonLongPress": "Tekan lama",
     "@@locale": "ms",
     "sessionExpiredSignInAgain": "Sesi tamat tempoh — log masuk semula.",
     "appTitle": "Omi",

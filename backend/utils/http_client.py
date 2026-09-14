@@ -331,6 +331,10 @@ def get_stt_semaphore() -> asyncio.Semaphore:
     return _get_semaphore('stt', 8)
 
 
+def get_local_preview_semaphore() -> asyncio.Semaphore:
+    return _get_semaphore('local_preview', 2)
+
+
 def get_stt_proxy_semaphore() -> asyncio.Semaphore:
     return _get_semaphore('stt_proxy', 4)
 
@@ -459,6 +463,19 @@ def get_stt_client() -> httpx.AsyncClient:
         lambda: httpx.AsyncClient(
             timeout=httpx.Timeout(300.0, connect=5.0),
             limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
+        ),
+    )
+
+
+def get_local_preview_client() -> httpx.AsyncClient:
+    """Loopback readiness probes must never inherit environment HTTP proxies."""
+    return _get_client(
+        'local_preview',
+        lambda: httpx.AsyncClient(
+            timeout=httpx.Timeout(0.8),
+            limits=httpx.Limits(max_connections=2, max_keepalive_connections=1),
+            trust_env=False,
+            follow_redirects=False,
         ),
     )
 

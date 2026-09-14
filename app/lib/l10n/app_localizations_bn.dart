@@ -9,6 +9,21 @@ class AppLocalizationsBn extends AppLocalizations {
   AppLocalizationsBn([String locale = 'bn']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'রেকর্ড হচ্ছে না';
+
+  @override
+  String get omiButtonPressed => 'বোতাম চাপা হয়েছে';
+
+  @override
+  String get omiButtonReleased => 'বোতাম ছেড়ে দেওয়া হয়েছে';
+
+  @override
+  String get omiButtonSingleTap => 'সংক্ষিপ্ত চাপ';
+
+  @override
+  String get omiButtonLongPress => 'দীর্ঘ চাপ';
+
+  @override
   String get sessionExpiredSignInAgain => 'সেশনের মেয়াদ শেষ হয়েছে — আবার সাইন ইন করুন।';
 
   @override

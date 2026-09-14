@@ -9,6 +9,21 @@ class AppLocalizationsTh extends AppLocalizations {
   AppLocalizationsTh([String locale = 'th']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'ไม่ได้กำลังบันทึก';
+
+  @override
+  String get omiButtonPressed => 'กดปุ่มแล้ว';
+
+  @override
+  String get omiButtonReleased => 'ปล่อยปุ่มแล้ว';
+
+  @override
+  String get omiButtonSingleTap => 'กดสั้น';
+
+  @override
+  String get omiButtonLongPress => 'กดค้าง';
+
+  @override
   String get sessionExpiredSignInAgain => 'เซสชันหมดอายุ — ลงชื่อเข้าใช้อีกครั้ง';
 
   @override

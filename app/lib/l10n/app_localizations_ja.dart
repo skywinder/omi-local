@@ -9,6 +9,21 @@ class AppLocalizationsJa extends AppLocalizations {
   AppLocalizationsJa([String locale = 'ja']) : super(locale);
 
   @override
+  String get localCaptureIdle => '録音していません';
+
+  @override
+  String get omiButtonPressed => 'ボタンを押しました';
+
+  @override
+  String get omiButtonReleased => 'ボタンを離しました';
+
+  @override
+  String get omiButtonSingleTap => '短押し';
+
+  @override
+  String get omiButtonLongPress => '長押し';
+
+  @override
   String get sessionExpiredSignInAgain => 'セッションの有効期限が切れました。もう一度サインインしてください。';
 
   @override

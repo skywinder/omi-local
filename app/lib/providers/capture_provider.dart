@@ -7,7 +7,8 @@ class CaptureProvider extends CaptureController {
     super.inProgressConversationLoader,
     super.audioCodecLoader,
     super.buttonListenerLoader,
+    super.audioListenerLoader,
     super.microphonePermissionRequester,
-    super.phoneMicBatchRecorder,
+    super.phoneMicRecorder,
   });
 }

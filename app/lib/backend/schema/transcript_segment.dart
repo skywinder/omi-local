@@ -22,6 +22,10 @@ class TranscriptSegment {
   bool speechProfileProcessed;
   String? sttProvider;
 
+  /// Local live-preview hypothesis, without reliable segment timing yet.
+  /// This transient UI state is not part of the persisted conversation wire.
+  bool isDraft;
+
   TranscriptSegment({
     required this.id,
     required this.text,
@@ -33,9 +37,11 @@ class TranscriptSegment {
     required this.translations,
     this.speechProfileProcessed = true,
     this.sttProvider,
+    this.isDraft = false,
+    int? speakerId,
   }) {
     final parts = speaker?.split('_') ?? [];
-    speakerId = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    this.speakerId = speakerId ?? (parts.length > 1 ? (int.tryParse(parts[1]) ?? -1) : -1);
   }
 
   @override
@@ -59,7 +65,8 @@ class TranscriptSegment {
     return TranscriptSegment(
       id: generated.id ?? '',
       text: generated.text,
-      speaker: generated.speaker ?? 'SPEAKER_00',
+      speaker: generated.speakerId == -1 ? null : generated.speaker,
+      speakerId: generated.speakerId,
       isUser: generated.isUser,
       personId: generated.personId,
       start: generated.start,
@@ -184,6 +191,8 @@ class TranscriptSegment {
         String speakerName;
         if (segment.personId != null && peopleMap.containsKey(segment.personId)) {
           speakerName = peopleMap[segment.personId]!;
+        } else if (segment.speakerId < 0) {
+          speakerName = 'Unknown speaker';
         } else {
           var displayId = '${getDisplaySpeakerId(segment.speakerId, segments)}';
           speakerName = speakerLabelBuilder != null ? speakerLabelBuilder(displayId) : 'Speaker $displayId';
@@ -214,12 +223,13 @@ class TranscriptSegment {
   /// - If conversation has speakers [1, 2, 3] -> displays as [1, 2, 3]
   /// - If conversation has speakers [5, 6] -> displays as [1, 2]
   static int getDisplaySpeakerId(int speakerId, List<TranscriptSegment> segments) {
+    if (speakerId < 0) return -1;
     if (segments.isEmpty) return speakerId + 1;
 
     // Find minimum speaker ID among non-user segments
     int? minSpeakerId;
     for (var segment in segments) {
-      if (!segment.isUser) {
+      if (!segment.isUser && segment.speakerId >= 0) {
         if (minSpeakerId == null || segment.speakerId < minSpeakerId) {
           minSpeakerId = segment.speakerId;
         }

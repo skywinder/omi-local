@@ -14,10 +14,10 @@ import tempfile
 import time
 import wave
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from . import config, stt_install, local_whisperkit
+from . import config, stt_install, local_whisperkit, local_openai_stt, local_diarization
 
 
 class TranscriptionError(ValueError):
@@ -26,6 +26,14 @@ class TranscriptionError(ValueError):
 
 class TranscriptionBusy(TranscriptionError):
     """The shared inference slot is occupied; retry without counting a failure."""
+
+
+class NoSpeechDetected(TranscriptionError):
+    """A successful, cached inference found no speech; do not retry or import."""
+
+
+class TranscriptionDisabled(TranscriptionError):
+    """New recording admission is disabled; already admitted jobs remain pinned."""
 
 
 @dataclass(frozen=True)
@@ -37,6 +45,15 @@ class EngineConfig:
     the same. Models must already be installed; this command never installs them.
     """
 
+    pipeline: dict | None = None
+    credential_store: object = field(default=None, repr=False, compare=False)
+    speaker_revision: str = 'exclusive-v1'
+    speaker_model: str = ''
+    speaker_python: str = ''
+    speaker_device: str = 'cpu'
+    speaker_threads: int = 4
+    speaker_count: int = 0
+    provider_url: str = ''
     engine: str = 'whisperx'
     model: str = 'large-v3-turbo'
     language: str = 'ru'
@@ -55,10 +72,34 @@ class EngineConfig:
     def load(cls, cfg, *, profile=None):
         path = cfg.layout.state_root / 'stt-engine.json'
         data = json.loads(path.read_text()) if path.exists() else {}
-        if profile is not None:
+        from .local_providers import Registry
+        registry = Registry(cfg)
+        pipeline = profile.get('pipeline') if profile is not None else (registry.pipeline() if registry.exists else None)
+        if pipeline is not None:
+            stt = pipeline.get('stt')
+            if not isinstance(stt, dict):
+                raise TranscriptionDisabled('Select a transcription provider before processing recordings')
+            data = {'diarization_model': 'none', **stt['settings'], 'engine': stt['kind'],
+                    'pipeline': pipeline}
+            if profile is not None:
+                data.update(profile)
+            diarization = pipeline.get('diarization')
+            # The selected diarization stage owns whether speakers run. An old
+            # STT draft cannot silently re-enable its embedded speaker setting.
+            data.update(diarization_model='none', speaker_model='')
+            if diarization is not None:
+                if diarization.get('embedded', False):
+                    if data['engine'] not in {'whisperx', 'parakeet-mlx'}:
+                        raise TranscriptionError('Select standalone diarization or disable it for this STT provider')
+                    data['diarization_model'] = diarization['settings']['speaker_model']
+                elif diarization['kind'] == 'pyannote':
+                    data.update(diarization['settings'])
+            data['credential_store'] = registry
+        elif profile is not None:
             # Queue profiles pin the engine, but runtime paths belong to that engine.
             # Never inherit a WhisperKit directory/Python override across providers.
-            data = {**(data if data.get('engine', 'whisperx') == profile['engine'] else {}), **profile}
+            data = {**(data if data.get('engine', 'whisperx') == profile['engine'] else {}),
+                    'speaker_model': '', 'speaker_device': 'cpu', 'speaker_count': 0, 'speaker_threads': 4, **profile}
         repo_root = getattr(cfg, 'repo_root', None)
         managed = repo_root / '.local/stt' if repo_root is not None else None
         standard = (not data or (data.get('model', 'large-v3-turbo') == 'large-v3-turbo'
@@ -79,13 +120,38 @@ class EngineConfig:
             data = {'model': local_whisperkit.MODEL, 'device': 'cpuAndNeuralEngine',
                     'diarization_model': 'none', **data, 'assets_path': str(root),
                     'runtime_revision': local_whisperkit.runtime_revision(root)}
+        if data.get('engine') == 'openai-compatible':
+            data = {'language': 'auto', 'device': 'server', 'diarization_model': 'none', **data}
+            if pipeline is not None:
+                from .local_provider_http import validate_url
+                validate_url(data.get('provider_url', ''))
+            else:
+                local_openai_stt.validate_url(data.get('provider_url', ''))
+        if data.get('speaker_model') and not data.get('speaker_python') and repo_root is not None:
+            data['speaker_python'] = str(repo_root / '.local/diarization/venv/bin/python')
         engine = cls(**data)
-        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit'} or not re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+        if (engine.speaker_revision != 'exclusive-v1'
+                or engine.speaker_model and engine.speaker_model not in local_diarization.MODELS
+                or engine.speaker_device not in {'cpu', 'mps'}
+                or type(engine.speaker_threads) is not int or not 1 <= engine.speaker_threads <= 16
+                or type(engine.speaker_count) is not int or not 0 <= engine.speaker_count <= 32):
+            raise TranscriptionError('Invalid independent diarization settings')
+        if engine.speaker_model and engine.diarization_model != 'none':
+            raise TranscriptionError('Select one diarization stage; set diarization_model to none')
+        if pipeline is not None and engine.engine == 'openai-compatible':
+            valid_model = (isinstance(engine.model, str) and 0 < len(engine.model) <= 256
+                           and bool(engine.model.strip()) and engine.model.isprintable())
+        else:
+            valid_model = isinstance(engine.model, str) and re.fullmatch(r'[A-Za-z0-9_./-]+', engine.model)
+        if (engine.engine not in {'whisperx', 'parakeet-mlx', 'whisperkit', 'openai-compatible'} or not valid_model
                 or not (re.fullmatch(r'[a-z]{2,3}', engine.language) or engine.language == 'auto')
                 or engine.compute_type not in {'float32', 'int8', 'int8_float32'}
                 or type(engine.batch_size) is not int or not 1 <= engine.batch_size <= 8):
             raise TranscriptionError('Invalid local STT engine settings')
-        if engine.engine == 'whisperkit':
+        if engine.engine == 'openai-compatible':
+            if engine.device != 'server' or engine.diarization_model != 'none':
+                raise TranscriptionError('Custom STT requires server device and single-speaker mode')
+        elif engine.engine == 'whisperkit':
             if (engine.model != local_whisperkit.MODEL or engine.device != 'cpuAndNeuralEngine'
                     or engine.diarization_model != 'none' or engine.python or engine.library_path):
                 raise TranscriptionError('WhisperKit requires the prepared Core ML turbo model and single-speaker mode')
@@ -101,7 +167,15 @@ class EngineConfig:
         return engine
 
     def profile(self):
-        excluded = {'python', 'library_path', 'assets_path'}
+        excluded = {'python', 'library_path', 'assets_path', 'speaker_python', 'credential_store'}
+        if self.pipeline is None:
+            excluded.add('pipeline')
+        if not self.speaker_model:
+            excluded.update({'speaker_revision', 'speaker_model', 'speaker_device', 'speaker_threads', 'speaker_count'})
+        if self.engine != 'openai-compatible':
+            excluded.add('provider_url')
+        else:
+            excluded.update({'compute_type', 'batch_size', 'chunk_duration', 'overlap_duration'})
         if not self.runtime_revision:
             excluded.add('runtime_revision')
         if self.engine == 'whisperx':
@@ -111,7 +185,11 @@ class EngineConfig:
                 excluded.add('diarization_model')
         if self.engine == 'whisperkit':
             excluded.update({'compute_type', 'batch_size', 'chunk_duration', 'overlap_duration'})
-        return {key: value for key, value in asdict(self).items() if key not in excluded}
+        return {item.name: getattr(self, item.name) for item in fields(self) if item.name not in excluded}
+
+    def provider_key(self, stage='stt'):
+        snapshot = self.pipeline.get(stage) if self.pipeline else None
+        return self.credential_store.key(snapshot) if snapshot and self.credential_store else ''
 
 
 def atomic_json(path: Path, data: dict) -> None:
@@ -201,6 +279,15 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
 
 
 def check_model(engine: EngineConfig) -> Path:
+    if engine.engine == 'openai-compatible':
+        try:
+            if engine.pipeline is None:
+                local_openai_stt.check(engine.provider_url, engine.model)
+            else:
+                local_openai_stt.check(engine.provider_url, engine.model, selected=True, key=engine.provider_key())
+        except local_openai_stt.ProviderError as error:
+            raise TranscriptionError(str(error)) from None
+        return Path(sys.executable)
     if engine.engine == 'whisperkit':
         try:
             binary = local_whisperkit.installed(Path(engine.assets_path))
@@ -320,6 +407,50 @@ def run_whisperkit(engine: EngineConfig, audio: Path, folder: Path, manifest: di
             raise TranscriptionError(str(error)) from None
 
 
+def run_openai(engine: EngineConfig, audio: Path, folder: Path, manifest: dict) -> dict:
+    check_model(engine)
+    with tempfile.TemporaryDirectory(dir=folder, prefix='.inference-') as temporary:
+        snapshot = Path(temporary) / 'audio.wav'
+        shutil.copyfile(audio, snapshot)
+        if stt_install.digest(snapshot) != manifest['audio_sha256']:
+            raise TranscriptionError('WAV changed during preparation')
+        try:
+            options = {'selected': True, 'key': engine.provider_key()} if engine.pipeline is not None else {}
+            return local_openai_stt.transcribe(engine.provider_url, engine.model, engine.language,
+                                               snapshot, manifest['duration_seconds'], **options)
+        except local_openai_stt.ProviderError as error:
+            raise TranscriptionError(str(error)) from None
+
+
+def apply_diarization(engine, audio, folder, manifest, raw):
+    if not engine.speaker_model or not raw.get('segments'):
+        return raw
+    python = Path(engine.speaker_python).expanduser()
+    if not python.is_file():
+        raise TranscriptionError('Independent diarization Python is unavailable')
+    with tempfile.TemporaryDirectory(dir=folder, prefix='.speakers-') as temporary:
+        snapshot, output = Path(temporary) / 'audio.wav', Path(temporary) / 'turns.json'
+        shutil.copyfile(audio, snapshot)
+        if stt_install.digest(snapshot) != manifest['audio_sha256']:
+            raise TranscriptionError('WAV changed during diarization preparation')
+        command = [str(python), str(Path(__file__).with_name('local_diarization.py')),
+                   '--audio', str(snapshot), '--output', str(output), '--model', engine.speaker_model,
+                   '--device', engine.speaker_device, '--threads', str(engine.speaker_threads)]
+        if engine.speaker_count:
+            command.extend(['--num-speakers', str(engine.speaker_count)])
+        env = model_environment(engine)
+        result = subprocess.run(stt_install.offline_command(command, env), env=env,
+                                capture_output=True, timeout=3600)
+        if result.returncode or not output.is_file():
+            raise TranscriptionError('Independent diarization failed; original audio and ASR retained')
+        try:
+            report = json.loads(output.read_text())
+            segments = local_diarization.reconcile(raw['segments'], report['turns'])
+        except (ValueError, TypeError, KeyError):
+            raise TranscriptionError('Invalid independent diarization result') from None
+        return {**raw, 'segments': segments, 'diarization': report}
+
+
 def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> int:
     if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
         raise TranscriptionError('Use the paired local Mac offline stack')
@@ -352,9 +483,25 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         reused = raw_path.exists()
         if not reused:
             started = time.monotonic()
-            adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit}[engine.engine]
-            raw = adapter(engine, audio, folder, manifest)
+            adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit, 'openai-compatible': run_openai}[engine.engine]
+            if engine.pipeline is not None:
+                from .local_pipeline import execute
+                raw = execute(engine, audio, folder, manifest, adapter, apply_diarization, atomic_json)
+            else:
+                asr_path = folder / 'asr.json'
+                if asr_path.exists():
+                    raw = json.loads(asr_path.read_text())
+                else:
+                    raw = adapter(engine, audio, folder, manifest)
+                    if engine.speaker_model:
+                        atomic_json(asr_path, raw)
+                raw = apply_diarization(engine, audio, folder, manifest, raw)
             atomic_json(raw_path, raw)
+        else:
+            raw = json.loads(raw_path.read_text())
+        if raw.get('outcome') == 'no_speech' and raw.get('segments') == []:
+            raise NoSpeechDetected('No speech detected; original WAV retained')
+        if not reused:
             print(f'Local STT finished in {time.monotonic() - started:.1f}s; importing transcript...', flush=True)
         result = backend_step(cfg, folder)
         print(json.dumps({**result, 'reused_transcript': reused}, ensure_ascii=False))

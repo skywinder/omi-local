@@ -9,6 +9,21 @@ class AppLocalizationsNo extends AppLocalizations {
   AppLocalizationsNo([String locale = 'no']) : super(locale);
 
   @override
+  String get localCaptureIdle => 'Tar ikke opp';
+
+  @override
+  String get omiButtonPressed => 'Knapp trykket ned';
+
+  @override
+  String get omiButtonReleased => 'Knapp sluppet';
+
+  @override
+  String get omiButtonSingleTap => 'Kort trykk';
+
+  @override
+  String get omiButtonLongPress => 'Langt trykk';
+
+  @override
   String get sessionExpiredSignInAgain => 'Økten er utløpt — logg på igjen.';
 
   @override

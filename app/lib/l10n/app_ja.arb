@@ -1,4 +1,9 @@
 {
+    "localCaptureIdle": "録音していません",
+    "omiButtonPressed": "ボタンを押しました",
+    "omiButtonReleased": "ボタンを離しました",
+    "omiButtonSingleTap": "短押し",
+    "omiButtonLongPress": "長押し",
     "@@locale": "ja",
     "sessionExpiredSignInAgain": "セッションの有効期限が切れました。もう一度サインインしてください。",
     "appTitle": "Omi",

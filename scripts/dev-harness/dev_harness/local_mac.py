@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from . import cli, config, safety, local_stt, local_stt_watch, local_library
+from . import cli, config, safety, local_stt, local_stt_watch, local_library, local_live, local_transcription
 
 
 class LocalMacError(ValueError):
@@ -80,20 +80,62 @@ def read_config(cfg) -> dict:
     return data
 
 
+def ngrok_env(cfg) -> dict[str, str]:
+    """Read only connection inputs; never export secrets into child environments."""
+    from dotenv import dotenv_values
+
+    path = cfg.repo_root / ".env"
+    try:
+        if path.is_symlink():
+            raise LocalMacError(".env must be a regular file, not a symlink")
+        if not path.exists():
+            return {}
+        if not path.is_file() or path.stat().st_mode & 0o077:
+            raise LocalMacError(".env must be a private regular file; run chmod 600 .env")
+        values = dotenv_values(path, interpolate=False)
+    except (OSError, UnicodeError):
+        raise LocalMacError("Unable to read .env; check its permissions and UTF-8 encoding") from None
+    return {name: (values.get(name) or "").strip() for name in ("NGROK_URL", "NGROK_AUTHTOKEN")}
+
+
 def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
     from .local_setup import show_frame
+    from . import local_env
 
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
+    repo = getattr(cfg, 'repo_root', None)
+    env_path = repo / '.env' if repo is not None else None
+    env_values = None
+    if env_path is not None and (env_path.exists() or env_path.is_symlink()):
+        # PR #7's generated env contains the pairing key and is applied as a
+        # complete immutable bundle. The newer two-field env only supplies the
+        # ngrok URL/token; pairing remains owned by the local state directory.
+        raw_names = {
+            line.partition('=')[0].strip()
+            for line in env_path.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith('#') and '=' in line
+        }
+        if raw_names & {'OMI_NGROK_URL', 'OMI_LOCAL_APP_KEY'}:
+            if rotate or edit:
+                raise LocalMacError('Edit the private .env while the local stack is stopped')
+            local_env.apply(cfg, local_env.read_env(env_path))
+            return
+        env_values = ngrok_env(cfg)
+
+    needs_pairing_terminal = not (cfg.layout.state_root / 'pairing.json').is_file() or rotate
+    if (env_values is None or needs_pairing_terminal) and (not sys.stdin.isatty() or not sys.stdout.isatty()):
         raise LocalMacError("Configure requires a local interactive terminal; credentials must not enter logs")
     current = cfg.layout.state_root / "ngrok.json"
     if edit and (cli._service_record(cfg, "backend") or cli._service_record(cfg, "ngrok")):
         raise LocalMacError("Stop this local stack before changing its connection")
     if not current.exists() or edit:
+        values = env_values or ngrok_env(cfg)
         existing = read_config(cfg)["url"] if current.exists() else ""
         print('Ngrok: https://dashboard.ngrok.com — адрес в Domains, токен в Your Authtoken.')
         print('Если аккаунта ещё нет: docs/NGROK.md')
-        url = endpoint(input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
-        token = getpass.getpass("Authtoken ngrok (скрыт; Enter — использовать сохранённый): ").strip()
+        url = endpoint(values.get("NGROK_URL") or input(f"HTTPS-адрес ngrok [{existing}]: ").strip() or existing)
+        token = values.get("NGROK_AUTHTOKEN") or getpass.getpass(
+            "Authtoken ngrok (скрыт; Enter — использовать сохранённый): "
+        ).strip()
         if not token:
             import yaml
 
@@ -224,6 +266,13 @@ def ensure_owner_profile(cfg, owner_uid: str) -> None:
 def up(cfg) -> int:
     data = read_config(cfg)
     check_agent(cfg)
+    local_live.require_backend_environment(cfg)
+    local_transcription.check_models(cfg)
+    from .local_stt_services import health as stt_health
+    from .local_stt_services import live_url, start_configured
+    configured_live_url = live_url(cfg)
+    if not configured_live_url:
+        local_live.preflight_start(cfg)
     sys.path.insert(0, str(cfg.repo_root / "backend"))
     from utils.local_transport_auth import load_pairing
 
@@ -231,6 +280,9 @@ def up(cfg) -> int:
     pairing = load_pairing()
     if cli.cmd_check(argparse.Namespace()):
         return 1
+    if not configured_live_url:
+        local_live.start(cfg)
+    start_configured(cfg)
     if cli.cmd_up(argparse.Namespace()):
         return 1
     ensure_owner_profile(cfg, pairing["owner_uid"])
@@ -268,6 +320,11 @@ def up(cfg) -> int:
                         require_auth_boundary(data["url"])
                         print("Public HTTPS health passed; run audio-smoke to verify authenticated WSS")
                         local_stt_watch.start_if_enabled(cfg)
+                        if configured_live_url:
+                            if not stt_health(cfg, "live-stt")[0]:
+                                raise LocalMacError("Configured live STT is not ready; inspect its owned service")
+                        else:
+                            local_live.require_ready(cfg)
                         return 0
             except (OSError, urllib.error.URLError):
                 pass
@@ -293,6 +350,8 @@ def main() -> int:
         "command",
         choices=[
             "prepare-emulator",
+            "init-env",
+            "launch-iphone",
             "check",
             "configure",
             "edit-connection",
@@ -305,6 +364,7 @@ def main() -> int:
             "auto-transcribe-on",
             "auto-transcribe-off",
             "transcription-status",
+            "apply-stt",
             "library",
             "start",
             "setup-check",
@@ -320,7 +380,13 @@ def main() -> int:
             prepare_emulator(repo)
             return 0
         cfg = config.load_config(repo, create_layout=args.command in {"configure", "edit-connection", "rotate-key"})
-        if args.command == "check":
+        if args.command == 'init-env':
+            from . import local_env
+            local_env.initialize(cfg)
+        elif args.command == 'launch-iphone':
+            from . import launch_iphone
+            launch_iphone.launch(cfg.repo_root / '.env', cfg.repo_root / 'app/build/ios/Profile-dev-iphoneos/Runner.app')
+        elif args.command == "check":
             if not shutil.which("ngrok"):
                 raise LocalMacError("ngrok is missing; run install")
             return cli.cmd_check(argparse.Namespace())
@@ -338,6 +404,7 @@ def main() -> int:
             try:
                 if args.command == "setup-check":
                     local_setup.check(cfg)
+                    local_setup.require_transcription_ready(cfg)
                     print('Готовность Mac: проверено. Изменений не внесено.')
                     return 0
                 return local_setup.run(cfg)
@@ -352,6 +419,10 @@ def main() -> int:
             return local_stt_watch.enable(cfg)
         elif args.command == "auto-transcribe-off":
             return local_stt_watch.disable(cfg)
+        elif args.command == "apply-stt":
+            from .local_stt_services import apply
+            apply(cfg)
+            return 0
         elif args.command == "transcription-status":
             return local_stt_watch.status(cfg)
         elif args.command == "audio-smoke":
@@ -372,11 +443,17 @@ def main() -> int:
             finally:
                 os.close(read_fd)
         return 0
+    except local_stt.NoSpeechDetected:
+        print('Речь не обнаружена. Аудиозапись сохранена.')
+        return 0
     except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
+        from .local_env import LocalEnvError
+        from .local_stt_services import ServiceError
         message = (
             str(error)
-            if isinstance(error, (LocalMacError, local_stt.TranscriptionError))
+            if isinstance(error, (LocalMacError, LocalEnvError, local_stt.TranscriptionError, ServiceError,
+                                  local_live.LocalLiveError, local_transcription.TranscriptionSetupError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )
         print(f"Local Mac operation failed: {message}", file=sys.stderr)

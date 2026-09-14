@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:omi/backend/preferences.dart';
@@ -12,6 +13,26 @@ import 'package:omi/utils/offline_network_policy.dart';
 class LocalMacUnauthorized implements Exception {}
 
 typedef LocalProfileProbe = Future<Map<String, dynamic>> Function(Uri base, String key);
+
+class LocalTranscriptionReadiness {
+  final String live;
+  final String finalTranscript;
+
+  const LocalTranscriptionReadiness({this.live = 'unknown', this.finalTranscript = 'unknown'});
+
+  bool get isReady => live == 'ready' && finalTranscript == 'ready';
+
+  factory LocalTranscriptionReadiness.fromProfile(Map<String, dynamic> profile) {
+    final value = profile['local_transcription'];
+    String stage(String name) {
+      final entry = value is Map ? value[name] : null;
+      final status = entry is Map ? entry['status'] : null;
+      return const {'ready', 'disabled', 'unavailable', 'busy'}.contains(status) ? status as String : 'unknown';
+    }
+
+    return LocalTranscriptionReadiness(live: stage('live'), finalTranscript: stage('final'));
+  }
+}
 
 /// A local owner session, independent of Firebase's cached user and token timer.
 class LocalMacSession extends ChangeNotifier {
@@ -24,16 +45,47 @@ class LocalMacSession extends ChangeNotifier {
 
   static final instance = LocalMacSession();
   static const storageKey = 'omi.localMacPairing.v1';
+  static const settingsKey = 'omi.localMacSettings.v1';
   final FlutterSecureStorage _storage;
   final LocalProfileProbe _probe;
   Uri? _base;
   String? _key;
   bool _rejected = false;
   bool _publishing = false;
+  LocalTranscriptionReadiness readiness = const LocalTranscriptionReadiness();
 
   String get address => _base?.toString() ?? '';
   bool get isSignedIn => _key != null && !_rejected;
   String? get accessKey => isSignedIn ? _key : null;
+
+  static String normalizeKey(String key) => key.replaceAll(RegExp(r'\s'), '');
+
+  /// Explicit installer handoff only: no embedded credentials and no network activation.
+  Future<void> importLaunchSettings() async {
+    if (!Env.isOfflineRuntime || defaultTargetPlatform != TargetPlatform.iOS) return;
+    final saved =
+        await const MethodChannel('com.omi/environment').invokeMapMethod<String, String>('takeLocalMacSettings');
+    if (saved == null) return;
+    final url = Env.parseLocalTunnelUrl(saved['url'] ?? '');
+    final key = normalizeKey(saved['key'] ?? '');
+    if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(key)) throw LocalMacUnauthorized();
+    await saveSettings(url.toString(), key);
+  }
+
+  /// Editing settings never activates a server or changes the authenticated origin.
+  Future<({String address, String key})> readSettings() async {
+    final raw = await _storage.read(key: settingsKey);
+    if (raw != null) {
+      final saved = jsonDecode(raw) as Map<String, dynamic>;
+      return (address: saved['url'] as String, key: saved['key'] as String);
+    }
+    return (address: address, key: _key ?? '');
+  }
+
+  Future<void> saveSettings(String address, String key) async {
+    if (!Env.isOfflineRuntime) throw StateError('Local Mac requires offline runtime');
+    await _storage.write(key: settingsKey, value: jsonEncode({'url': address.trim(), 'key': normalizeKey(key)}));
+  }
 
   Future<void> restore() async {
     if (!Env.isOfflineRuntime) return;
@@ -61,6 +113,7 @@ class LocalMacSession extends ChangeNotifier {
 
   Future<void> connect(String address, String key) async {
     if (!Env.isOfflineRuntime) throw StateError('Local Mac requires offline runtime');
+    key = normalizeKey(key);
     final base = Env.parseLocalTunnelUrl(address);
     if (!RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(key)) throw LocalMacUnauthorized();
     final profile = await _probe(base, key);
@@ -75,6 +128,7 @@ class LocalMacSession extends ChangeNotifier {
     _base = base;
     _key = key;
     _rejected = false;
+    readiness = LocalTranscriptionReadiness.fromProfile(profile);
     _activate();
     OfflineNetworkPolicy.installFromEnv();
     notifyListeners();
@@ -110,6 +164,7 @@ class LocalMacSession extends ChangeNotifier {
     _rejected = true;
     notifyListeners();
     await _storage.write(key: storageKey, value: jsonEncode({'url': address, 'rejected': true}));
+    await _storage.delete(key: settingsKey);
   }
 
   static Future<Map<String, dynamic>> probeProfile(Uri base, String key) =>
