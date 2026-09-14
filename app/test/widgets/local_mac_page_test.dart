@@ -115,6 +115,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  for (final readiness in [
+    null,
+    {
+      'live': {'status': 'disabled'},
+      'final': {'status': 'unavailable'}
+    }
+  ]) {
+    testWidgets('pairing warns for readiness $readiness while keeping audio connection usable', (tester) async {
+      final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice', 'local_transcription': readiness});
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+            session: session, statusFetcher: status, stopRecording: () async {}, refreshConnection: () async {}),
+      ));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
+      await tester.enterText(find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+      await tapFormButton(tester, 'local-mac-connect');
+      await tester.pumpAndSettle();
+      expect(session.isSignedIn, isTrue);
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
+      expect(find.text(readiness == null ? 'Live Transcript: Unknown' : 'Live Transcript: Off'), findsOneWidget);
+      expect(find.text(readiness == null ? 'Transcript: Unknown' : 'Transcript: Transcription unavailable'),
+          findsOneWidget);
+      expect(find.byType(LocalMacPage), findsOneWidget);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text,
+          List.filled(43, 's').join());
+      expect(session.isSignedIn, isTrue);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   Future<void> openPage(WidgetTester tester, LocalMacSession session) async {
     await tester.pumpWidget(
       MaterialApp(

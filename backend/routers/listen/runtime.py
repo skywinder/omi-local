@@ -70,7 +70,7 @@ from utils.webhooks import get_audio_bytes_webhook_seconds
 from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
 from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture
-from utils.local_live_preview import LocalLivePreview, preview_url
+from utils.local_live_preview import LocalLivePreview
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
 from .contracts import ListenLimits, ListenRequest, ListenSessionState
@@ -740,9 +740,7 @@ class ListenSessionRuntime:
             if self.capture_sink is not None:
                 # Capture admits only PCM16 mono 16 kHz sources. Preview never
                 # enters TranscriptProcessor or persisted conversation state.
-                url = preview_url()
-                if url:
-                    self.local_preview = LocalLivePreview(url, self.request.websocket.send_json)
+                self.local_preview = LocalLivePreview.from_environment(self.request.websocket.send_json)
             await self.asend_event(
                 MessageServiceStatusEvent(status='stt_initiating', status_text='STT Service Starting')
             )

@@ -156,6 +156,12 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
     }
   }
 
+  String _readinessLabel(String status) => switch (status) {
+        'unknown' => context.l10n.unknown,
+        'disabled' => context.l10n.off,
+        _ => context.l10n.transcriptionUnavailable,
+      };
+
   InputDecoration _fieldDecoration(String label, {String? hint, Widget? suffix}) => InputDecoration(
         labelText: label,
         hintText: hint,
@@ -295,7 +301,21 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                             color: _error != null ? const Color(0xFFFFB4AB) : Colors.white70,
                           ),
                           const SizedBox(width: 10),
-                          Expanded(child: Text(_error ?? _success!, style: const TextStyle(height: 1.4))),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_error ?? _success!, style: const TextStyle(height: 1.4)),
+                                if (_error == null && _success == context.l10n.connected) ...[
+                                  if (_session.readiness.live != 'ready')
+                                    Text('${context.l10n.liveTranscript}: ${_readinessLabel(_session.readiness.live)}'),
+                                  if (_session.readiness.finalTranscript != 'ready')
+                                    Text(
+                                        '${context.l10n.transcript}: ${_readinessLabel(_session.readiness.finalTranscript)}'),
+                                ],
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),

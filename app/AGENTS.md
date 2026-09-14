@@ -37,6 +37,9 @@ The collapsed runtime header combines the input source and Mac connection in one
 Button feedback shows the completed action for four seconds, never raw down/up events.
 Protocol events (tap=1, double=2, long=3, down=4, up=5) remain diagnostic; firmware
 may omit edges. Down/up must not toggle capture or start voice commands.
+On the offline transcript screen, ASR errors belong in the transcript body;
+the header still reports capture state, and ASR readiness alone never means Listening.
+Connection results keep transcription readiness warnings inline with the saved form.
 PureSocket spells out default WS/WSS ports before Dart's HTTP upgrade. Preserve
 this conversion and the strict authority policy; accepting HTTP(S) port zero
 would weaken the boundary rather than fix the socket caller.

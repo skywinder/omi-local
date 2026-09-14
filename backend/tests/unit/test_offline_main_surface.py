@@ -51,6 +51,13 @@ def forbidden(*args, **kwargs):
 main.conversations._enrich_deferred_conversation = forbidden
 main.conversations._dispatch_first_open_work = forbidden
 assert main.conversations.get_conversation_by_id('synthetic', source=None, uid='synthetic') == fixture
+os.environ['OMI_LOCAL_TRANSPORT'] = 'ngrok'
+os.environ.pop('OMI_LOCAL_LIVE_PREVIEW_URL', None)
+main.users.get_user_profile = lambda uid: {'uid': uid}
+profile = main.users.get_user_profile_endpoint(uid='synthetic')
+assert profile['local_transcription']['live']['status'] == 'disabled'
+assert profile['local_transcription']['final']['status'] == 'unavailable'
+assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
 
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
