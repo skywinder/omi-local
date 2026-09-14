@@ -1,78 +1,77 @@
-# Провайдеры обработки
+# Processing providers
 
-Контейнерный запуск на Mac CPU и Linux/WSL2 NVIDIA: [Docker](DOCKER.md).
+For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
-Откройте **Настройки** в веб-аудиотеке omiloc на этом Mac. Для каждого этапа
-можно сохранить несколько карточек; выполняет работу один выбранный провайдер.
+Open **Settings** in the omiloc web library on this Mac. Each stage can have
+several saved provider cards; one selected provider performs the work.
 
-| Этап | Поддерживаемый протокол или движок |
+| Stage | Supported protocol or engine |
 |---|---|
-| Live STT | Подготовленный WhisperLiveKit; внешние WLK-совместимые `/asr`, включая существующий Parakeet |
-| Распознавание | Подготовленные WhisperKit, WhisperX, Parakeet MLX; OpenAI-совместимый `/v1/audio/transcriptions` с таймкодами |
-| Диаризация | Подготовленный Pyannote; Mycelia `POST /diarize` |
-| Суммаризация | OpenAI-совместимый `/chat/completions` относительно заданного базового URL, обычно оканчивающегося на `/v1` |
+| Live STT | Prepared WhisperLiveKit; external WLK-compatible `/asr` servers, including an existing Parakeet server |
+| Transcription | Prepared WhisperKit, WhisperX, Parakeet MLX; OpenAI-compatible `/v1/audio/transcriptions` with timestamps |
+| Diarization | Prepared Pyannote; Mycelia `POST /diarize` |
+| Summarization | OpenAI-compatible `/chat/completions` relative to the configured base URL, usually ending in `/v1` |
 
-**Добавить → заполнить карточку → Проверить подключение → Сохранить → Использовать.**
-«Сохранить» меняет карточку; «Использовать» применяет её для новых задач.
-Сохранённые и действующие параметры показаны отдельно. «Загрузить модели»
-запрашивает каталог сервера; модель также можно указать вручную.
-Проверка готовности не распознаёт речь и не отправляет записи.
-Модели и окружения на Mac должны быть подготовлены заранее; открытие или
-сохранение настроек ничего не скачивает.
+**Add → fill in the card → Check connection → Save → Use.**
+**Save** updates the card; **Use** applies it to new jobs.
+Saved and active settings are shown separately. **Load models** requests the
+server's model catalog; you can also enter a model manually.
+The readiness check does not recognize speech or send recordings.
+Prepare Mac models and environments beforehand; opening or saving settings does
+not download anything.
 
-Live, диаризация и суммаризация выключаются независимо. Готовые WAV проходят
-распознавание, затем включённую диаризацию и суммаризацию. Резюме и заголовок
-создаются на языке разговора; длинные транскрипты обрабатываются частями.
-Аудиотека показывает каждый этап, использованный провайдер и промежуточный
-транскрипт, если следующий этап ещё не завершён. Итог импортируется в приложение
-после успешного завершения всех включённых этапов.
+Live STT, diarization, and summarization can be disabled independently.
+Completed WAVs pass through transcription, then enabled diarization and
+summarization. Summaries and titles use the conversation's language; long
+transcripts are processed in parts. The library shows each stage, its provider,
+and the intermediate transcript while a later stage is still pending.
+The result is imported into the app after all enabled stages succeed.
 
-Новые настройки не перерабатывают архив. Задания сохраняют свой профиль,
-включая версию ключа, для повторов после ошибки. Успешные этапы повторно
-не выполняются; аудио и предыдущие результаты сохраняются. Прежняя команда
-`bash scripts/local-mac.sh transcribe "/путь/к/записи.wav"` остаётся доступной.
-Провайдер автоматически не заменяется другим при ошибке.
+New settings do not reprocess the archive. Jobs retain their profile, including
+the key version, for retries after errors. Successful stages are not repeated;
+audio and earlier results are preserved. The existing
+`bash scripts/local-mac.sh transcribe "/path/to/recording.wav"` command remains
+available. Errors do not automatically switch to another provider.
 
-## Подключения и ключи
+## Connections and keys
 
-Для публичных адресов используются HTTPS/WSS. Для HTTP/WS укажите `localhost`
-или явный IP сервера в loopback, LAN или VPN; доменные имена требуют TLS.
-Перенаправления и переменные системного proxy не используются. Обрабатываемые
-аудио или текст уходят только выбранному провайдеру соответствующего этапа.
-Браузер обращается к omiloc; API-ключ добавляет сервер на Mac.
+Public addresses use HTTPS/WSS. For HTTP/WS, specify `localhost` or an explicit
+server IP on loopback, LAN, or VPN; domain names require TLS.
+Redirects and system proxy variables are not used. Audio or text goes only to the
+provider selected for its stage. The browser calls omiloc; the Mac server adds
+the API key.
 
-Поле ключа при повторном открытии пустое и показывает, настроен ли ключ.
-Пустое поле сохраняет прежний ключ, отдельный флажок удаляет его из карточки.
-Смена адреса на другой хост снимает старый ключ; введите ключ нового сервера.
-Сохранённая замена применяется только после «Использовать». Ключи старых задач
-остаются в приватном хранилище для их закреплённых профилей.
+When reopened, the key field is empty and indicates whether a key is configured.
+An empty field preserves the old key; a separate checkbox removes it from the
+card. Changing to a different host clears the old key; enter the new server's key.
+A saved replacement becomes active only after **Use**. Keys for older jobs remain
+in private storage for their pinned profiles.
 
-Первое сохранение переносит настройки из `stt-engine.json` и `live-stt.json`
-в приватный `providers.json` внутри состояния harness. После этого редактор
-и обработчики используют реестр; старые JSON остаются исходной копией.
-Встроенная диаризация прежнего STT сохраняется отдельной карточкой. Перед
-переходом с неё на STT-сервер выберите независимый Pyannote/Mycelia или
-выключите диаризацию; несовместимое переключение не применяется.
-Секреты лежат отдельно в `provider-secrets.json` с правами `0600`.
-Не добавляйте эти файлы, записи и результаты в Git.
+The first save imports settings from `stt-engine.json` and `live-stt.json` into
+private `providers.json` in the harness state directory. The editor and workers
+then use the registry; the older JSON files remain as source copies.
+A previous STT engine's built-in diarization is retained as a separate card.
+Before switching that engine to an STT server, select independent Pyannote/Mycelia
+or disable diarization; an incompatible switch is rejected.
+Secrets are stored separately in `provider-secrets.json` with mode `0600`.
+Do not commit these files, recordings, or results.
 
 ## Live STT
 
-Live-сервер должен принимать PCM16 little-endian, mono, 16 kHz и полный
-протокол WhisperLiveKit: начальный `config/useAudioWorklet`, снимки
-`lines/buffer_transcription`, пустой бинарный кадр завершения и `ready_to_stop`.
-Произвольный облачный потоковый API требует собственного адаптера.
-Модель и язык внешнего сервера настраиваются на самом сервере.
+The live server must accept little-endian PCM16, mono, 16 kHz, and the complete
+WhisperLiveKit protocol: initial `config/useAudioWorklet`,
+`lines/buffer_transcription` snapshots, an empty binary end-of-stream frame,
+and `ready_to_stop`. An arbitrary cloud streaming API needs its own adapter.
+Configure an external server's model and language on that server.
 
-Перед «Использовать» завершите запись и дождитесь завершения live-потока.
-Если меняется управляемый локальный движок, также дождитесь финального STT.
-Новая конфигурация проверяется до переключения. При ошибке сохраняется
-прежний действующий профиль; неподтверждённый результат показан отдельно.
+Before selecting **Use**, finish recording and wait for the live stream to drain.
+If changing a managed local engine, also wait for final STT.
+The new configuration is checked before switching. On failure, the previous
+active profile is preserved; an unconfirmed result is shown separately.
 
-Посредник harness слушает только loopback, на порту backend + 4. Он удерживает
-один профиль на всю сессию, включая завершение потока. Backend продолжает
-работать с loopback и не получает ключей внешних серверов. Первое применение
-Live подключает посредник с перезапуском только принадлежащего стеку backend
-в состоянии покоя. Следующие переключения и выключение Live не требуют
-перезапуска backend или новой сборки iPhone. Существующая локальная live-диаризация
-сохраняется через тот же посредник.
+The harness relay listens only on loopback, at backend port + 4. It pins one
+profile for the whole session, including stream completion. The backend continues
+using loopback and does not receive external server keys. The first Live
+activation attaches the relay by restarting only the stack-owned backend while
+idle. Later switches and disabling Live require neither a backend restart nor a
+new iPhone build. Existing local live diarization is preserved through the same relay.

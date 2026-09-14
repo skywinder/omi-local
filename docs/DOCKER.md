@@ -1,16 +1,16 @@
-# Docker: Mac CPU и NVIDIA GPU
+# Docker: Mac CPU and NVIDIA GPU
 
-## Первый запуск
+## First launch
 
-Установите и запустите Docker Desktop на Mac либо Docker Engine с Compose на Linux.
-Проверьте доступность Docker из своего Terminal:
+Install and start Docker Desktop on Mac or Docker Engine with Compose on Linux.
+Check Docker availability from your own Terminal:
 
 ```bash
 docker info
 docker compose version
 ```
 
-Для нового checkout основной ветки:
+For a new checkout of the main branch:
 
 ```bash
 git clone --branch main https://github.com/vquaron/omi-local.git omiloc
@@ -18,115 +18,117 @@ cd omiloc
 ./docker.sh up
 ```
 
-Если репозиторий уже скачан, достаточно `./docker.sh up` из его корня, рядом с
-`compose.yaml`. Отдельная feature-ветка или путь `.local/worktrees` для запуска
-после слияния не нужны. Первому запуску нужен интернет для образов, зависимостей
-и модели. Команда собирает образы, подготавливает кеш модели, ждёт готовности
-контейнеров и завершается; сервисы продолжают работать в фоне.
+If you already have the repository, run `./docker.sh up` from its root, beside
+`compose.yaml`. After merging, no separate feature branch or `.local/worktrees`
+path is needed. The first launch needs internet access for images, dependencies,
+and the model. It builds images, prepares the model cache, waits for the
+containers to become ready, and exits; services keep running in the background.
 
-Откройте **[аудиотеку](http://127.0.0.1:21001/)**. Backend:
-`http://127.0.0.1:21000`. Для просмотра интерфейса ngrok не нужен; для новых
-записей с iPhone выполните [настройку подключения](#iphone-и-ngrok).
+Open the **[audio library](http://127.0.0.1:21001/)**. Backend:
+`http://127.0.0.1:21000`. Browsing the interface does not require ngrok;
+for new iPhone recordings, complete [connection setup](#iphone-and-ngrok).
 
-| Действие | Команда из корня проекта |
+| Action | Command from the project root |
 | --- | --- |
-| Запустить или пересобрать после обновления кода | `./docker.sh up` |
-| Разработка с автоматическим обновлением | `./docker.sh dev` |
-| Проверить состояние контейнеров | `./docker.sh status` |
-| Смотреть логи | `./docker.sh logs` |
-| Остановить с сохранением записей, настроек и моделей | `./docker.sh down` |
+| Start or rebuild after updating code | `./docker.sh up` |
+| Develop with automatic reload | `./docker.sh dev` |
+| Check container status | `./docker.sh status` |
+| Follow logs | `./docker.sh logs` |
+| Stop while preserving recordings, settings, and models | `./docker.sh down` |
 
-`up` использует CPU на Mac; выбор CUDA описан ниже. Порты и данные отличаются
-от нативного `start.command`. Python, Java, Node и Redis на хосте устанавливать
-не нужно. Установка iPhone остаётся в Xcode на Mac; контейнеры не собирают
-и не устанавливают iOS-приложение.
+`up` uses CPU on Mac; CUDA selection is described below. Ports and data are
+separate from native `start.command`. You do not need Python, Java, Node, or Redis
+installed on the host. iPhone installation still uses Xcode on Mac; containers
+do not build or install the iOS app.
 
-## Требования и GPU
+## Requirements and GPU
 
-Нужны Docker Engine с Compose либо Docker Desktop; для `dev` — Compose **2.32+**.
-CI проверяет конфигурацию с Compose **2.40.3**.
-На Mac Linux-контейнеры используют CPU, включая Apple Silicon. Доступ к Metal,
-Core ML и Neural Engine через эти контейнеры не предоставляется. Для WhisperKit
-на Mac остаётся [нативный запуск](START.md) и [настройка движка](LOCAL_STT.md).
+Use Docker Engine with Compose or Docker Desktop; `dev` requires Compose **2.32+**.
+CI installs Compose **2.40.3** before validating configuration so it does not depend
+on the runner's older version.
+Linux containers on Mac use CPU, including on Apple Silicon. These containers do
+not provide access to Metal, Core ML, or the Neural Engine. For WhisperKit on Mac,
+use [native startup](START.md) and [engine setup](LOCAL_STT.md).
 
-На машине с RTX 4090 нужны Linux x86_64, драйвер NVIDIA и
+An RTX 4090 host needs Linux x86_64, an NVIDIA driver, and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-На Windows нужен Docker Desktop с WSL2 и NVIDIA GPU support; команды выполняются
-в WSL2. На Mac драйверы NVIDIA устанавливать не нужно.
+On Windows, use Docker Desktop with WSL2 and NVIDIA GPU support, and run commands
+in WSL2. Do not install NVIDIA drivers on a Mac.
 
 ```bash
 OMI_DOCKER_DEVICE=cuda ./docker.sh up
 OMI_DOCKER_DEVICE=cuda ./docker.sh dev
 ```
 
-`auto` (по умолчанию) выбирает CUDA, если Docker-сервер сообщает runtime `nvidia`;
-иначе CPU. Можно явно задать `OMI_DOCKER_DEVICE=cpu`. На WSL2, где GPU доступен,
-но runtime не перечислен, выбирайте `cuda` явно. Выбранное устройство печатается
-перед запуском. Ошибка CUDA останавливает STT, скрытого перехода на CPU нет.
-Проверка фактического устройства:
+The default `auto` mode selects CUDA if the Docker server reports the `nvidia`
+runtime; otherwise it selects CPU. Set `OMI_DOCKER_DEVICE=cpu` to select CPU explicitly.
+On WSL2, if the GPU is available but the runtime is not listed, select `cuda`
+explicitly. The selected device is printed before startup.
+A CUDA error stops STT; there is no silent CPU fallback. Check the actual device:
 
 ```bash
 docker compose exec stt python3 -c "import json,urllib.request; print(json.load(urllib.request.urlopen('http://127.0.0.1:10301/health')))"
 ```
 
-CPU использует int8 и 4 потока; CUDA — float16, одну GPU и одну задачу одновременно.
-Профиль CUDA основан на CUDA 12.3.2 + cuDNN 9, в соответствии с
-[требованиями faster-whisper](https://github.com/SYSTRAN/faster-whisper#gpu).
-Наличие GPU и ответ health не доказывают успешное распознавание: проверьте свою
-завершённую запись. Физическая 4090 на этом Mac для проверки недоступна.
+CPU uses int8 and 4 threads; CUDA uses float16, one GPU, and one job at a time.
+The CUDA profile uses CUDA 12.3.2 + cuDNN 9, following the
+[faster-whisper requirements](https://github.com/SYSTRAN/faster-whisper#gpu).
+GPU availability and a health response do not prove successful transcription:
+check a completed recording. No physical 4090 was available on this Mac for testing.
 
-## Модель и обработка
+## Model and processing
 
-По умолчанию — `Systran/faster-whisper-small`: переносимый начальный профиль для
-CPU и GPU. Сервер возвращает сегменты и слова с таймкодами через существующий
-OpenAI-совместимый адаптер. Модель скачивается отдельной командой подготовки;
-при обработке используются только уже скачанные файлы. STT слушает loopback
-внутри контейнерной сети и не публикуется на хост.
+The default is `Systran/faster-whisper-small`, a portable starting profile for
+CPU and GPU. The server returns timestamped segments and words through the
+existing OpenAI-compatible adapter. A separate preparation command downloads
+the model; processing uses only downloaded files. STT listens on loopback inside
+the container network and is not published on the host.
 
-Для новой установки можно выбрать другую CTranslate2-модель:
+For a fresh installation, you can select another CTranslate2 model:
 
 ```bash
 STT_MODEL=mobiuslabsgmbh/faster-whisper-large-v3-turbo OMI_DOCKER_DEVICE=cuda ./docker.sh up
 ```
 
-Используйте одинаковые `STT_MODEL`, `STT_REVISION` и `OMI_DOCKER_DEVICE` во всех
-последующих командах этого стека; удобно экспортировать их в своём Terminal.
-`STT_REVISION` задаёт revision Hugging Face, по умолчанию `main`; для воспроизводимой
-модели задайте commit hash. `STT_THREADS` меняет число CPU-потоков.
-После первой установки изменение `STT_MODEL` не переписывает настройки или старые
-задания: в аудиотеке выберите новую модель в карточке STT и нажмите «Использовать».
-При смене revision под прежним именем обновите `runtime_revision` карточки.
-Старые задания сохраняют свой профиль и требуют соответствующей модели сервера.
+Use the same `STT_MODEL`, `STT_REVISION`, and `OMI_DOCKER_DEVICE` values in all later
+commands for this stack; exporting them in your Terminal is convenient.
+`STT_REVISION` selects the Hugging Face revision and defaults to `main`; specify a
+commit hash for reproducible model selection. `STT_THREADS` sets the CPU thread count.
+After initial setup, changing `STT_MODEL` does not overwrite settings or old jobs:
+select the new model in the library's STT card and click **Use**.
+When changing the revision under the same model name, update the card's
+`runtime_revision`. Older jobs keep their profile and require the corresponding server model.
 
-Автообработка включена для новых завершённых записей. Ранее существовавшие записи
-не подхватываются при первом включении. Live STT, диаризация и суммаризация
-настраиваются отдельно в [провайдерах](PROVIDERS.md); встроенный контейнер даёт
-финальное распознавание WAV, один голос `SPEAKER_00`. Apple-движки внутри Linux
-недоступны; для дополнительных этапов выбирайте совместимые серверы.
+Automatic processing is enabled for new completed recordings. Recordings already
+present when processing is first enabled are excluded. Configure Live STT,
+diarization, and summarization separately under [Providers](PROVIDERS.md).
+The built-in container provides final WAV transcription with one speaker,
+`SPEAKER_00`. Apple engines are unavailable inside Linux; use compatible servers
+for additional stages.
 
-## Разработка и обновления
+## Development and updates
 
-`./docker.sh dev` работает в открытом Terminal:
+`./docker.sh dev` runs in an open Terminal:
 
-- Python backend синхронизируется Compose Watch; Uvicorn перечитывает изменения.
-- HTML/JS/CSS доступны из текущего `web-local`. Аудиотека обновляет страницу или
-  стили существующим механизмом, сохраняя защиту незавершённого редактирования.
-- Изменения harness перезапускают контейнер приложения; STT-код — только STT.
-- Изменения lock-файла, STT-зависимостей и Dockerfile пересобирают нужный образ.
+- Compose Watch synchronizes the Python backend; Uvicorn reloads changes.
+- HTML/JS/CSS come from the current `web-local`. The library refreshes the page or
+  styles through its existing mechanism, preserving protection for unsaved edits.
+- Harness changes restart the app container; STT-code changes restart only STT.
+- Lockfile, STT dependency, and Dockerfile changes rebuild the corresponding image.
 
-Перезапуск Python обрывает активные WebSocket-соединения. Завершайте запись
-перед изменением backend/harness. Настройки, WAV, очередь и результаты остаются
-в volume. Модели повторно загружаются в память после перезапуска STT.
-При изменениях Compose/nginx завершите dev и повторите запуск.
-`Ctrl+C` завершает dev; `./docker.sh down` останавливает весь стек.
+Python restarts interrupt active WebSocket connections. Finish recording before
+changing backend/harness code. Settings, WAVs, the queue, and results remain in
+the volume. Models load into memory again after STT restarts.
+For Compose/nginx changes, stop dev mode and start it again.
+`Ctrl+C` ends dev mode; `./docker.sh down` stops the entire stack.
 
-Обычный `up` использует код внутри образа. При переходе между `dev` и обычным
-запуском сначала выполните `./docker.sh down`, затем нужную команду запуска.
-[Как работает Compose Watch](https://docs.docker.com/compose/how-tos/file-watch/).
+Normal `up` uses the code inside the image. When switching between `dev` and
+normal mode, run `./docker.sh down` first, then the desired startup command.
+See [how Compose Watch works](https://docs.docker.com/compose/how-tos/file-watch/).
 
-### Обновление из main
+### Updating from main
 
-Завершите запись и дождитесь обработки. Из чистого checkout основной ветки:
+Finish recording and wait for processing to complete. From a clean checkout of main:
 
 ```bash
 ./docker.sh down
@@ -135,86 +137,85 @@ git pull --ff-only
 ./docker.sh status
 ```
 
-Сохранённые named volume подключатся снова; записи, ключи и модели сохранятся.
-Если используется настроенный ngrok, после запуска выполните `./docker.sh tunnel`.
-Обновление Docker-окружения само по себе не требует новой сборки iPhone.
-Не используйте `down -v`,
-удаление volume или очистку Docker для обычного обновления.
+The saved named volumes are attached again; recordings, keys, and models are
+preserved. If ngrok is configured, run `./docker.sh tunnel` after startup.
+Updating the Docker environment alone does not require a new iPhone build.
+Do not use `down -v`, delete volumes, or perform Docker cleanup for routine updates.
 
-## iPhone и ngrok
+## iPhone and ngrok
 
-Сначала запустите `./docker.sh up`: команда `configure` работает внутри уже
-запущенного контейнера. Для приёма с iPhone настройте
-отдельный домен/туннель в своём интерактивном Terminal:
+Start `./docker.sh up` first: `configure` runs inside an already running container.
+To receive iPhone audio, configure a separate domain/tunnel in your own interactive Terminal:
 
 ```bash
-./docker.sh configure   # домен и скрытый ввод токена; прежний app key сохраняется
+./docker.sh configure   # domain and hidden token prompt; preserve the app key
 ./docker.sh down
 ./docker.sh up
 ./docker.sh tunnel
 ```
 
-Настройки сохраняются в приватном volume. Команда `configure` не меняет уже
-работающий туннель. Ключ подключения находится в `connection.env` внутри volume;
-откройте его локально в своём Terminal, не пересылайте в чат или логи:
+Settings are saved in the private volume. `configure` does not change a running
+tunnel. The connection key is in `connection.env` inside the volume; view it
+locally in your own Terminal, and do not forward it to chat or logs:
 
 ```bash
 docker compose exec app cat /data/connection.env
 ```
 
-В iPhone укажите выбранный HTTPS-домен и `OMI_LOCAL_APP_KEY`, как в
-[инструкции подключения](NGROK.md). Docker генерирует отдельный ключ, нативные
-настройки Mac автоматически не импортируются. Не запускайте два туннеля с одним
-доменом. Привязка iPhone к Docker не переносит прежние записи с Mac.
-Туннель направляется только на paired backend, не на аудиотеку или Firebase.
+On the iPhone, enter the selected HTTPS domain and `OMI_LOCAL_APP_KEY` as described
+in [connection setup](NGROK.md). Docker generates a separate key; it does not
+import native Mac settings automatically. Do not run two tunnels on one domain.
+Pairing the iPhone with Docker does not transfer existing Mac recordings.
+The tunnel targets only the paired backend, not the library or Firebase.
 
-## Данные, сеть и диагностика
+## Data, network, and diagnostics
 
-Compose использует два постоянных named volume: `omiloc-docker_state` и
-`omiloc-docker_models`. В первом — pairing, провайдеры, WAV, транскрипты,
-очередь, приватные логи и экспорт Firebase. Во втором — модели. `down` сохраняет
-оба; **не используйте `down -v` для обычного обновления**.
-Для резервного копирования сначала остановите стек, затем копируйте оба volume
-с сохранением владельца UID 10001 и прав. Держите стабильное имя Compose-проекта
-и те же пути в контейнере при переносе на другую машину. Mac-каталоги `.local`,
-`.env`, Keychain, signing и реальные записи в образы не копируются.
+Compose uses two persistent named volumes: `omiloc-docker_state` and
+`omiloc-docker_models`. The first stores pairing, providers, WAVs, transcripts,
+the queue, private logs, and Firebase exports. The second stores models.
+`down` preserves both; **do not use `down -v` for routine updates**.
+For backups, stop the stack first, then copy both volumes while preserving owner
+UID 10001 and permissions. Keep a stable Compose project name and the same
+container paths when moving to another host. Mac `.local` directories, `.env`,
+Keychain data, signing material, and real recordings are not copied into images.
 
-`app` запускает существующий harness, его Firebase и Redis в одной среде процессов.
-Это сохраняет ownership-проверки и корректный export-on-exit Firebase. `stt`,
-`ingress` и необязательный `tunnel` используют общий network namespace Nginx;
-он сохраняется при reload приложения и STT. Внутренние
-backend, Firebase, Redis и STT слушают 127.0.0.1. Nginx публикует только два порта,
-привязанных к 127.0.0.1 хоста. Исходящая политика backend остаётся прежней,
-удалённые провайдеры доступны через harness и его Live relay. Это не проверка
-физического отсутствия сетевого трафика всей системы.
+`app` runs the existing harness, Firebase, and Redis in one process environment.
+This preserves ownership checks and Firebase's correct export-on-exit behavior.
+`stt`, `ingress`, and the optional `tunnel` share Nginx's network namespace,
+which survives app and STT reloads. The internal backend, Firebase, Redis, and STT
+listen on 127.0.0.1. Nginx publishes only two ports, bound to host 127.0.0.1.
+The backend's outbound policy is unchanged; remote providers are accessed through
+the harness and its Live relay. This does not establish physical no-egress for the whole system.
 
-В контейнерах кнопка Finder недоступна; данные находятся в named volume.
-Для удалённой аудиотеки используйте SSH forwarding с тем же портом 21001 и
-открывайте `http://127.0.0.1:21001`; Host/Origin намеренно не переписываются.
-Не выставляйте UI без авторизации в LAN или публичную сеть.
+The Finder button is unavailable in containers; data resides in named volumes.
+For a remote library, use SSH forwarding with the same port 21001 and open
+`http://127.0.0.1:21001`; Host/Origin are intentionally not rewritten.
+Do not expose the unauthenticated UI to the LAN or public internet.
 
-При ошибках сначала `./docker.sh status` и `./docker.sh logs`. Подробные логи
-harness: `/data/harness/docker/logs/` внутри `app`; они приватные. Проверки:
+On errors, start with `./docker.sh status` and `./docker.sh logs`.
+Detailed harness logs are private and stored at `/data/harness/docker/logs/`
+inside `app`. Checks:
 
 ```bash
 make test-docker PYTHON=/path/to/python3.11
 docker compose -f compose.yaml -f compose.gpu.yaml -f compose.dev.yaml config --quiet
 ```
 
-`make test-docker` проверяет API, отказ при ошибке модели и сохранение настроек
-без GPU и скачивания моделей. Он включён в существующий CI `transport-unit`.
-Версии backend берутся из `pylock.runtime.toml`; для ARM64 выбираются нативные
-wheels тех же версий, поэтому хеши x86_64 artifacts не выдаются за ARM64 lock.
+`make test-docker` checks the API, model-error failure behavior, and settings
+preservation without a GPU or model downloads. It runs in the existing
+`transport-unit` CI job. Backend versions come from `pylock.runtime.toml`;
+ARM64 uses native wheels of the same versions, so x86_64 artifact hashes are not
+presented as an ARM64 lock.
 
-Проверено 11 сентября 2026 на этом Mac, Linux ARM64 в Docker Desktop: сборка
-CPU-образов, STT синтетической речи с таймкодами, Opus → WebSocket → WAV →
-авто-STT → импорт → просмотр транскрипта в браузере. Python reload проверен
-изменением фактического HTTP-ответа, CSS — изменением отдаваемого файла.
-Запись и транскрипт сохранились после пересоздания `app`, экспорт Firebase найден.
-`make test-transport-unit` и `make test-offline` прошли; в offline-наборе 3 skip.
-NVIDIA/4090, WSL2, новый ngrok-туннель и физический iPhone/CV1 в Docker-режиме
-пока не проверены. Для них конфигурация подготовлена, но аппаратный результат
-не заявляется.
+Recorded verification on September 11, 2026, on this Mac using Linux ARM64 in
+Docker Desktop: CPU image builds, timestamped synthetic-speech STT, and the path
+Opus → WebSocket → WAV → automatic STT → import → browser transcript display.
+Python reload was checked by changing an actual HTTP response; CSS reload was
+checked by changing the served file. The recording and transcript survived
+recreating `app`, and a Firebase export was found.
+`make test-transport-unit` and `make test-offline` passed, with 3 offline skips.
+NVIDIA/4090, WSL2, a new ngrok tunnel, and physical iPhone/CV1 use in Docker mode
+remain unverified. Their configuration is prepared; hardware success is not claimed.
 
-Нативный Parakeet Live для Mac не входит в контейнер: по умолчанию live-preview
-выключен. Сохранённые настройки и явно выбранные Live-провайдеры сохраняются.
+Native Mac Parakeet Live is not included in the container: live preview is disabled
+by default. Saved settings and explicitly selected Live providers are preserved.

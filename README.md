@@ -145,7 +145,7 @@ otherwise it selects CPU. NVIDIA hardware execution remains unverified.
 WhisperKit/Core ML uses the [native Mac stack](#quick-start).
 
 The library starts without ngrok. To receive recordings from the iPhone, follow
-[Docker pairing and ngrok setup](docs/DOCKER.md#iphone-и-ngrok). Docker has its own
+[Docker pairing and ngrok setup](docs/DOCKER.md#iphone-and-ngrok). Docker has its own
 app key and data volumes; native Mac recordings and settings are not imported.
 For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 [Docker guide](docs/DOCKER.md).
@@ -252,7 +252,8 @@ ngrok credentials, and signing files private.
 
 ## Documentation
 
-The detailed guides are currently written in Russian.
+The guides below are in English. Some interface labels and the synthetic Russian
+speech fixture retain their original text.
 
 | Guide | Topics |
 | --- | --- |

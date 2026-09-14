@@ -1,15 +1,15 @@
-# Запуск omiloc
+# Starting omiloc
 
-Контейнерный запуск на Mac CPU и Linux/WSL2 NVIDIA: [Docker](DOCKER.md).
+For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
-Нужны Mac с Apple Silicon, macOS 14 или новее, Xcode со Swift 6.0 или новее
-и аккаунт [ngrok](https://dashboard.ngrok.com).
-Для записи — CV1 и [приложение на iPhone](LOCAL_SETUP.md).
-При первой установке потребуется интернет.
+You need an Apple Silicon Mac, macOS 14 or later, Xcode with Swift 6.0 or later,
+and an [ngrok account](https://dashboard.ngrok.com).
+Recording requires a CV1 and the [iPhone app](LOCAL_SETUP.md).
+The first installation needs internet access.
 
-## Установка
+## Installation
 
-В Terminal получите проект и запустите подготовку:
+Get the project and start setup in Terminal:
 
 ```bash
 git clone https://github.com/vquaron/omi-local.git omiloc
@@ -17,76 +17,76 @@ cd omiloc
 ./start.command
 ```
 
-Если Mac предложит установить инструменты разработчика для Git, завершите
-установку и повторите команду. Если проект уже скачан, начните с `start.command`.
+If macOS offers to install developer tools for Git, complete that installation
+and repeat the command. If you already have the project, start with `start.command`.
 
-## Первый запуск
+## First launch
 
-Для запуска без вопросов используйте приватный [`.env`](NGROK.md#без-интерактивного-ввода-env).
-Команда `bash scripts/local-mac.sh init-env` создаёт его без вывода секретов.
+For setup without prompts, use a private [`.env`](NGROK.md#noninteractive-setup-env).
+`bash scripts/local-mac.sh init-env` creates it without printing secrets.
 
-1. Откройте `start.command` двойным щелчком или выполните `./start.command`
-   в Terminal из папки проекта.
-2. Скрипт установит недостающие зависимости и проверит их. При ошибке покажет,
-   что исправить; Enter запускает повторную проверку, `q` завершает установку.
-   Затем подготовит WhisperKit для финального текста и Parakeet для live:
-   скомпилирует обработчики, загрузит закреплённые модели и проверит их на синтетической речи.
-   Нужны минимум 4 ГиБ свободного места; первая подготовка может занять несколько минут.
-   При остановке подготовки модели исправьте указанную причину и повторите `start.command`.
-   Затем введите HTTPS-адрес и authtoken из кабинета ngrok.
-   Authtoken вводится скрыто; если он уже настроен, нажмите Enter.
-   Оба значения можно заранее указать в [приватном `.env`](NGROK.md#подстановка-адреса-и-токена-из-env).
-3. В приложении omi на iPhone откройте «Локальный Mac», введите **домен и ключ из рамки**
-   и проверьте подключение.
+1. Double-click `start.command`, or run `./start.command` in Terminal from the
+   project directory.
+2. The script installs and checks missing dependencies. If a check fails, it
+   explains what to fix; Enter retries, and `q` exits setup.
+   It then prepares WhisperKit for final transcripts and Parakeet for live text:
+   it compiles workers, downloads pinned models, and checks them on synthetic speech.
+   You need at least 4 GiB of free space; initial preparation may take several minutes.
+   If model preparation stops, fix the reported cause and run `start.command` again.
+   Then enter the HTTPS address and authtoken from your ngrok dashboard.
+   The authtoken input is hidden; press Enter if it is already configured.
+   You can also supply both values in a [private `.env`](NGROK.md#supplying-the-address-and-token-through-env).
+3. In the Omi iPhone app, open **Local Mac**, enter the **domain and key shown in
+   the boxed output**, and check the connection.
 
-Ключ приложения отличается от authtoken ngrok и показывается один раз — сохраните его.
-Это относится к интерактивному мастеру; при использовании `.env` ключ хранится в этом файле.
-Повторный запуск использует прежние настройки. В конце — рамка с командой `omiloc`
-и адресом аудиотеки; после запуска Terminal можно закрыть.
-Уже работающие аудиотека, туннель и локальные STT-сервисы сохраняются при повторном запуске.
-Приложение на iPhone устанавливается отдельно. На новой установке обе транскрипции
-включаются автоматически; сохранённый выбор движка и явное отключение сохраняются.
-Подробности: [финальная обработка](LOCAL_STT.md), [live](LIVE_PREVIEW.md).
+The app key is different from the ngrok authtoken and is shown once: save it.
+This applies to the interactive wizard; with `.env`, the key is stored in that file.
+Subsequent launches reuse the saved settings. The final boxed output shows the
+`omiloc` command and library address; you can close Terminal after startup.
+Repeated startup preserves the running library, tunnel, and local STT services.
+Install the iPhone app separately. A fresh setup enables both transcription paths;
+existing engine choices and explicit disabled settings are preserved.
+See [final transcription](LOCAL_STT.md) and [live preview](LIVE_PREVIEW.md).
 
-## Использование
+## Usage
 
-Для записи запустите `start.command`. В приложении подключите CV1, нажмите
-кнопку на CV1 один раз для начала и ещё раз для завершения записи. Мьют временно выключает
-звук, но не завершает файл. Mac должен работать и не спать.
+Run `start.command` to record. Connect the CV1 in the app, press the CV1 button once
+to start recording, and press it again to finish. Mute temporarily silences audio
+without finishing the file. The Mac must remain running and awake.
 
-Для просмотра архива выполните **`omiloc`** из любой папки в Terminal.
-Откроется [аудиотека](http://127.0.0.1:20001/) — она доступна только на этом Mac.
-`index.html` напрямую открывать не нужно.
+To browse your archive, run **`omiloc`** from any directory in Terminal.
+It opens the [audio library](http://127.0.0.1:20001/), accessible only on this Mac.
+Do not open `index.html` directly.
 
-Выберите запись, включите плеер или нажмите на фразу, чтобы перейти к её таймкоду.
-Можно менять скорость и искать по дате, источнику и началу текста.
-Новые записи и готовые транскрипты появляются автоматически.
+Select a recording, start the player, or click a phrase to seek to its timestamp.
+You can change playback speed and search by date, source, or transcript prefix.
+New recordings and completed transcripts appear automatically.
 
-**Удалить запись** удаляет аудио, транскрипт и связанный разговор после подтверждения.
-Для удаления должен быть запущен `start.command`; дождитесь окончания распознавания.
-Если аудио дублируется, общий транскрипт остаётся до удаления последней копии.
-Затем вернитесь к списку разговоров на iPhone и потяните его вниз для обновления.
-Если последняя удалённая запись остаётся, обновите версию приложения.
+**Delete recording** removes the audio, transcript, and linked conversation after
+confirmation. Start the services with `start.command` and wait for transcription
+to finish before deleting. For duplicate audio, the shared transcript remains
+until the last copy is deleted. Then return to the iPhone conversation list and
+pull down to refresh. If the last deleted recording remains, update the app.
 
-## Если возникла проблема
+## Troubleshooting
 
-Вывод подготовки Mac сохраняется в `.local/install.log`.
-Команды ниже выполняются из папки проекта.
+Mac setup output is saved in `.local/install.log`.
+Run the following commands from the project directory.
 
-- `omiloc` не найден: `./omiloc --install`, затем откройте новое окно Terminal.
-- `start.command` не открывается: `bash start.command`.
-- Подготовка прервалась: снова запустите `start.command` — он повторит установку.
-  Для ручного восстановления зависимостей: `bash scripts/install-local-mac.sh`.
-- Проверить модели и фактическую готовность live/final: `./start.command --check`.
-- Проверить инструменты, подпись и телефон: `./start.command --iphone-check`.
-- Остановить сервисы, сохранив данные: `bash scripts/local-mac.sh down`.
-- Заменить потерянный ключ: после остановки выполните `bash scripts/local-mac.sh rotate-key`,
-  запустите `start.command` и введите новый ключ на iPhone.
-- Нет связи с телефоном: [проверка подключения](NGROK.md).
-- Телефон подключён, но текст недоступен: проверьте сообщение о Live Transcript / Transcript
-  при подключении и выполните `./start.command --check` на Mac. Модели находятся на Mac.
-- После обновления сообщается о прежних настройках backend: завершите запись и обработку,
-  выполните `bash scripts/local-mac.sh down`, затем `./start.command`.
+- `omiloc` is not found: run `./omiloc --install`, then open a new Terminal window.
+- `start.command` does not open: run `bash start.command`.
+- Setup was interrupted: run `start.command` again to retry installation.
+  To repair dependencies manually: `bash scripts/install-local-mac.sh`.
+- Check models and observed live/final readiness: `./start.command --check`.
+- Check tools, signing, and the phone: `./start.command --iphone-check`.
+- Stop services while preserving data: `bash scripts/local-mac.sh down`.
+- Replace a lost key: after stopping, run `bash scripts/local-mac.sh rotate-key`,
+  start `start.command`, and enter the new key on the iPhone.
+- The phone cannot connect: see [connection setup](NGROK.md).
+- The phone connects but text is unavailable: check the Live Transcript / Transcript
+  message during connection and run `./start.command --check` on the Mac. Models run on the Mac.
+- An update reports that the backend uses earlier settings: finish recording and
+  processing, run `bash scripts/local-mac.sh down`, then `./start.command`.
 
-После перезагрузки Mac снова запустите `start.command` для записи или `omiloc`
-для прослушивания. [Текущие ограничения](TEMPORARY_DISABLED_FEATURES.md).
+After restarting the Mac, run `start.command` to record or `omiloc` to listen.
+See [current limitations](TEMPORARY_DISABLED_FEATURES.md).

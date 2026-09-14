@@ -1,203 +1,210 @@
-# Для разработчиков
+# Development
 
-Контейнерный запуск на Mac CPU и Linux/WSL2 NVIDIA: [Docker](DOCKER.md).
+For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
-[Обычный запуск](START.md) · [Сборка iPhone](LOCAL_SETUP.md).
-Команды выполняются из корня проекта. Реальные записи, `.local/`, ключи,
-сертификаты и результаты сборок не добавляются в Git.
+[Daily startup](START.md) · [iPhone builds](LOCAL_SETUP.md).
+Run commands from the repository root. Do not commit real recordings, `.local/`,
+keys, certificates, or build artifacts.
 
-## Проект и проверки
+## Project and checks
 
-`app/` — приложение, `backend/` — приём и хранение аудио,
-`scripts/dev-harness/` — локальные сервисы, `web-local/` — аудиотека и логотип.
+`app/` contains the app, `backend/` receives and stores audio,
+`scripts/dev-harness/` manages local services, and `web-local/` contains the library and logo.
 
-- `make test-library` — аудиотека и запуск.
-- `make test-transport-unit` — изолированные проверки транспорта, live-адаптера и
-  локальных сервисов с небольшим набором зависимостей, используемым в CI.
-- `make test-offline` — локальный backend и сервисы с полными зависимостями backend;
-  включает фактический импорт приложения и проверку списка доступных offline-маршрутов.
-- `make test-transport-app` — приложение и анализатор; нужен Flutter.
+- `make test-library`: library and startup checks.
+- `make test-transport-unit`: isolated transport, live-adapter, and local-service
+  checks using the small dependency set used in CI.
+- `make test-offline`: local backend and services with full backend dependencies;
+  includes importing the actual application and checking the offline route allowlist.
+- `make test-transport-app`: app tests and analyzer; requires Flutter.
 
-Для воспроизведения transport-unit CI используйте отдельное Python 3.11 окружение:
-`python -m pip install -r .github/requirements-transport.txt`, затем
-`make test-transport-unit PYTHON="$(command -v python)"`. Список включает NumPy
-для преобразования PCM в тесте диаризации; torch и модели в этом тесте подменены.
-Тест авторизации использует настоящий router и проверку ключа, изолируя
-посторонние сервисы; полный импорт backend отдельно проверяется в `test-offline`.
-Проверка секретов сканирует и файлы, и всю доступную историю. Для подтверждённых
-синтетических заглушек допустима только пара точное значение + точный путь;
-`python3 scripts/test-secret-scan.py /path/to/gitleaks` проверяет границы исключения
-на реальном Gitleaks 8.24.2 и запускается в том же CI-задании.
+To reproduce transport-unit CI, use a separate Python 3.11 environment:
+`python -m pip install -r .github/requirements-transport.txt`, then
+`make test-transport-unit PYTHON="$(command -v python)"`.
+The dependencies include NumPy for PCM conversion in the diarization test;
+torch and models are mocked there. The authentication test uses the real router
+and key verification while isolating unrelated services; `test-offline` separately
+checks a full backend import. Secret scanning covers files and all available
+history. A verified synthetic fixture may be exempted only by exact value plus
+exact path. `python3 scripts/test-secret-scan.py /path/to/gitleaks` checks that
+boundary with real Gitleaks 8.24.2 and runs in the same CI job.
 
-Перед iOS-сборкой нужны последние два набора. Физическая запись проверяется
-отдельно: начать и остановить запись на CV1, переключиться на микрофон iPhone
-при подключённом CV1, остановить и снова запустить Omi. Проверить обе записи
-в аудиотеке. Кнопка Omi переключает источник обратно; переподключение Bluetooth
-и возврат на главный экран сами источник не меняют.
+Run the last two suites before an iOS build. Verify physical recording separately:
+start and stop a CV1 recording, switch to the iPhone microphone while CV1 is
+connected, stop, and start Omi again. Check both recordings in the library.
+The Omi button switches the source back; Bluetooth reconnection and returning to
+the home screen do not change the source by themselves.
 
-Установщик использует Homebrew. Python 3.11.15 и зависимости закреплены в
-`backend/.python-version` и `backend/pylock.macos.toml`, Firebase CLI — в `package-lock.json`.
-Flutter, Xcode и CocoaPods готовятся по [инструкции iPhone](LOCAL_SETUP.md);
-`start.command --iphone-check` проверяет инструменты, подпись и телефон без сборки.
-Для WhisperKit есть `scripts/install-local-whisperkit.sh`; выбор движка описан в [LOCAL_STT.md](LOCAL_STT.md).
-Проверка Java требует версию 21 или новее; iOS-проверка отклоняет неработающий CocoaPods.
-Вывод установки сохраняется в `.local/install.log`; файл доступен только владельцу
-и не входит в Git. Запросы Homebrew остаются видны в терминале, ввод ключей не записывается.
-Пути Homebrew определяются автоматически. Для отдельного кеша Firebase можно задать
-`FIREBASE_EMULATORS_PATH` перед установкой и запуском.
-Установка считается завершённой после всех проверок и записи `.local/install.ready`.
-Изменение её входов или прерывание подготовки приводит к повтору при следующем старте.
+The installer uses Homebrew. Python 3.11.15 and dependencies are pinned in
+`backend/.python-version` and `backend/pylock.macos.toml`; Firebase CLI is pinned
+in `package-lock.json`. Prepare Flutter, Xcode, and CocoaPods using the
+[iPhone guide](LOCAL_SETUP.md). `start.command --iphone-check` checks tools,
+signing, and the phone without building. WhisperKit has
+`scripts/install-local-whisperkit.sh`; engine selection is documented in [LOCAL_STT.md](LOCAL_STT.md).
+The Java check requires version 21 or later; the iOS check rejects a broken CocoaPods installation.
+Setup output is saved in `.local/install.log`, readable only by its owner and
+excluded from Git. Homebrew prompts remain visible in Terminal; key input is not
+logged. Homebrew paths are detected automatically. To use a separate Firebase
+cache, set `FIREBASE_EMULATORS_PATH` before installation and startup.
+Installation is complete only after all checks pass and `.local/install.ready`
+is written. Changed inputs or interrupted preparation trigger a retry on the next start.
 
-Backend — `127.0.0.1:20000`, аудиотека — `127.0.0.1:20001`, диагностика ngrok —
-`127.0.0.1:16040`. Эмуляторы и аудиотека не открываются через туннель.
-Backend требует ключ приложения, кроме `/v1/health`; на Mac хранится его хеш.
-Удаление доступно через локальную аудиотеку, нового публичного маршрута нет.
+Backend: `127.0.0.1:20000`; library: `127.0.0.1:20001`;
+ngrok diagnostics: `127.0.0.1:16040`. Emulators and the library are not exposed
+through the tunnel. The backend requires the app key except for `/v1/health`;
+its verification hash is stored on the Mac. Deletion is available through the
+local library, without a new public route.
 
-## Автообновление веб-аудиотеки
+## Automatic web library reload
 
-Открытая страница `http://127.0.0.1:20001/` проверяет изменения веб-файлов каждую
-секунду, пока вкладка видима. Сохранение `web-local/style.css` заменяет стили без
-сброса страницы и плеера; изменение HTML или JavaScript автоматически перезагружает
-страницу. Текст и идентификаторы записей не сохраняются для восстановления после
-перезагрузки. Во время удаления записи перезагрузка откладывается до ответа сервера.
+While visible, `http://127.0.0.1:20001/` checks web files for changes every second.
+Saving `web-local/style.css` replaces styles without resetting the page or player;
+HTML or JavaScript changes reload the page automatically. Recording text and
+identifiers are not saved for restoration after reload. During recording deletion,
+reload waits for the server response.
 
-Проверка версий `/api/assets` читает только ресурсы страницы. Изменения Python-кода
-требуют отдельного перезапуска соответствующего сервиса. Hot reload веб-файлов
-не перезапускает backend, STT или приложение на iPhone.
+The `/api/assets` version check reads only page assets. Python changes require
+restarting the corresponding service separately. Web-file reload does not restart
+the backend, STT, or iPhone app.
 
-## Сборка iPhone
+## iPhone builds
 
-Перед установкой проверьте commit, конфигурацию, SHA-256 исполняемого файла,
-подпись и entitlements. Точный путь — `app/build/ios/Profile-dev-iphoneos/Runner.app`;
-копия в `app/build/ios/iphoneos/Runner.app` может относиться к другой сборке.
-Свежая копия проекта готового приложения не содержит.
+Before installation, verify the commit, configuration, executable SHA-256,
+signature, and entitlements. The exact path is
+`app/build/ios/Profile-dev-iphoneos/Runner.app`; the copy at
+`app/build/ios/iphoneos/Runner.app` may belong to another build.
+A fresh checkout does not contain a built app.
 
-При неизменных исходниках, зависимостях, инструментах и действующей подписи используйте
-проверенный артефакт. Смена сервера или адреса ngrok и сбой USB не требуют пересборки.
-Истёкший профиль подписи нужно обновить. Clean build нужен только после релевантного
-изменения подписи, нативных зависимостей, инструментов или подтверждённой проблемы
-с промежуточными файлами.
+Reuse an attested artifact when source, dependencies, tools, and valid signing
+inputs are unchanged. Changing servers or the ngrok address, or a USB failure,
+does not require rebuilding. An expired provisioning profile must be renewed.
+Use a clean build only after a relevant signing, native dependency, or toolchain
+change, or a confirmed problem with intermediate files.
 
-## Единый запуск iPhone
+## Unified iPhone launcher
 
-`./iphone.command` предлагает Debug, Profile и проверку статуса.
-Для прямого запуска: `./iphone.command dev` или `./iphone.command profile`
-(`prod` означает локальный Profile). `--check` проверяет готовность выбранного режима;
-`debug --build-only` собирает без установки.
+`./iphone.command` offers Debug, Profile, and status checks.
+For direct launch, use `./iphone.command dev` or `./iphone.command profile`
+(`prod` means local Profile). `--check` checks readiness for the selected mode;
+`debug --build-only` builds without installing.
 
-Два режима устанавливаются рядом и обновляются независимо:
+The two modes install side by side and update independently:
 
-| Команда | Приложение на iPhone | Идентификатор |
+| Command | iPhone app | Identifier |
 |---|---|---|
-| `./iphone.command prod` | Omi Local — Profile, запуск с иконки | существующий локальный bundle ID |
-| `./iphone.command dev` | Omi Local Dev — Debug, hot reload | тот же ID с суффиксом `.dev` |
+| `./iphone.command prod` | Omi Local — Profile, launched from its icon | Existing local bundle ID |
+| `./iphone.command dev` | Omi Local Dev — Debug, hot reload | Same ID with a `.dev` suffix |
 
-Для установки обоих запустите команды по очереди; завершите первый сеанс Flutter
-перед вторым (`d` отсоединяет Flutter и оставляет приложение работать).
-`prod` здесь означает ежедневную локальную сборку, оба приложения используют offline-профиль.
-Данные и Keychain прежнего bundle ID остаются у Omi Local. Новый Omi Local Dev
-имеет отдельные настройки: при первом запуске подключите Mac и выдайте разрешения заново.
-Подпись использует ту же команду Apple.
+To install both, run the commands one at a time and end the first Flutter session
+before starting the second (`d` detaches Flutter while leaving the app running).
+Here, `prod` means the daily local build; both apps use the offline profile.
+Data and Keychain entries for the previous bundle ID remain with Omi Local.
+Omi Local Dev has separate settings: pair the Mac and grant permissions on first
+launch. Signing uses the same Apple team.
 
-Запуск удерживает общую для пользователя блокировку до завершения дочернего процесса.
-Дополнительно проверяются старые Flutter run/attach/build, Xcode и установщики Omi
-по процессам и каталогам проекта. При уже работающем сеансе команда сообщает об этом
-и завершается без запуска; при недоступном наблюдении не считает систему свободной.
-Не удаляйте файл блокировки вручную: после выхода процесса блокировка освобождается сама.
+The launcher holds a user-wide lock until its child process exits. It also checks
+for older Flutter run/attach/build sessions, Xcode, and Omi installers using
+processes and project directories. If a session already exists, the command
+reports it and exits without launching. Failed observation is not treated as an
+idle system. Do not delete the lock file manually; the lock releases when the process exits.
 
-`status` проверяет сеансы и сборки на Mac. Самостоятельно работающее Profile-приложение
-на телефоне после завершения Flutter не является сеансом Mac; следующая установка
-обновляет приложение с тем же bundle ID. Защита не управляет сторонними командами
-`flutter`/Xcode, запущенными вручную после её проверки. Для повторных запусков используйте
-`iphone.command` или `dev-iphone.command`, а не параллельный прямой `setup.sh`.
-Проверки охвачены существующим `test_ios_setup.py` в `make test-offline`.
+`status` checks sessions and builds on the Mac. A standalone Profile app on the
+phone after Flutter exits is not a Mac session; the next installation updates the
+app with the same bundle ID. The guard does not control external Flutter/Xcode
+commands started manually after its check. For repeated launches, use
+`iphone.command` or `dev-iphone.command`, not a parallel direct `setup.sh`.
+The existing `test_ios_setup.py` in `make test-offline` covers these checks.
 
-## Debug на iPhone и hot reload
+## Debug on iPhone and hot reload
 
-Для уже подготовленного Mac с установленными зависимостями iOS:
+For a prepared Mac with iOS dependencies installed:
 
 ```bash
 ./start.command
 ./dev-iphone.command
 ```
 
-Подключите один iPhone, разблокируйте его, подтвердите доверие и включите
-Developer Mode. При первом Debug-запуске разрешите приложению доступ к локальной
-сети — это нужно для связи Flutter с телефоном. USB предпочтительнее Wi-Fi.
-Перед запуском по-прежнему нужны `make test-offline` и `make test-transport-app`.
-Первичную подготовку выполняет [обычная установка iOS](LOCAL_SETUP.md).
+Connect one iPhone, unlock it, confirm trust, and enable Developer Mode.
+On the first Debug launch, allow local-network access so Flutter can communicate
+with the phone. USB is preferred over Wi-Fi.
+Run `make test-offline` and `make test-transport-app` before launching.
+Use the [standard iOS setup](LOCAL_SETUP.md) for initial preparation.
 
-`dev-iphone.command` использует отдельный локальный Debug bundle и существующую команду подписи,
-не встраивает `.env` в приложение. После проверки готовности он добавляет в игнорируемый
-`PersonalTeam.xcconfig` настройки идентификатора и имени только для `Debug-dev`;
-основной bundle ID не меняется. `--check` ничего не записывает. Он проверяет инструменты
-и телефон, собирает `Debug-dev / local_dev / offline`, проверяет подпись,
-entitlements, профиль и SHA-256, затем передаёт **точный**
-`app/build/ios/Debug-dev-iphoneos/Runner.app` команде Flutter для установки
-и запуска с отладчиком. При совпадении входов и повторной проверке подписи
-артефакт переиспользуется; отметка хранится в игнорируемом `.local/ios-debug.json`.
-Версия CocoaPods берётся из `app/ios/Podfile.lock`; скрипт не устанавливает gems.
+`dev-iphone.command` uses a separate local Debug bundle and the existing signing
+team; it does not embed `.env` in the app. After readiness checks, it adds the
+identifier and display-name settings only for `Debug-dev` to ignored
+`PersonalTeam.xcconfig`; the base bundle ID remains unchanged. `--check` writes
+nothing. The launcher checks tools and the phone, builds
+`Debug-dev / local_dev / offline`, verifies the signature, entitlements,
+provisioning profile, and SHA-256, then passes the **exact**
+`app/build/ios/Debug-dev-iphoneos/Runner.app` to Flutter for installation and
+launch with the debugger. Matching inputs and a fresh signature check allow
+artifact reuse; attestation is stored in ignored `.local/ios-debug.json`.
+The CocoaPods version comes from `app/ios/Podfile.lock`; the script does not install gems.
 
-Оставьте этот Terminal открытым. После сохранения Dart-файла:
+Keep this Terminal open. After saving a Dart file:
 
-- `r` — hot reload: обновить UI/код, сохранив состояние;
-- `R` — hot restart: заново выполнить Dart `main`/`initState`, сбросив состояние;
-- `v` — открыть Flutter DevTools в браузере; `h` — показать команды;
-- `q` — завершить сеанс Flutter.
+- `r`: hot reload UI/code while preserving state.
+- `R`: hot restart Dart `main`/`initState`, resetting state.
+- `v`: open Flutter DevTools in the browser; `h`: show commands.
+- `q`: end the Flutter session.
 
-Клавиши работают без Enter после появления `Flutter run key commands`.
-Одного сохранения файла недостаточно: для применения изменений нажмите `r`.
+Keys work without Enter after **Flutter run key commands** appears.
+Saving alone does not apply changes; press `r`.
 
-Нативный Swift и параметры сборки требуют остановки сеанса и повторного запуска
-скрипта. При изменении зависимостей или генераторов сначала обновите зависимости
-и сгенерированные файлы по инструкции iOS, затем запустите Debug: этот скрипт
-работает с подготовленным проектом и не выполняет `pub get`/`build_runner`.
-Изменение URL/ключа сервера не требует пересборки.
-Hot reload меняет код работающего приложения после аттестации исходного bundle;
-SHA-256 не является отпечатком состояния после reload.
+Native Swift and build-setting changes require ending the session and running the
+script again. For dependency or generator changes, update dependencies and
+generated files following the iOS guide before launching Debug: this script
+expects a prepared project and does not run `pub get`/`build_runner`.
+Changing the server URL/key does not require rebuilding.
+Hot reload changes running code after the original bundle was attested;
+the SHA-256 is not a fingerprint of post-reload state.
 
-Дополнительные режимы:
+Additional modes:
 
 ```bash
-./dev-iphone.command --check       # только готовность, без сборки/установки
-./dev-iphone.command --build-only  # собрать и проверить, не устанавливать
+./dev-iphone.command --check       # readiness only, without build/install
+./dev-iphone.command --build-only  # build and verify, without installing
 ```
 
-Для повторного запуска Debug используйте этот скрипт, а не значок приложения:
-на современных iOS нужен отладчик для JIT. Для самостоятельного ежедневного
-запуска остаётся обычная Profile-сборка. Debug не включает ASR автоматически.
-Сеанс, запущенный агентом, не обязательно виден в вашем Terminal; для собственных
-клавиш `r/R/q` запускайте команду в своём окне Terminal после завершения прежнего сеанса.
+Relaunch Debug through the script, not the app icon: modern iOS requires a debugger
+for JIT. Use a normal Profile build for standalone daily launches.
+Debug does not automatically enable ASR. An agent-started session may not be
+visible in your Terminal; for your own `r/R/q` controls, run the command in your
+own Terminal window after the earlier session ends.
 
 [Flutter: iOS debugging](https://docs.flutter.dev/platform-integration/ios/ios-debugging) ·
 [Hot reload](https://docs.flutter.dev/tools/hot-reload).
 
-## Модели распознавания
+## Transcription models
 
-WhisperKit 1.1.0 собирается из Argmax commit `1e2a163736dfa5a198e637ae44c114e1c6d5cc2d`,
-Swift Argument Parser 1.7.0 закреплён upstream `Package.resolved`.
-[Рецепт](../scripts/dev-harness/whisperkit-models.json) содержит revisions и SHA-256
-архива, Core ML large-v3-v20240930_626MB, токенизатора и контрольной речи.
-Runtime хранится в `.local/whisperkit/`; `ready.json` появляется после offline inference.
-Ключ результата включает модель, язык, параметры, бинарный файл и версию адаптера.
-Обработчик сохраняет таймкоды слов и их probability как score; сетевой sandbox обязателен.
-Установщик не переключает текущий движок и не устанавливает Python ML-зависимости.
+WhisperKit 1.1.0 is built from Argmax commit
+`1e2a163736dfa5a198e637ae44c114e1c6d5cc2d`.
+Swift Argument Parser 1.7.0 is pinned by upstream `Package.resolved`.
+The [recipe](../scripts/dev-harness/whisperkit-models.json) contains revisions and
+SHA-256 values for the archive, Core ML large-v3-v20240930_626MB, tokenizer, and
+speech fixture. Runtime files live in `.local/whisperkit/`; `ready.json` is written
+after offline inference. The result key includes the model, language, parameters,
+binary, and adapter version. The worker retains word timestamps and their
+probability as a score; a network sandbox is mandatory.
+The installer does not switch the active engine or install Python ML dependencies.
 
+WhisperX 3.8.6/CPU/float32/batch 1 uses a separate Python 3.12.14.
+[Dependencies with checksums](../scripts/dev-harness/requirements-whisperx-macos.txt),
+[WhisperX patches](../scripts/dev-harness/whisperx-local.patch), and
+[model versions](../scripts/dev-harness/whisperx-models.json) are stored in the
+repository. The installer places them in `.local/stt/`, checks recognition, and
+publishes `ready.json` only after success. To check file completeness:
+`bash scripts/install-local-stt.sh --check`.
+Changing the environment version changes the transcript cache key while preserving
+older results. The queue retains the selected model and records the environment
+version actually used on retry.
 
-WhisperX 3.8.6/CPU/float32/batch 1 использует отдельный Python 3.12.14.
-[Зависимости с контрольными суммами](../scripts/dev-harness/requirements-whisperx-macos.txt),
-[правки WhisperX](../scripts/dev-harness/whisperx-local.patch) и
-[версии моделей](../scripts/dev-harness/whisperx-models.json) хранятся в репозитории.
-Установщик размещает их в `.local/stt/`, проверяет распознавание и публикует `ready.json`
-только после успеха. Для проверки комплектности файлов: `bash scripts/install-local-stt.sh --check`.
-Изменение версии окружения меняет ключ кеша транскриптов; старые результаты сохраняются.
-Очередь сохраняет выбранную модель, а при повторе указывает фактически используемую версию окружения.
+Parakeet-MLX 0.5.2/GPU/FP32 and pyannote.audio 4.0.7 were also tested.
+Parakeet used Python 3.14.6, Apple Silicon, and the
+[pinned dependencies](../scripts/dev-harness/requirements-parakeet-mlx-macos.txt).
 
-Также проверены Parakeet-MLX 0.5.2/GPU/FP32 и pyannote.audio 4.0.7.
-Для Parakeet использовались Python 3.14.6, Apple Silicon и
-[закреплённые зависимости](../scripts/dev-harness/requirements-parakeet-mlx-macos.txt).
-
-Пример `stt-engine.json` для Parakeet:
+Example `stt-engine.json` for Parakeet:
 
 ```json
 {
@@ -210,14 +217,16 @@ WhisperX 3.8.6/CPU/float32/batch 1 использует отдельный Pytho
 }
 ```
 
-WhisperX и Parakeet поддерживают `python` и `library_path`. FFmpeg 7 для стандартного WhisperX
-ставится автоматически. Его ASR, alignment и NLTK закреплены и загружаются по локальным
-путям. В ручных окружениях учитываются `HF_HOME`, `HF_HUB_CACHE`, `TORCH_HOME` и `NLTK_DATA`;
-модели для них, включая pyannote при разделении говорящих, готовятся отдельно.
-`start.command --check` проверяет сервисы Mac; готовность ML проверяется отдельно.
+WhisperX and Parakeet support `python` and `library_path`.
+FFmpeg 7 is installed automatically for standard WhisperX. Its ASR, alignment,
+and NLTK assets are pinned and loaded from local paths.
+Manual environments honor `HF_HOME`, `HF_HUB_CACHE`, `TORCH_HOME`, and `NLTK_DATA`;
+prepare their models separately, including pyannote for speaker separation.
+`start.command --check` checks Mac services and the configured transcription
+readiness; the individual model installers' `--check` modes check prepared assets.
 
-Очередь и результаты: `.local/dev-harness/ngrok/services/local-transcripts/`.
-После ошибки выполняются до трёх попыток с паузами 60 и 120 секунд, затем нужен
-ручной повтор. При потере состояния эмулятора он восстановит разговор из сохранённого
-JSON. После изменения кода адаптера дождитесь окончания обработки и перезапустите
-её через `auto-transcribe-off` / `auto-transcribe-on`.
+Queue and results: `.local/dev-harness/ngrok/services/local-transcripts/`.
+Failures receive up to three attempts with delays of 60 and 120 seconds; further
+retries are manual. If emulator state is lost, the conversation is restored from
+saved JSON. After changing adapter code, wait for processing to finish and
+restart it with `auto-transcribe-off` / `auto-transcribe-on`.
