@@ -1,5 +1,7 @@
 # Запуск omiloc
 
+Контейнерный запуск на Mac CPU и Linux/WSL2 NVIDIA: [Docker](DOCKER.md).
+
 Нужны Mac с Apple Silicon, macOS 14 или новее, Xcode со Swift 6.0 или новее
 и аккаунт [ngrok](https://dashboard.ngrok.com).
 Для записи — CV1 и [приложение на iPhone](LOCAL_SETUP.md).

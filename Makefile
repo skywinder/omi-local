@@ -20,6 +20,7 @@ dev-down:
 	bash scripts/dev-harness/dev-down.sh
 
 test-transport-unit:
+	$(MAKE) test-docker
 	cd scripts && "$${PYTHON}" -m unittest local_live_preview.test_reset_retention local_live_preview.test_parakeet local_live_preview.test_diarization_proxy
 	$(MAKE) test-library
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_offline_route_policy.py
@@ -52,3 +53,16 @@ test-library:
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_recording_delete.py
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider scripts/dev-harness/tests/test_local_library.py
 	node --test web-local/*.test.mjs
+
+.PHONY: docker-up docker-dev docker-down test-docker
+docker-up:
+	./docker.sh up
+
+docker-dev:
+	./docker.sh dev
+
+docker-down:
+	./docker.sh down
+
+test-docker:
+	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider docker/test_runtime.py

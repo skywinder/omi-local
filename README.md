@@ -103,6 +103,21 @@ list to open its completed transcript and player. See
 Use `./start.command` whenever you want to receive new recordings. Use `omiloc`
 to browse existing recordings. Do not open `web-local/index.html` directly.
 
+## Docker on CPU or NVIDIA GPU
+
+```bash
+./docker.sh up                        # CPU, or NVIDIA when its runtime is available
+./docker.sh dev                       # Python reload and automatic web refresh
+OMI_DOCKER_DEVICE=cuda ./docker.sh up  # Linux/WSL2 with an NVIDIA GPU
+./docker.sh down                      # stop while preserving data
+```
+
+Open **http://127.0.0.1:21001**. Initial image and model preparation requires
+internet access. Container data is separate from the native Mac stack. Docker
+uses CPU on Mac; WhisperKit/Core ML remains available through the native stack.
+NVIDIA hardware execution remains unverified. See [Docker setup](docs/DOCKER.md)
+for runtime prerequisites, models, ngrok, and updates.
+
 ## Development
 
 ### iPhone launcher
@@ -208,6 +223,7 @@ The detailed guides are currently written in Russian.
 
 | Guide | Topics |
 | --- | --- |
+| [Docker](docs/DOCKER.md) | CPU/GPU runtime, development reload, and container storage |
 | [Getting started](docs/START.md) | Installation, daily use, and recovery |
 | [iPhone setup](docs/LOCAL_SETUP.md) | Tools, signing, and app installation |
 | [Connection setup](docs/NGROK.md) | ngrok, pairing, and private configuration |

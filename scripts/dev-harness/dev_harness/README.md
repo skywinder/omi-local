@@ -25,3 +25,7 @@ Existing jobs and result identities remain readable. Model installations,
 remote credentials, recordings and execution artifacts stay outside Git.
 Tests are registered in the repository Makefile; see `docs/PROVIDERS.md` for
 operator behavior and protocol boundaries.
+
+`docker/runtime.py` reuses these owners in Compose. Persistent state and the
+container network namespace keep the loopback and graceful-shutdown contracts.
+See `docs/DOCKER.md`; no host paths or real recordings belong in Docker images.
