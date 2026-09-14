@@ -41,6 +41,91 @@ separate from native `start.command`. You do not need Python, Java, Node, or Red
 installed on the host. iPhone installation still uses Xcode on Mac; containers
 do not build or install the iOS app.
 
+## Using Docker Compose directly
+
+These commands perform the same build, model preparation, and startup steps as
+`docker.sh`. Run them from the repository root. The stack has several services,
+shared networking, and persistent volumes, so use Compose for direct Docker startup.
+
+### CPU on Mac or Linux
+
+```bash
+docker compose -f compose.yaml build app stt download
+docker compose -f compose.yaml run --rm --no-deps download
+docker compose -f compose.yaml up -d --wait
+```
+
+The `download` service prepares the model cache and exits. Do not skip it on a
+fresh installation or after selecting a new model/revision: the STT service
+loads cached files only. Open the [audio library](http://127.0.0.1:21001/).
+
+### NVIDIA GPU on Linux or WSL2
+
+After installing the [GPU prerequisites](#requirements-and-gpu):
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml build app stt download
+docker compose -f compose.yaml -f compose.gpu.yaml run --rm --no-deps download
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --wait
+```
+
+Direct Compose commands select CPU or GPU through the file list;
+`OMI_DOCKER_DEVICE` and automatic GPU detection belong to `docker.sh` only.
+Keep the same file list for later commands. Export custom `STT_MODEL`,
+`STT_REVISION`, or `STT_THREADS` values before running the sequence so they apply
+to every step.
+
+### Hot reload
+
+First build and prepare the model with the CPU or GPU sequence above. If the
+stack is already running, finish recording and processing, then stop it with
+the matching `down` command below. Start Compose Watch in your terminal:
+
+```bash
+# CPU
+docker compose -f compose.yaml -f compose.dev.yaml up --watch
+
+# NVIDIA GPU (alternative to the CPU command)
+docker compose -f compose.yaml -f compose.gpu.yaml -f compose.dev.yaml up --watch
+```
+
+Use one of these commands. `Ctrl+C` ends dev mode. Stop the stack before switching
+between CPU/GPU or development/normal mode; then run the desired startup sequence.
+
+### Status, logs, and shutdown
+
+For the CPU stack:
+
+```bash
+docker compose -f compose.yaml --profile tunnel ps
+docker compose -f compose.yaml logs --tail 80 -f
+docker compose -f compose.yaml --profile tunnel down
+```
+
+For the GPU stack:
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml --profile tunnel ps
+docker compose -f compose.yaml -f compose.gpu.yaml logs --tail 80 -f
+docker compose -f compose.yaml -f compose.gpu.yaml --profile tunnel down
+```
+
+These `down` commands also stop the optional tunnel and preserve data/model
+volumes. For updates, stop the stack, run `git pull --ff-only` from a clean
+checkout of main, and repeat the matching build/download/start sequence.
+Restart the tunnel afterward if configured.
+
+For [iPhone pairing](#iphone-and-ngrok), the direct equivalents are:
+
+```bash
+docker compose -f compose.yaml exec app python docker/runtime.py configure
+# After configuring, stop and start the stack, then start its tunnel:
+docker compose -f compose.yaml --profile tunnel up -d tunnel
+```
+
+On GPU, add `-f compose.gpu.yaml` after `-f compose.yaml` to both commands.
+Run `configure` interactively while `app` is running.
+
 ## Requirements and GPU
 
 Use Docker Engine with Compose or Docker Desktop; `dev` requires Compose **2.32+**.
