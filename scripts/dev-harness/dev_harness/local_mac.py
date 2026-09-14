@@ -308,6 +308,7 @@ def up(cfg) -> int:
     if not configured_live_url:
         local_live.start(cfg)
     start_configured(cfg)
+    local_transcription.check_service_models(cfg)
     if cli.cmd_up(argparse.Namespace()):
         return 1
     ensure_owner_profile(cfg, pairing["owner_uid"])

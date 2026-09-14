@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from . import (config, local_live, local_live_install, local_stt, local_stt_watch, local_whisperkit,
+from . import (config, local_live, local_live_install, local_stt, local_stt_services, local_stt_watch, local_whisperkit,
                safety, transcription_lock, whisperkit_install)
 
 
@@ -95,7 +95,10 @@ def _installed(check, missing_error):
     return True
 
 
-def _check_final(engine):
+def _check_final(cfg, engine):
+    if _checked(lambda: local_stt_services.owns_final_engine(cfg, engine),
+                'Файлы выбранного Argmax не готовы; проверьте argmax-stt.json.'):
+        return  # HTTP readiness belongs after the lifecycle starts this owned service.
     return _checked(lambda: local_stt.check_model(engine),
                     'Выбранный финальный движок не готов. Подготовьте его по docs/LOCAL_STT.md; выбор сохранён.')
 
@@ -103,17 +106,30 @@ def _check_final(engine):
 def check_models(cfg):
     """Read-only model checks; service/HTTP readiness belongs to the lifecycle."""
     _validate_state(cfg)
+    _checked(lambda: local_stt_services.preflight_argmax(cfg),
+             'Файлы выбранного Argmax не готовы; проверьте argmax-stt.json.')
     if final_enabled(cfg):
-        _check_final(_engine(cfg))
+        _check_final(cfg, _engine(cfg))
     data = _live_settings(cfg)
     if _managed_live(cfg, data):
         _checked(lambda: local_live_install.installed(cfg.repo_root),
                  'Live не подготовлен. Запустите start.command для подготовки моделей.')
 
 
+def check_service_models(cfg):
+    """Probe the selected owned final model only after its service has started."""
+    if final_enabled(cfg):
+        engine = _engine(cfg)
+        if local_stt_services.owns_final_engine(cfg, engine):
+            _checked(lambda: local_stt.check_model(engine),
+                     'Выбранный финальный движок не готов после запуска его локального сервиса.')
+
+
 def prepare(cfg):
     """Install only missing managed models; never change engine or opt-in state."""
     _validate_state(cfg)
+    _checked(lambda: local_stt_services.preflight_argmax(cfg),
+             'Файлы выбранного Argmax не готовы; проверьте argmax-stt.json.')
     final_root = None
     if final_enabled(cfg):
         engine = _engine(cfg)
@@ -123,11 +139,11 @@ def prepare(cfg):
             if not _installed(lambda: local_whisperkit.installed(managed_root), local_whisperkit.WhisperKitError):
                 final_root = managed_root
             else:
-                _check_final(engine)
+                _check_final(cfg, engine)
         else:
             # Prepared explicit providers/paths are supported without replacing
             # the user's chosen engine or writing outside managed model roots.
-            _check_final(engine)
+            _check_final(cfg, engine)
     live = _live_settings(cfg)
     needs_live = False
     if _managed_live(cfg, live):

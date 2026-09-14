@@ -501,8 +501,11 @@ def test_managed_stt_detects_failed_start_without_waiting_for_model_timeout(tmp_
     from dev_harness import cli, config, local_stt_services as services
     cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
                           layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
+    binary = tmp_path / 'argmax'
+    binary.write_text('synthetic executable')
+    binary.chmod(0o700)
     (tmp_path / 'argmax-stt.json').write_text(json.dumps({
-        'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(tmp_path),
+        'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(binary),
         'model_dir': str(tmp_path), 'tokenizer_dir': str(tmp_path)}))
     monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
     monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)

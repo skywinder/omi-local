@@ -10,6 +10,8 @@ loopback boundaries. Native Tailscale adds only an exact-interface backend liste
 in the same process; its receiving socket must not grant library-only draft access.
 Container runtimes set `OMI_CONTAINER_RUNTIME=1` and keep the backend loopback-only.
 Provider restarts must verify native Tailscale reachability before stopping a backend.
+Cold-start checks validate owned Argmax files before starting services; the selected
+HTTP model is checked after its owned listener starts, never as a prerequisite to it.
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
 Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
