@@ -123,6 +123,19 @@ If you already have this repository, run `./docker.sh up` from its root. Open th
 caches the default `faster-whisper-small` model; later launches reuse them.
 `up` waits for readiness and leaves the services running in the background.
 
+To launch directly with Docker Compose, without `docker.sh`, run these commands
+from the repository root (CPU on Mac or Linux):
+
+```bash
+docker compose -f compose.yaml build app stt download
+docker compose -f compose.yaml run --rm --no-deps download
+docker compose -f compose.yaml up -d --wait
+```
+
+The download step prepares the model before STT starts. For direct GPU startup,
+hot reload, logs, and shutdown commands, see
+[Using Docker Compose directly](docs/DOCKER.md#using-docker-compose-directly).
+
 | Task | Command |
 | --- | --- |
 | Start or rebuild after updating the code | `./docker.sh up` |
