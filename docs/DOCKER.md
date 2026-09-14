@@ -19,7 +19,8 @@ Node и Redis на хосте устанавливать не нужно. Уст
 
 ## Требования и GPU
 
-Нужны Docker Engine с Compose либо Docker Desktop; для `dev` — Compose **2.32+**.
+Нужны Docker Engine с Compose либо Docker Desktop; для `dev` — Compose **2.32+**. CI устанавливает Compose **2.40.3** перед проверкой
+конфигурации, чтобы не зависеть от старой версии на runner.
 На Mac Linux-контейнеры используют CPU, включая Apple Silicon. Доступ к Metal,
 Core ML и Neural Engine через эти контейнеры не предоставляется. Для WhisperKit
 на Mac остаётся [нативный запуск](START.md) и [настройка движка](LOCAL_STT.md).
