@@ -172,6 +172,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('Tailscale address saves as a draft and connects using the explicit Docker port', (tester) async {
+    var probes = 0;
+    final session = LocalMacSession(probe: (base, _) async {
+      probes++;
+      expect(base.toString(), 'http://100.64.0.1:21000/');
+      return {'uid': 'alice'};
+    });
+    await openPage(tester, session);
+    await tester.enterText(find.byKey(const ValueKey('local-mac-address')), '100.64.0.1:21000');
+    await tester.enterText(find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+    await tapFormButton(tester, 'local-mac-save');
+    expect(probes, 0);
+    expect(session.isSignedIn, isFalse);
+    expect((await session.readSettings()).address, '100.64.0.1:21000');
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(probes, 1);
+    expect(session.address, 'http://100.64.0.1:21000/');
+    expect(session.isSignedIn, isTrue);
+    expect(find.byType(LocalMacPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('save and reopen retains settings; eye reveals key and background hides it', (tester) async {
     final session = LocalMacSession(probe: (_, __) async => throw StateError('Saving must not probe'));
     await openPage(tester, session);

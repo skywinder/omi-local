@@ -3,6 +3,7 @@ import json
 import os
 import pty
 import select
+import shlex
 import subprocess
 import sys
 import time
@@ -15,6 +16,64 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/dev-harness'))
 from dev_harness import ios_debug
+
+
+@pytest.mark.parametrize('mode', ['personal', 'standard'])
+def test_generated_ats_scopes_tailscale_exception_to_personal_build(tmp_path, mode):
+    # Native tool seams only: execute the complete production generator on a
+    # temporary copy. The shim implements PlistBuddy's primitive plist edits.
+    shim = tmp_path / 'plist_tool.py'
+    shim.write_text('''
+import plistlib
+import shlex
+import sys
+
+with open(sys.argv[-1], 'rb') as source:
+    data = plistlib.load(source)
+if sys.argv[1] == '--lint':
+    sys.exit(0)
+operation, path, *arguments = shlex.split(sys.argv[2])
+parts = path.lstrip(':').split(':')
+parent = data
+try:
+    for part in parts[:-1]:
+        parent = parent[int(part)] if isinstance(parent, list) else parent[part]
+    key = int(parts[-1]) if isinstance(parent, list) else parts[-1]
+    if operation == 'Delete':
+        del parent[key]
+    elif operation == 'Add':
+        kind, *values = arguments
+        value = {'dict': lambda: {}, 'array': lambda: [],
+                 'bool': lambda: values[0] == 'true',
+                 'string': lambda: ' '.join(values)}[kind]()
+        if isinstance(parent, list):
+            parent.insert(key, value)
+        else:
+            if key in parent:
+                sys.exit(1)
+            parent[key] = value
+    else:
+        raise ValueError(operation)
+except (KeyError, IndexError):
+    sys.exit(1)
+with open(sys.argv[-1], 'wb') as output:
+    plistlib.dump(data, output)
+''')
+    command = f'{shlex.quote(sys.executable)} {shlex.quote(str(shim))}'
+    generator = tmp_path / 'generate.sh'
+    generator.write_text((ROOT / 'app/scripts/generate_ios_dev_info_plist.sh').read_text()
+                         .replace('/usr/libexec/PlistBuddy', command)
+                         .replace('plutil -lint', f'{command} --lint'))
+    output = tmp_path / 'Info.plist'
+    subprocess.run(['bash', str(generator), str(ROOT / 'app/ios/Runner/Info.plist'), str(output), mode],
+                   check=True, capture_output=True, text=True)
+    ats = plistlib.loads(output.read_bytes())['NSAppTransportSecurity']
+    expected = {'NSAllowsLocalNetworking': True}
+    if mode == 'personal':
+        # Apple's IP/CIDR ATS support starts at iOS 17; no arbitrary-load bypass.
+        # https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsexceptiondomains
+        expected['NSExceptionDomains'] = {'100.64.0.0/10': {'NSExceptionAllowsInsecureHTTPLoads': True}}
+    assert ats == expected
 
 
 @pytest.fixture

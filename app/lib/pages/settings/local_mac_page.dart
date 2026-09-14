@@ -226,7 +226,7 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                   autocorrect: false,
                   enableSuggestions: false,
                   onChanged: _editSettings,
-                  decoration: _fieldDecoration(context.l10n.localMacAddress, hint: 'https://'),
+                  decoration: _fieldDecoration(context.l10n.localMacAddress, hint: '100.64.0.1:20000'),
                 ),
                 const SizedBox(height: 16),
                 TextField(

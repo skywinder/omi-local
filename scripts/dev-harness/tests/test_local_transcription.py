@@ -12,11 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dev_harness import local_live, local_live_install, local_stt, local_transcription as setup, local_whisperkit, safety
 
 
-@pytest.fixture
-def prepared(tmp_path, monkeypatch):
+@pytest.fixture(params=["ngrok", "tailscale"])
+def prepared(tmp_path, monkeypatch, request):
     repo = tmp_path / 'project'
     repo.mkdir()
-    cfg = SimpleNamespace(repo_root=repo, instance='ngrok', provider_mode='offline', local_transport='ngrok',
+    cfg = SimpleNamespace(repo_root=repo, instance='ngrok', provider_mode='offline', local_transport=request.param,
                           layout=safety.layout_for_instance(repo, 'ngrok'), backend_port=20000)
     events, ready = [], {'final': False, 'live': False}
     monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)

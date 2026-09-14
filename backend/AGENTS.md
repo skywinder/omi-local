@@ -2,22 +2,26 @@
 
 Inherits all rules from the root `../AGENTS.md`. This file adds backend-specific development guidance.
 
-For this snapshot's ngrok mode use `scripts/local-mac.sh` from the repository
-root. Shared-key auth must run before dev/admin fallback; only its verification
+For this snapshot's paired ngrok/Tailscale modes use `scripts/local-mac.sh`
+from the repository root. Shared-key auth must run before dev/admin fallback; only its verification
 hash belongs in backend pairing state. Offline capture supports CV1 Opus and
 phone PCM16 at mono 16 kHz. Keep the existing route allowlist and emulator/Redis
-loopback boundaries. See `docs/NGROK.md`; `make test-offline` is the local suite.
-Ngrok profile-check diagnostics log only the HTTP response status; never extend
+loopback boundaries. Native Tailscale adds only an exact-interface backend listener
+in the same process; its receiving socket must not grant library-only draft access.
+Container runtimes set `OMI_CONTAINER_RUNTIME=1` and keep the backend loopback-only.
+Provider restarts must verify native Tailscale reachability before stopping a backend.
+See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
+Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
-Authenticated `/v1/local/status` is ngrok/offline-only. Its capture counters come
-from the caller's active listen sessions; live-ASR health is separate from WAV
+Authenticated `/v1/local/status` is paired-transport/offline-only. Capture counters
+come from the caller's active listen sessions; live-ASR health is separate from WAV
 capture. Never return transcript text, identifiers, filesystem paths or credentials.
 The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts
 to the loopback library. It requires the existing paired key, rejects non-loopback
-clients and all forwarded headers, and uses `Cache-Control: no-store`. Never add
-draft text to the status endpoint, logs or a diagnostic file.
+clients, non-loopback receiving sockets and all forwarded headers, and uses
+`Cache-Control: no-store`. Never add draft text to the status endpoint, logs or a diagnostic file.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the

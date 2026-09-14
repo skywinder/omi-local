@@ -1,4 +1,4 @@
-"""Minimal single-endpoint ngrok lifecycle on the owned offline harness."""
+"""Paired ngrok and Tailscale lifecycle on the owned offline harness."""
 
 from __future__ import annotations
 
@@ -72,6 +72,9 @@ def ngrok_port(cfg) -> int:
 
 
 def read_config(cfg) -> dict:
+    if getattr(cfg, 'local_transport', 'ngrok') == 'tailscale':
+        from .local_transport import normalize_tailscale_url
+        return {'url': normalize_tailscale_url(cfg.tailscale_ip, cfg.backend_port)}
     path = cfg.layout.state_root / "ngrok.json"
     if not path.is_file() or path.is_symlink() or path.stat().st_mode & 0o077:
         raise LocalMacError("Run configure in a local terminal first")
@@ -104,6 +107,27 @@ def configure(cfg, *, rotate: bool = False, edit: bool = False) -> None:
 
     repo = getattr(cfg, 'repo_root', None)
     env_path = repo / '.env' if repo is not None else None
+    if getattr(cfg, 'local_transport', 'ngrok') == 'tailscale':
+        if rotate or edit:
+            raise LocalMacError('Edit the private .env while the local stack is stopped')
+        if env_path is not None and env_path.is_file():
+            fields = local_env.read_env(env_path) if 'OMI_LOCAL_APP_KEY' in env_path.read_text() or 'OMI_LOCAL_TRANSPORT' in env_path.read_text() else {}
+            if fields:
+                local_env.apply(cfg, fields)
+                return
+        if (cfg.layout.state_root / 'pairing.json').is_file():
+            if sys.stdout.isatty():
+                show_frame('ДЛЯ ПРИЛОЖЕНИЯ НА IPHONE', ['Адрес: ' + read_config(cfg)['url'],
+                           'Ключ: прежний, сохранённый в приложении'])
+            return
+        if env_path is not None and not env_path.exists():
+            local_env.initialize(cfg)
+            local_env.apply(cfg, local_env.read_env(env_path))
+            if sys.stdout.isatty():
+                show_frame('ДЛЯ ПРИЛОЖЕНИЯ НА IPHONE', ['Адрес: ' + read_config(cfg)['url'],
+                           'Ключ: ' + local_env.read_env(env_path)['OMI_LOCAL_APP_KEY']])
+            return
+        raise LocalMacError('Set OMI_LOCAL_APP_KEY in the private .env before first pairing')
     env_values = None
     if env_path is not None and (env_path.exists() or env_path.is_symlink()):
         # PR #7's generated env contains the pairing key and is applied as a
@@ -226,8 +250,8 @@ def check_agent(cfg) -> None:
 
 def ensure_owner_profile(cfg, owner_uid: str) -> None:
     """Check live emulator state, creating only a missing paired-owner profile."""
-    if cfg.local_transport != "ngrok" or cfg.provider_mode != "offline" or cfg.dev_bind_host != "127.0.0.1":
-        raise LocalMacError("Owner profile preparation requires the loopback ngrok stack")
+    if cfg.local_transport not in {"ngrok", "tailscale"} or cfg.provider_mode != "offline" or cfg.dev_bind_host != "127.0.0.1":
+        raise LocalMacError("Owner profile preparation requires the paired loopback stack")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", owner_uid):
         raise LocalMacError("Invalid local owner")
     collection = f"http://{cfg.firestore_host}/v1/projects/{cfg.project_id}/databases/{cfg.database_id}/documents/users"
@@ -265,7 +289,8 @@ def ensure_owner_profile(cfg, owner_uid: str) -> None:
 
 def up(cfg) -> int:
     data = read_config(cfg)
-    check_agent(cfg)
+    if cfg.local_transport == 'ngrok':
+        check_agent(cfg)
     local_live.require_backend_environment(cfg)
     local_transcription.check_models(cfg)
     from .local_stt_services import health as stt_health
@@ -291,6 +316,25 @@ def up(cfg) -> int:
         if response.status != 200:
             raise LocalMacError("Backend is not ready")
     require_auth_boundary(cfg.backend_url)
+    if cfg.local_transport == 'tailscale':
+        # Bypass system proxies; a redirect is not evidence of this listener.
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        # The second listener is on the verified tailnet address, never a wildcard.
+        with opener.open(data['url'] + '/v1/health', timeout=5) as response:
+            if response.status != 200:
+                raise LocalMacError('Tailscale backend is not ready')
+        require_auth_boundary(data['url'], open_url=opener.open)
+        local_stt_watch.start_if_enabled(cfg)
+        if configured_live_url:
+            if not stt_health(cfg, 'live-stt')[0]:
+                raise LocalMacError('Configured live STT is not ready; inspect its owned service')
+        else:
+            local_live.require_ready(cfg)
+        print('Tailscale listener and key boundary passed; phone recording remains a separate check')
+        return 0
     cli._start_process(
         cfg,
         "ngrok",
@@ -332,12 +376,13 @@ def up(cfg) -> int:
     raise LocalMacError("Tunnel readiness is indeterminate; inspect the ngrok account and owned process")
 
 
-def require_auth_boundary(base_url: str) -> None:
+def require_auth_boundary(base_url: str, *, open_url=None) -> None:
     """Observe the live boundary; a healthy legacy dev server is insufficient."""
+    open_url = open_url or urllib.request.urlopen
     for headers in ({}, {"Authorization": "Bearer " + secrets.token_urlsafe(32)}):
         request = urllib.request.Request(base_url + "/openapi.json", headers=headers)
         try:
-            urllib.request.urlopen(request, timeout=5).close()
+            open_url(request, timeout=5).close()
         except urllib.error.HTTPError as error:
             if error.code == 401 and json.load(error).get("detail") == "local_auth_required":
                 continue
@@ -379,6 +424,8 @@ def main() -> int:
         if args.command == "prepare-emulator":
             prepare_emulator(repo)
             return 0
+        from .local_transport import prepare_environment
+        prepare_environment(repo, verify=args.command in {'configure', 'up', 'start', 'check', 'setup-check', 'audio-smoke'})
         cfg = config.load_config(repo, create_layout=args.command in {"configure", "edit-connection", "rotate-key"})
         if args.command == 'init-env':
             from . import local_env
@@ -387,7 +434,7 @@ def main() -> int:
             from . import launch_iphone
             launch_iphone.launch(cfg.repo_root / '.env', cfg.repo_root / 'app/build/ios/Profile-dev-iphoneos/Runner.app')
         elif args.command == "check":
-            if not shutil.which("ngrok"):
+            if cfg.local_transport == "ngrok" and not shutil.which("ngrok"):
                 raise LocalMacError("ngrok is missing; run install")
             return cli.cmd_check(argparse.Namespace())
         if args.command in {"configure", "edit-connection", "rotate-key"}:
@@ -449,10 +496,11 @@ def main() -> int:
     except (ValueError, TypeError, OSError, KeyError, safety.SafetyError, subprocess.SubprocessError) as error:
         # Error text from external tools can contain credentials or account IDs.
         from .local_env import LocalEnvError
+        from .local_transport import TransportError
         from .local_stt_services import ServiceError
         message = (
             str(error)
-            if isinstance(error, (LocalMacError, LocalEnvError, local_stt.TranscriptionError, ServiceError,
+            if isinstance(error, (LocalMacError, LocalEnvError, TransportError, local_stt.TranscriptionError, ServiceError,
                                   local_live.LocalLiveError, local_transcription.TranscriptionSetupError))
             else f"Check prerequisites and local configuration ({type(error).__name__})"
         )

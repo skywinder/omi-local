@@ -5,7 +5,7 @@
 **A personal audio library on your Mac, controlled from your iPhone.**
 
 Record audio from an Omi CV1, browse transcripts, and jump from a transcript
-segment to its audio. The iPhone app sends audio through an authenticated ngrok
+segment to its audio. The iPhone app sends audio through Tailscale or an authenticated ngrok
 tunnel; recordings stay on your Mac. Processing uses local engines or explicitly
 selected servers.
 
@@ -41,7 +41,7 @@ inside the containers. Installing the iPhone app still requires a Mac with Xcode
 | Xcode | Swift 6.0 or later; an iOS SDK compatible with your iPhone |
 | iPhone | The local Omi app, installed separately |
 | Recording device | Omi CV1 |
-| Transport | An [ngrok account](https://dashboard.ngrok.com) and internet access |
+| Transport | Tailscale on the server and iPhone; optional ngrok |
 | iOS development | Flutter 3.44.5 or later, CocoaPods, and an Apple account for signing |
 | Initial setup | Internet access for dependencies and models; at least 4 GiB of free space for model preparation |
 
@@ -64,8 +64,8 @@ You can also open `start.command` in Finder. The launcher:
 1. Installs missing Mac dependencies and checks prerequisites.
 2. Prepares and verifies WhisperKit for final transcription and Parakeet for live
    preview. The first setup may take several minutes.
-3. Guides you through ngrok configuration and shows the address and app key for
-   your iPhone.
+3. Discovers the connected Tailscale address and prepares the app key for your
+   iPhone; existing ngrok settings remain supported.
 4. Starts the services and opens the audio library.
 
 Subsequent launches reuse saved settings and prepared models. Existing engine
@@ -73,15 +73,15 @@ choices and explicitly disabled transcription settings are preserved. After
 startup finishes, the launcher exits and you can close its terminal window.
 
 See [Getting started](docs/START.md) for the complete installation flow and
-[Connection setup](docs/NGROK.md) for private `.env` configuration.
+[Tailscale setup](docs/TAILSCALE.md) for private `.env` configuration.
 
 ### 2. Install and pair the iPhone app
 
 `start.command` prepares the Mac services; install the local iPhone app separately
 by following the [iPhone setup guide](docs/LOCAL_SETUP.md).
 
-In the app, open **Local Mac** (**Локальный Mac**), enter the HTTPS address and app
-key shown by the launcher, and check the connection. The app key is separate from
+In the app, open **Local Mac** (**Локальный Mac**), enter the Tailscale IP or ngrok HTTPS address and app
+key from your private `.env` or launcher, and check the connection. A bare Tailscale IP uses port 20000; Docker uses IP:21000. The app key is separate from
 the ngrok authtoken; the authtoken stays on the Mac.
 
 ### 3. Record and browse
@@ -157,8 +157,9 @@ The default `auto` mode selects CUDA when Docker reports the NVIDIA runtime;
 otherwise it selects CPU. NVIDIA hardware execution remains unverified.
 WhisperKit/Core ML uses the [native Mac stack](#quick-start).
 
-The library starts without ngrok. To receive recordings from the iPhone, follow
-[Docker pairing and ngrok setup](docs/DOCKER.md#iphone-and-ngrok). Docker has its own
+The library starts without ngrok. To receive recordings over Tailscale, use
+`./docker.sh tailscale up` and pair to **IP:21000**. See
+[Docker pairing](docs/DOCKER.md#iphone-and-tailscale); ngrok remains optional. Docker has its own
 app key and data volumes; native Mac recordings and settings are not imported.
 For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 [Docker guide](docs/DOCKER.md).
@@ -273,7 +274,8 @@ speech fixture retain their original text.
 | [Docker](docs/DOCKER.md) | CPU/GPU runtime, development reload, and container storage |
 | [Getting started](docs/START.md) | Installation, daily use, and recovery |
 | [iPhone setup](docs/LOCAL_SETUP.md) | Tools, signing, and app installation |
-| [Connection setup](docs/NGROK.md) | ngrok, pairing, and private configuration |
+| [Tailscale](docs/TAILSCALE.md) | Direct IP pairing, native/Docker ports, and private configuration |
+| [Ngrok](docs/NGROK.md) | Optional HTTPS tunnel and pairing |
 | [Connection diagnostics](docs/CONNECTION_DIAGNOSTICS.md) | Investigating phone-to-Mac connectivity |
 | [Transcription](docs/LOCAL_STT.md) | Preparing and running local engines |
 | [Providers](docs/PROVIDERS.md) | Live STT, final transcription, diarization, and summaries |

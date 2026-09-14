@@ -1,5 +1,8 @@
 # Starting omiloc
 
+New native setups use [Tailscale](TAILSCALE.md). Existing ngrok settings remain
+supported; the ngrok-specific steps below apply when that transport is selected.
+
 For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
 You need an Apple Silicon Mac, macOS 14 or later, Xcode with Swift 6.0 or later,

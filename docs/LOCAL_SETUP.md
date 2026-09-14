@@ -4,7 +4,7 @@ For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
 Recording requires a separately installed local Omi app.
 `start.command` prepares Mac services but does not install the phone app.
-After installation, connect it using the [ngrok guide](NGROK.md).
+After installation, connect it using [Tailscale](TAILSCALE.md) or the optional [ngrok guide](NGROK.md).
 
 ## Preparing your Mac
 

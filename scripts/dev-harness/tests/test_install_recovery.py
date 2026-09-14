@@ -23,7 +23,7 @@ def installation(tmp_path):
     for name in ('backend/.venv/bin/python', 'node_modules/.bin/firebase'):
         target = repo / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('#!/bin/bash\necho emulator >> "$OMI_TEST_EVENTS"\n')
+        target.write_text('#!/bin/bash\nif [[ "$2" == dev_harness.local_transport ]]; then echo ngrok; exit; fi\necho emulator >> "$OMI_TEST_EVENTS"\n')
         target.chmod(0o700)
     sync = repo / 'backend/scripts/sync-python-deps.sh'
     sync.parent.mkdir()

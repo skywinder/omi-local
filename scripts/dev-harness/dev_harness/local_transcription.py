@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from . import (local_live, local_live_install, local_stt, local_stt_watch, local_whisperkit,
+from . import (config, local_live, local_live_install, local_stt, local_stt_watch, local_whisperkit,
                safety, transcription_lock, whisperkit_install)
 
 
@@ -39,8 +39,8 @@ def _safe_path(cfg, path):
 
 
 def _validate_state(cfg, *, required=False):
-    if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
-        raise TranscriptionSetupError('Подготовка распознавания требует локальный Mac в режиме offline/ngrok.')
+    if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
+        raise TranscriptionSetupError('Подготовка распознавания требует локальный Mac в парном режиме offline.')
     root = cfg.layout.state_root
     _safe_path(cfg, root)
     if cfg.layout.services_dir != root / 'services':

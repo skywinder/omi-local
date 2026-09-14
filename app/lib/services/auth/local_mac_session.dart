@@ -136,10 +136,12 @@ class LocalMacSession extends ChangeNotifier {
 
   bool permits(Uri uri) =>
       _base != null &&
-      (uri.scheme == 'https' || uri.scheme == 'wss') &&
+      (_base!.scheme == 'https'
+          ? uri.scheme == 'https' || uri.scheme == 'wss'
+          : uri.scheme == 'http' || uri.scheme == 'ws') &&
       uri.userInfo.isEmpty &&
       uri.host == _base!.host &&
-      (uri.hasPort ? uri.port : 443) == 443;
+      (uri.hasPort ? uri.port : (_base!.scheme == 'https' ? 443 : 80)) == _base!.port;
 
   String authorizationFor(Uri uri) {
     if (!permits(uri) || !isSignedIn) throw LocalMacUnauthorized();

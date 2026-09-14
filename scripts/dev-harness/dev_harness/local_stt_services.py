@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import local_openai_stt
+from . import config, local_openai_stt
 
 
 class ServiceError(ValueError):
@@ -146,7 +146,7 @@ def health(cfg, service, live=None):
 
 def start_configured(cfg, *, live_override=_UNSET, include_argmax=True, start_relay=True):
     from . import cli, config
-    if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
+    if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
         return
     # A legacy proxy may be repointed to the relay below. Establish that hop
     # before replacing any owned worker, including on normal harness startup.
@@ -304,7 +304,7 @@ def activate(cfg, snapshot, *, publish, rollback=None):
     from . import cli
     from .local_provider_relay import port, probe, session_gate
     from .local_providers import Registry
-    if cfg.provider_mode != 'offline' or cfg.local_transport != 'ngrok':
+    if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
         raise ServiceError('Live provider settings require the owned loopback stack')
     live = snapshot_settings(snapshot)
     if live:
@@ -329,16 +329,18 @@ def activate(cfg, snapshot, *, publish, rollback=None):
                 asyncio.run(probe(snapshot, cfg, key=Registry(cfg).key(snapshot)))
             status = _capture_status(cfg)
             _legacy_drain_idle(cfg, status, drained)
+            configurable = status.get('live_transcript', {}).get('configurable')
+            restart_cfg = cfg if configurable else cli.backend_restart_config(cfg)
             published = True
             publish()
-            if status.get('live_transcript', {}).get('configurable'):
+            if configurable:
                 return
             record = cli._service_record(cfg, 'backend')
             if record is None:
                 raise ServiceError('Owned backend is unavailable')
             backend_changed = True
             cli._stop_single_service(cfg, record)
-            cli._start_app_services(cfg)
+            cli._start_app_services(restart_cfg)
             for _ in range(30):
                 try:
                     if _capture_status(cfg).get('live_transcript', {}).get('configurable'):
@@ -374,6 +376,7 @@ def apply(cfg):
     require_idle()
     start_configured(cfg)
     require_idle()  # Model startup may take minutes; recheck immediately before restart.
+    cfg = cli.backend_restart_config(cfg)
     record = cli._service_record(cfg, 'backend')
     if record is None:
         raise ServiceError('Owned backend is unavailable')

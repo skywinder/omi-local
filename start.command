@@ -36,9 +36,15 @@ printf '\nomiloc\n\n'
 needs_install=0
 omi_install_ready || needs_install=1
 [[ -x backend/.venv/bin/python && -x node_modules/.bin/firebase ]] || needs_install=1
-for tool in uv node java redis-server ffmpeg ngrok jq; do
+for tool in uv node java redis-server ffmpeg jq; do
   command -v "$tool" >/dev/null 2>&1 || needs_install=1
 done
+if [[ -x backend/.venv/bin/python ]]; then
+  transport=$(PYTHONPATH=scripts/dev-harness backend/.venv/bin/python -m dev_harness.local_transport)
+  if [[ "$transport" == ngrok ]]; then
+    command -v ngrok >/dev/null 2>&1 || needs_install=1
+  fi
+fi
 omi_java_ready || needs_install=1
 if command -v brew >/dev/null 2>&1; then
   brew list --versions opus >/dev/null 2>&1 || needs_install=1

@@ -50,6 +50,91 @@ void main() {
     expect(session.readiness.live, 'unknown');
   });
 
+  test('Tailscale input supports native defaults and explicit Docker ports', () {
+    for (final entry in {
+      ' 100.64.0.1 ': 'http://100.64.0.1:20000/',
+      '100.127.255.255/': 'http://100.127.255.255:20000/',
+      '100.64.0.1:21000': 'http://100.64.0.1:21000/',
+      'http://100.64.0.1:21000/': 'http://100.64.0.1:21000/',
+      '100.64.0.1:80': 'http://100.64.0.1/',
+      'http://100.64.0.1': 'http://100.64.0.1/',
+      '100.64.0.1:65535': 'http://100.64.0.1:65535/',
+    }.entries) {
+      final parsed = Env.parseLocalTunnelUrl(entry.key);
+      expect(parsed.toString(), entry.value);
+      expect(Env.parseLocalTunnelUrl(parsed.toString()), parsed, reason: 'Keychain round trip');
+    }
+  });
+
+  test('pairing rejects malformed IPs, unsafe HTTP hosts and invalid authorities', () {
+    for (final address in [
+      '100.63.255.255',
+      '100.128.0.1',
+      '100.064.0.1',
+      '100.64.0.256',
+      'http://127.0.0.1:20000',
+      'http://192.168.1.2:20000',
+      'http://example.test',
+      'http://[::1]:20000',
+      'http://100.64.0.1.evil.test:20000',
+      '100.64.0.1:0',
+      '100.64.0.1:65536',
+      '100.64.0.1:-1',
+      'http://key@100.64.0.1:20000',
+      'http://100.64.0.1:20000/path',
+      'http://100.64.0.1:20000?key=value',
+      'http://100.64.0.1:20000#fragment',
+      'https://100.64.0.1',
+      'ws://100.64.0.1:20000',
+      '//100.64.0.1:20000',
+    ]) {
+      expect(() => Env.parseLocalTunnelUrl(address), throwsFormatException, reason: address);
+    }
+  });
+
+  test('Tailscale pairing, restart and credentials retain exactly the selected HTTP/WS authority', () async {
+    final session = LocalMacSession(probe: (base, submitted) async {
+      expect(base.toString(), 'http://100.64.0.1:21000/');
+      expect(submitted, key);
+      return {'uid': 'alice'};
+    });
+    await session.connect('100.64.0.1:21000', key);
+    final restored = LocalMacSession();
+    await restored.restore();
+    expect(restored.address, 'http://100.64.0.1:21000/');
+    expect(restored.authorizationFor(Uri.parse('http://100.64.0.1:21000/v1/local/status')), 'Bearer $key');
+    expect(restored.authorizationFor(Uri.parse('ws://100.64.0.1:21000/v4/listen')), 'Bearer $key');
+    for (final other in [
+      'http://100.64.0.2:21000/',
+      'http://100.64.0.1:20000/',
+      'http://100.64.0.1/',
+      'https://100.64.0.1:21000/',
+      'wss://100.64.0.1:21000/',
+      'ws://100.64.0.1/',
+      'http://key@100.64.0.1:21000/',
+      'http://100.64.0.1:0/',
+    ]) {
+      expect(() => restored.authorizationFor(Uri.parse(other)), throwsA(isA<LocalMacUnauthorized>()));
+    }
+    expect(OfflineNetworkPolicy.current.allows(Uri.parse('http://127.0.0.1:9099')), isFalse);
+    await restored.saveSettings('100.64.0.2:21000', key);
+    expect(restored.address, 'http://100.64.0.1:21000/');
+    expect(restored.permits(Uri.parse('http://100.64.0.2:21000/')), isFalse);
+  });
+
+  test('Tailscale rejected key never replaces a working HTTPS pairing', () async {
+    var reject = false;
+    final session = LocalMacSession(probe: (_, __) async {
+      if (reject) throw LocalMacUnauthorized();
+      return {'uid': 'alice'};
+    });
+    await session.connect(url, key);
+    reject = true;
+    await expectLater(session.connect('100.64.0.1', key), throwsA(isA<LocalMacUnauthorized>()));
+    expect(session.address, url);
+    expect(session.isSignedIn, isTrue);
+  });
+
   test('pairing admits audio while reporting separate live and final readiness', () async {
     final session = LocalMacSession(
         probe: (_, __) async => {

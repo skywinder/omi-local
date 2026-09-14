@@ -30,7 +30,7 @@ def show_frame(title, lines):
 
 
 def check(cfg, *, preparing=False):
-    if not shutil.which('ngrok'):
+    if getattr(cfg, 'local_transport', 'ngrok') == 'ngrok' and not shutil.which('ngrok'):
         raise SetupError('Не найден ngrok. Запустите ./start.command для подготовки.')
     # Capture diagnostic chatter in memory; credentials are never provisioned here.
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -59,7 +59,7 @@ def run(cfg, *, open_browser=True):
 
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
     repo = getattr(cfg, 'repo_root', None)
-    if not interactive and (repo is None or not (repo / '.env').is_file()):
+    if not interactive and getattr(cfg, 'local_transport', 'ngrok') != 'tailscale' and (repo is None or not (repo / '.env').is_file()):
         raise SetupError('Запустите ./start.command в локальном Terminal.')
     print('Проверяем готовность…', flush=True)
     check(cfg, preparing=True)
@@ -80,6 +80,8 @@ def run(cfg, *, open_browser=True):
     print()
     print('Сервисы Mac запущены. Терминал можно закрыть.')
     show_frame('ОТКРЫТЬ АУДИОТЕКУ', ['omiloc', local_library.url(cfg)])
+    if getattr(cfg, 'local_transport', 'ngrok') == 'tailscale' and interactive:
+        show_frame('TAILSCALE · IPHONE', ['Адрес: ' + local_mac.read_config(cfg)['url'], 'Ключ приложения — в приватном .env или уже сохранён на iPhone'])
     print('Приложение на iPhone: docs/LOCAL_SETUP.md')
     if local_stt_watch.worker_ready(cfg):
         print('Новые записи распознаются автоматически.')
