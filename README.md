@@ -9,7 +9,7 @@ segment to its audio. The iPhone app sends audio through an authenticated ngrok
 tunnel; recordings stay on your Mac. Processing uses local engines or explicitly
 selected servers.
 
-[Quick start](#quick-start) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
+[Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
@@ -30,6 +30,10 @@ selected servers.
   included Debug launcher.
 
 ## Requirements
+
+The table below describes the native Mac setup. The [Docker setup](#docker-on-cpu-or-nvidia-gpu)
+requires Docker Engine/Desktop and Compose; Python, Java, Node, and Redis run
+inside the containers. Installing the iPhone app still requires a Mac with Xcode.
 
 | Component | Requirement |
 | --- | --- |
@@ -105,18 +109,46 @@ to browse existing recordings. Do not open `web-local/index.html` directly.
 
 ## Docker on CPU or NVIDIA GPU
 
+Install and start Docker Engine or Docker Desktop with Compose **2.32 or later**.
+From a new checkout of `main`:
+
 ```bash
-./docker.sh up                        # CPU, or NVIDIA when its runtime is available
-./docker.sh dev                       # Python reload and automatic web refresh
-OMI_DOCKER_DEVICE=cuda ./docker.sh up  # Linux/WSL2 with an NVIDIA GPU
-./docker.sh down                      # stop while preserving data
+git clone --branch main https://github.com/vquaron/omi-local.git omiloc
+cd omiloc
+./docker.sh up
 ```
 
-Open **http://127.0.0.1:21001**. Initial image and model preparation requires
-internet access. Container data is separate from the native Mac stack. Docker
-uses CPU on Mac; WhisperKit/Core ML remains available through the native stack.
-NVIDIA hardware execution remains unverified. See [Docker setup](docs/DOCKER.md)
-for runtime prerequisites, models, ngrok, and updates.
+If you already have this repository, run `./docker.sh up` from its root. Open the
+[audio library](http://127.0.0.1:21001/). The first launch builds the images and
+caches the default `faster-whisper-small` model; later launches reuse them.
+`up` waits for readiness and leaves the services running in the background.
+
+| Task | Command |
+| --- | --- |
+| Start or rebuild after updating the code | `./docker.sh up` |
+| Develop with Python reload and automatic web refresh | `./docker.sh dev` |
+| Check container status | `./docker.sh status` |
+| Follow service logs | `./docker.sh logs` |
+| Stop and keep recordings, settings, and models | `./docker.sh down` |
+
+Run `dev` in your own terminal and finish active recordings before backend edits.
+When changing between `up` and `dev`, stop the stack with `./docker.sh down` first.
+
+Docker uses CPU on Mac. For Linux/WSL2 with a configured NVIDIA GPU runtime:
+
+```bash
+OMI_DOCKER_DEVICE=cuda ./docker.sh up
+```
+
+The default `auto` mode selects CUDA when Docker reports the NVIDIA runtime;
+otherwise it selects CPU. NVIDIA hardware execution remains unverified.
+WhisperKit/Core ML uses the [native Mac stack](#quick-start).
+
+The library starts without ngrok. To receive recordings from the iPhone, follow
+[Docker pairing and ngrok setup](docs/DOCKER.md#iphone-и-ngrok). Docker has its own
+app key and data volumes; native Mac recordings and settings are not imported.
+For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
+[Docker guide](docs/DOCKER.md).
 
 ## Development
 
@@ -207,6 +239,7 @@ Run these commands from the project directory:
 
 | Problem | First step |
 | --- | --- |
+| Docker services are unavailable | `./docker.sh status`, then `./docker.sh logs` |
 | Mac services or transcription are unavailable | `./start.command --check` |
 | iPhone tools, signing, or device readiness fail | `./start.command --iphone-check` |
 | `omiloc` is not found | Run `./omiloc --install`, then open a new terminal |
