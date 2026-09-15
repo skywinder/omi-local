@@ -248,7 +248,10 @@ class LocalLivePreview:
         sender = None
         try:
             if not self.url:
-                self._fail('config_incomplete', status_reason=self.unavailable_reason)
+                if self.unavailable_reason == 'disabled':
+                    self.disabled = True
+                else:
+                    self._fail('config_incomplete', status_reason=self.unavailable_reason)
                 return
             async with websockets.connect(self.url, open_timeout=3, close_timeout=2,
                                           max_size=self.MAX_SNAPSHOT_BYTES) as socket:

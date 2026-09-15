@@ -390,3 +390,10 @@ unreachable through the Tailscale address. Graceful shutdown exported Firebase.
 No models were downloaded; STT was disabled for this transport check. This proves
 host binding and the synthetic audio path, not connectivity from a physical iPhone
 or another tailnet peer. Existing running services and data were left unchanged.
+
+### Recording without live text
+
+The default Docker STT service transcribes completed WAVs after Stop. Live STT is
+disabled unless a live provider is configured. Disabled live processing is not a
+recording error. Open the library on port 21001, select a recording, and use the
+player at the bottom; recordings with no detected speech still have playable audio.
