@@ -523,6 +523,7 @@ class CaptureController extends ChangeNotifier
   LocalOmiButtonAction? _localOmiButtonFeedback;
   LocalOmiButtonAction? get localOmiButtonFeedback => _localOmiButtonFeedback;
   Timer? _localButtonFeedbackTimer;
+  Timer? _localButtonEventTimer;
 
   void _showLocalButtonFeedback(LocalOmiButtonAction action, int generation) {
     if (!TemporaryCaptureControls.enabled || generation != _buttonStreamGeneration) return;
@@ -661,6 +662,7 @@ class CaptureController extends ChangeNotifier
     }
     if (_recordingDevice?.id != device?.id) {
       _lastOmiButtonEvent = null;
+      _localButtonEventTimer?.cancel();
       _localButtonFeedbackTimer?.cancel();
       _localOmiButtonFeedback = null;
       _localButtonAction = null;
@@ -1137,6 +1139,11 @@ class CaptureController extends ChangeNotifier
           final event = OmiButtonEvent.fromCode(buttonState);
           if (event == null) return;
           _lastOmiButtonEvent = event;
+          _localButtonEventTimer?.cancel();
+          _localButtonEventTimer = Timer(const Duration(seconds: 4), () {
+            _lastOmiButtonEvent = null;
+            notifyListeners();
+          });
           notifyListeners();
           if (event == OmiButtonEvent.singleTap) {
             unawaited(_toggleLocalRecordingSession(deviceId));
@@ -1773,6 +1780,7 @@ class CaptureController extends ChangeNotifier
   @override
   void dispose() {
     _localButtonFeedbackTimer?.cancel();
+    _localButtonEventTimer?.cancel();
     _resetLocalAudioEvidence();
     _localDeviceAudioStart?.discard();
     _websocketInitGeneration++;
