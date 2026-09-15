@@ -9957,4 +9957,7 @@ class AppLocalizationsFi extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Anna Tailscale-IP (tai IP:portti) tai ngrokin HTTPS-osoite ja sovellusavain. Yhdistäminen pysäyttää tallennuksen. Ääni säilyy palvelimellasi.';
+
+  @override
+  String get localMacServers => 'Tallennetut palvelimet';
 }

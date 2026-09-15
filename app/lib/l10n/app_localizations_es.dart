@@ -9980,4 +9980,7 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Introduce la IP Tailscale (o IP:puerto) o la dirección HTTPS ngrok y la clave de la aplicación. La conexión detiene la grabación. El audio queda en tu servidor.';
+
+  @override
+  String get localMacServers => 'Servidores guardados';
 }

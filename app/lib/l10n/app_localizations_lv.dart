@@ -9980,4 +9980,7 @@ class AppLocalizationsLv extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Ievadiet Tailscale IP (vai IP:portu) vai ngrok HTTPS adresi un lietotnes atslēgu. Savienojuma izveide aptur ierakstu. Audio paliek jūsu serverī.';
+
+  @override
+  String get localMacServers => 'Saglabātie serveri';
 }

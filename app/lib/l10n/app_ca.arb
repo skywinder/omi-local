@@ -3226,5 +3226,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Introdueix la IP Tailscale (o IP:port) o l’adreça HTTPS ngrok i la clau de l’aplicació. La connexió atura la gravació. L’àudio queda al teu servidor.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Servidors desats"
 }

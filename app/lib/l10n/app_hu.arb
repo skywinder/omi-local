@@ -3344,5 +3344,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Add meg a Tailscale IP-címet (vagy IP:portot) vagy az ngrok HTTPS-címét és az alkalmazáskulcsot. A csatlakozás leállítja a felvételt. A hang a szervereden marad.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Mentett szerverek"
 }

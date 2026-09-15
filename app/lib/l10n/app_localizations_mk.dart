@@ -10009,4 +10009,7 @@ class AppLocalizationsMk extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Внесете Tailscale IP (или IP:порта) или ngrok HTTPS-адреса и клучот на апликацијата. Поврзувањето го запира снимањето. Аудиото останува на вашиот сервер.';
+
+  @override
+  String get localMacServers => 'Зачувани сервери';
 }

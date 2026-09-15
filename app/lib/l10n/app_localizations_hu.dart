@@ -9997,4 +9997,7 @@ class AppLocalizationsHu extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Add meg a Tailscale IP-címet (vagy IP:portot) vagy az ngrok HTTPS-címét és az alkalmazáskulcsot. A csatlakozás leállítja a felvételt. A hang a szervereden marad.';
+
+  @override
+  String get localMacServers => 'Mentett szerverek';
 }

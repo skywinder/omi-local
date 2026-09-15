@@ -10814,5 +10814,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Tailscale IP (یا IP:پورٹ) یا ngrok HTTPS پتہ اور ایپ کی کلید درج کریں۔ کنیکٹ کرنے سے ریکارڈنگ رک جائے گی۔ آڈیو آپ کے سرور پر رہتا ہے۔",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "محفوظ کردہ سرورز"
 }

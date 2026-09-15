@@ -9956,4 +9956,7 @@ class AppLocalizationsFa extends AppLocalizations {
   @override
   String get localMacHelp =>
       'نشانی Tailscale IP (یا IP:پورت) یا ngrok HTTPS و کلید برنامه را وارد کنید. اتصال ضبط را متوقف می‌کند. صدا روی سرور شما می‌ماند.';
+
+  @override
+  String get localMacServers => 'سرورهای ذخیره‌شده';
 }

@@ -9767,4 +9767,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get localMacHelp => '输入 Tailscale IP（或 IP:端口）或 ngrok HTTPS 地址以及应用密钥。连接将停止录音。音频保存在您的服务器上。';
+
+  @override
+  String get localMacServers => '已保存的服务器';
 }

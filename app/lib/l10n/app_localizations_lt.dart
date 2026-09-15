@@ -9976,4 +9976,7 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Įveskite Tailscale IP (arba IP:prievadą) arba ngrok HTTPS adresą ir programėlės raktą. Prisijungimas sustabdo įrašymą. Garsas lieka jūsų serveryje.';
+
+  @override
+  String get localMacServers => 'Išsaugoti serveriai';
 }

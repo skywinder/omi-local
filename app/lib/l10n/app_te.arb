@@ -10814,5 +10814,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Tailscale IP (లేదా IP:పోర్ట్) లేదా ngrok HTTPS చిరునామా మరియు యాప్ కీని నమోదు చేయండి. కనెక్ట్ చేయడం రికార్డింగ్‌ను ఆపుతుంది. ఆడియో మీ సర్వర్‌లో ఉంటుంది.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "సేవ్ చేసిన సర్వర్లు"
 }

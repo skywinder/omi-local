@@ -3248,5 +3248,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Ange Tailscale-IP (eller IP:port) eller ngrok-HTTPS-adressen och appnyckeln. Anslutning stoppar inspelningen. Ljudet stannar på din server.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Sparade servrar"
 }

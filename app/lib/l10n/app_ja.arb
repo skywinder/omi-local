@@ -3224,5 +3224,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Tailscale IP（またはIP:ポート）かngrokのHTTPSアドレスとアプリキーを入力してください。接続すると録音が停止します。音声はサーバーに保存されます。",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "保存済みサーバー"
 }

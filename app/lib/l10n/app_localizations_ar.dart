@@ -9898,4 +9898,7 @@ class AppLocalizationsAr extends AppLocalizations {
   @override
   String get localMacHelp =>
       'أدخل Tailscale IP (أو IP:المنفذ) أو عنوان ngrok HTTPS ومفتاح التطبيق. الاتصال يوقف التسجيل. يبقى الصوت على خادمك.';
+
+  @override
+  String get localMacServers => 'الخوادم المحفوظة';
 }

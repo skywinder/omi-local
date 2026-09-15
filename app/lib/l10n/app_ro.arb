@@ -3248,5 +3248,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Introduceți IP-ul Tailscale (sau IP:port) sau adresa HTTPS ngrok și cheia aplicației. Conectarea oprește înregistrarea. Sunetul rămâne pe serverul dvs.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Servere salvate"
 }

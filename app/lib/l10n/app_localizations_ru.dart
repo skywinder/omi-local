@@ -9993,4 +9993,7 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Введите Tailscale IP (или IP:порт) либо HTTPS-адрес ngrok и ключ приложения. Подключение остановит запись. Аудио хранится на вашем сервере.';
+
+  @override
+  String get localMacServers => 'Сохранённые серверы';
 }

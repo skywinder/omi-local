@@ -3283,5 +3283,6 @@
     "localMacConnectionFailed": "Не удалось подключиться. Проверьте адрес и убедитесь, что Mac и туннель работают.",
     "localMacHelp": "Введите Tailscale IP (или IP:порт) либо HTTPS-адрес ngrok и ключ приложения. Подключение остановит запись. Аудио хранится на вашем сервере.",
     "memoryHistoryPartial": "Показана часть истории воспоминаний.",
-    "tapPlusToStartRecording": "Нажмите +, чтобы начать запись."
+    "tapPlusToStartRecording": "Нажмите +, чтобы начать запись.",
+    "localMacServers": "Сохранённые серверы"
 }

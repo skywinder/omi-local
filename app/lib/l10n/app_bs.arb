@@ -10814,5 +10814,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Unesite Tailscale IP (ili IP:port) ili ngrok HTTPS adresu i ključ aplikacije. Povezivanje zaustavlja snimanje. Zvuk ostaje na vašem serveru.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Sačuvani serveri"
 }

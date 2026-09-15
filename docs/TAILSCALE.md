@@ -36,8 +36,13 @@ key, and select **Check and connect**. A bare IP selects port **20000**. You can
 also enter `IP:port` or `http://IP:port`. A full HTTP URL without a port means
 standard port 80. Changing the address later does not require rebuilding the app.
 The first update enabling Tailscale IP pairing does require installing the updated app.
-Settings are saved in Keychain; editing them does not switch the active connection
-until verification succeeds.
+Use **Saved servers** to choose a server, **Add** for a new entry, and the name,
+address and key fields to edit it. **Save Credentials** saves the entry in Keychain;
+**Check and connect** saves and verifies it before switching the active connection.
+A failed check keeps the previous pairing. Existing pairing and draft settings are
+imported into the list on first use. **Delete** removes only the selected saved entry;
+it does not stop the active connection or delete recordings. Signing out clears
+all saved server credentials. Unsaved form edits remain a separate Keychain draft.
 
 The backend uses one process listening on localhost and its verified Tailscale IP.
 Firebase, Redis, processing services and the web library remain on localhost.

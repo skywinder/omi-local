@@ -9968,4 +9968,7 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (veya IP:port) ya da ngrok HTTPS adresini ve uygulama anahtarını girin. Bağlanmak kaydı durdurur. Ses sunucunuzda kalır.';
+
+  @override
+  String get localMacServers => 'Kayıtlı sunucular';
 }

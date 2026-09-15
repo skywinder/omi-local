@@ -3248,5 +3248,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Sisesta Tailscale’i IP (või IP:port) või ngroki HTTPS-aadress ja rakenduse võti. Ühendamine peatab salvestuse. Heli jääb sinu serverisse.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Salvestatud serverid"
 }

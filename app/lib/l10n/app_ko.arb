@@ -3248,5 +3248,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Tailscale IP(또는 IP:포트)나 ngrok HTTPS 주소와 앱 키를 입력하세요. 연결하면 녹음이 중지됩니다. 오디오는 서버에 저장됩니다.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "저장된 서버"
 }

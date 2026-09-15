@@ -9982,4 +9982,7 @@ class AppLocalizationsMs extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Masukkan IP Tailscale (atau IP:port) atau alamat HTTPS ngrok dan kunci aplikasi. Penyambungan menghentikan rakaman. Audio kekal pada pelayan anda.';
+
+  @override
+  String get localMacServers => 'Pelayan tersimpan';
 }

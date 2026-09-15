@@ -3249,5 +3249,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Introduce la IP Tailscale (o IP:puerto) o la dirección HTTPS ngrok y la clave de la aplicación. La conexión detiene la grabación. El audio queda en tu servidor.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Servidores guardados"
 }

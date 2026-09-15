@@ -3253,5 +3253,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Nhập IP Tailscale (hoặc IP:cổng) hoặc địa chỉ HTTPS ngrok và khóa ứng dụng. Kết nối sẽ dừng ghi âm. Âm thanh ở lại trên máy chủ của bạn.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Máy chủ đã lưu"
 }

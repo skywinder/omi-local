@@ -9789,4 +9789,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get localMacHelp => 'Tailscale IP(또는 IP:포트)나 ngrok HTTPS 주소와 앱 키를 입력하세요. 연결하면 녹음이 중지됩니다. 오디오는 서버에 저장됩니다.';
+
+  @override
+  String get localMacServers => '저장된 서버';
 }

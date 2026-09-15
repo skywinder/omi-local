@@ -9961,4 +9961,7 @@ class AppLocalizationsBn extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (বা IP:পোর্ট) বা ngrok HTTPS ঠিকানা এবং অ্যাপের কী লিখুন। সংযোগ রেকর্ডিং বন্ধ করে। অডিও আপনার সার্ভারে থাকে।';
+
+  @override
+  String get localMacServers => 'সংরক্ষিত সার্ভার';
 }

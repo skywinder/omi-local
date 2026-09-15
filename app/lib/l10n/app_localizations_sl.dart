@@ -9987,4 +9987,7 @@ class AppLocalizationsSl extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Vnesite Tailscale IP (ali IP:vrata) ali naslov HTTPS ngrok in ključ aplikacije. Povezava ustavi snemanje. Zvok ostane na vašem strežniku.';
+
+  @override
+  String get localMacServers => 'Shranjeni strežniki';
 }

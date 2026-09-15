@@ -9988,4 +9988,7 @@ class AppLocalizationsKn extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (ಅಥವಾ IP:ಪೋರ್ಟ್) ಅಥವಾ ngrok HTTPS ವಿಳಾಸ ಮತ್ತು ಅಪ್ಲಿಕೇಶನ್ ಕೀಲಿಯನ್ನು ನಮೂದಿಸಿ. ಸಂಪರ್ಕಿಸಿದಾಗ ರೆಕಾರ್ಡಿಂಗ್ ನಿಲ್ಲುತ್ತದೆ. ಆಡಿಯೊ ನಿಮ್ಮ ಸರ್ವರ್‌ನಲ್ಲಿ ಉಳಿಯುತ್ತದೆ.';
+
+  @override
+  String get localMacServers => 'ಉಳಿಸಿದ ಸರ್ವರ್‌ಗಳು';
 }

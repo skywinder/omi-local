@@ -9986,4 +9986,7 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Wpisz Tailscale IP (lub IP:port) albo adres HTTPS ngrok i klucz aplikacji. Połączenie zatrzymuje nagrywanie. Dźwięk zostaje na Twoim serwerze.';
+
+  @override
+  String get localMacServers => 'Zapisane serwery';
 }

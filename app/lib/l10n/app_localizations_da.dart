@@ -9940,4 +9940,7 @@ class AppLocalizationsDa extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Indtast Tailscale-IP (eller IP:port) eller ngrok-HTTPS-adressen og appnøglen. Forbindelsen stopper optagelsen. Lyden bliver på din server.';
+
+  @override
+  String get localMacServers => 'Gemte servere';
 }

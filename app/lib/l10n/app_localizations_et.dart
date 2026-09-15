@@ -9950,4 +9950,7 @@ class AppLocalizationsEt extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Sisesta Tailscale’i IP (või IP:port) või ngroki HTTPS-aadress ja rakenduse võti. Ühendamine peatab salvestuse. Heli jääb sinu serverisse.';
+
+  @override
+  String get localMacServers => 'Salvestatud serverid';
 }

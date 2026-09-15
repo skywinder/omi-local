@@ -9957,4 +9957,7 @@ class AppLocalizationsCs extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Zadejte Tailscale IP (nebo IP:port) nebo HTTPS adresu ngrok a klíč aplikace. Připojení zastaví nahrávání. Zvuk zůstává na vašem serveru.';
+
+  @override
+  String get localMacServers => 'Uložené servery';
 }

@@ -9992,4 +9992,7 @@ class AppLocalizationsHr extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Unesite Tailscale IP (ili IP:port) ili ngrok HTTPS adresu i ključ aplikacije. Povezivanje zaustavlja snimanje. Zvuk ostaje na vašem poslužitelju.';
+
+  @override
+  String get localMacServers => 'Spremljeni poslužitelji';
 }

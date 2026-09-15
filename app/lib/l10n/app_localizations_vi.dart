@@ -9951,4 +9951,7 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Nhập IP Tailscale (hoặc IP:cổng) hoặc địa chỉ HTTPS ngrok và khóa ứng dụng. Kết nối sẽ dừng ghi âm. Âm thanh ở lại trên máy chủ của bạn.';
+
+  @override
+  String get localMacServers => 'Máy chủ đã lưu';
 }

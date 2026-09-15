@@ -9877,4 +9877,7 @@ class AppLocalizationsHe extends AppLocalizations {
   @override
   String get localMacHelp =>
       'הזינו Tailscale IP (או IP:פורט) או כתובת ngrok HTTPS ואת מפתח האפליקציה. החיבור עוצר את ההקלטה. השמע נשאר בשרת שלכם.';
+
+  @override
+  String get localMacServers => 'שרתים שמורים';
 }

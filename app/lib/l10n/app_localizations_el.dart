@@ -10026,4 +10026,7 @@ class AppLocalizationsEl extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Εισαγάγετε την IP Tailscale (ή IP:θύρα) ή τη διεύθυνση HTTPS ngrok και το κλειδί εφαρμογής. Η σύνδεση σταματά την εγγραφή. Ο ήχος μένει στον διακομιστή σας.';
+
+  @override
+  String get localMacServers => 'Αποθηκευμένοι διακομιστές';
 }

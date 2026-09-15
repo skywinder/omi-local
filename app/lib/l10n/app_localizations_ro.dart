@@ -10003,4 +10003,7 @@ class AppLocalizationsRo extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Introduceți IP-ul Tailscale (sau IP:port) sau adresa HTTPS ngrok și cheia aplicației. Conectarea oprește înregistrarea. Sunetul rămâne pe serverul dvs.';
+
+  @override
+  String get localMacServers => 'Servere salvate';
 }

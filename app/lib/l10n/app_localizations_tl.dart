@@ -10047,4 +10047,7 @@ class AppLocalizationsTl extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Ilagay ang Tailscale IP (o IP:port) o ngrok HTTPS address at app key. Ihihinto ng pagkonekta ang pagre-record. Nananatili ang audio sa iyong server.';
+
+  @override
+  String get localMacServers => 'Mga naka-save na server';
 }

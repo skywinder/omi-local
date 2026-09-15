@@ -9899,4 +9899,7 @@ class AppLocalizationsTh extends AppLocalizations {
   @override
   String get localMacHelp =>
       'ป้อน Tailscale IP (หรือ IP:พอร์ต) หรือที่อยู่ HTTPS ของ ngrok และคีย์แอป การเชื่อมต่อจะหยุดการบันทึก เสียงจะอยู่บนเซิร์ฟเวอร์ของคุณ';
+
+  @override
+  String get localMacServers => 'เซิร์ฟเวอร์ที่บันทึกไว้';
 }

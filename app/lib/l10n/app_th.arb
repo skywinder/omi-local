@@ -3248,5 +3248,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "ป้อน Tailscale IP (หรือ IP:พอร์ต) หรือที่อยู่ HTTPS ของ ngrok และคีย์แอป การเชื่อมต่อจะหยุดการบันทึก เสียงจะอยู่บนเซิร์ฟเวอร์ของคุณ",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "เซิร์ฟเวอร์ที่บันทึกไว้"
 }

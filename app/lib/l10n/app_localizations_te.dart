@@ -10005,4 +10005,7 @@ class AppLocalizationsTe extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (లేదా IP:పోర్ట్) లేదా ngrok HTTPS చిరునామా మరియు యాప్ కీని నమోదు చేయండి. కనెక్ట్ చేయడం రికార్డింగ్‌ను ఆపుతుంది. ఆడియో మీ సర్వర్‌లో ఉంటుంది.';
+
+  @override
+  String get localMacServers => 'సేవ్ చేసిన సర్వర్లు';
 }

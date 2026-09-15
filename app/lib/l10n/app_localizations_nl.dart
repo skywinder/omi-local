@@ -9983,4 +9983,7 @@ class AppLocalizationsNl extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Voer het Tailscale-IP (of IP:poort) of ngrok-HTTPS-adres en de appsleutel in. Verbinden stopt de opname. Audio blijft op je server.';
+
+  @override
+  String get localMacServers => 'Opgeslagen servers';
 }

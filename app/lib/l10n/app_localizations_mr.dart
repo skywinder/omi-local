@@ -9965,4 +9965,7 @@ class AppLocalizationsMr extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (किंवा IP:पोर्ट) किंवा ngrok HTTPS पत्ता आणि ॲप की प्रविष्ट करा. कनेक्ट केल्यावर रेकॉर्डिंग थांबते. ऑडिओ तुमच्या सर्व्हरवर राहतो.';
+
+  @override
+  String get localMacServers => 'जतन केलेले सर्व्हर';
 }

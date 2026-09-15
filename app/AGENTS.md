@@ -19,7 +19,11 @@ Stop fences pending phone startup and reconnect; native Start waits for native S
 Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
-Local Mac form settings are a separate Keychain draft, not an authenticated session.
+Local Mac saves named servers in Keychain and keeps form edits in a separate draft.
+Migrate the legacy pairing/draft once without authenticating; an empty saved list
+must not restore deleted entries. Selecting, editing or deleting a saved server
+does not change the active pairing. Only successful verification switches it;
+sign-out clears the saved credentials too.
 Saving or revealing a key must not switch the active origin or send network requests.
 Reveal the key inline; hide it on background without navigating. Check and connect
 keeps the form open with its values and an inline result, then refreshes runtime

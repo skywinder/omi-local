@@ -10013,4 +10013,7 @@ class AppLocalizationsCa extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Introdueix la IP Tailscale (o IP:port) o l’adreça HTTPS ngrok i la clau de l’aplicació. La connexió atura la gravació. L’àudio queda al teu servidor.';
+
+  @override
+  String get localMacServers => 'Servidors desats';
 }

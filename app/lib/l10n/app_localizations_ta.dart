@@ -10026,4 +10026,7 @@ class AppLocalizationsTa extends AppLocalizations {
   @override
   String get localMacHelp =>
       'Tailscale IP (அல்லது IP:போர்ட்) அல்லது ngrok HTTPS முகவரி மற்றும் செயலி விசையை உள்ளிடவும். இணைப்பது பதிவை நிறுத்தும். ஒலி உங்கள் சேவையகத்தில் இருக்கும்.';
+
+  @override
+  String get localMacServers => 'சேமித்த சேவையகங்கள்';
 }

@@ -9786,4 +9786,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get localMacHelp => 'Tailscale IP（またはIP:ポート）かngrokのHTTPSアドレスとアプリキーを入力してください。接続すると録音が停止します。音声はサーバーに保存されます。';
+
+  @override
+  String get localMacServers => '保存済みサーバー';
 }

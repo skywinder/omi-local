@@ -3283,5 +3283,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Tailscale IP (veya IP:port) ya da ngrok HTTPS adresini ve uygulama anahtarını girin. Bağlanmak kaydı durdurur. Ses sunucunuzda kalır.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Kayıtlı sunucular"
 }

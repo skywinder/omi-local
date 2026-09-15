@@ -3226,5 +3226,6 @@
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Въведете Tailscale IP (или IP:порт) или ngrok HTTPS адрес и ключа на приложението. Свързването спира записа. Аудиото остава на вашия сървър.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
-    "tapPlusToStartRecording": "Tap + to start recording"
+    "tapPlusToStartRecording": "Tap + to start recording",
+    "localMacServers": "Запазени сървъри"
 }
