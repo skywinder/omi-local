@@ -125,6 +125,31 @@ class Socket:
 
 
 @pytest.mark.anyio
+async def test_unconfigured_live_preview_is_disabled_during_capture(monkeypatch):
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+    send = AsyncMock()
+    connect = AsyncMock(side_effect=AssertionError('disabled preview must not connect'))
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', connect)
+    preview = LocalLivePreview.from_environment(send)
+    preview.feed(b'\0\0' * 160)
+    await preview.task
+    session = SimpleNamespace(
+        state=SimpleNamespace(active=True, shutdown_event=asyncio.Event()),
+        capture_sink=SimpleNamespace(frames_received=1, decoded_pcm_bytes=320, decode_errors=0),
+        local_preview=preview,
+    )
+    monkeypatch.setattr(local_status.registry, '_sessions_for', lambda uid: [session])
+    status = await local_status.snapshot('synthetic-user')
+    assert status['capture']['state'] == 'received'
+    assert status['live_transcript']['state'] == 'disabled'
+    assert preview.disabled and not preview.failed
+    send.assert_not_awaited()
+    connect.assert_not_called()
+    await preview.finish()
+    assert preview.pending_bytes == 0
+
+
+@pytest.mark.anyio
 async def test_disabled_relay_handshake_is_not_preview_failure(monkeypatch):
     socket = Socket(config={'enabled': False})
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
@@ -240,7 +265,7 @@ async def test_diarization_degradation_retracts_labels_and_keeps_preview_alive(m
 
 @pytest.mark.anyio
 @pytest.mark.parametrize('mode,reason', [
-    ('disabled', 'disabled'), ('invalid', 'invalid_configuration'),
+    ('invalid', 'invalid_configuration'),
     ('refused', 'unavailable'), ('busy', 'busy'), ('protocol', 'protocol_error'),
 ])
 async def test_unavailable_preview_reports_fixed_status_without_stopping_capture(monkeypatch, mode, reason):
@@ -248,9 +273,7 @@ async def test_unavailable_preview_reports_fixed_status_without_stopping_capture
     from websockets.frames import Close
 
     monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
-    if mode == 'disabled':
-        monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL')
-    elif mode == 'invalid':
+    if mode == 'invalid':
         monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'wss://private.example/asr')
 
     class BrokenSocket(Socket):
