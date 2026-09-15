@@ -16,7 +16,8 @@ and run on your macOS version.
 1. Install Xcode from the App Store, open it, accept the license, and wait for the
    iOS components to finish installing. Under **Settings → Locations → Command Line
    Tools**, select the installed Xcode.
-2. Install [Flutter for iOS](https://docs.flutter.dev/platform-integration/ios/setup)
+2. The launcher automatically uses an existing SDK at `.local/toolchains/flutter`
+   in this checkout; otherwise it uses Flutter from PATH. Install [Flutter for iOS](https://docs.flutter.dev/platform-integration/ios/setup)
    and add it to PATH as documented. Version 3.44.5 or later is required.
 3. After `start.command` prepares Homebrew, install
    [CocoaPods](https://formulae.brew.sh/formula/cocoapods): `brew install cocoapods`.
@@ -56,7 +57,9 @@ bash setup.sh ios personal
 ```
 
 The script checks Xcode and the iOS SDK, Flutter, CocoaPods, the certificate with
-its private key, and phone availability. The Team ID prompt hides your input.
+its private key, and phone availability. It reuses the Team ID from an existing
+private `app/ios/Flutter/PersonalTeam.xcconfig` and verifies its signing identity.
+An explicit `OMI_APPLE_TEAM_ID` overrides it. First-time Team ID input is hidden.
 If something is missing, follow the displayed instructions and press Enter to
 retry; `q` exits setup. Installation starts only after all checks pass.
 

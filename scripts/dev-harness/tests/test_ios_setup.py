@@ -18,6 +18,68 @@ sys.path.insert(0, str(ROOT / 'scripts/dev-harness'))
 from dev_harness import ios_debug
 
 
+@pytest.mark.parametrize('existing_team', ['', 'ZZZZZZZZZZ'])
+def test_profile_reuses_saved_team_and_validates_identity(tmp_path, existing_team):
+    app = tmp_path / 'app'
+    config = app / 'ios/Flutter/PersonalTeam.xcconfig'
+    config.parent.mkdir(parents=True)
+    config.write_text('OMI_APPLE_TEAM_ID=ABCDEFGHIJ\n')
+    setup = app / 'setup.sh'
+    setup.write_text((ROOT / 'app/setup.sh').read_text())
+    result = subprocess.run(['bash', '-c', '''
+        source "$1"
+        check_ios_signing() { [[ "$OMI_APPLE_TEAM_ID" == "$EXPECTED_TEAM" ]]; }
+        prepare_ios_signing
+    ''', 'test', str(setup)], capture_output=True, text=True,
+        env={**os.environ, 'OMI_APPLE_TEAM_ID': existing_team,
+             'EXPECTED_TEAM': existing_team or 'ABCDEFGHIJ'})
+    assert result.returncode == 0, result.stderr
+    assert 'ABCDEFGHIJ' not in result.stdout + result.stderr
+    assert 'Team ID (' not in result.stdout + result.stderr
+
+
+def test_profile_missing_or_invalid_saved_team_still_requires_signing(tmp_path):
+    app = tmp_path / 'app'
+    config = app / 'ios/Flutter/PersonalTeam.xcconfig'
+    config.parent.mkdir(parents=True)
+    config.write_text('OMI_APPLE_TEAM_ID=not-a-team\n')
+    setup = app / 'setup.sh'
+    setup.write_text((ROOT / 'app/setup.sh').read_text())
+    result = subprocess.run(['bash', '-c', 'source "$1"; prepare_ios_signing', 'test', str(setup)],
+                            capture_output=True, text=True, env={**os.environ, 'OMI_APPLE_TEAM_ID': ''})
+    assert result.returncode != 0
+    assert 'OMI_APPLE_TEAM_ID' in result.stderr
+
+
+@pytest.mark.parametrize('sdk_installed', [True, False])
+def test_mac_launcher_finds_project_flutter_from_root_and_app(tmp_path, sdk_installed):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    helper = scripts / 'macos-runtime.sh'
+    helper.write_text((ROOT / 'scripts/macos-runtime.sh').read_text())
+    (tmp_path / 'app').mkdir()
+    fallback = tmp_path / 'fallback'
+    fallback.mkdir()
+    candidates = [(fallback / 'flutter', 'fallback')]
+    if sdk_installed:
+        candidates.append((tmp_path / '.local/toolchains/flutter/bin/flutter', 'project'))
+    for binary, output in candidates:
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text('#!/bin/sh\necho ' + output + '\n')
+        binary.chmod(0o755)
+    result = subprocess.run(['bash', '-c', '''
+        source "$1"
+        omi_macos_path
+        flutter --version
+        cd app
+        omi_macos_path
+        flutter --version
+    ''', 'test', str(helper)], cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, 'PATH': str(fallback) + os.pathsep + os.environ['PATH']})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ['project' if sdk_installed else 'fallback'] * 2
+
+
 @pytest.mark.parametrize('mode', ['personal', 'standard'])
 def test_generated_ats_scopes_tailscale_exception_to_personal_build(tmp_path, mode):
     # Native tool seams only: execute the complete production generator on a

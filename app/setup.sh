@@ -428,9 +428,20 @@ function check_ios_prerequisites() {
     echo 'Не найден iOS SDK. В Xcode → Settings → Components установите поддержку iOS.' >&2
     return 1
   fi
-  if ! version=$(flutter --version 2>/dev/null) || ! [[ "$version" =~ Flutter[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 3.44.5; then
+  if ! command -v flutter >/dev/null 2>&1; then
     echo 'Нужен Flutter 3.44.5 или новее в PATH. Установка: https://docs.flutter.dev/install' >&2
-    echo 'Для обновления: flutter upgrade. После изменения PATH откройте новый Terminal и повторите установку.' >&2
+    echo 'Можно использовать SDK в .local/toolchains/flutter: установщик найдёт его автоматически.' >&2
+    return 1
+  fi
+  if ! version=$(flutter --version 2>&1); then
+    echo 'Flutter найден, но не запускается. Диагностика SDK:' >&2
+    printf '%s\n' "$version" >&2
+    return 1
+  fi
+  if ! [[ "$version" =~ Flutter[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 3.44.5; then
+    echo 'Нужен Flutter 3.44.5 или новее. Текущий SDK:' >&2
+    printf '%s\n' "$version" >&2
+    echo 'Для обновления: flutter upgrade.' >&2
     return 1
   fi
   if ! version=$(pod --version 2>/dev/null) || ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! _version_at_least "$version" 1.16.2; then
@@ -488,7 +499,15 @@ function check_ios_signing() {
 }
 
 function prepare_ios_signing() {
-  local reply
+  local reply config saved_team
+  config="$(dirname "${BASH_SOURCE[0]}")/ios/Flutter/PersonalTeam.xcconfig"
+  # Read only the known field; never execute the private xcconfig as shell code.
+  if [[ -z "${OMI_APPLE_TEAM_ID:-}" && -f "$config" && ! -L "$config" ]]; then
+    saved_team=$(sed -n 's/^OMI_APPLE_TEAM_ID=\([A-Z0-9]\{10\}\)$/\1/p' "$config")
+    if [[ "$saved_team" =~ ^[A-Z0-9]{10}$ ]]; then
+      OMI_APPLE_TEAM_ID="$saved_team"
+    fi
+  fi
   while :; do
     if ! [[ "${OMI_APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
       echo 'Подпись: Xcode → Settings → Accounts → ваша Team → Manage Certificates → Apple Development.' >&2
