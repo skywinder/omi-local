@@ -3249,5 +3249,11 @@
     "localMacHelp": "Εισαγάγετε την IP Tailscale (ή IP:θύρα) ή τη διεύθυνση HTTPS ngrok και το κλειδί εφαρμογής. Η σύνδεση σταματά την εγγραφή. Ο ήχος μένει στον διακομιστή σας.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Αποθηκευμένοι διακομιστές"
+    "localMacServers": "Αποθηκευμένοι διακομιστές",
+    "diarization": "Διαχωρισμός ομιλητών",
+    "providerUnavailable": "Ο διακομιστής δεν είναι διαθέσιμος",
+    "providerMisconfigured": "Ελέγξτε τις ρυθμίσεις του παρόχου",
+    "speakersCount": "{count} ομιλητές",
+    "diarizationNotPerformed": "Ο διαχωρισμός ομιλητών δεν εκτελέστηκε",
+    "diarizationFailed": "Ο διαχωρισμός ομιλητών απέτυχε"
 }

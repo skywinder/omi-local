@@ -9979,4 +9979,24 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get localMacServers => 'Išsaugoti serveriai';
+
+  @override
+  String get diarization => 'Kalbėtojų atskyrimas';
+
+  @override
+  String get providerUnavailable => 'Serveris nepasiekiamas';
+
+  @override
+  String get providerMisconfigured => 'Patikrinkite tiekėjo nustatymus';
+
+  @override
+  String speakersCount(int count) {
+    return 'Kalbėtojų: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Kalbėtojų atskyrimas neatliktas';
+
+  @override
+  String get diarizationFailed => 'Kalbėtojų atskyrimas nepavyko';
 }

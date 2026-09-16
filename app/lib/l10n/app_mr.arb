@@ -10815,5 +10815,11 @@
     "localMacHelp": "Tailscale IP (किंवा IP:पोर्ट) किंवा ngrok HTTPS पत्ता आणि ॲप की प्रविष्ट करा. कनेक्ट केल्यावर रेकॉर्डिंग थांबते. ऑडिओ तुमच्या सर्व्हरवर राहतो.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "जतन केलेले सर्व्हर"
+    "localMacServers": "जतन केलेले सर्व्हर",
+    "diarization": "वक्ता ओळख",
+    "providerUnavailable": "सर्व्हर उपलब्ध नाही",
+    "providerMisconfigured": "प्रदात्याची सेटिंग्ज तपासा",
+    "speakersCount": "{count} वक्ते",
+    "diarizationNotPerformed": "वक्ता ओळख केली नाही",
+    "diarizationFailed": "वक्ता ओळख अयशस्वी"
 }

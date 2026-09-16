@@ -9983,4 +9983,24 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String get localMacServers => 'Saglabātie serveri';
+
+  @override
+  String get diarization => 'Runātāju atdalīšana';
+
+  @override
+  String get providerUnavailable => 'Serveris nav pieejams';
+
+  @override
+  String get providerMisconfigured => 'Pārbaudiet pakalpojumu sniedzēja iestatījumus';
+
+  @override
+  String speakersCount(int count) {
+    return '$count runātāji';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Runātāju atdalīšana nav veikta';
+
+  @override
+  String get diarizationFailed => 'Runātāju atdalīšana neizdevās';
 }

@@ -10815,5 +10815,11 @@
     "localMacHelp": "Tailscale IP (یا IP:پورٹ) یا ngrok HTTPS پتہ اور ایپ کی کلید درج کریں۔ کنیکٹ کرنے سے ریکارڈنگ رک جائے گی۔ آڈیو آپ کے سرور پر رہتا ہے۔",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "محفوظ کردہ سرورز"
+    "localMacServers": "محفوظ کردہ سرورز",
+    "diarization": "مقررین کی شناخت",
+    "providerUnavailable": "سرور دستیاب نہیں",
+    "providerMisconfigured": "فراہم کنندہ کی ترتیبات چیک کریں",
+    "speakersCount": "{count} مقررین",
+    "diarizationNotPerformed": "مقررین کی شناخت نہیں ہوئی",
+    "diarizationFailed": "مقررین کی شناخت ناکام"
 }

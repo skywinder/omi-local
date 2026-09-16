@@ -3284,5 +3284,11 @@
     "localMacHelp": "Saisissez l’IP Tailscale (ou IP:port) ou l’adresse HTTPS ngrok et la clé de l’application. La connexion arrête l’enregistrement. L’audio reste sur votre serveur.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Serveurs enregistrés"
+    "localMacServers": "Serveurs enregistrés",
+    "diarization": "Diarisation",
+    "providerUnavailable": "Serveur indisponible",
+    "providerMisconfigured": "Vérifiez les paramètres du fournisseur",
+    "speakersCount": "{count} locuteurs",
+    "diarizationNotPerformed": "Diarisation non effectuée",
+    "diarizationFailed": "Échec de la diarisation"
 }

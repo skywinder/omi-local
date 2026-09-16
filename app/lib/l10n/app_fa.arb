@@ -10815,5 +10815,11 @@
     "localMacHelp": "نشانی Tailscale IP (یا IP:پورت) یا ngrok HTTPS و کلید برنامه را وارد کنید. اتصال ضبط را متوقف می‌کند. صدا روی سرور شما می‌ماند.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "سرورهای ذخیره‌شده"
+    "localMacServers": "سرورهای ذخیره‌شده",
+    "diarization": "تفکیک گوینده",
+    "providerUnavailable": "سرور در دسترس نیست",
+    "providerMisconfigured": "تنظیمات ارائه‌دهنده را بررسی کنید",
+    "speakersCount": "{count} گوینده",
+    "diarizationNotPerformed": "تفکیک گوینده انجام نشد",
+    "diarizationFailed": "تفکیک گوینده ناموفق بود"
 }

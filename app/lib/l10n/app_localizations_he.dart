@@ -9880,4 +9880,24 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get localMacServers => 'שרתים שמורים';
+
+  @override
+  String get diarization => 'זיהוי דוברים';
+
+  @override
+  String get providerUnavailable => 'השרת אינו זמין';
+
+  @override
+  String get providerMisconfigured => 'בדוק את הגדרות הספק';
+
+  @override
+  String speakersCount(int count) {
+    return '$count דוברים';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'זיהוי דוברים לא בוצע';
+
+  @override
+  String get diarizationFailed => 'זיהוי דוברים נכשל';
 }

@@ -10815,5 +10815,11 @@
     "localMacHelp": "Tailscale IP (বা IP:পোর্ট) বা ngrok HTTPS ঠিকানা এবং অ্যাপের কী লিখুন। সংযোগ রেকর্ডিং বন্ধ করে। অডিও আপনার সার্ভারে থাকে।",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "সংরক্ষিত সার্ভার"
+    "localMacServers": "সংরক্ষিত সার্ভার",
+    "diarization": "বক্তা শনাক্তকরণ",
+    "providerUnavailable": "সার্ভার অনুপলব্ধ",
+    "providerMisconfigured": "প্রদানকারীর সেটিংস পরীক্ষা করুন",
+    "speakersCount": "{count} জন বক্তা",
+    "diarizationNotPerformed": "বক্তা শনাক্তকরণ করা হয়নি",
+    "diarizationFailed": "বক্তা শনাক্তকরণ ব্যর্থ"
 }

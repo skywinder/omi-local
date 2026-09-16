@@ -9943,4 +9943,24 @@ class AppLocalizationsDa extends AppLocalizations {
 
   @override
   String get localMacServers => 'Gemte servere';
+
+  @override
+  String get diarization => 'Talerdiarisering';
+
+  @override
+  String get providerUnavailable => 'Server utilgængelig';
+
+  @override
+  String get providerMisconfigured => 'Tjek udbyderindstillinger';
+
+  @override
+  String speakersCount(int count) {
+    return '$count talere';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarisering ikke udført';
+
+  @override
+  String get diarizationFailed => 'Diarisering mislykkedes';
 }

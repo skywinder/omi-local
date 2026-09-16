@@ -3249,5 +3249,11 @@
     "localMacHelp": "ป้อน Tailscale IP (หรือ IP:พอร์ต) หรือที่อยู่ HTTPS ของ ngrok และคีย์แอป การเชื่อมต่อจะหยุดการบันทึก เสียงจะอยู่บนเซิร์ฟเวอร์ของคุณ",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "เซิร์ฟเวอร์ที่บันทึกไว้"
+    "localMacServers": "เซิร์ฟเวอร์ที่บันทึกไว้",
+    "diarization": "การแยกผู้พูด",
+    "providerUnavailable": "เซิร์ฟเวอร์ไม่พร้อมใช้งาน",
+    "providerMisconfigured": "ตรวจสอบการตั้งค่าผู้ให้บริการ",
+    "speakersCount": "ผู้พูด {count} คน",
+    "diarizationNotPerformed": "ไม่ได้ทำการแยกผู้พูด",
+    "diarizationFailed": "การแยกผู้พูดล้มเหลว"
 }

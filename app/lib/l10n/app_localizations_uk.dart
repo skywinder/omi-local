@@ -9981,4 +9981,24 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get localMacServers => 'Збережені сервери';
+
+  @override
+  String get diarization => 'Діаризація';
+
+  @override
+  String get providerUnavailable => 'Сервер недоступний';
+
+  @override
+  String get providerMisconfigured => 'Перевірте налаштування провайдера';
+
+  @override
+  String speakersCount(int count) {
+    return 'Мовців: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Діаризацію не виконано';
+
+  @override
+  String get diarizationFailed => 'Помилка діаризації';
 }

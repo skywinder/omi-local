@@ -9968,4 +9968,24 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String get localMacServers => 'जतन केलेले सर्व्हर';
+
+  @override
+  String get diarization => 'वक्ता ओळख';
+
+  @override
+  String get providerUnavailable => 'सर्व्हर उपलब्ध नाही';
+
+  @override
+  String get providerMisconfigured => 'प्रदात्याची सेटिंग्ज तपासा';
+
+  @override
+  String speakersCount(int count) {
+    return '$count वक्ते';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'वक्ता ओळख केली नाही';
+
+  @override
+  String get diarizationFailed => 'वक्ता ओळख अयशस्वी';
 }

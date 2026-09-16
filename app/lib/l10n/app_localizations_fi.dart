@@ -9960,4 +9960,24 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get localMacServers => 'Tallennetut palvelimet';
+
+  @override
+  String get diarization => 'Puhujien erottelu';
+
+  @override
+  String get providerUnavailable => 'Palvelin ei ole käytettävissä';
+
+  @override
+  String get providerMisconfigured => 'Tarkista palveluntarjoajan asetukset';
+
+  @override
+  String speakersCount(int count) {
+    return '$count puhujaa';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Puhujien erottelua ei tehty';
+
+  @override
+  String get diarizationFailed => 'Puhujien erottelu epäonnistui';
 }

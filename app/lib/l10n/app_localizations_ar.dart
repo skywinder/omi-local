@@ -9901,4 +9901,24 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get localMacServers => 'الخوادم المحفوظة';
+
+  @override
+  String get diarization => 'فصل المتحدثين';
+
+  @override
+  String get providerUnavailable => 'الخادم غير متاح';
+
+  @override
+  String get providerMisconfigured => 'تحقق من إعدادات المزوّد';
+
+  @override
+  String speakersCount(int count) {
+    return '$count متحدثين';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'لم يتم فصل المتحدثين';
+
+  @override
+  String get diarizationFailed => 'فشل فصل المتحدثين';
 }

@@ -3249,5 +3249,11 @@
     "localMacHelp": "Masukkan IP Tailscale (atau IP:port) atau alamat HTTPS ngrok dan kunci aplikasi. Penyambungan menghentikan rakaman. Audio kekal pada pelayan anda.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Pelayan tersimpan"
+    "localMacServers": "Pelayan tersimpan",
+    "diarization": "Pemisahan penutur",
+    "providerUnavailable": "Pelayan tidak tersedia",
+    "providerMisconfigured": "Semak tetapan penyedia",
+    "speakersCount": "{count} penutur",
+    "diarizationNotPerformed": "Pemisahan penutur tidak dilakukan",
+    "diarizationFailed": "Pemisahan penutur gagal"
 }

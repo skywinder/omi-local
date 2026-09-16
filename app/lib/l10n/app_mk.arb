@@ -10815,5 +10815,11 @@
     "localMacHelp": "Внесете Tailscale IP (или IP:порта) или ngrok HTTPS-адреса и клучот на апликацијата. Поврзувањето го запира снимањето. Аудиото останува на вашиот сервер.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Зачувани сервери"
+    "localMacServers": "Зачувани сервери",
+    "diarization": "Дијаризација",
+    "providerUnavailable": "Серверот е недостапен",
+    "providerMisconfigured": "Проверете ги поставките на провајдерот",
+    "speakersCount": "{count} говорници",
+    "diarizationNotPerformed": "Дијаризацијата не е извршена",
+    "diarizationFailed": "Дијаризацијата не успеа"
 }

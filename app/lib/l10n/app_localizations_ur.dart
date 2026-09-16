@@ -9971,4 +9971,24 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get localMacServers => 'محفوظ کردہ سرورز';
+
+  @override
+  String get diarization => 'مقررین کی شناخت';
+
+  @override
+  String get providerUnavailable => 'سرور دستیاب نہیں';
+
+  @override
+  String get providerMisconfigured => 'فراہم کنندہ کی ترتیبات چیک کریں';
+
+  @override
+  String speakersCount(int count) {
+    return '$count مقررین';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'مقررین کی شناخت نہیں ہوئی';
+
+  @override
+  String get diarizationFailed => 'مقررین کی شناخت ناکام';
 }

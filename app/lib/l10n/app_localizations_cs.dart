@@ -9960,4 +9960,24 @@ class AppLocalizationsCs extends AppLocalizations {
 
   @override
   String get localMacServers => 'Uložené servery';
+
+  @override
+  String get diarization => 'Diarizace';
+
+  @override
+  String get providerUnavailable => 'Server není dostupný';
+
+  @override
+  String get providerMisconfigured => 'Zkontrolujte nastavení poskytovatele';
+
+  @override
+  String speakersCount(int count) {
+    return 'Mluvčích: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarizace nebyla provedena';
+
+  @override
+  String get diarizationFailed => 'Diarizace selhala';
 }

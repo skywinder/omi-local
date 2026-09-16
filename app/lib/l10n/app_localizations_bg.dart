@@ -9996,4 +9996,24 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get localMacServers => 'Запазени сървъри';
+
+  @override
+  String get diarization => 'Диаризация';
+
+  @override
+  String get providerUnavailable => 'Сървърът е недостъпен';
+
+  @override
+  String get providerMisconfigured => 'Проверете настройките на доставчика';
+
+  @override
+  String speakersCount(int count) {
+    return '$count говорещи';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Диаризацията не е изпълнена';
+
+  @override
+  String get diarizationFailed => 'Грешка при диаризация';
 }

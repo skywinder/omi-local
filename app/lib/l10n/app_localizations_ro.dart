@@ -10006,4 +10006,24 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get localMacServers => 'Servere salvate';
+
+  @override
+  String get diarization => 'Diarizare';
+
+  @override
+  String get providerUnavailable => 'Server indisponibil';
+
+  @override
+  String get providerMisconfigured => 'Verificați setările furnizorului';
+
+  @override
+  String speakersCount(int count) {
+    return '$count vorbitori';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarizarea nu a fost efectuată';
+
+  @override
+  String get diarizationFailed => 'Diarizarea a eșuat';
 }

@@ -9970,4 +9970,24 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get localMacServers => 'Server tersimpan';
+
+  @override
+  String get diarization => 'Pemisahan pembicara';
+
+  @override
+  String get providerUnavailable => 'Server tidak tersedia';
+
+  @override
+  String get providerMisconfigured => 'Periksa pengaturan penyedia';
+
+  @override
+  String speakersCount(int count) {
+    return '$count pembicara';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Pemisahan pembicara tidak dilakukan';
+
+  @override
+  String get diarizationFailed => 'Pemisahan pembicara gagal';
 }

@@ -9963,4 +9963,24 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get localMacServers => 'Sparade servrar';
+
+  @override
+  String get diarization => 'Talarindelning';
+
+  @override
+  String get providerUnavailable => 'Servern är inte tillgänglig';
+
+  @override
+  String get providerMisconfigured => 'Kontrollera leverantörsinställningar';
+
+  @override
+  String speakersCount(int count) {
+    return '$count talare';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Talarindelning inte utförd';
+
+  @override
+  String get diarizationFailed => 'Talarindelning misslyckades';
 }

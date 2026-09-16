@@ -10029,4 +10029,24 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get localMacServers => 'சேமித்த சேவையகங்கள்';
+
+  @override
+  String get diarization => 'பேச்சாளர் பிரிப்பு';
+
+  @override
+  String get providerUnavailable => 'சேவையகம் கிடைக்கவில்லை';
+
+  @override
+  String get providerMisconfigured => 'வழங்குநர் அமைப்புகளைச் சரிபார்க்கவும்';
+
+  @override
+  String speakersCount(int count) {
+    return '$count பேச்சாளர்கள்';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'பேச்சாளர் பிரிப்பு செய்யப்படவில்லை';
+
+  @override
+  String get diarizationFailed => 'பேச்சாளர் பிரிப்பு தோல்வி';
 }

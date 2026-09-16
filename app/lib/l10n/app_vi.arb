@@ -3254,5 +3254,11 @@
     "localMacHelp": "Nhập IP Tailscale (hoặc IP:cổng) hoặc địa chỉ HTTPS ngrok và khóa ứng dụng. Kết nối sẽ dừng ghi âm. Âm thanh ở lại trên máy chủ của bạn.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Máy chủ đã lưu"
+    "localMacServers": "Máy chủ đã lưu",
+    "diarization": "Phân tách người nói",
+    "providerUnavailable": "Máy chủ không khả dụng",
+    "providerMisconfigured": "Kiểm tra cài đặt nhà cung cấp",
+    "speakersCount": "{count} người nói",
+    "diarizationNotPerformed": "Chưa phân tách người nói",
+    "diarizationFailed": "Phân tách người nói thất bại"
 }

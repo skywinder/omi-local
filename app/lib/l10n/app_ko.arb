@@ -3249,5 +3249,11 @@
     "localMacHelp": "Tailscale IP(또는 IP:포트)나 ngrok HTTPS 주소와 앱 키를 입력하세요. 연결하면 녹음이 중지됩니다. 오디오는 서버에 저장됩니다.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "저장된 서버"
+    "localMacServers": "저장된 서버",
+    "diarization": "화자 분리",
+    "providerUnavailable": "서버를 사용할 수 없음",
+    "providerMisconfigured": "제공자 설정을 확인하세요",
+    "speakersCount": "화자 {count}명",
+    "diarizationNotPerformed": "화자 분리가 수행되지 않음",
+    "diarizationFailed": "화자 분리 실패"
 }

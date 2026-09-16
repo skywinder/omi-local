@@ -9952,4 +9952,24 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get localMacServers => 'Uložené servery';
+
+  @override
+  String get diarization => 'Diarizácia';
+
+  @override
+  String get providerUnavailable => 'Server nie je dostupný';
+
+  @override
+  String get providerMisconfigured => 'Skontrolujte nastavenia poskytovateľa';
+
+  @override
+  String speakersCount(int count) {
+    return 'Hovoriacich: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarizácia nebola vykonaná';
+
+  @override
+  String get diarizationFailed => 'Diarizácia zlyhala';
 }

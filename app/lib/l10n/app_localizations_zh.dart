@@ -9770,4 +9770,24 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get localMacServers => '已保存的服务器';
+
+  @override
+  String get diarization => '说话人分离';
+
+  @override
+  String get providerUnavailable => '服务器不可用';
+
+  @override
+  String get providerMisconfigured => '请检查提供方设置';
+
+  @override
+  String speakersCount(int count) {
+    return '$count 位说话人';
+  }
+
+  @override
+  String get diarizationNotPerformed => '未执行说话人分离';
+
+  @override
+  String get diarizationFailed => '说话人分离失败';
 }

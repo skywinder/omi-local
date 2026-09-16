@@ -9986,4 +9986,24 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get localMacServers => 'Opgeslagen servers';
+
+  @override
+  String get diarization => 'Sprekerherkenning';
+
+  @override
+  String get providerUnavailable => 'Server niet bereikbaar';
+
+  @override
+  String get providerMisconfigured => 'Controleer providerinstellingen';
+
+  @override
+  String speakersCount(int count) {
+    return '$count sprekers';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Sprekerherkenning niet uitgevoerd';
+
+  @override
+  String get diarizationFailed => 'Sprekerherkenning mislukt';
 }

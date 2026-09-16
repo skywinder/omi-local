@@ -107,15 +107,63 @@ enum ConversationSource {
   rayban_meta,
 }
 
+/// Outcome of one local processing stage for an imported local recording.
+class LocalTranscriptStage {
+  const LocalTranscriptStage({required this.status, this.provider, this.speakers});
+
+  final String status;
+  final String? provider;
+  final int? speakers;
+
+  static LocalTranscriptStage? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final status = value['status'];
+    final provider = value['provider'];
+    final speakers = value['speakers'];
+    return LocalTranscriptStage(
+      status: status is String && status.isNotEmpty ? status : 'unknown',
+      provider: provider is String && provider.trim().isNotEmpty ? provider : null,
+      speakers: speakers is int && speakers >= 0 ? speakers : null,
+    );
+  }
+}
+
+class LocalTranscriptStages {
+  const LocalTranscriptStages({this.stt, this.diarization, this.summary});
+
+  final LocalTranscriptStage? stt;
+  final LocalTranscriptStage? diarization;
+  final LocalTranscriptStage? summary;
+
+  static LocalTranscriptStages? fromJson(Object? value) {
+    if (value is! Map) return null;
+    return LocalTranscriptStages(
+      stt: LocalTranscriptStage.fromJson(value['stt']),
+      diarization: LocalTranscriptStage.fromJson(value['diarization']),
+      summary: LocalTranscriptStage.fromJson(value['summary']),
+    );
+  }
+}
+
 class ConversationExternalData {
   final String text;
 
-  ConversationExternalData({required this.text});
+  /// The Mac import's `local_transcript` block, kept verbatim for round trips.
+  final Map<String, dynamic>? localTranscript;
 
-  factory ConversationExternalData.fromJson(Map<String, dynamic> json) =>
-      ConversationExternalData(text: json['text'] ?? '');
+  ConversationExternalData({required this.text, this.localTranscript});
 
-  Map<String, dynamic> toJson() => {'text': text};
+  factory ConversationExternalData.fromJson(Map<String, dynamic> json) {
+    final local = json['local_transcript'];
+    return ConversationExternalData(
+      text: json['text'] ?? '',
+      localTranscript: local is Map ? Map<String, dynamic>.from(local) : null,
+    );
+  }
+
+  LocalTranscriptStages? get localTranscriptStages => LocalTranscriptStages.fromJson(localTranscript?['stages']);
+
+  Map<String, dynamic> toJson() => {'text': text, if (localTranscript != null) 'local_transcript': localTranscript};
 }
 
 // ignore: constant_identifier_names

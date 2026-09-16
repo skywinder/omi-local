@@ -10029,4 +10029,24 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get localMacServers => 'Αποθηκευμένοι διακομιστές';
+
+  @override
+  String get diarization => 'Διαχωρισμός ομιλητών';
+
+  @override
+  String get providerUnavailable => 'Ο διακομιστής δεν είναι διαθέσιμος';
+
+  @override
+  String get providerMisconfigured => 'Ελέγξτε τις ρυθμίσεις του παρόχου';
+
+  @override
+  String speakersCount(int count) {
+    return '$count ομιλητές';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Ο διαχωρισμός ομιλητών δεν εκτελέστηκε';
+
+  @override
+  String get diarizationFailed => 'Ο διαχωρισμός ομιλητών απέτυχε';
 }

@@ -88,3 +88,35 @@ def test_selected_pipeline_summary_projects_into_existing_conversation_contract(
     result['structured']['overview'] = {'invalid': True}
     with pytest.raises(ValueError, match='summary'):
         build_conversation(result, data)
+
+
+def test_pipeline_stage_outcomes_are_projected_with_fixed_fields_only():
+    data, result = manifest(), raw()
+    data['profile']['pipeline'] = {'stt': {'kind': 'openai-compatible'}, 'diarization': {'kind': 'mycelia'}}
+    result['diarization'] = {'turns': [[0.0, 3.5, 'SPEAKER_00']], 'speakers': 2}
+    result['processing'] = {
+        'stt': {'status': 'ready', 'provider_name': 'GPU whisper', 'model': 'large-v3-turbo', 'api_key': 'must-not-escape'},
+        'diarization': {'status': 'ready', 'provider_name': 'x' * 300},
+        'summary': {'status': 'disabled'},
+        'bogus': {'status': 'ready'},
+    }
+    conversation = build_conversation(result, data)
+    stages = conversation.external_data['local_transcript']['stages']
+    assert stages == {
+        'stt': {'status': 'ready', 'provider': 'GPU whisper'},
+        'diarization': {'status': 'ready', 'provider': 'x' * 100, 'speakers': 2},
+        'summary': {'status': 'disabled'},
+    }
+    assert 'must-not-escape' not in str(conversation.external_data)
+
+
+def test_legacy_results_without_processing_carry_no_stage_block():
+    conversation = build_conversation(raw(), manifest())
+    assert 'stages' not in conversation.external_data['local_transcript']
+
+
+def test_unexpected_stage_status_is_reported_as_unknown():
+    data, result = manifest(), raw()
+    result['processing'] = {'diarization': {'status': 'exploded', 'provider_name': 'GPU pyannote'}}
+    stages = build_conversation(result, data).external_data['local_transcript']['stages']
+    assert stages == {'diarization': {'status': 'unknown', 'provider': 'GPU pyannote'}}

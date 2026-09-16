@@ -9991,4 +9991,24 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String get localMacServers => 'Захаваныя серверы';
+
+  @override
+  String get diarization => 'Дыярызацыя';
+
+  @override
+  String get providerUnavailable => 'Сервер недаступны';
+
+  @override
+  String get providerMisconfigured => 'Праверце налады правайдара';
+
+  @override
+  String speakersCount(int count) {
+    return 'Прамоўцаў: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Дыярызацыя не выконвалася';
+
+  @override
+  String get diarizationFailed => 'Памылка дыярызацыі';
 }

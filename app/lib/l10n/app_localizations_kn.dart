@@ -9991,4 +9991,24 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String get localMacServers => 'ಉಳಿಸಿದ ಸರ್ವರ್‌ಗಳು';
+
+  @override
+  String get diarization => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ';
+
+  @override
+  String get providerUnavailable => 'ಸರ್ವರ್ ಲಭ್ಯವಿಲ್ಲ';
+
+  @override
+  String get providerMisconfigured => 'ಪೂರೈಕೆದಾರರ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ';
+
+  @override
+  String speakersCount(int count) {
+    return '$count ಮಾತನಾಡುವವರು';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ನಡೆದಿಲ್ಲ';
+
+  @override
+  String get diarizationFailed => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ';
 }

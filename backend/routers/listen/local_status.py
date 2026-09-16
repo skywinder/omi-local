@@ -92,8 +92,11 @@ async def snapshot(uid: str) -> dict:
             live_state = 'unavailable'
         else:
             live_state = await _worker_state(url) if url else 'disabled'
+    from utils.local_transcription_status import provider_stages
+    stages = provider_stages()
     return {
         'backend': 'ready',
+        **({'stages': stages} if stages is not None else {}),
         'capture': {
             'state': capture_state,
             'audio_seconds': round(pcm_bytes / (OUTPUT_SAMPLE_RATE * OUTPUT_CHANNELS * OUTPUT_SAMPLE_WIDTH_BYTES), 3),

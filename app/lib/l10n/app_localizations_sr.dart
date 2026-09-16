@@ -9975,4 +9975,24 @@ class AppLocalizationsSr extends AppLocalizations {
 
   @override
   String get localMacServers => 'Сачувани сервери';
+
+  @override
+  String get diarization => 'Dijarizacija';
+
+  @override
+  String get providerUnavailable => 'Server nije dostupan';
+
+  @override
+  String get providerMisconfigured => 'Proverite podešavanja provajdera';
+
+  @override
+  String speakersCount(int count) {
+    return '$count govornika';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Dijarizacija nije izvršena';
+
+  @override
+  String get diarizationFailed => 'Dijarizacija nije uspela';
 }

@@ -18542,6 +18542,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Saved servers'**
   String get localMacServers;
+
+  /// No description provided for @diarization.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization'**
+  String get diarization;
+
+  /// No description provided for @providerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server unavailable'**
+  String get providerUnavailable;
+
+  /// No description provided for @providerMisconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Check provider settings'**
+  String get providerMisconfigured;
+
+  /// Number of distinct speakers found by diarization
+  ///
+  /// In en, this message translates to:
+  /// **'{count} speakers'**
+  String speakersCount(int count);
+
+  /// No description provided for @diarizationNotPerformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization not performed'**
+  String get diarizationNotPerformed;
+
+  /// No description provided for @diarizationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization failed'**
+  String get diarizationFailed;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

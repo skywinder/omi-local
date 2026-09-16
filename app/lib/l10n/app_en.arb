@@ -11757,5 +11757,20 @@
     "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Enter your Tailscale IP (or IP:port), or ngrok HTTPS address, and app key. Connecting stops recording. Audio stays on your server.",
-    "localMacServers": "Saved servers"
+    "localMacServers": "Saved servers",
+    "diarization": "Diarization",
+    "providerUnavailable": "Server unavailable",
+    "providerMisconfigured": "Check provider settings",
+    "speakersCount": "{count} speakers",
+    "@speakersCount": {
+        "description": "Number of distinct speakers found by diarization",
+        "placeholders": {
+            "count": {
+                "type": "int",
+                "example": "2"
+            }
+        }
+    },
+    "diarizationNotPerformed": "Diarization not performed",
+    "diarizationFailed": "Diarization failed"
 }

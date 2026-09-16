@@ -3249,5 +3249,11 @@
     "localMacHelp": "Anna Tailscale-IP (tai IP:portti) tai ngrokin HTTPS-osoite ja sovellusavain. Yhdistäminen pysäyttää tallennuksen. Ääni säilyy palvelimellasi.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Tallennetut palvelimet"
+    "localMacServers": "Tallennetut palvelimet",
+    "diarization": "Puhujien erottelu",
+    "providerUnavailable": "Palvelin ei ole käytettävissä",
+    "providerMisconfigured": "Tarkista palveluntarjoajan asetukset",
+    "speakersCount": "{count} puhujaa",
+    "diarizationNotPerformed": "Puhujien erottelua ei tehty",
+    "diarizationFailed": "Puhujien erottelu epäonnistui"
 }

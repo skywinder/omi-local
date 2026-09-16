@@ -10008,4 +10008,24 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get localMacServers => 'సేవ్ చేసిన సర్వర్లు';
+
+  @override
+  String get diarization => 'వక్తల విభజన';
+
+  @override
+  String get providerUnavailable => 'సర్వర్ అందుబాటులో లేదు';
+
+  @override
+  String get providerMisconfigured => 'ప్రొవైడర్ సెట్టింగ్‌లను తనిఖీ చేయండి';
+
+  @override
+  String speakersCount(int count) {
+    return '$count వక్తలు';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'వక్తల విభజన జరగలేదు';
+
+  @override
+  String get diarizationFailed => 'వక్తల విభజన విఫలమైంది';
 }

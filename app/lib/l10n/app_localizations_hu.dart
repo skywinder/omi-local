@@ -10000,4 +10000,24 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get localMacServers => 'Mentett szerverek';
+
+  @override
+  String get diarization => 'Beszélőfelismerés';
+
+  @override
+  String get providerUnavailable => 'A szerver nem elérhető';
+
+  @override
+  String get providerMisconfigured => 'Ellenőrizze a szolgáltató beállításait';
+
+  @override
+  String speakersCount(int count) {
+    return '$count beszélő';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Beszélőfelismerés nem történt';
+
+  @override
+  String get diarizationFailed => 'Beszélőfelismerés sikertelen';
 }

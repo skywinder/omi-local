@@ -10016,4 +10016,24 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get localMacServers => 'Server salvati';
+
+  @override
+  String get diarization => 'Diarizzazione';
+
+  @override
+  String get providerUnavailable => 'Server non disponibile';
+
+  @override
+  String get providerMisconfigured => 'Controlla le impostazioni del provider';
+
+  @override
+  String speakersCount(int count) {
+    return '$count parlanti';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarizzazione non eseguita';
+
+  @override
+  String get diarizationFailed => 'Diarizzazione non riuscita';
 }

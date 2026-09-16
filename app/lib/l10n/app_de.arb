@@ -3226,5 +3226,11 @@
     "localMacHelp": "Gib die Tailscale-IP (oder IP:Port) oder ngrok-HTTPS-Adresse und den App-Schlüssel ein. Verbinden beendet die Aufnahme. Audio bleibt auf deinem Server.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Gespeicherte Server"
+    "localMacServers": "Gespeicherte Server",
+    "diarization": "Sprechertrennung",
+    "providerUnavailable": "Server nicht erreichbar",
+    "providerMisconfigured": "Anbietereinstellungen prüfen",
+    "speakersCount": "{count} Sprecher",
+    "diarizationNotPerformed": "Sprechertrennung nicht durchgeführt",
+    "diarizationFailed": "Sprechertrennung fehlgeschlagen"
 }

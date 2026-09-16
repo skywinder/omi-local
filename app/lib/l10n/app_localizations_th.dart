@@ -9902,4 +9902,24 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String get localMacServers => 'เซิร์ฟเวอร์ที่บันทึกไว้';
+
+  @override
+  String get diarization => 'การแยกผู้พูด';
+
+  @override
+  String get providerUnavailable => 'เซิร์ฟเวอร์ไม่พร้อมใช้งาน';
+
+  @override
+  String get providerMisconfigured => 'ตรวจสอบการตั้งค่าผู้ให้บริการ';
+
+  @override
+  String speakersCount(int count) {
+    return 'ผู้พูด $count คน';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'ไม่ได้ทำการแยกผู้พูด';
+
+  @override
+  String get diarizationFailed => 'การแยกผู้พูดล้มเหลว';
 }

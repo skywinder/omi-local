@@ -9964,4 +9964,24 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get localMacServers => 'সংরক্ষিত সার্ভার';
+
+  @override
+  String get diarization => 'বক্তা শনাক্তকরণ';
+
+  @override
+  String get providerUnavailable => 'সার্ভার অনুপলব্ধ';
+
+  @override
+  String get providerMisconfigured => 'প্রদানকারীর সেটিংস পরীক্ষা করুন';
+
+  @override
+  String speakersCount(int count) {
+    return '$count জন বক্তা';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'বক্তা শনাক্তকরণ করা হয়নি';
+
+  @override
+  String get diarizationFailed => 'বক্তা শনাক্তকরণ ব্যর্থ';
 }

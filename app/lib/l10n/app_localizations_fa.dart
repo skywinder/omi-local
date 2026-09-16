@@ -9959,4 +9959,24 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get localMacServers => 'سرورهای ذخیره‌شده';
+
+  @override
+  String get diarization => 'تفکیک گوینده';
+
+  @override
+  String get providerUnavailable => 'سرور در دسترس نیست';
+
+  @override
+  String get providerMisconfigured => 'تنظیمات ارائه‌دهنده را بررسی کنید';
+
+  @override
+  String speakersCount(int count) {
+    return '$count گوینده';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'تفکیک گوینده انجام نشد';
+
+  @override
+  String get diarizationFailed => 'تفکیک گوینده ناموفق بود';
 }

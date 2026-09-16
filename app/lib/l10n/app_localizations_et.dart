@@ -9953,4 +9953,24 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get localMacServers => 'Salvestatud serverid';
+
+  @override
+  String get diarization => 'Kõnelejate eristamine';
+
+  @override
+  String get providerUnavailable => 'Server pole saadaval';
+
+  @override
+  String get providerMisconfigured => 'Kontrollige teenusepakkuja seadeid';
+
+  @override
+  String speakersCount(int count) {
+    return '$count kõnelejat';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Kõnelejate eristamist ei tehtud';
+
+  @override
+  String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
 }

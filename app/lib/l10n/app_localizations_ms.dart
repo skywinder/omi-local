@@ -9985,4 +9985,24 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get localMacServers => 'Pelayan tersimpan';
+
+  @override
+  String get diarization => 'Pemisahan penutur';
+
+  @override
+  String get providerUnavailable => 'Pelayan tidak tersedia';
+
+  @override
+  String get providerMisconfigured => 'Semak tetapan penyedia';
+
+  @override
+  String speakersCount(int count) {
+    return '$count penutur';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Pemisahan penutur tidak dilakukan';
+
+  @override
+  String get diarizationFailed => 'Pemisahan penutur gagal';
 }

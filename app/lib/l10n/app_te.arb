@@ -10815,5 +10815,11 @@
     "localMacHelp": "Tailscale IP (లేదా IP:పోర్ట్) లేదా ngrok HTTPS చిరునామా మరియు యాప్ కీని నమోదు చేయండి. కనెక్ట్ చేయడం రికార్డింగ్‌ను ఆపుతుంది. ఆడియో మీ సర్వర్‌లో ఉంటుంది.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "సేవ్ చేసిన సర్వర్లు"
+    "localMacServers": "సేవ్ చేసిన సర్వర్లు",
+    "diarization": "వక్తల విభజన",
+    "providerUnavailable": "సర్వర్ అందుబాటులో లేదు",
+    "providerMisconfigured": "ప్రొవైడర్ సెట్టింగ్‌లను తనిఖీ చేయండి",
+    "speakersCount": "{count} వక్తలు",
+    "diarizationNotPerformed": "వక్తల విభజన జరగలేదు",
+    "diarizationFailed": "వక్తల విభజన విఫలమైంది"
 }

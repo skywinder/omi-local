@@ -9789,4 +9789,24 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get localMacServers => '保存済みサーバー';
+
+  @override
+  String get diarization => '話者分離';
+
+  @override
+  String get providerUnavailable => 'サーバーに接続できません';
+
+  @override
+  String get providerMisconfigured => 'プロバイダー設定を確認してください';
+
+  @override
+  String speakersCount(int count) {
+    return '話者 $count 人';
+  }
+
+  @override
+  String get diarizationNotPerformed => '話者分離は実行されていません';
+
+  @override
+  String get diarizationFailed => '話者分離に失敗しました';
 }

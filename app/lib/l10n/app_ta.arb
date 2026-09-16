@@ -10815,5 +10815,11 @@
     "localMacHelp": "Tailscale IP (அல்லது IP:போர்ட்) அல்லது ngrok HTTPS முகவரி மற்றும் செயலி விசையை உள்ளிடவும். இணைப்பது பதிவை நிறுத்தும். ஒலி உங்கள் சேவையகத்தில் இருக்கும்.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "சேமித்த சேவையகங்கள்"
+    "localMacServers": "சேமித்த சேவையகங்கள்",
+    "diarization": "பேச்சாளர் பிரிப்பு",
+    "providerUnavailable": "சேவையகம் கிடைக்கவில்லை",
+    "providerMisconfigured": "வழங்குநர் அமைப்புகளைச் சரிபார்க்கவும்",
+    "speakersCount": "{count} பேச்சாளர்கள்",
+    "diarizationNotPerformed": "பேச்சாளர் பிரிப்பு செய்யப்படவில்லை",
+    "diarizationFailed": "பேச்சாளர் பிரிப்பு தோல்வி"
 }

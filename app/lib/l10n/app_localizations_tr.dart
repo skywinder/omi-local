@@ -9971,4 +9971,24 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get localMacServers => 'Kayıtlı sunucular';
+
+  @override
+  String get diarization => 'Konuşmacı ayrımı';
+
+  @override
+  String get providerUnavailable => 'Sunucu kullanılamıyor';
+
+  @override
+  String get providerMisconfigured => 'Sağlayıcı ayarlarını kontrol edin';
+
+  @override
+  String speakersCount(int count) {
+    return '$count konuşmacı';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Konuşmacı ayrımı yapılmadı';
+
+  @override
+  String get diarizationFailed => 'Konuşmacı ayrımı başarısız';
 }
