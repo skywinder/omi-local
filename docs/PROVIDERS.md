@@ -1,6 +1,8 @@
 # Processing providers
 
 For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
+To replace the Docker stack's built-in STT with a server you already run, see
+[External STT server](DOCKER.md#external-stt-server-instead-of-the-built-in-container).
 
 Open **Settings** in the omiloc web library on this Mac. Each stage can have
 several saved provider cards; one selected provider performs the work.
@@ -55,6 +57,15 @@ Before switching that engine to an STT server, select independent Pyannote/Mycel
 or disable diarization; an incompatible switch is rejected.
 Secrets are stored separately in `provider-secrets.json` with mode `0600`.
 Do not commit these files, recordings, or results.
+
+## Summarization
+
+The summary card takes an OpenAI-compatible base URL ending in `/v1` and a model.
+The request asks for JSON `title`/`overview` with `max_tokens` 1600. Reasoning
+models such as Qwen3 on llama.cpp or vLLM can spend that whole budget thinking
+and return an empty answer; set **Model reasoning → Off** on the card, which adds
+`chat_template_kwargs: {"enable_thinking": false}` to the request. Leave the
+default for servers that reject unknown fields.
 
 ## Live STT
 

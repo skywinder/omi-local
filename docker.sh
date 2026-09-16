@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 mode="${OMI_DOCKER_DEVICE:-auto}"
+stt="${OMI_DOCKER_STT:-builtin}"
 transport="${OMI_LOCAL_TRANSPORT:-local}"
 command="${1:-up}"
 [[ $# == 0 ]] || shift
@@ -14,6 +15,12 @@ files=(-f compose.yaml)
 case "$transport" in
   local|ngrok|tailscale) ;;
   *) echo 'OMI_LOCAL_TRANSPORT must be tailscale or ngrok (unset for a local library)' >&2; exit 2 ;;
+esac
+case "$stt" in
+  builtin) ;;
+  # An external OpenAI-compatible server selected in the library replaces the stt container.
+  external) mode=cpu; files+=(-f compose.external.yaml) ;;
+  *) echo 'OMI_DOCKER_STT must be builtin or external' >&2; exit 2 ;;
 esac
 
 tailscale_address() {
@@ -85,11 +92,15 @@ case "$mode" in
   *) echo 'OMI_DOCKER_DEVICE must be auto, cpu or cuda' >&2; exit 2 ;;
 esac
 [[ "$mode" != cuda ]] || files+=(-f compose.gpu.yaml)
-echo "Docker STT device: $mode"
+if [[ "$stt" == external ]]; then echo 'Docker STT: external server (built-in stt container disabled)'; else echo "Docker STT device: $mode"; fi
 case "$command" in
   up|dev)
-    docker compose "${files[@]}" build app stt download
-    docker compose "${files[@]}" run --rm --no-deps download
+    if [[ "$stt" == external ]]; then
+      docker compose "${files[@]}" build app
+    else
+      docker compose "${files[@]}" build app stt download
+      docker compose "${files[@]}" run --rm --no-deps download
+    fi
     if [[ "$transport" == tailscale ]]; then
       # Excluding a Compose profile does not stop an already-running service.
       docker compose "${files[@]}" --profile tunnel stop tunnel

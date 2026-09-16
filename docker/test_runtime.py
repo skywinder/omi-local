@@ -217,6 +217,37 @@ def test_wrapper_local_and_recovery_do_not_require_tailscale(tmp_path, args):
     assert all('compose.tailscale.yaml' not in call['args'] for call in calls)
 
 
+@pytest.mark.parametrize('args', [['tailscale', 'up'], ['up'], ['dev']])
+def test_wrapper_external_stt_skips_builtin_model_and_gpu(tmp_path, args):
+    result, calls = docker_wrapper(tmp_path, args, OMI_DOCKER_STT='external', OMI_DOCKER_DEVICE='cuda')
+    assert result.returncode == 0, result.stderr
+    assert all('compose.external.yaml' in call['args'] for call in calls)
+    assert all('compose.gpu.yaml' not in call['args'] for call in calls)
+    assert calls[0]['args'][-2:] == ['build', 'app']
+    assert not any('download' in call['args'] for call in calls)
+    assert 'stt' not in calls[0]['args']
+
+
+def test_wrapper_rejects_unknown_stt_mode(tmp_path):
+    result, calls = docker_wrapper(tmp_path, ['up'], OMI_DOCKER_STT='remote')
+    assert result.returncode != 0 and calls == []
+
+
+def test_external_compose_render_drops_builtin_stt_from_default_services():
+    docker = shutil.which('docker')
+    if not docker or subprocess.run([docker, 'compose', 'version'], capture_output=True).returncode:
+        pytest.skip('Docker Compose plugin unavailable')
+    def services(*extra):
+        result = subprocess.run([docker, 'compose', '--env-file', '/dev/null', '-f', 'compose.yaml',
+                                 '-f', 'compose.tailscale.yaml', '-f', 'compose.external.yaml', *extra,
+                                 'config', '--services'], cwd=ROOT,
+                                env=dict(os.environ, OMI_TAILSCALE_IP='100.100.12.34'),
+                                capture_output=True, text=True, check=True)
+        return set(result.stdout.split())
+    assert services() == {'app', 'ingress'}
+    assert services('--profile', 'builtin-stt') == {'app', 'ingress', 'stt'}
+
+
 def test_tailscale_compose_render_publishes_only_paired_api_on_host_vpn():
     docker = shutil.which('docker')
     if not docker:

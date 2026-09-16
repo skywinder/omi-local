@@ -193,6 +193,43 @@ The built-in container provides final WAV transcription with one speaker,
 `SPEAKER_00`. Apple engines are unavailable inside Linux; use compatible servers
 for additional stages.
 
+## External STT server instead of the built-in container
+
+When an OpenAI-compatible STT server already runs on the host or in the tailnet
+(for example a GPU faster-whisper behind a proxy), the built-in `stt` container
+is redundant. Select that server first, then restart without it:
+
+1. Start normally (`./docker.sh up` or `./docker.sh tailscale up`) and open the
+   library. Under **Settings → Transcription** add an `openai-compatible` card
+   with the server's `/v1` base URL, model, and key; **Check → Save → Use**.
+   Diarization and summarization servers are selected the same way.
+2. Finish processing, then `./docker.sh down`.
+3. Start with `OMI_DOCKER_STT=external ./docker.sh tailscale up` (or `up`/`dev`).
+
+`external` adds `compose.external.yaml`, which moves `stt` into the
+`builtin-stt` profile; it builds only `app`, skips model download, and ignores
+`OMI_DOCKER_DEVICE`. Keep `OMI_DOCKER_STT=external` for later `down`, `status`,
+and `logs` calls. Startup validates the active STT provider, so an external
+mode start before step 1 fails and retries until the container restarts.
+For direct Compose, add `-f compose.external.yaml` to every command and skip
+`compose.gpu.yaml` and the `download` step. From a container, address host
+services by the host Tailscale IPv4, not `localhost`.
+
+Plain-HTTP provider URLs are accepted only for loopback, LAN, and Tailscale
+addresses; word timestamps in `segments[].words` improve speaker assignment
+when a diarization server is selected.
+
+### Live STT with WhisperLiveKit
+
+The built-in stack has no live server. `docker/whisperlivekit/compose.yaml`
+runs a standalone WhisperLiveKit on an NVIDIA host with `--pcm-input`, which the
+omiloc `external` Live provider requires. Copy it with `env.example` to the GPU
+host, clone the pinned WhisperLiveKit tag beside it as described in the file,
+set `WLK_BIND_ADDRESS` to the host Tailscale IPv4, and run
+`docker compose up -d --build`. In the library select **Live STT → external**
+with `ws://<host-tailscale-ip>:8010/asr`. The live server is a separate process
+and model copy; it does not replace the final transcription provider.
+
 ## Development and updates
 
 `./docker.sh dev` runs in an open Terminal:
