@@ -173,7 +173,7 @@ def create_app(worker, lock_path, emit):
 
     @app.get('/health')
     async def health():
-        return {'ready': worker_ready(), 'active': active, 'recovering': recovering,
+        return {'ready': worker_ready(), 'diarization': False, 'active': active, 'recovering': recovering,
                 'last_error': last_error,
                 'completed': completed, 'last': last, 'profile': 'parakeet-v3-int8-ane-auto',
                 'chunk_s': 11, 'left_context_s': 2, 'right_context_s': 2}

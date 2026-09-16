@@ -34,6 +34,8 @@ Local capture labels use `localCapturePhase`, never BLE connection alone. Live O
 audio evidence expires after 3 seconds without payload; this changes only the label,
 not the recording session. Keep it separate from Mac receipt/storage/STT status.
 The collapsed runtime header combines the input source and Mac connection in one row.
+Its expanded card shows live speaker-label evidence independently of ASR; a missing
+`diarization` field from an older server means unknown, never enabled or successful.
 Button feedback shows the received BLE gesture and the completed action separately, each for four seconds.
 A receipt confirms only that the phone received the event; it never claims capture started.
 Protocol events (tap=1, double=2, long=3, down=4, up=5) remain diagnostic; firmware

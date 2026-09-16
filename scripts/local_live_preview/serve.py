@@ -163,7 +163,7 @@ def main():
 
         @app.get('/health')
         async def health():
-            return {'ready': True, 'active': active, 'completed': completed, 'last': last,
+            return {'ready': True, 'diarization': False, 'active': active, 'completed': completed, 'last': last,
                     'profile': f'turbo-q4-{args.language}-localagreement', 'chunk_s': args.chunk_seconds, 'mlx_cache_limit_bytes': 256 * 2**20}
 
         @app.websocket('/asr')

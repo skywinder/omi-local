@@ -86,6 +86,7 @@ class ParakeetWireTests(unittest.TestCase):
                     self.assertEqual(ws.receive_json()['type'], 'ready_to_stop')
                 health = client.get('/health').json()
                 self.assertFalse(health['active'])
+                self.assertFalse(health['diarization'])
                 self.assertEqual(health['last']['outcome'], 'passed')
             self.assertEqual(self.worker.loads, 1)
             self.assertEqual(self.worker.starts, 2)
