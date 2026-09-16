@@ -219,6 +219,31 @@ Plain-HTTP provider URLs are accepted only for loopback, LAN, and Tailscale
 addresses; word timestamps in `segments[].words` improve speaker assignment
 when a diarization server is selected.
 
+### Remote library through Tailscale Serve
+
+The library stays loopback-only unless one HTTPS origin is configured. Set in
+the Compose `.env` (or export) before starting:
+
+```dotenv
+OMI_LIBRARY_PUBLIC_ORIGIN=https://<host>.<tailnet>.ts.net:21443
+OMI_LIBRARY_TAILSCALE_LOGIN=<your tailscale login, e.g. name@github>
+# Optional password login in addition to, or instead of, the tailnet identity:
+OMI_LIBRARY_USER=<name>
+OMI_LIBRARY_PASSWORD_HASH=<output of the hash command below>
+```
+
+```bash
+docker compose exec -it app python -m dev_harness.local_library hash-password
+sudo tailscale serve --bg --https=21443 http://127.0.0.1:21001
+```
+
+Requests on that origin are served only with a matching `Tailscale-User-Login`
+header, which Serve sets from the caller's tailnet identity and strips from
+clients, or with valid Basic credentials over that TLS origin. Funnel never adds
+the identity header, so a public exposure still fails closed. The ingress drops
+forwarding headers from Serve; all other Host/Origin values remain rejected and
+loopback access is unchanged. Changing these values requires recreating `app`.
+
 ### Live STT with WhisperLiveKit
 
 The built-in stack has no live server. `docker/whisperlivekit/compose.yaml`
