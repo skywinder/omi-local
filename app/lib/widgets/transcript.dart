@@ -1120,16 +1120,16 @@ class _TranscriptWidgetState extends State<TranscriptWidget> {
           },
         );
       },
-      child: const Opacity(
+      child: Opacity(
         opacity: 0.5,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, size: 12, color: Colors.grey),
-            SizedBox(width: 4),
+            const Icon(Icons.check_circle, size: 12, color: Colors.grey),
+            const SizedBox(width: 4),
             Text(
-              'translated by omi',
-              style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+              context.l10n.translatedByOmi,
+              style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
             ),
           ],
         ),

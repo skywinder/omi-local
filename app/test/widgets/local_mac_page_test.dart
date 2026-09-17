@@ -392,4 +392,128 @@ void main() {
     expect(tester.widget<TextField>(addressField).controller!.text, 'https://synthetic.ngrok.app');
     expect(tester.widget<TextField>(keyField).controller!.text, 'pastedkey');
   });
+
+  testWidgets('sign-in pairing returns to the caller once connected', (tester) async {
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    bool? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async {
+                result = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => LocalMacPage(
+                      session: session,
+                      statusFetcher: status,
+                      stopRecording: () async {},
+                      refreshConnection: () async {},
+                      popOnConnect: true,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await enterField(tester, find.byKey(const ValueKey('local-mac-address')), '100.64.0.1');
+    await enterField(tester, find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(session.isSignedIn, isTrue);
+    expect(find.byType(LocalMacPage), findsNothing);
+    expect(result, isTrue);
+  });
+
+  testWidgets('the access key field stays above the keyboard while typing', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    await openPage(tester, LocalMacSession());
+    final keyField = find.byKey(const ValueKey('local-mac-key'));
+    final scroll = find.descendant(of: find.byType(SingleChildScrollView), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(keyField, 160, scrollable: scroll);
+    await tester.pumpAndSettle();
+    await tester.tap(keyField);
+    await tester.pump();
+    // The software keyboard covers the lower 336 logical pixels of the phone.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pumpAndSettle();
+    await tester.enterText(keyField, 'abc');
+    await tester.pumpAndSettle();
+    // The whole field, its label and the Check and connect button below it stay clear of the keyboard.
+    expect(tester.getRect(keyField).bottom, lessThanOrEqualTo(844 - 336 - 80));
+    expect(tester.getRect(keyField).top, greaterThanOrEqualTo(kToolbarHeight + 24));
+    expect(tester.getRect(find.byKey(const ValueKey('local-mac-connect'))).bottom, lessThanOrEqualTo(844 - 336));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('live translation switch and target language persist and reach the capture socket', (tester) async {
+    final applied = <Map<String, Object?>>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+          session: LocalMacSession(probe: (_, __) async => {'uid': 'alice'}),
+          statusFetcher: status,
+          stopRecording: () async {},
+          refreshConnection: () async {},
+          applyLiveTranslation: ({bool? enabled, String? language}) async {
+            applied.add({'enabled': enabled, 'language': language});
+            if (enabled != null) SharedPreferencesUtil().localLiveTranslationEnabled = enabled;
+            if (language != null) SharedPreferencesUtil().localLiveTranslationLanguage = language;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scroll = find.descendant(of: find.byType(SingleChildScrollView), matching: find.byType(Scrollable)).first;
+    final toggle = find.byKey(const ValueKey('local-mac-live-translation'));
+    await tester.scrollUntilVisible(toggle, 160, scrollable: scroll);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+    final languageTile = find.byKey(const ValueKey('local-mac-live-translation-language'));
+    expect(tester.widget<ListTile>(languageTile).enabled, isFalse);
+
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    expect(tester.widget<ListTile>(languageTile).enabled, isTrue);
+    expect(find.descendant(of: languageTile, matching: find.text('English')), findsOneWidget);
+
+    await tester.tap(languageTile);
+    await tester.pumpAndSettle();
+    final german = find.byKey(const ValueKey('live-translation-language-de'));
+    await tester.scrollUntilVisible(german, 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(german);
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: languageTile, matching: find.text('German')), findsOneWidget);
+    expect(applied, [
+      {'enabled': true, 'language': null},
+      {'enabled': null, 'language': 'de'},
+    ]);
+    expect(SharedPreferencesUtil().localLiveTranslationLanguage, 'de');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

@@ -18543,6 +18543,36 @@ abstract class AppLocalizations {
   /// **'Saved servers'**
   String get localMacServers;
 
+  /// No description provided for @liveTranslation.
+  ///
+  /// In en, this message translates to:
+  /// **'Live translation'**
+  String get liveTranslation;
+
+  /// No description provided for @liveTranslationTargetLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate to'**
+  String get liveTranslationTargetLanguage;
+
+  /// No description provided for @liveTranslationHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.'**
+  String get liveTranslationHelp;
+
+  /// No description provided for @liveTranslationUnconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation provider is not configured on your Mac. Add one in the local library settings.'**
+  String get liveTranslationUnconfigured;
+
+  /// No description provided for @liveTranslationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation is unavailable right now. Check the translation provider on your Mac.'**
+  String get liveTranslationFailed;
+
   /// No description provided for @diarization.
   ///
   /// In en, this message translates to:

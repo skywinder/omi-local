@@ -228,6 +228,7 @@ class _BufferedStartProvider extends CaptureProvider {
 
 class _AudioPacketSocket extends _TrackingSocket {
   final packets = <List<int>>[];
+  final controlFrames = <Map<String, dynamic>>[];
   bool stopped = false;
 
   @override
@@ -236,6 +237,10 @@ class _AudioPacketSocket extends _TrackingSocket {
   @override
   void send(dynamic message) {
     expect(stopped, isFalse, reason: 'Audio must drain before the socket closes');
+    if (message is String) {
+      controlFrames.add(jsonDecode(message) as Map<String, dynamic>);
+      return;
+    }
     packets.add(List<int>.from(message as List<int>));
   }
 
@@ -730,6 +735,88 @@ void main() {
     expect(SharedPreferencesUtil().getBool('nativeBleStreamingEnabled'), isFalse);
   });
 
+  group('local live translation control', () {
+    late StreamController<List<int>> audio;
+    late _BufferedStartProvider provider;
+    late Completer<BleAudioCodec> codec;
+
+    setUp(() async {
+      Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      SharedPreferencesUtil().batchModeEnabled = false;
+      SharedPreferencesUtil().unlimitedLocalStorageEnabled = false;
+      audio = StreamController<List<int>>.broadcast(sync: true);
+      codec = Completer<BleAudioCodec>();
+      provider = _BufferedStartProvider(
+        audioListenerLoader: (_, callback) async => audio.stream.listen(callback),
+        audioCodecLoader: (_) => codec.future,
+      );
+      await provider.streamDeviceRecording(device: _device(id: 'synthetic-translation', type: DeviceType.omi));
+    });
+
+    tearDown(() async {
+      provider.dispose();
+      await audio.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+
+    Future<_AudioPacketSocket> connectSocket() async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      codec.complete(BleAudioCodec.opusFS320);
+      await pumpEventQueue();
+      final socket = provider.connect(0);
+      await start;
+      return socket;
+    }
+
+    test('sends the saved target on connect and follows toggles without restarting the socket', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = true;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'de';
+      final socket = await connectSocket();
+      expect(socket.controlFrames, [
+        {'type': 'translation', 'language': 'de'}
+      ]);
+      await provider.setLiveTranslation(language: 'fr');
+      await provider.setLiveTranslation(enabled: false);
+      await provider.setLiveTranslation(enabled: true);
+      expect(socket.controlFrames.skip(1), [
+        {'type': 'translation', 'language': 'fr'},
+        {'type': 'translation', 'language': ''},
+        {'type': 'translation', 'language': 'fr'},
+      ]);
+      expect(provider.gates, hasLength(1), reason: 'toggling translation must not reopen the listen socket');
+      expect(socket.stopped, isFalse);
+      expect(SharedPreferencesUtil().localLiveTranslationLanguage, 'fr');
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('stays silent on connect while translation is off', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = false;
+      final socket = await connectSocket();
+      expect(socket.controlFrames, isEmpty);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('translation status is tracked apart from transcription failures', () async {
+      var notifications = 0;
+      provider.addListener(() => notifications++);
+      provider.onMessageEventReceived(
+          MessageServiceStatusEvent(status: 'unconfigured', provider: 'local_live_translation'));
+      expect(provider.liveTranslationStatus, 'unconfigured');
+      expect(provider.terminalTranscriptionFailure, isNull);
+      expect(provider.transcriptionServiceStatuses, isEmpty);
+      provider.onMessageEventReceived(MessageServiceStatusEvent(
+          status: 'stt_failed', provider: 'local_live_preview', outcome: 'unavailable', reason: 'unavailable'));
+      provider.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'local_live_translation'));
+      expect(provider.liveTranslationStatus, 'ready');
+      expect(provider.terminalTranscriptionFailure?.provider, 'local_live_preview',
+          reason: 'a ready translation relay must not clear a terminal STT failure');
+      expect(notifications, 3);
+      await provider.setLiveTranslation(enabled: false);
+      expect(provider.liveTranslationStatus, isNull);
+    });
+  });
+
   group('local audio start buffering', () {
     late StreamController<List<int>> audio;
     late _BufferedStartProvider provider;
@@ -776,17 +863,51 @@ void main() {
       final socket = provider.connect(0);
       await start;
       provider.updateRecordingDevice(_device(id: 'synthetic-replacement', type: DeviceType.openglass));
-      expect(provider.activeRecordingSource, ConversationSource.omi);
+      expect(provider.activeRecordingSource, isNull);
       audio.add([2, 0, 0, 33]);
-      expect(socket.packets, [
-        [11],
-        [22],
-        [33]
-      ]);
+      expect(
+          socket.packets,
+          [
+            [11],
+            [22],
+          ],
+          reason: 'Notifications from a replaced device cannot enter another source');
       await provider.stopStreamDeviceRecording();
       expect(socket.stopped, isTrue);
       expect(audio.hasListener, isFalse);
       expect(provider.activeRecordingSource, isNull);
+    });
+
+    test('automatic Omi capture resumes after BLE disconnect and respects explicit Stop', () async {
+      expect(provider.shouldAutomaticallyStartDeviceRecording, isTrue);
+      final start = provider.streamDeviceRecording(userInitiated: provider.shouldAutomaticallyStartDeviceRecording);
+      await reachSocket();
+      final first = provider.connect(0);
+      await start;
+      audio.add([0, 0, 0, 11]);
+      provider.updateRecordingDevice(null);
+      expect(provider.shouldAutomaticallyStartDeviceRecording, isTrue);
+      final resume = provider.streamDeviceRecording(
+        device: _device(id: 'synthetic-buffered', type: DeviceType.omi),
+        userInitiated: provider.shouldAutomaticallyStartDeviceRecording,
+      );
+      await pumpEventQueue();
+      // The connected socket can be retained, but the audio source is reattached.
+      if (provider.gates.length == 2) provider.connect(1);
+      await resume;
+      audio.add([0, 0, 0, 22]);
+      expect(provider.localCapturePhase, LocalCapturePhase.recording);
+      expect(provider.sockets.expand((socket) => socket.packets), [
+        [11],
+        [22]
+      ]);
+      await provider.stopStreamDeviceRecording();
+      expect(provider.shouldAutomaticallyStartDeviceRecording, isFalse);
+      provider.updateRecordingDevice(null);
+      await provider.streamDeviceRecording(device: _device(id: 'synthetic-buffered', type: DeviceType.omi));
+      expect(provider.recordingState, RecordingState.stop);
+      expect(audio.hasListener, isFalse);
+      expect(first.packets.first, [11]);
     });
 
     test('Stop during connect drains accepted audio and keeps the next session separate', () async {
@@ -1104,6 +1225,37 @@ void main() {
     mic.receive!(Uint8List(320));
     expect(provider.sockets.last.packets, isEmpty);
     await provider.stopStreamDeviceRecording();
+  });
+
+  test('phone socket recovery resumes the same microphone without stopping capture', () async {
+    Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+    addTearDown(() => Env.setRuntimeModeForTesting(null));
+    final mic = _FakeLiveMicRecorder();
+    final provider = _BufferedStartProvider(
+      audioListenerLoader: (_, __) async => null,
+      microphonePermissionRequester: () async => true,
+      phoneMicRecorder: mic,
+    );
+    addTearDown(provider.dispose);
+    final start = provider.streamRecording();
+    await pumpEventQueue();
+    provider.connect(0, codec: BleAudioCodec.pcm16);
+    await start;
+    final starts = mic.starts;
+    final stops = mic.stops;
+    provider.onClosed(1006);
+    expect(provider.recordingState, RecordingState.interrupted);
+    final reconnect = provider.reconnectActiveCaptureForTesting();
+    await pumpEventQueue();
+    final resumed = provider.connect(1, codec: BleAudioCodec.pcm16);
+    await reconnect;
+    expect(provider.recordingState, RecordingState.record);
+    expect(mic.starts, starts);
+    expect(mic.stops, stops);
+    mic.receive!(Uint8List(320));
+    expect(resumed.packets, hasLength(1));
+    await provider.stopStreamRecording();
+    expect(provider.keepAliveScheduledForTesting, isFalse);
   });
 
   test('local phone start keeps Bluetooth connected and stops device input before permission', () async {

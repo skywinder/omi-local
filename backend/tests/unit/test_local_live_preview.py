@@ -206,6 +206,64 @@ async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch
     assert preview.pending_bytes == 0
 
 
+class ControlAwareSocket(Socket):
+    """Text control frames are consumed by the relay and never answered with audio snapshots."""
+
+    async def send(self, data):
+        if isinstance(data, str):
+            self.sent.append(data)
+            return
+        await super().send(data)
+
+
+@pytest.mark.parametrize('relay_enabled', [True, False])
+@pytest.mark.anyio
+async def test_translation_language_reaches_only_the_relay_before_audio(monkeypatch, relay_enabled):
+    if relay_enabled:
+        monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
+    else:
+        monkeypatch.delenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', raising=False)
+    socket = ControlAwareSocket()
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock(), translation_language='en')
+    pcm = b'\x01\x00' * 320
+    preview.feed(pcm)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    preview.set_translation('DE')
+    preview.set_translation('not-a-code')
+    await preview.finish()
+    frames = [json.loads(item) for item in socket.sent if isinstance(item, str)]
+    if relay_enabled:
+        assert socket.sent[0] == json.dumps({'type': 'translation', 'language': 'en'})
+        assert frames == [{'type': 'translation', 'language': 'en'}, {'type': 'translation', 'language': 'de'},
+                          {'type': 'translation', 'language': ''}]
+    else:
+        assert frames == []
+    assert [item for item in socket.sent if isinstance(item, bytes)] == [pcm, b'']
+    assert preview.eof_ack and not preview.failed
+
+
+@pytest.mark.anyio
+async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypatch):
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
+    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured'})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', send, translation_language='en')
+    preview.feed(b'\x01\x00' * 320)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    statuses = [call.args[0] for call in send.call_args_list if call.args[0].get('type') == 'service_status']
+    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation'} in statuses
+    socket.incoming.put_nowait(json.dumps({'type': 'translation_status', 'status': 'weird value'}))
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not any(call.args[0].get('status') == 'weird value' for call in send.call_args_list)
+    await preview.finish()
+    assert not preview.failed
+
+
 @pytest.mark.anyio
 async def test_diarized_provider_handshake_reaches_phone_as_complete_snapshot(monkeypatch):
     socket = Socket(config={'diarization': True, 'stt_provider': 'synthetic-live'}, response={

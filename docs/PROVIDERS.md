@@ -67,6 +67,26 @@ and return an empty answer; set **Model reasoning → Off** on the card, which a
 `chat_template_kwargs: {"enable_thinking": false}` to the request. Leave the
 default for servers that reject unknown fields.
 
+## Live translation
+
+The translation card is a second OpenAI-compatible LLM (base URL ending in `/v1`,
+model, the same **Model reasoning** switch as summarization). It is not part of the
+finished-recording pipeline: it translates the live preview only. The relay on the
+Mac sends each batch of newly committed WLK lines (up to 8 lines / 4000 characters)
+as one `chat/completions` request asking for a JSON array in the same order, and
+attaches the result to the lines as `translations: [{"lang": "<code>", "text": ...}]`.
+Translations are cached per line text for the session, so corrections that keep
+a line's text cost nothing; a rewritten line is translated again. The last,
+still-growing line is translated once it ends a sentence or stays unchanged for
+two seconds. A failed batch is not retried within the session.
+
+The target language and the on/off switch live in the app (Settings → Local Mac →
+Live translation, and the translate button on the live transcript screen). Both
+travel over the already open listen socket, so toggling never restarts a recording.
+Without a translation card, the app shows that the provider is missing; without
+the switch the card is never contacted. Transcript text is untrusted input to the
+model: the prompt tells it to translate, not to follow instructions in the lines.
+
 ## Live STT
 
 The live server must accept little-endian PCM16, mono, 16 kHz, and the complete
