@@ -12,6 +12,9 @@ be restored only after a failed request, never after a confirmed empty response.
 Local input selection is independent of Bluetooth connection. Starting the phone mic
 finishes the Omi session without disconnecting Bluetooth; an explicit Omi Start
 finishes the phone session. Home entry/BLE reconnect must not take over phone audio.
+Local Omi starts automatically on device connection unless explicitly stopped or
+muted; transient BLE loss must invalidate the old subscription/state without
+changing that intent. A selected phone mic keeps ownership across BLE reconnect.
 Stop fences pending phone startup and reconnect; native Start waits for native Stop.
 Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
@@ -30,6 +33,9 @@ The status card starts collapsed; keep confirmed values during an in-flight poll
 but clear them on failure or an authenticated pairing change. Draft notifications
 must not restart polling. Errors replace the collapsed summary; the full text is
 available in its tooltip and expanded details.
+Saved server audio uses `external_data.local_recording` processing cards until
+transcript import succeeds. Show every pending card with date, source, duration
+and queue/error state; foreground Conversations refreshes every five seconds.
 Local capture labels use `localCapturePhase`, never BLE connection alone. Live Omi
 audio evidence expires after 3 seconds without payload; this changes only the label,
 not the recording session. Keep it separate from Mac receipt/storage/STT status.

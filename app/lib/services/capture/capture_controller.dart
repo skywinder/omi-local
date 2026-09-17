@@ -660,6 +660,13 @@ class CaptureController extends ChangeNotifier
       recordingState = RecordingState.stop;
     }
     if (_recordingDevice?.id != device?.id) {
+      if (TemporaryCaptureControls.enabled && !isPhoneMicSelected) {
+        _temporaryRecordingRequested = false;
+        _websocketInitGeneration++;
+        unawaited(_bleBytesStream?.cancel());
+        _bleBytesStream = null;
+        recordingState = RecordingState.stop;
+      }
       _lastOmiButtonEvent = null;
       _localButtonFeedbackTimer?.cancel();
       _localOmiButtonFeedback = null;
@@ -985,6 +992,9 @@ class CaptureController extends ChangeNotifier
     _socket = socket;
     _socket?.subscribe(this, this);
     _transcriptServiceReady = true;
+    if (recordingState == RecordingState.interrupted && !_micInterrupted && _phoneStop == null) {
+      updateRecordingState(RecordingState.record);
+    }
     if (_sessionStartSeconds == 0) {
       _sessionStartSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     }
@@ -1284,6 +1294,10 @@ class CaptureController extends ChangeNotifier
     _startMetricsTracking();
     final audioGeneration = _localAudioGeneration;
     void receive(List<int> value) {
+      if (TemporaryCaptureControls.enabled &&
+          (audioGeneration != _localAudioGeneration || _recordingDevice?.id != deviceId)) {
+        return;
+      }
       final snapshot = List<int>.from(value);
       if (snapshot.isEmpty || snapshot.length < 3) return;
       if (snapshot.length > 3) _receiveLocalAudioEvidence(audioGeneration);
@@ -2179,6 +2193,12 @@ class CaptureController extends ChangeNotifier
   }
 
   // Temporary explicit session boundary for the local WAV workflow (G12).
+  // A transport disconnect is not a user Stop. Remember that distinction
+  // across BLE reconnects, including a disconnect during startup.
+  bool _localRecordingStoppedByUser = false;
+  bool get shouldAutomaticallyStartDeviceRecording =>
+      TemporaryCaptureControls.enabled && !isPhoneMicSelected && !_isPaused && !_localRecordingStoppedByUser;
+
   bool _temporaryRecordingRequested = false;
   LocalDeviceAudioStart? _localDeviceAudioStart;
   Future<void>? _localDeviceStop;
@@ -2187,10 +2207,12 @@ class CaptureController extends ChangeNotifier
   Future streamDeviceRecording({BtDevice? device, bool userInitiated = false}) async {
     Logger.debug("streamDeviceRecording $device");
     if (userInitiated) {
+      _localRecordingStoppedByUser = false;
       if (isPhoneMicSelected || _phoneStart != null || _phoneStop != null) {
         await stopStreamRecording(reason: 'source_changed');
       }
       _localInputSource = ConversationSource.omi;
+      _localRecordingStoppedByUser = false;
       await _localDeviceStop;
       await _localDeviceAudioStart?.completed.future;
     }
@@ -2288,6 +2310,7 @@ class CaptureController extends ChangeNotifier
   }
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    if (TemporaryCaptureControls.enabled && !cleanDevice) _localRecordingStoppedByUser = true;
     if (isPhoneMicSelected && _localDeviceAudioStart == null && !_temporaryRecordingRequested) {
       if (cleanDevice) _updateRecordingDevice(null);
       return;
