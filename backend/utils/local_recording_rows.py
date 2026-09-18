@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import stat
 import math
 import os
 import uuid
@@ -13,13 +15,20 @@ from models.conversation import Conversation
 from models.structured import Structured
 from utils.env_loader import is_offline_runtime
 from utils.local_transport_auth import load_pairing, local_tunnel_enabled
-from utils.local_transcription_status import _read_private_json
 from utils.other.local_storage import local_storage_root_from_env
 
 
 def _optional_json(path: Path) -> dict:
     try:
-        value = _read_private_json(path, limit=4 * 1024 * 1024)
+        limit = 4 * 1024 * 1024
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError('Invalid local recording state')
+            raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise ValueError('Invalid local recording state')
+        value = json.loads(raw)
     except FileNotFoundError:
         return {}
     if not isinstance(value, dict):
