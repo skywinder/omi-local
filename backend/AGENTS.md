@@ -20,6 +20,10 @@ clients and all forwarded headers, and uses `Cache-Control: no-store`. Never add
 draft text to the status endpoint, logs or a diagnostic file.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
+Offline capture rotates at decoded packet boundaries after five minutes without
+closing the listen socket. Saved audio is projected read-only into the paired
+owner's Conversations list/detail until import succeeds; never expose capture
+paths, provider credentials, or add processing placeholders to Firestore.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.

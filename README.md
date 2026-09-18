@@ -86,8 +86,11 @@ the ngrok authtoken; the authtoken stays on the Mac.
 
 ### 3. Record and browse
 
-Connect your CV1 in the iPhone app. Press the CV1 button once to start a recording
-and again to finish it. Muting temporarily pauses audio within the same session.
+Connect your CV1 in the iPhone app to start recording automatically. Recording
+resumes after a Bluetooth reconnect unless you explicitly stopped or muted it.
+The CV1 button and app controls still start/stop recording. The server saves
+five-minute audio parts for transcription while the input continues. Saved parts
+remain visible in Conversations while queued, processing, or failed.
 
 After setup, open the library from any directory in Terminal:
 
