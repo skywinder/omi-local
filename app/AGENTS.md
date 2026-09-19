@@ -102,6 +102,16 @@ Never run `flutterfire configure` — it overwrites prod credentials. Config fil
 
 ## Native Bridge
 
+iOS uses `UIScene`: register plugins and native channels only through
+`FlutterImplicitEngineDelegate.didInitializeImplicitFlutterEngine`, using its
+messenger/registry. Never obtain a Flutter controller from `AppDelegate.window`
+during launch. `SceneDelegate` owns BLE foreground/background callbacks and cold
+and warm links; app_links 6.x needs explicit scene forwarding. Keep notification
+delegate and background-task registration in `didFinishLaunching`, before it
+returns. `make test-library` includes static lifecycle tripwires, scene routing
+with framework doubles on macOS, and generated scene manifest tests; an actual
+iPhone launch is separate.
+
 ### Pigeon Interface (bidirectional, iOS ↔ Dart)
 - Contract: `lib/pigeon_interfaces.dart` — paired host/Flutter APIs for the watch recorder, BLE, and Ray-Ban Meta
 - Dart side: `lib/gen/pigeon_communicator.g.dart`

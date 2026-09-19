@@ -13,6 +13,10 @@ There is no restriction to a particular iPhone model or M-series generation.
 The project targets iOS 15.0 or later; Xcode must support the phone's iOS version
 and run on your macOS version.
 
+The iOS app uses the [UIScene lifecycle](https://docs.flutter.dev/release/breaking-changes/uiscenedelegate).
+Native channels are registered when the Flutter engine is ready; scene callbacks
+handle links and Bluetooth background/foreground transitions.
+
 1. Install Xcode from the App Store, open it, accept the license, and wait for the
    iOS components to finish installing. Under **Settings → Locations → Command Line
    Tools**, select the installed Xcode.
@@ -69,6 +73,11 @@ After the checks, the script prepares dependencies, builds, installs, and launch
 the app. If macOS requests access to the signing key, allow it using your Mac
 password. If the iPhone reports an untrusted developer, open **Settings → General
 → VPN & Device Management** and trust your developer identity.
+
+Verify that the main screen opens and remains responsive for a minute. Close the
+app from the app switcher and reopen it from its icon, then leave it in the
+background for 30 seconds and return. Both checks should reach the main screen
+without a crash or a stuck splash screen.
 
 The phone is selected from connected devices. With multiple phones, the script
 prompts you to choose; use `OMI_IOS_DEVICE_ID` for a noninteractive selection.
