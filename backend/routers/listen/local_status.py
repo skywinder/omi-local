@@ -54,20 +54,21 @@ async def _worker_status(url: str) -> dict:
             return unavailable
         if health.get('enabled') is False:
             return {'state': 'disabled', 'diarization': {'state': 'disabled', 'labeled_segments': 0}}
-        if type(health.get('active')) is not bool:
+        if type(health.get('active')) is not bool or type(health.get('busy', False)) is not bool:
             return unavailable
+        busy = health['active'] or health.get('busy', False)
         diarization = health.get('diarization')
         if isinstance(diarization, dict) and health.get('relay') is True:
             state = diarization.get('state')
             if state not in {'disabled', 'ready', 'busy', 'unavailable', 'unknown'}:
                 state = 'unknown'
         elif diarization is True:
-            state = 'busy' if health['active'] else 'ready'
+            state = 'busy' if busy else 'ready'
         elif diarization is False:
             state = 'disabled'
         else:
             state = 'unknown'
-        return {'state': 'busy' if health['active'] else 'ready',
+        return {'state': 'busy' if busy else 'ready',
                 'diarization': {'state': state, 'labeled_segments': 0}}
     except (TimeoutError, httpx.HTTPError, OSError, ValueError, OfflineEgressBlocked):
         return unavailable

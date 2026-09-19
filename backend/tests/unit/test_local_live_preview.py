@@ -441,6 +441,10 @@ async def test_local_status_disabled_makes_no_worker_request(monkeypatch):
 @pytest.mark.parametrize('status,body,expected', [
     (200, {'ready': True, 'active': False}, 'ready'),
     (200, {'ready': True, 'active': True}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': True}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': False}, 'ready'),
+    (200, {'ready': True, 'active': True, 'busy': False}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': 'false'}, 'unavailable'),
     (200, {'ready': False, 'active': False}, 'unavailable'),
     (200, {'ready': True, 'active': 'false'}, 'unavailable'),
     (200, ['not', 'health'], 'unavailable'),
@@ -624,6 +628,8 @@ async def test_diarization_requires_explicit_capability_and_real_labels(monkeypa
 @pytest.mark.anyio
 @pytest.mark.parametrize('extra,expected', [
     ({}, 'unknown'), ({'diarization': False}, 'disabled'), ({'diarization': True}, 'ready'),
+    ({'diarization': True, 'busy': True}, 'busy'),
+    ({'diarization': False, 'busy': True}, 'disabled'),
     ({'diarization': {'state': 'ready'}, 'relay': True}, 'ready'),
     ({'diarization': {'state': 'labeled'}, 'relay': True}, 'unknown'),
 ])

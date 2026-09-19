@@ -200,9 +200,10 @@ async def diarization_health(snapshot, cfg, *, key=''):
             return {'state': 'unavailable'}
         if data.get('diarization') is False:
             return {'state': 'disabled'}
-        if data.get('diarization') is not True or type(data.get('active')) is not bool:
+        if (data.get('diarization') is not True or type(data.get('active')) is not bool
+                or type(data.get('busy', False)) is not bool):
             return {'state': 'unknown'}
-        return {'state': 'busy' if data['active'] else 'ready'}
+        return {'state': 'busy' if data['active'] or data.get('busy', False) else 'ready'}
     except (TimeoutError, httpx.HTTPError, OSError, ValueError):
         return {'state': 'unavailable'}
 

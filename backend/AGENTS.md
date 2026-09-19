@@ -17,6 +17,9 @@ capture. An absent live-preview URL means disabled, including during active reco
 only invalid configuration or a failing configured provider reports a preview error.
 The status response also carries content-free `diarization` evidence: readiness
 from bounded selected-worker health and labels only from this owner's active previews.
+Worker health's optional boolean `busy` includes shared inference contention;
+combine it with `active` before reporting readiness. Missing `busy` preserves
+older providers; malformed values must not imply readiness.
 Never infer working diarization from ASR updates or placeholder speaker numbers.
 Never return transcript text, identifiers, filesystem paths or credentials.
 The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts

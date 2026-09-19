@@ -109,6 +109,14 @@ The lock file must belong to the same local backend instance that performs final
 transcription. Wait for `model_ready`; `http://127.0.0.1:18090/health` contains
 only technical metrics.
 
+Managed Parakeet and WhisperLiveKit health report `busy` while their shared
+inference slot is occupied, including by final transcription. The iPhone and
+Mac status show **busy** in that case; a loaded model alone does not mean a new
+live session can start. Audio recording and final transcription remain separate.
+If a recording starts while the slot is occupied, live preview is unavailable
+for that recording; wait for final processing to finish before starting the next
+recording to use Live. The current stream does not retry busy admission.
+
 For that external process, save
 `{"enabled":true,"url":"ws://127.0.0.1:18090/asr"}` in
 `.local/dev-harness/ngrok/live-preview.json`. Only a loopback `/asr` endpoint is

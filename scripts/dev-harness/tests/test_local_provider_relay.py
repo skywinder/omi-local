@@ -338,6 +338,9 @@ def test_activation_rolls_back_under_gate_after_backend_failure(cfg, monkeypatch
 @pytest.mark.parametrize('body,status,expected', [
     ({'ready': True, 'active': False, 'diarization': True}, 200, 'ready'),
     ({'ready': True, 'active': True, 'diarization': True}, 200, 'busy'),
+    ({'ready': True, 'active': False, 'busy': True, 'diarization': True}, 200, 'busy'),
+    ({'ready': True, 'active': False, 'busy': True, 'diarization': False}, 200, 'disabled'),
+    ({'ready': True, 'active': False, 'busy': 'false', 'diarization': True}, 200, 'unknown'),
     ({'ready': True, 'active': False, 'diarization': False}, 200, 'disabled'),
     ({'ready': True, 'active': False}, 200, 'unknown'),
     ({'ready': False, 'diarization': True}, 200, 'unavailable'),
