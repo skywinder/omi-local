@@ -13,7 +13,12 @@ Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
 Authenticated `/v1/local/status` is ngrok/offline-only. Its capture counters come
 from the caller's active listen sessions; live-ASR health is separate from WAV
-capture. Never return transcript text, identifiers, filesystem paths or credentials.
+capture. An absent live-preview URL means disabled, including during active recording;
+only invalid configuration or a failing configured provider reports a preview error.
+The status response also carries content-free `diarization` evidence: readiness
+from bounded selected-worker health and labels only from this owner's active previews.
+Never infer working diarization from ASR updates or placeholder speaker numbers.
+Never return transcript text, identifiers, filesystem paths or credentials.
 The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts
 to the loopback library. It requires the existing paired key, rejects non-loopback
 clients and all forwarded headers, and uses `Cache-Control: no-store`. Never add
