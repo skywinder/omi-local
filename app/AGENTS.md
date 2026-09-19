@@ -63,6 +63,10 @@ stage; keep certificate subjects and device identifiers in memory only.
 
 ## Build Bootstrap
 
+The canonical Flutter version is `environment.flutter` in `pubspec.yaml`; CI and
+iPhone preflight read it directly. Verify with `flutter pub get --enforce-lockfile`;
+update the version and lock together when intentionally upgrading. See `../docs/DEVELOPMENT.md`.
+
 ### Flavors
 - **dev**: Android `com.friend.ios.dev`, iOS `com.friend-app-with-wearable.ios12.development` — uses `.dev.env`, Firebase project `based-hardware-dev`
 - **prod**: Android `com.friend.ios`, iOS `com.friend-app-with-wearable.ios12` — uses `.env`, Firebase project `based-hardware-prod`

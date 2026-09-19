@@ -1406,7 +1406,7 @@ class CaptureController extends ChangeNotifier
   }
 
   Future<BleAudioCodec> _getAudioCodec(String deviceId) async {
-    if (_audioCodecLoader != null) return _audioCodecLoader!(deviceId);
+    if (_audioCodecLoader != null) return _audioCodecLoader(deviceId);
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return BleAudioCodec.pcm8;
@@ -1426,7 +1426,7 @@ class CaptureController extends ChangeNotifier
     String deviceId, {
     required void Function(List<int>) onAudioBytesReceived,
   }) async {
-    if (_audioListenerLoader != null) return _audioListenerLoader!(deviceId, onAudioBytesReceived);
+    if (_audioListenerLoader != null) return _audioListenerLoader(deviceId, onAudioBytesReceived);
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return Future.value(null);
@@ -1438,7 +1438,7 @@ class CaptureController extends ChangeNotifier
     String deviceId, {
     required void Function(List<int>) onButtonReceived,
   }) async {
-    if (_buttonListenerLoader != null) return _buttonListenerLoader!(deviceId, onButtonReceived);
+    if (_buttonListenerLoader != null) return _buttonListenerLoader(deviceId, onButtonReceived);
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return Future.value(null);
@@ -2592,7 +2592,7 @@ class CaptureController extends ChangeNotifier
       await _drainNativeBleTranscriptMessages();
       if (segments.isEmpty && photos.isEmpty) {
         if (_inProgressConversationLoader != null) {
-          await _inProgressConversationLoader!();
+          await _inProgressConversationLoader();
         } else {
           await _loadInProgressConversation();
         }
@@ -3089,7 +3089,7 @@ class CaptureController extends ChangeNotifier
       unawaited(_conversationLocationCapture.captureAndUpload());
       try {
         if (_inProgressConversationLoader != null) {
-          await _inProgressConversationLoader!();
+          await _inProgressConversationLoader();
         } else {
           await _loadInProgressConversation();
         }
