@@ -157,7 +157,9 @@ your own recording; use a positive `speaker_count` for a known participant count
 Labels identify voices within a recording, not people's names. With word timestamps,
 phrases are split at speaker changes; without them, each whole phrase is assigned
 by maximum overlap. Unmatched regions remain unknown. Community-1 uses exclusive
-speaker turns to align text. If diarization fails, intermediate transcription is
+speaker turns to align text. Zero-length fillers stay with adjacent timed words,
+including unknown speakers, without creating empty or out-of-order segments.
+If diarization fails, intermediate transcription is
 preserved for retry; a successful transcript is not published until both stages
 finish. Changing settings creates a separate result and preserves original audio
 and transcripts. This processes completed recordings; live preview remains separate.
