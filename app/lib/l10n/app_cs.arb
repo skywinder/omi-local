@@ -3227,5 +3227,11 @@
     "localMacHelp": "Zadejte Tailscale IP (nebo IP:port) nebo HTTPS adresu ngrok a klíč aplikace. Připojení zastaví nahrávání. Zvuk zůstává na vašem serveru.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Uložené servery"
+    "localMacServers": "Uložené servery",
+    "diarization": "Diarizace",
+    "providerUnavailable": "Server není dostupný",
+    "providerMisconfigured": "Zkontrolujte nastavení poskytovatele",
+    "speakersCount": "Mluvčích: {count}",
+    "diarizationNotPerformed": "Diarizace nebyla provedena",
+    "diarizationFailed": "Diarizace selhala"
 }

@@ -10040,4 +10040,42 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String get localMacServers => 'Mga naka-save na server';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Pagkilala ng nagsasalita';
+
+  @override
+  String get providerUnavailable => 'Hindi available ang server';
+
+  @override
+  String get providerMisconfigured => 'Suriin ang mga setting ng provider';
+
+  @override
+  String speakersCount(int count) {
+    return '$count nagsasalita';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Hindi isinagawa ang pagkilala ng nagsasalita';
+
+  @override
+  String get diarizationFailed => 'Nabigo ang pagkilala ng nagsasalita';
 }

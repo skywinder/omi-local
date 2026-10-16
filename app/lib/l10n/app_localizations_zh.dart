@@ -9752,4 +9752,42 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get localMacServers => '已保存的服务器';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => '说话人分离';
+
+  @override
+  String get providerUnavailable => '服务器不可用';
+
+  @override
+  String get providerMisconfigured => '请检查提供方设置';
+
+  @override
+  String speakersCount(int count) {
+    return '$count 位说话人';
+  }
+
+  @override
+  String get diarizationNotPerformed => '未执行说话人分离';
+
+  @override
+  String get diarizationFailed => '说话人分离失败';
 }

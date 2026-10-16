@@ -9938,4 +9938,42 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get localMacServers => 'सहेजे गए सर्वर';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'वक्ता पहचान';
+
+  @override
+  String get providerUnavailable => 'सर्वर उपलब्ध नहीं';
+
+  @override
+  String get providerMisconfigured => 'प्रदाता सेटिंग जांचें';
+
+  @override
+  String speakersCount(int count) {
+    return '$count वक्ता';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'वक्ता पहचान नहीं की गई';
+
+  @override
+  String get diarizationFailed => 'वक्ता पहचान विफल';
 }

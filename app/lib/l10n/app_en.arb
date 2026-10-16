@@ -11757,5 +11757,25 @@
     "localMacKeyRejected": "The access key was rejected. Check the key on your Mac.",
     "localMacConnectionFailed": "Could not connect. Check the address and that your Mac and tunnel are running.",
     "localMacHelp": "Enter your Tailscale IP (or IP:port), or ngrok HTTPS address, and app key. Connecting stops recording. Audio stays on your server.",
-    "localMacServers": "Saved servers"
+    "localMacServers": "Saved servers",
+    "liveTranslation": "Live translation",
+    "liveTranslationTargetLanguage": "Translate to",
+    "liveTranslationHelp": "Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.",
+    "liveTranslationUnconfigured": "Translation provider is not configured on your Mac. Add one in the local library settings.",
+    "liveTranslationFailed": "Translation is unavailable right now. Check the translation provider on your Mac.",
+    "diarization": "Diarization",
+    "providerUnavailable": "Server unavailable",
+    "providerMisconfigured": "Check provider settings",
+    "speakersCount": "{count} speakers",
+    "@speakersCount": {
+        "description": "Number of distinct speakers found by diarization",
+        "placeholders": {
+            "count": {
+                "type": "int",
+                "example": "2"
+            }
+        }
+    },
+    "diarizationNotPerformed": "Diarization not performed",
+    "diarizationFailed": "Diarization failed"
 }

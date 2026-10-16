@@ -301,3 +301,98 @@ def test_lan_environment_finds_jdk_in_another_brew_prefix(tmp_path, found):
             'PATH': os.environ['PATH'] if found else str(java.parent) + os.pathsep + os.environ['PATH']},
        capture_output=True, text=True, check=True)
     assert result.stdout.strip() == str(java)
+
+
+@pytest.mark.parametrize('outcome', ['speech', 'no_speech', 'busy'])
+def test_external_docker_inference_uses_selected_provider_and_lock_without_import(
+    tmp_path, monkeypatch, capsys, outcome,
+):
+    import fcntl
+    import json
+    import wave
+    import httpx
+    from dev_harness import config, local_provider_http, runtime_probe
+
+    for name, value in {'PROVIDER_MODE': 'offline', 'OMI_CONTAINER_RUNTIME': '1',
+                        'OMI_LOCAL_TRANSPORT': 'ngrok', 'OMI_DEV_BIND_HOST': '127.0.0.1',
+                        'OMI_LOCAL_STATE_ROOT': str(tmp_path / '.local'),
+                        'OMI_LOCAL_INSTANCE': 'external-probe'}.items():
+        monkeypatch.setenv(name, value)
+    cfg = config.load_config(tmp_path, create_layout=True)
+    audio = tmp_path / 'scripts/dev-harness/fixtures/speech-check.wav'
+    audio.parent.mkdir(parents=True)
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b'\x00\x00' * 16000)
+    provider = {'id': 'external', 'name': 'Synthetic external STT', 'stage': 'stt',
+                'kind': 'openai-compatible', 'credential_ref': 'synthetic-credential',
+                'settings': {'provider_url': 'https://stt.example/v1', 'model': 'selected-model', 'language': 'auto'}}
+    (cfg.layout.state_root / 'providers.json').write_text(json.dumps({
+        'version': 1, 'revision': 1, 'profiles': [provider], 'effective': {'stt': provider}}))
+    (cfg.layout.state_root / 'provider-secrets.json').write_text(
+        json.dumps({'synthetic-credential': 'synthetic-token'}))
+    monkeypatch.setattr(runtime_probe.urllib.request, 'build_opener',
+                        lambda *_a, **_k: pytest.fail('External mode must not probe the built-in STT listener'))
+    monkeypatch.setattr(runtime_probe.local_stt, 'backend_step',
+                        lambda *_a, **_k: pytest.fail('Synthetic inference must not import a recording'))
+    requests = []
+
+    def respond(request):
+        requests.append(request.url.path)
+        assert request.url.host == 'stt.example'
+        assert request.headers['authorization'] == 'Bearer synthetic-token'
+        if request.url.path == '/v1/models':
+            return httpx.Response(200, json={'data': [{'id': 'selected-model'}]})
+        assert request.url.path == '/v1/audio/transcriptions'
+        body = request.read()
+        assert b'selected-model' in body and b'filename="audio.wav"' in body and b'RIFF' in body
+        segments = [] if outcome == 'no_speech' else [{'start': 0, 'end': 1, 'text': 'Synthetic speech.'}]
+        return httpx.Response(200, json={'segments': segments})
+
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client',
+                        lambda **kwargs: factory(transport=httpx.MockTransport(respond), **kwargs))
+    results = cfg.layout.services_dir / 'local-transcripts'
+    results.mkdir()
+    with (results / '.lock').open('w') as lock:
+        if outcome == 'busy':
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if outcome == 'speech':
+            runtime_probe.docker_inference(tmp_path, 'external')
+        else:
+            with pytest.raises(ValueError, match='busy' if outcome == 'busy' else 'no timed speech'):
+                runtime_probe.docker_inference(tmp_path, 'external')
+    assert requests == ([] if outcome == 'busy' else ['/v1/models', '/v1/audio/transcriptions'])
+    assert [path.name for path in results.iterdir()] == ['.lock']
+    with (results / '.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    output = capsys.readouterr().out
+    assert ('no recording imported' in output) == (outcome == 'speech')
+    assert 'synthetic-token' not in output and 'Synthetic speech.' not in output
+
+
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+def test_builtin_docker_inference_keeps_device_and_model_contract(monkeypatch, capsys, device):
+    import json
+    from dev_harness import runtime_probe
+
+    root = Path(__file__).resolve().parents[3]
+
+    def health(url, timeout):
+        assert url == 'http://127.0.0.1:10301/health' and timeout == 5
+        return io.StringIO(json.dumps({'device': device}))
+
+    monkeypatch.setattr(runtime_probe.urllib.request, 'build_opener',
+                        lambda *_: SimpleNamespace(open=health))
+    monkeypatch.setenv('STT_MODEL', 'builtin-model')
+
+    def transcribe(url, model, language, audio, duration):
+        assert (url, model, language) == ('http://127.0.0.1:10301/v1', 'builtin-model', 'auto')
+        assert audio == root / 'scripts/dev-harness/fixtures/speech-check.wav'
+        return {'segments': [{'start': 0, 'end': min(1, duration), 'text': 'Synthetic speech.'}]}
+
+    monkeypatch.setattr(runtime_probe.local_openai_stt, 'transcribe', transcribe)
+    runtime_probe.docker_inference(root, device)
+    assert 'Verified STT device: ' + device in capsys.readouterr().out

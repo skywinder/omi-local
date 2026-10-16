@@ -42,12 +42,13 @@ STT_REVISION=8f3f6b0d8d8b2b6d1a0d4c6e9b7a2f1c0d5e6f7a
 STT_THREADS=4
 ```
 
-Supported fields are `OMI_DOCKER_DEVICE` (`cpu` or `cuda`),
+Supported fields are `OMI_DOCKER_STT` (`builtin` or `external`),
+`OMI_DOCKER_DEVICE` (`cpu` or `cuda`),
 `OMI_DOCKER_GPU_ID` (numeric index or `GPU-...` UUID),
 `OMI_DOCKER_TRANSPORT` (`local`, `tailscale`, or `ngrok`), `STT_MODEL`,
 `STT_REVISION`, and `STT_THREADS`. Use the CLI bootstrap flags to create or
-change it; do not edit it while services are running. The model revision written
-by bootstrap is an immutable snapshot revision, so startup does not silently
+change it; do not edit it while services are running. For built-in STT, the model
+revision written by bootstrap is an immutable snapshot revision, so startup does not silently
 resolve a moving `main` branch.
 
 ## Services outside the container
@@ -222,10 +223,8 @@ in WSL2. Do not install NVIDIA drivers on a Mac.
 ./omiloc --runtime docker dev
 ```
 
-The default `auto` mode selects CUDA if the Docker server reports the `nvidia`
-runtime; otherwise it selects CPU. Set `OMI_DOCKER_DEVICE=cpu` to select CPU explicitly.
-On WSL2, if the GPU is available but the runtime is not listed, select `cuda`
-explicitly. The selected device is printed before startup.
+Bootstrap defaults to CPU. Select CUDA explicitly with `--device cuda`; the
+selection is saved in `.env.docker` and reused by later commands.
 A CUDA error stops STT; there is no silent CPU fallback. Check the actual device:
 
 ```bash
@@ -254,10 +253,9 @@ For a fresh installation, you can select another CTranslate2 model:
 ./omiloc --runtime docker up
 ```
 
-Use the same `STT_MODEL`, `STT_REVISION`, and `OMI_DOCKER_DEVICE` values in all later
-commands for this stack; exporting them in your Terminal is convenient.
-`STT_REVISION` selects the Hugging Face revision and defaults to `main`; specify a
-commit hash for reproducible model selection. `STT_THREADS` sets the CPU thread count.
+Bootstrap saves the model and immutable revision in `.env.docker` for later
+commands. Use `--revision` to select a Hugging Face revision and `--threads` to
+set the CPU thread count; the default revision `main` is resolved during bootstrap.
 After initial setup, changing `STT_MODEL` does not overwrite settings or old jobs:
 select the new model in the library's STT card and click **Use**.
 When changing the revision under the same model name, update the card's
@@ -269,6 +267,74 @@ diarization, and summarization separately under [Providers](PROVIDERS.md).
 The built-in container provides final WAV transcription with one speaker,
 `SPEAKER_00`. Apple engines are unavailable inside Linux; use compatible servers
 for additional stages.
+
+## External STT server instead of the built-in container
+
+When an OpenAI-compatible STT server already runs on the host or in the tailnet
+(for example a GPU faster-whisper behind a proxy), the built-in `stt` container
+is redundant. Select that server first, then restart without it:
+
+1. Start the prepared stack with `./omiloc --runtime docker up` and open the
+   library. Under **Settings → Transcription** add an `openai-compatible` card
+   with the server's `/v1` base URL, model, and key; **Check → Save → Use**.
+   Diarization and summarization servers are selected the same way.
+2. Finish processing, then `./omiloc --runtime docker down`.
+3. Run `./omiloc --runtime docker bootstrap --stt external`, then
+   `./omiloc --runtime docker up` (or `dev`). Add `--transport tailscale` to
+   bootstrap if the phone should connect over Tailscale.
+
+`external` adds `compose.external.yaml`, which moves `stt` into the
+`builtin-stt` profile. Bootstrap builds only `app`, skips model download and
+GPU setup, and saves `OMI_DOCKER_STT=external` in `.env.docker`. Later commands
+reuse that selection; `doctor --inference` tests the selected external provider.
+To restore the built-in server, stop the stack and bootstrap with `--stt builtin`.
+Startup validates the active STT provider, so an external
+mode start before step 1 fails and retries until the container restarts.
+For direct Compose, add `-f compose.external.yaml` to every command and skip
+`compose.gpu.yaml` and the `download` step. From a container, address host
+services by the host Tailscale IPv4, not `localhost`.
+
+Plain-HTTP provider URLs are accepted only for loopback, LAN, and Tailscale
+addresses; word timestamps in `segments[].words` improve speaker assignment
+when a diarization server is selected.
+
+### Remote library through Tailscale Serve
+
+The library stays loopback-only unless one HTTPS origin is configured. Export
+these variables in your terminal before starting or recreating the stack.
+The CLI intentionally does not read the native `.env`; direct Compose users
+may instead use their own explicit `--env-file`.
+
+```bash
+export OMI_LIBRARY_PUBLIC_ORIGIN='https://<host>.<tailnet>.ts.net:21443'
+export OMI_LIBRARY_TAILSCALE_LOGIN='<your tailscale login, e.g. name@github>'
+# Optional password login in addition to, or instead of, the tailnet identity:
+export OMI_LIBRARY_USER='<name>'
+export OMI_LIBRARY_PASSWORD_HASH='<output of the hash command below>'
+```
+
+```bash
+docker compose exec -it app python -m dev_harness.local_library hash-password
+sudo tailscale serve --bg --https=21443 http://127.0.0.1:21001
+```
+
+Requests on that origin are served only with a matching `Tailscale-User-Login`
+header, which Serve sets from the caller's tailnet identity and strips from
+clients, or with valid Basic credentials over that TLS origin. Funnel never adds
+the identity header, so a public exposure still fails closed. The ingress drops
+forwarding headers from Serve; all other Host/Origin values remain rejected and
+loopback access is unchanged. Changing these values requires recreating `app`.
+
+### Live STT with WhisperLiveKit
+
+The built-in stack has no live server. `docker/whisperlivekit/compose.yaml`
+runs a standalone WhisperLiveKit on an NVIDIA host with `--pcm-input`, which the
+omiloc `external` Live provider requires. Copy it with `env.example` to the GPU
+host, clone the pinned WhisperLiveKit tag beside it as described in the file,
+set `WLK_BIND_ADDRESS` to the host Tailscale IPv4, and run
+`docker compose up -d --build`. In the library select **Live STT → external**
+with `ws://<host-tailscale-ip>:8010/asr`. The live server is a separate process
+and model copy; it does not replace the final transcription provider.
 
 ## Development and updates
 

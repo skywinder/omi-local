@@ -3225,5 +3225,11 @@
     "localMacHelp": "أدخل Tailscale IP (أو IP:المنفذ) أو عنوان ngrok HTTPS ومفتاح التطبيق. الاتصال يوقف التسجيل. يبقى الصوت على خادمك.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "الخوادم المحفوظة"
+    "localMacServers": "الخوادم المحفوظة",
+    "diarization": "فصل المتحدثين",
+    "providerUnavailable": "الخادم غير متاح",
+    "providerMisconfigured": "تحقق من إعدادات المزوّد",
+    "speakersCount": "{count} متحدثين",
+    "diarizationNotPerformed": "لم يتم فصل المتحدثين",
+    "diarizationFailed": "فشل فصل المتحدثين"
 }

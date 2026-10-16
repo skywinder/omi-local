@@ -9771,4 +9771,42 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get localMacServers => '保存済みサーバー';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => '話者分離';
+
+  @override
+  String get providerUnavailable => 'サーバーに接続できません';
+
+  @override
+  String get providerMisconfigured => 'プロバイダー設定を確認してください';
+
+  @override
+  String speakersCount(int count) {
+    return '話者 $count 人';
+  }
+
+  @override
+  String get diarizationNotPerformed => '話者分離は実行されていません';
+
+  @override
+  String get diarizationFailed => '話者分離に失敗しました';
 }

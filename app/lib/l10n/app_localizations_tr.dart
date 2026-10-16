@@ -9961,4 +9961,42 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get localMacServers => 'Kayıtlı sunucular';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Konuşmacı ayrımı';
+
+  @override
+  String get providerUnavailable => 'Sunucu kullanılamıyor';
+
+  @override
+  String get providerMisconfigured => 'Sağlayıcı ayarlarını kontrol edin';
+
+  @override
+  String speakersCount(int count) {
+    return '$count konuşmacı';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Konuşmacı ayrımı yapılmadı';
+
+  @override
+  String get diarizationFailed => 'Konuşmacı ayrımı başarısız';
 }

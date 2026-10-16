@@ -203,7 +203,7 @@ if "up" in args and os.environ.get("DOCKER_FAIL") == "up": sys.exit(7)
     tailscale.chmod(0o755)
     env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ['PATH'],
                DOCKER_CALLS=str(calls), OMI_TAILSCALE_CLI=str(tailscale))
-    for name in ('OMI_LOCAL_TRANSPORT', 'OMI_DOCKER_TRANSPORT', 'OMI_DOCKER_DEVICE', 'OMI_DOCKER_GPU_ID',
+    for name in ('OMI_LOCAL_TRANSPORT', 'OMI_DOCKER_TRANSPORT', 'OMI_DOCKER_DEVICE', 'OMI_DOCKER_STT', 'OMI_DOCKER_GPU_ID',
                  'OMI_TAILSCALE_IP', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'STT_MODEL', 'STT_REVISION', 'STT_THREADS'):
         env.pop(name, None)
     env.update(overrides)
@@ -299,6 +299,46 @@ def test_docker_config_is_never_executed(tmp_path):
     assert result.returncode != 0 and not calls
     assert not (repo / 'injected').exists()
     assert 'touch injected' not in result.stderr
+
+
+@pytest.mark.parametrize('command', ['up', 'dev'])
+def test_wrapper_external_stt_skips_builtin_model_and_gpu(tmp_path, command):
+    result, calls = docker_wrapper(tmp_path, ['bootstrap', '--stt', 'external', '--device', 'cuda',
+                                             '--transport', 'tailscale'])
+    assert result.returncode == 0, result.stderr
+    compose_calls = [call for call in calls if call['args'][0] == 'compose']
+    assert all('compose.external.yaml' in call['args'] for call in compose_calls)
+    assert all('compose.gpu.yaml' not in call['args'] for call in compose_calls)
+    assert next(call['args'] for call in calls if 'build' in call['args'])[-2:] == ['build', 'app']
+    assert not any('download' in call['args'] for call in calls)
+    assert 'OMI_DOCKER_STT=external' in (tmp_path / 'project with spaces/.env.docker').read_text()
+    result, calls = docker_wrapper(tmp_path, [command], OMI_DOCKER_STT='builtin')
+    assert result.returncode == 0, result.stderr
+    assert all('compose.external.yaml' in call['args'] for call in calls)
+    assert not any('build' in call['args'] or 'run' in call['args'] or 'compose.gpu.yaml' in call['args'] for call in calls)
+    result, calls = docker_wrapper(tmp_path, ['doctor', '--inference'])
+    assert result.returncode == 0, result.stderr
+    assert any(call['args'][-2:] == ['inference', 'external'] for call in calls)
+
+
+def test_wrapper_rejects_unknown_stt_mode(tmp_path):
+    result, calls = docker_wrapper(tmp_path, ['up'], OMI_DOCKER_STT='remote')
+    assert result.returncode != 0 and calls == []
+
+
+def test_external_compose_render_drops_builtin_stt_from_default_services():
+    docker = shutil.which('docker')
+    if not docker or subprocess.run([docker, 'compose', 'version'], capture_output=True).returncode:
+        pytest.skip('Docker Compose plugin unavailable')
+    def services(*extra):
+        result = subprocess.run([docker, 'compose', '--env-file', '/dev/null', '-f', 'compose.yaml',
+                                 '-f', 'compose.tailscale.yaml', '-f', 'compose.external.yaml', *extra,
+                                 'config', '--services'], cwd=ROOT,
+                                env=dict(os.environ, OMI_TAILSCALE_IP='100.100.12.34'),
+                                capture_output=True, text=True, check=True)
+        return set(result.stdout.split())
+    assert services() == {'app', 'ingress'}
+    assert services('--profile', 'builtin-stt') == {'app', 'ingress', 'stt'}
 
 
 def test_tailscale_compose_render_publishes_only_paired_api_on_host_vpn():

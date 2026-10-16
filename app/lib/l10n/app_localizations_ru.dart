@@ -9996,4 +9996,41 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get localMacServers => 'Сохранённые серверы';
+
+  @override
+  String get liveTranslation => 'Live-перевод';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Переводить на';
+
+  @override
+  String get liveTranslationHelp =>
+      'Перевод live-транскрипта на вашем Mac. Оригинал сохраняется, перевод появляется под каждой строкой. Сначала добавьте провайдер «Перевод» в настройках локальной библиотеки.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Провайдер перевода не настроен на вашем Mac. Добавьте его в настройках локальной библиотеки.';
+
+  @override
+  String get liveTranslationFailed => 'Перевод сейчас недоступен. Проверьте провайдер перевода на Mac.';
+
+  @override
+  String get diarization => 'Диаризация';
+
+  @override
+  String get providerUnavailable => 'Сервер недоступен';
+
+  @override
+  String get providerMisconfigured => 'Проверьте настройки провайдера';
+
+  @override
+  String speakersCount(int count) {
+    return 'Говорящих: $count';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Диаризация не выполнялась';
+
+  @override
+  String get diarizationFailed => 'Ошибка диаризации';
 }

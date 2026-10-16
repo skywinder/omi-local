@@ -3225,5 +3225,11 @@
     "localMacHelp": "Tailscale IP（またはIP:ポート）かngrokのHTTPSアドレスとアプリキーを入力してください。接続すると録音が停止します。音声はサーバーに保存されます。",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "保存済みサーバー"
+    "localMacServers": "保存済みサーバー",
+    "diarization": "話者分離",
+    "providerUnavailable": "サーバーに接続できません",
+    "providerMisconfigured": "プロバイダー設定を確認してください",
+    "speakersCount": "話者 {count} 人",
+    "diarizationNotPerformed": "話者分離は実行されていません",
+    "diarizationFailed": "話者分離に失敗しました"
 }

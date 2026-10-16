@@ -9978,4 +9978,42 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String get localMacServers => 'Saglabātie serveri';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Runātāju atdalīšana';
+
+  @override
+  String get providerUnavailable => 'Serveris nav pieejams';
+
+  @override
+  String get providerMisconfigured => 'Pārbaudiet pakalpojumu sniedzēja iestatījumus';
+
+  @override
+  String speakersCount(int count) {
+    return '$count runātāji';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Runātāju atdalīšana nav veikta';
+
+  @override
+  String get diarizationFailed => 'Runātāju atdalīšana neizdevās';
 }

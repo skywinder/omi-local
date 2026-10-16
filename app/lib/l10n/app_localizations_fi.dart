@@ -9955,4 +9955,42 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get localMacServers => 'Tallennetut palvelimet';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Puhujien erottelu';
+
+  @override
+  String get providerUnavailable => 'Palvelin ei ole käytettävissä';
+
+  @override
+  String get providerMisconfigured => 'Tarkista palveluntarjoajan asetukset';
+
+  @override
+  String speakersCount(int count) {
+    return '$count puhujaa';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Puhujien erottelua ei tehty';
+
+  @override
+  String get diarizationFailed => 'Puhujien erottelu epäonnistui';
 }

@@ -228,6 +228,7 @@ class _BufferedStartProvider extends CaptureProvider {
 
 class _AudioPacketSocket extends _TrackingSocket {
   final packets = <List<int>>[];
+  final controlFrames = <Map<String, dynamic>>[];
   bool stopped = false;
 
   @override
@@ -236,6 +237,10 @@ class _AudioPacketSocket extends _TrackingSocket {
   @override
   void send(dynamic message) {
     expect(stopped, isFalse, reason: 'Audio must drain before the socket closes');
+    if (message is String) {
+      controlFrames.add(jsonDecode(message) as Map<String, dynamic>);
+      return;
+    }
     packets.add(List<int>.from(message as List<int>));
   }
 
@@ -793,6 +798,88 @@ void main() {
     expect(provider.recordingState, RecordingState.stop);
     expect(provider.openCalls, 0);
     expect(SharedPreferencesUtil().getBool('nativeBleStreamingEnabled'), isFalse);
+  });
+
+  group('local live translation control', () {
+    late StreamController<List<int>> audio;
+    late _BufferedStartProvider provider;
+    late Completer<BleAudioCodec> codec;
+
+    setUp(() async {
+      Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      SharedPreferencesUtil().batchModeEnabled = false;
+      SharedPreferencesUtil().unlimitedLocalStorageEnabled = false;
+      audio = StreamController<List<int>>.broadcast(sync: true);
+      codec = Completer<BleAudioCodec>();
+      provider = _BufferedStartProvider(
+        audioListenerLoader: (_, callback) async => audio.stream.listen(callback),
+        audioCodecLoader: (_) => codec.future,
+      );
+      await provider.streamDeviceRecording(device: _device(id: 'synthetic-translation', type: DeviceType.omi));
+    });
+
+    tearDown(() async {
+      provider.dispose();
+      await audio.close();
+      Env.setRuntimeModeForTesting(null);
+    });
+
+    Future<_AudioPacketSocket> connectSocket() async {
+      final start = provider.streamDeviceRecording(userInitiated: true);
+      await pumpEventQueue();
+      codec.complete(BleAudioCodec.opusFS320);
+      await pumpEventQueue();
+      final socket = provider.connect(0);
+      await start;
+      return socket;
+    }
+
+    test('sends the saved target on connect and follows toggles without restarting the socket', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = true;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'de';
+      final socket = await connectSocket();
+      expect(socket.controlFrames, [
+        {'type': 'translation', 'language': 'de'}
+      ]);
+      await provider.setLiveTranslation(language: 'fr');
+      await provider.setLiveTranslation(enabled: false);
+      await provider.setLiveTranslation(enabled: true);
+      expect(socket.controlFrames.skip(1), [
+        {'type': 'translation', 'language': 'fr'},
+        {'type': 'translation', 'language': ''},
+        {'type': 'translation', 'language': 'fr'},
+      ]);
+      expect(provider.gates, hasLength(1), reason: 'toggling translation must not reopen the listen socket');
+      expect(socket.stopped, isFalse);
+      expect(SharedPreferencesUtil().localLiveTranslationLanguage, 'fr');
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('stays silent on connect while translation is off', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = false;
+      final socket = await connectSocket();
+      expect(socket.controlFrames, isEmpty);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('translation status is tracked apart from transcription failures', () async {
+      var notifications = 0;
+      provider.addListener(() => notifications++);
+      provider.onMessageEventReceived(
+          MessageServiceStatusEvent(status: 'unconfigured', provider: 'local_live_translation'));
+      expect(provider.liveTranslationStatus, 'unconfigured');
+      expect(provider.terminalTranscriptionFailure, isNull);
+      expect(provider.transcriptionServiceStatuses, isEmpty);
+      provider.onMessageEventReceived(MessageServiceStatusEvent(
+          status: 'stt_failed', provider: 'local_live_preview', outcome: 'unavailable', reason: 'unavailable'));
+      provider.onMessageEventReceived(MessageServiceStatusEvent(status: 'ready', provider: 'local_live_translation'));
+      expect(provider.liveTranslationStatus, 'ready');
+      expect(provider.terminalTranscriptionFailure?.provider, 'local_live_preview',
+          reason: 'a ready translation relay must not clear a terminal STT failure');
+      expect(notifications, 3);
+      await provider.setLiveTranslation(enabled: false);
+      expect(provider.liveTranslationStatus, isNull);
+    });
   });
 
   group('local audio start buffering', () {

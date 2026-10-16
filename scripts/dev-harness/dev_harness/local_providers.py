@@ -18,10 +18,11 @@ import uuid
 from .local_provider_http import auth_headers, validate_url
 
 
-STAGES = ('live', 'stt', 'diarization', 'summary')
+STAGES = ('live', 'stt', 'diarization', 'summary', 'translation')
 KINDS = {'live': {'external', 'whisperlivekit'},
          'stt': {'whisperkit', 'whisperx', 'parakeet-mlx', 'openai-compatible'},
-         'diarization': {'pyannote', 'mycelia'}, 'summary': {'openai-compatible'}}
+         'diarization': {'pyannote', 'mycelia'}, 'summary': {'openai-compatible'},
+         'translation': {'openai-compatible'}}
 ENGINE_FIELDS = {'provider_url', 'model', 'language', 'compute_type', 'batch_size', 'python',
                  'library_path', 'assets_path', 'runtime_revision', 'device', 'chunk_duration',
                  'overlap_duration', 'diarization_model'}
@@ -106,7 +107,7 @@ def validate_profile(value, *, models=False):
     allowed = (ENGINE_FIELDS if stage == 'stt' else LIVE_FIELDS if stage == 'live' else
                SPEAKER_FIELDS if kind == 'pyannote' else
                {'base_url', 'min_speakers', 'max_speakers'} if stage == 'diarization' else
-               {'base_url', 'model'})
+               {'base_url', 'model', 'reasoning'})
     if set(data) - allowed:
         raise SettingsError('Параметры не соответствуют выбранному типу провайдера.')
     for key in data:
@@ -154,8 +155,12 @@ def validate_profile(value, *, models=False):
         number(data, 'speaker_count', 0, 0, 32)
     else:
         data['base_url'] = endpoint(data, 'base_url')
-        if stage == 'summary':
+        if stage in {'summary', 'translation'}:
             text_field(data, 'model', required=not models, limit=256)
+            if data.get('reasoning', 'default') not in {'default', 'off'}:
+                raise SettingsError('Режим рассуждений: по умолчанию или отключён.', field='reasoning')
+            if data.get('reasoning') == 'default':
+                data.pop('reasoning')
         else:
             for key in ('min_speakers', 'max_speakers'):
                 if key in data:

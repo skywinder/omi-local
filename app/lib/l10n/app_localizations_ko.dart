@@ -9774,4 +9774,42 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get localMacServers => '저장된 서버';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => '화자 분리';
+
+  @override
+  String get providerUnavailable => '서버를 사용할 수 없음';
+
+  @override
+  String get providerMisconfigured => '제공자 설정을 확인하세요';
+
+  @override
+  String speakersCount(int count) {
+    return '화자 $count명';
+  }
+
+  @override
+  String get diarizationNotPerformed => '화자 분리가 수행되지 않음';
+
+  @override
+  String get diarizationFailed => '화자 분리 실패';
 }

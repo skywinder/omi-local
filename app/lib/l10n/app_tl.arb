@@ -10815,5 +10815,11 @@
     "localMacHelp": "Ilagay ang Tailscale IP (o IP:port) o ngrok HTTPS address at app key. Ihihinto ng pagkonekta ang pagre-record. Nananatili ang audio sa iyong server.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Mga naka-save na server"
+    "localMacServers": "Mga naka-save na server",
+    "diarization": "Pagkilala ng nagsasalita",
+    "providerUnavailable": "Hindi available ang server",
+    "providerMisconfigured": "Suriin ang mga setting ng provider",
+    "speakersCount": "{count} nagsasalita",
+    "diarizationNotPerformed": "Hindi isinagawa ang pagkilala ng nagsasalita",
+    "diarizationFailed": "Nabigo ang pagkilala ng nagsasalita"
 }

@@ -13,6 +13,7 @@ case "$command" in bootstrap|up|dev|down|status|logs|doctor|open|pair|config|con
 esac
 # Read a deliberately small, non-executable format. Never source an env file.
 OMI_DOCKER_DEVICE=${OMI_DOCKER_DEVICE:-cpu}
+OMI_DOCKER_STT=${OMI_DOCKER_STT:-builtin}
 OMI_DOCKER_GPU_ID=${OMI_DOCKER_GPU_ID:-0}
 OMI_DOCKER_TRANSPORT=${OMI_DOCKER_TRANSPORT:-local}
 STT_MODEL=${STT_MODEL:-Systran/faster-whisper-small}
@@ -27,7 +28,7 @@ if [[ -e "$config_file" ]]; then
     [[ -n "$line" && "$line" != \#* ]] || continue
     [[ "$line" == *=* ]] || fail 'Use NAME=value lines in .env.docker.'
     name=${line%%=*}; value=${line#*=}
-    case "$name" in OMI_DOCKER_DEVICE|OMI_DOCKER_GPU_ID|OMI_DOCKER_TRANSPORT|STT_MODEL|STT_REVISION|STT_THREADS) ;;
+    case "$name" in OMI_DOCKER_DEVICE|OMI_DOCKER_STT|OMI_DOCKER_GPU_ID|OMI_DOCKER_TRANSPORT|STT_MODEL|STT_REVISION|STT_THREADS) ;;
       *) fail 'Unknown field in .env.docker. See docs/DOCKER.md.' ;;
     esac
     [[ "$seen" != *" $name "* ]] || fail 'Duplicate field in .env.docker.'
@@ -43,10 +44,11 @@ while [[ $# -gt 0 ]]; do
   case "$command:$option" in
     logs:-f) follow=true ;;
     doctor:--inference) inference=true ;;
-    bootstrap:--device|bootstrap:--gpu|bootstrap:--transport|bootstrap:--model|bootstrap:--revision|bootstrap:--threads)
+    bootstrap:--device|bootstrap:--stt|bootstrap:--gpu|bootstrap:--transport|bootstrap:--model|bootstrap:--revision|bootstrap:--threads)
       [[ $# -gt 0 && -n "$1" ]] || fail "Missing value for $option."
       case "$option" in
         --device) OMI_DOCKER_DEVICE=$1 ;;
+        --stt) OMI_DOCKER_STT=$1 ;;
         --gpu) OMI_DOCKER_GPU_ID=$1 ;;
         --transport) OMI_DOCKER_TRANSPORT=$1 ;;
         --model) STT_MODEL=$1 ;;
@@ -58,14 +60,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 case "$OMI_DOCKER_DEVICE" in cpu|cuda) ;; *) fail 'Device must be cpu or cuda; choose it with bootstrap --device.' ;; esac
+case "$OMI_DOCKER_STT" in builtin|external) ;; *) fail 'STT must be builtin or external; choose it with bootstrap --stt.' ;; esac
 case "$OMI_DOCKER_TRANSPORT" in local|ngrok|tailscale) ;; *) fail 'Transport must be local, tailscale or ngrok.' ;; esac
 [[ "$OMI_DOCKER_GPU_ID" =~ ^([0-9]+|GPU-[a-fA-F0-9-]+)$ ]] || fail 'GPU must be an index or NVIDIA GPU UUID.'
 [[ "$STT_MODEL" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]] || fail 'Model must be a Hugging Face owner/model ID.'
 [[ "$STT_REVISION" =~ ^[a-zA-Z0-9_./-]+$ ]] || fail 'Invalid model revision.'
 [[ "$STT_THREADS" =~ ^[1-9][0-9]*$ ]] || fail 'Threads must be a positive integer.'
-export OMI_DOCKER_DEVICE OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS
+export OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS
 transport=$OMI_DOCKER_TRANSPORT
 files=(-f compose.yaml)
+[[ "$OMI_DOCKER_STT" != external ]] || files+=(-f compose.external.yaml)
 # These files never import the native .env. The validated values above win.
 compose() { docker compose --env-file /dev/null "${files[@]}" "$@"; }
 tailscale_address() {
@@ -151,7 +155,7 @@ case "$command" in bootstrap|up|dev|doctor|pair|config)
     files+=(-f compose.tailscale.yaml)
   fi ;;
 esac
-[[ "$OMI_DOCKER_DEVICE" != cuda ]] || files+=(-f compose.gpu.yaml)
+if [[ "$OMI_DOCKER_STT" == builtin && "$OMI_DOCKER_DEVICE" == cuda ]]; then files+=(-f compose.gpu.yaml); fi
 case "$command" in dev) files+=(-f compose.dev.yaml) ;; esac
 # CPU/GPU and transport choices stay fixed until an explicit bootstrap.
 case "$command" in
@@ -167,19 +171,23 @@ case "$command" in
     docker info >/dev/null || fail 'Docker daemon is unavailable.'
     compose config --quiet
     echo "Preparing Docker runtime ($OMI_DOCKER_DEVICE)."
-    compose build app stt download
-    if [[ "$OMI_DOCKER_DEVICE" == cuda ]]; then
-      # Exercise this image's CUDA driver path on the selected device, not just nvidia-smi on the host.
-      compose run --rm --no-deps -T stt python3 -c 'import ctranslate2; assert ctranslate2.get_cuda_device_count() == 1, "Selected CUDA device is unavailable"'
+    if [[ "$OMI_DOCKER_STT" == external ]]; then
+      compose build app
+    else
+      compose build app stt download
+      if [[ "$OMI_DOCKER_DEVICE" == cuda ]]; then
+        # Exercise this image's CUDA driver path on the selected device, not just nvidia-smi on the host.
+        compose run --rm --no-deps -T stt python3 -c 'import ctranslate2; assert ctranslate2.get_cuda_device_count() == 1, "Selected CUDA device is unavailable"'
+      fi
+      downloaded=$(compose run --rm --no-deps -T download)
+      revision=$(printf '%s\n' "$downloaded" | sed -n 's/^Model revision: //p')
+      [[ "$revision" =~ ^[a-f0-9]{40,64}$ ]] || fail 'Model download did not return an immutable revision; bootstrap is incomplete.'
+      STT_REVISION=$revision
     fi
-    downloaded=$(compose run --rm --no-deps -T download)
-    revision=$(printf '%s\n' "$downloaded" | sed -n 's/^Model revision: //p')
-    [[ "$revision" =~ ^[a-f0-9]{40,64}$ ]] || fail 'Model download did not return an immutable revision; bootstrap is incomplete.'
-    STT_REVISION=$revision
     pending=$(mktemp .env.docker.XXXXXX)
     {
       echo '# Docker host settings. Literal values only; no native credentials.'
-      for name in OMI_DOCKER_DEVICE OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS; do
+      for name in OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS; do
         printf '%s=%s\n' "$name" "${!name}"
       done
     } > "$pending"
@@ -206,7 +214,9 @@ case "$command" in
     echo 'Docker prerequisites and configuration passed.'
     if "$inference"; then
       compose exec -T app python docker/runtime.py health
-      compose exec -T app python docker/runtime.py inference "$OMI_DOCKER_DEVICE"
+      probe_device=$OMI_DOCKER_DEVICE
+      [[ "$OMI_DOCKER_STT" != external ]] || probe_device=external
+      compose exec -T app python docker/runtime.py inference "$probe_device"
     else
       compose --profile tunnel ps --all
       echo 'Run doctor --inference after up to verify synthetic transcription.'

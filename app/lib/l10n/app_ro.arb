@@ -3249,5 +3249,11 @@
     "localMacHelp": "Introduceți IP-ul Tailscale (sau IP:port) sau adresa HTTPS ngrok și cheia aplicației. Conectarea oprește înregistrarea. Sunetul rămâne pe serverul dvs.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Servere salvate"
+    "localMacServers": "Servere salvate",
+    "diarization": "Diarizare",
+    "providerUnavailable": "Server indisponibil",
+    "providerMisconfigured": "Verificați setările furnizorului",
+    "speakersCount": "{count} vorbitori",
+    "diarizationNotPerformed": "Diarizarea nu a fost efectuată",
+    "diarizationFailed": "Diarizarea a eșuat"
 }

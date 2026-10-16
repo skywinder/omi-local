@@ -9995,4 +9995,42 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get localMacServers => 'Mentett szerverek';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Beszélőfelismerés';
+
+  @override
+  String get providerUnavailable => 'A szerver nem elérhető';
+
+  @override
+  String get providerMisconfigured => 'Ellenőrizze a szolgáltató beállításait';
+
+  @override
+  String speakersCount(int count) {
+    return '$count beszélő';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Beszélőfelismerés nem történt';
+
+  @override
+  String get diarizationFailed => 'Beszélőfelismerés sikertelen';
 }

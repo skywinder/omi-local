@@ -118,9 +118,12 @@ async def snapshot(uid: str) -> dict:
                        'labeled_segments': sum(item['labeled_segments'] for item in evidence)}
     elif live_state == 'unavailable':
         diarization = {'state': 'unavailable', 'labeled_segments': 0}
+    from utils.local_transcription_status import provider_stages
+    stages = provider_stages()
     return {
         'backend': 'ready',
         'diarization': diarization,
+        **({'stages': stages} if stages is not None else {}),
         'capture': {
             'state': capture_state,
             'audio_seconds': round(pcm_bytes / (OUTPUT_SAMPLE_RATE * OUTPUT_CHANNELS * OUTPUT_SAMPLE_WIDTH_BYTES), 3),

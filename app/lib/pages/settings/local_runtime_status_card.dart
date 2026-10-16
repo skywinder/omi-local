@@ -223,6 +223,37 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
           context.l10n.cancelConsequenceSpeakers,
         LocalDiarizationState.unknown || null => context.l10n.unknown,
       };
+  String _stageText(BuildContext context, LocalStageStatus stage) {
+    final state = switch (stage.state) {
+      LocalStageState.ready => context.l10n.modelReady,
+      LocalStageState.unavailable => context.l10n.providerUnavailable,
+      LocalStageState.misconfigured => context.l10n.providerMisconfigured,
+      LocalStageState.disabled => context.l10n.off,
+      LocalStageState.unknown => context.l10n.unknown,
+    };
+    final name = stage.name;
+    return name == null || stage.state == LocalStageState.disabled ? state : '$name · $state';
+  }
+
+  List<Widget> _stageRows(BuildContext context) {
+    final stages = _status?.stages ?? const {};
+    // Live readiness already has its own row; list the server pipeline stages.
+    const rows = [('stt', Icons.text_snippet_outlined), ('diarization', Icons.people_outline), ('summary', Icons.summarize_outlined)];
+    return [
+      for (final (stage, icon) in rows)
+        if (stages[stage] case final status?)
+          _row(
+            'stage-$stage',
+            switch (stage) {
+              'stt' => context.l10n.transcription,
+              'diarization' => context.l10n.diarization,
+              _ => context.l10n.summary,
+            },
+            _stageText(context, status),
+            icon,
+          ),
+    ];
+  }
 
   Widget _row(String name, String title, String value, IconData icon) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -289,6 +320,7 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
               _row('audio', context.l10n.audioDataReceived, _audioText(context), Icons.graphic_eq),
               _row('transcript', context.l10n.realtimeTranscript, _transcriptText(context), Icons.subtitles_outlined),
               _row('diarization', context.l10n.instantSpeakerLabels, _diarizationText(context), Icons.people_outline),
+              ..._stageRows(context),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(

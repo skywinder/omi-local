@@ -10815,5 +10815,11 @@
     "localMacHelp": "הזינו Tailscale IP (או IP:פורט) או כתובת ngrok HTTPS ואת מפתח האפליקציה. החיבור עוצר את ההקלטה. השמע נשאר בשרת שלכם.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "שרתים שמורים"
+    "localMacServers": "שרתים שמורים",
+    "diarization": "זיהוי דוברים",
+    "providerUnavailable": "השרת אינו זמין",
+    "providerMisconfigured": "בדוק את הגדרות הספק",
+    "speakersCount": "{count} דוברים",
+    "diarizationNotPerformed": "זיהוי דוברים לא בוצע",
+    "diarizationFailed": "זיהוי דוברים נכשל"
 }

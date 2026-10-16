@@ -10815,5 +10815,11 @@
     "localMacHelp": "Unesite Tailscale IP (ili IP:port) ili ngrok HTTPS adresu i ključ aplikacije. Povezivanje zaustavlja snimanje. Zvuk ostaje na vašem serveru.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Sačuvani serveri"
+    "localMacServers": "Sačuvani serveri",
+    "diarization": "Dijarizacija",
+    "providerUnavailable": "Server nije dostupan",
+    "providerMisconfigured": "Provjerite postavke pružaoca",
+    "speakersCount": "{count} govornika",
+    "diarizationNotPerformed": "Dijarizacija nije izvršena",
+    "diarizationFailed": "Dijarizacija nije uspjela"
 }

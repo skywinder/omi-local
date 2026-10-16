@@ -3271,5 +3271,11 @@
     "localMacHelp": "输入 Tailscale IP（或 IP:端口）或 ngrok HTTPS 地址以及应用密钥。连接将停止录音。音频保存在您的服务器上。",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "已保存的服务器"
+    "localMacServers": "已保存的服务器",
+    "diarization": "说话人分离",
+    "providerUnavailable": "服务器不可用",
+    "providerMisconfigured": "请检查提供方设置",
+    "speakersCount": "{count} 位说话人",
+    "diarizationNotPerformed": "未执行说话人分离",
+    "diarizationFailed": "说话人分离失败"
 }

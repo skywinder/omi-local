@@ -27,7 +27,8 @@ Usage: ./omiloc [--runtime native|docker] <command> [options]
 
 Defaults: native on macOS, Docker on Linux; no command opens the library.
 Docker bootstrap options: --device cpu|cuda --gpu INDEX|UUID
-  --transport local|tailscale|ngrok --model MODEL --revision REVISION --threads N
+  --stt builtin|external --transport local|tailscale|ngrok
+  --model MODEL --revision REVISION --threads N
 Saved Docker settings: .env.docker. See docs/START.md and docs/DOCKER.md.
 The iPhone app has a separate launcher: ./iphone.command --help
 HELP

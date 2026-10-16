@@ -3249,5 +3249,11 @@
     "localMacHelp": "Введіть Tailscale IP (або IP:порт) або HTTPS-адресу ngrok і ключ застосунку. Підключення зупинить запис. Аудіо залишається на вашому сервері.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Збережені сервери"
+    "localMacServers": "Збережені сервери",
+    "diarization": "Діаризація",
+    "providerUnavailable": "Сервер недоступний",
+    "providerMisconfigured": "Перевірте налаштування провайдера",
+    "speakersCount": "Мовців: {count}",
+    "diarizationNotPerformed": "Діаризацію не виконано",
+    "diarizationFailed": "Помилка діаризації"
 }

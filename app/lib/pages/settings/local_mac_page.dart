@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:omi/backend/preferences.dart';
 import 'package:omi/pages/settings/local_runtime_status_card.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
@@ -8,13 +9,28 @@ import 'package:omi/services/local_runtime_status.dart';
 import 'package:omi/services/connectivity_service.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/utils/enums.dart';
+import 'package:omi/widgets/live_translation_controls.dart';
 
 class LocalMacPage extends StatefulWidget {
-  const LocalMacPage({super.key, this.session, this.stopRecording, this.refreshConnection, this.statusFetcher});
+  const LocalMacPage({
+    super.key,
+    this.session,
+    this.stopRecording,
+    this.refreshConnection,
+    this.statusFetcher,
+    this.popOnConnect = false,
+    this.applyLiveTranslation,
+  });
   final LocalMacSession? session;
   final Future<void> Function()? stopRecording;
   final Future<void> Function()? refreshConnection;
   final Future<LocalRuntimeStatus> Function()? statusFetcher;
+
+  /// Live-translation changes go to the capture socket; tests inject a recorder.
+  final Future<void> Function({bool? enabled, String? language})? applyLiveTranslation;
+
+  /// Sign-in flow: return `true` to the caller as soon as the pairing is verified.
+  final bool popOnConnect;
   @override
   State<LocalMacPage> createState() => _LocalMacPageState();
 }
@@ -193,6 +209,10 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
       }
       await _session.connect(_address.text.trim(), _key.text.trim());
       await (widget.refreshConnection ?? ConnectivityService().refreshLocalTunnel)();
+      if (widget.popOnConnect && mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+        return;
+      }
       if (mounted) {
         setState(() {
           _error = null;
@@ -213,11 +233,65 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _setLiveTranslation({bool? enabled, String? language}) async {
+    final apply = widget.applyLiveTranslation ?? context.read<CaptureProvider>().setLiveTranslation;
+    await apply(enabled: enabled, language: language);
+    if (mounted) setState(() {});
+  }
+
+  Widget _liveTranslationSection() {
+    final prefs = SharedPreferencesUtil();
+    final enabled = prefs.localLiveTranslationEnabled;
+    final language = prefs.localLiveTranslationLanguage;
+    return Material(
+      color: const Color(0xFF222222),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SwitchListTile(
+            key: const ValueKey('local-mac-live-translation'),
+            value: enabled,
+            onChanged: _busy ? null : (value) => _setLiveTranslation(enabled: value),
+            title: Text(context.l10n.liveTranslation),
+            subtitle: Text(context.l10n.liveTranslationHelp,
+                style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+            activeThumbColor: Colors.white,
+            contentPadding: const EdgeInsets.fromLTRB(16, 4, 12, 4),
+          ),
+          ListTile(
+            key: const ValueKey('local-mac-live-translation-language'),
+            enabled: enabled && !_busy,
+            title: Text(context.l10n.liveTranslationTargetLanguage),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(LiveTranslationSettings.label(language),
+                    style: TextStyle(color: enabled ? Colors.white : Colors.white38)),
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, color: enabled ? Colors.white70 : Colors.white24),
+              ],
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(16, 0, 12, 4),
+            onTap: () async {
+              final picked = await showLiveTranslationLanguagePicker(context, current: language);
+              if (picked != null && picked != language) await _setLiveTranslation(language: picked);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   String _readinessLabel(String status) => switch (status) {
         'unknown' => context.l10n.unknown,
         'disabled' => context.l10n.off,
         _ => context.l10n.transcriptionUnavailable,
       };
+
+  /// Reveal the whole field, its label and the action below it when the keyboard opens;
+  /// the default caret padding leaves the key field pinned under the keyboard edge.
+  static const _fieldScrollPadding = EdgeInsets.fromLTRB(20, 72, 20, 120);
 
   InputDecoration _fieldDecoration(String label, {String? hint, Widget? suffix}) => InputDecoration(
         labelText: label,
@@ -318,6 +392,7 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                   const SizedBox(height: 8),
                   TextField(
                     key: const ValueKey('local-mac-name'),
+                    scrollPadding: _fieldScrollPadding,
                     controller: _name,
                     enabled: !_busy,
                     textInputAction: TextInputAction.next,
@@ -328,6 +403,7 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                   const SizedBox(height: 16),
                   TextField(
                     key: const ValueKey('local-mac-address'),
+                    scrollPadding: _fieldScrollPadding,
                     controller: _address,
                     enabled: !_busy,
                     keyboardType: TextInputType.url,
@@ -340,6 +416,7 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                   const SizedBox(height: 16),
                   TextField(
                     key: const ValueKey('local-mac-key'),
+                    scrollPadding: _fieldScrollPadding,
                     controller: _key,
                     enabled: !_busy,
                     obscureText: !_showKey,
@@ -431,6 +508,8 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
                       ),
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  _liveTranslationSection(),
                 ],
               ),
             ),

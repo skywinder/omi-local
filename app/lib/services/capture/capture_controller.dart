@@ -142,6 +142,32 @@ class CaptureController extends ChangeNotifier
   MessageServiceStatusEvent? _terminalTranscriptionFailure;
   MessageServiceStatusEvent? get terminalTranscriptionFailure => _terminalTranscriptionFailure;
 
+  // Relay-side live translation (offline runtime). The target travels over the
+  // open listen socket as a control frame, so toggling never restarts capture.
+  String? _liveTranslationStatus;
+
+  /// Last `service_status` from the translation relay: ready | unconfigured | failed.
+  String? get liveTranslationStatus => _liveTranslationStatus;
+
+  bool get liveTranslationEnabled => SharedPreferencesUtil().localLiveTranslationEnabled;
+
+  String get liveTranslationLanguage => SharedPreferencesUtil().localLiveTranslationLanguage;
+
+  Future<void> setLiveTranslation({bool? enabled, String? language}) async {
+    if (enabled != null) SharedPreferencesUtil().localLiveTranslationEnabled = enabled;
+    if (language != null && language.isNotEmpty) SharedPreferencesUtil().localLiveTranslationLanguage = language;
+    if (enabled == false) _liveTranslationStatus = null;
+    _sendLiveTranslationControl();
+    notifyListeners();
+  }
+
+  void _sendLiveTranslationControl({bool onlyWhenEnabled = false}) {
+    if (!Env.isOfflineRuntime || _socket?.state != SocketServiceState.connected) return;
+    final target = liveTranslationEnabled ? liveTranslationLanguage : '';
+    if (onlyWhenEnabled && target.isEmpty) return;
+    _socket?.send(jsonEncode({'type': 'translation', 'language': target}));
+  }
+
   // When custom STT is configured, its polling socket keeps
   // buffering audio locally and retrying instead of tearing the transcription
   // socket down on every failure (see PurePollingSocket). Surface that local
@@ -994,6 +1020,8 @@ class CaptureController extends ChangeNotifier
     _socket = socket;
     _socket?.subscribe(this, this);
     _transcriptServiceReady = true;
+    _liveTranslationStatus = null;
+    _sendLiveTranslationControl(onlyWhenEnabled: true);
     if (recordingState == RecordingState.interrupted && !_micInterrupted && _phoneStop == null) {
       updateRecordingState(RecordingState.record);
     }
@@ -2520,6 +2548,7 @@ class CaptureController extends ChangeNotifier
   @override
   void onConnected() {
     _transcriptServiceReady = true;
+    _sendLiveTranslationControl(onlyWhenEnabled: true);
     // Restart mic on reconnect if interrupted (skip during active call).
     if (recordingState == RecordingState.interrupted && !_micInterrupted) {
       if (_activeSource is PhoneMicSource) {
@@ -2744,6 +2773,14 @@ class CaptureController extends ChangeNotifier
     }
 
     if (event is MessageServiceStatusEvent) {
+      if (event.provider == 'local_live_translation') {
+        // Translation availability is separate from STT health: it must never
+        // clear or raise a terminal transcription failure.
+        _liveTranslationStatus = event.status;
+        notifyListeners();
+        return;
+      }
+
       // Handle freemium threshold event via status field
       if (event.status == 'freemium_threshold_reached') {
         // Parse as FreemiumThresholdReachedEvent for consistent handling

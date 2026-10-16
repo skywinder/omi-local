@@ -9941,4 +9941,42 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get localMacServers => 'Máy chủ đã lưu';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Phân tách người nói';
+
+  @override
+  String get providerUnavailable => 'Máy chủ không khả dụng';
+
+  @override
+  String get providerMisconfigured => 'Kiểm tra cài đặt nhà cung cấp';
+
+  @override
+  String speakersCount(int count) {
+    return '$count người nói';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Chưa phân tách người nói';
+
+  @override
+  String get diarizationFailed => 'Phân tách người nói thất bại';
 }

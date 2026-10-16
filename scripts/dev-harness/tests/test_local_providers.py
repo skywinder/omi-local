@@ -254,3 +254,36 @@ def test_live_activation_indeterminate_is_distinct_from_ordinary_failure(cfg, mo
     assert status == 503 and result['outcome'] == 'indeterminate'
     assert 'synthetic-private-diagnostic' not in json.dumps(result)
     assert Registry(cfg).read() == saved
+
+
+def test_summary_reasoning_option_is_validated(cfg):
+    from dev_harness.local_providers import validate_profile, SettingsError
+    profile = summary()
+    assert 'reasoning' not in validate_profile(profile)['settings']
+    profile['settings']['reasoning'] = 'off'
+    assert validate_profile(profile)['settings']['reasoning'] == 'off'
+    profile['settings']['reasoning'] = 'sometimes'
+    with pytest.raises(SettingsError):
+        validate_profile(profile)
+
+
+def translation(name='Synthetic translator', base='https://llm.example/v1'):
+    return {'name': name, 'stage': 'translation', 'kind': 'openai-compatible',
+            'settings': {'base_url': base, 'model': 'qwen3', 'reasoning': 'off'}}
+
+
+def test_translation_stage_uses_summary_shape_and_stays_out_of_pipeline(cfg):
+    from dev_harness.local_providers import validate_profile, SettingsError
+    validated = validate_profile(translation())
+    assert validated['settings'] == {'base_url': 'https://llm.example/v1', 'model': 'qwen3', 'reasoning': 'off'}
+    with pytest.raises(SettingsError):
+        validate_profile({**translation(), 'settings': {'base_url': 'https://llm.example/v1', 'model': 'x', 'language': 'en'}})
+    registry = Registry(cfg)
+    saved = registry.save({'revision': 0, 'profile': translation(), 'api_key': 'translation-test-key'})
+    profile = saved['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'translation', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    assert registry.snapshot('translation')['name'] == 'Synthetic translator'
+    assert registry.key(registry.snapshot('translation')) == 'translation-test-key'
+    assert 'translation' not in registry.pipeline()
+    assert registry.read()['active']['translation'] == profile['id']

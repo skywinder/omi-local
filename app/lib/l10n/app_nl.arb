@@ -3249,5 +3249,11 @@
     "localMacHelp": "Voer het Tailscale-IP (of IP:poort) of ngrok-HTTPS-adres en de appsleutel in. Verbinden stopt de opname. Audio blijft op je server.",
     "memoryHistoryPartial": "Some memory history is unavailable. Showing the history received so far.",
     "tapPlusToStartRecording": "Tap + to start recording",
-    "localMacServers": "Opgeslagen servers"
+    "localMacServers": "Opgeslagen servers",
+    "diarization": "Sprekerherkenning",
+    "providerUnavailable": "Server niet bereikbaar",
+    "providerMisconfigured": "Controleer providerinstellingen",
+    "speakersCount": "{count} sprekers",
+    "diarizationNotPerformed": "Sprekerherkenning niet uitgevoerd",
+    "diarizationFailed": "Sprekerherkenning mislukt"
 }
