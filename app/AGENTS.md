@@ -18,6 +18,8 @@ finishes the phone session. Home entry/BLE reconnect must not take over phone au
 Local Omi starts automatically on device connection unless explicitly stopped or
 muted; transient BLE loss must invalidate the old subscription/state without
 changing that intent. A selected phone mic keeps ownership across BLE reconnect.
+Device setup must recheck the owning connection after battery/listener awaits
+before starting capture; a raw disconnect invalidates it before the UI debounce.
 Stop fences pending phone startup and reconnect; native Start waits for native Stop.
 Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
