@@ -196,5 +196,7 @@ is saved when capture stops. Transcription consumes finished parts independently
 Conversations shows saved parts before a transcript exists, including queued,
 processing, failed and no-transcript outcomes. These cards are read-only views
 of the local audio library and disappear after successful transcript import.
+An unreadable queue or import receipt cannot make Conversations unavailable;
+audio without readable processing state remains visible as a saved recording.
 The foreground list refreshes every five seconds. Physical long-session and
 background reliability still require device verification.

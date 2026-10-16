@@ -145,6 +145,43 @@ def test_pending_projection_obeys_filters_and_merged_page_offsets():
     assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
 
 
+@pytest.mark.parametrize('broken', ['invalid_json', 'non_object', 'oversized', 'bad_entry', 'bad_state', 'symlink'])
+def test_invalid_optional_job_state_does_not_hide_saved_audio(tmp_path, monkeypatch, broken):
+    import hashlib
+    import json
+    import uuid
+    from utils import local_recording_rows as rows
+    from utils.offline_audio_capture import OfflineAudioCapture
+
+    storage = tmp_path / 'services/storage'
+    results = tmp_path / 'services/local-transcripts'
+    receipt = results / ('b' * 64) / 'import.json'
+    receipt.parent.mkdir(parents=True)
+    monkeypatch.setattr(rows, 'is_offline_runtime', lambda: True)
+    monkeypatch.setattr(rows, 'local_tunnel_enabled', lambda: True)
+    monkeypatch.setattr(rows, 'load_pairing', lambda: {'owner_uid': 'synthetic-owner'})
+    monkeypatch.setattr(rows, 'local_storage_root_from_env', lambda: storage)
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+    capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\x00\x00' * 16000)
+    capture.finalize()
+    queue = results / 'watch-queue.json'
+    if broken in {'bad_entry', 'bad_state'}:
+        key = hashlib.sha256(capture.session_id.encode()).hexdigest()
+        queue.write_text(json.dumps({key: [] if broken == 'bad_entry' else {'state': []}}))
+        receipt.write_text(json.dumps({'import': 'passed', 'capture_key': []}))
+    elif broken == 'symlink':
+        target = tmp_path / 'untrusted.json'
+        target.write_text('{}')
+        queue.symlink_to(target)
+        receipt.symlink_to(target)
+    else:
+        payload = {'invalid_json': '{', 'non_object': '[]', 'oversized': ' ' * (4 * 1024 * 1024) + '{}'}[broken]
+        queue.write_text(payload)
+        receipt.write_text(payload)
+    pending = rows.local_recording_rows('synthetic-owner')
+    assert len(pending) == 1
+    assert pending[0]['external_data']['local_recording']['status'] == 'saved'
 
 
 def test_pipeline_stage_outcomes_are_projected_with_fixed_fields_only():
