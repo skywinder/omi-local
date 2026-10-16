@@ -7,7 +7,11 @@ initialization. Bare Tailscale IPv4 defaults to HTTP port 20000; Docker pairing 
 the explicit published port (21000 by default). A full HTTP URL without a port
 uses standard port 80. HTTP/WS is allowed only for
 100.64.0.0/10; HTTPS/WSS remains on port 443. Keep credentials confined to the paired origin and block
-redirects. Local sessions do not require Firebase Auth. `make test-transport-app`
+redirects. Local sessions do not require Firebase Auth. Offline startup skips cloud onboarding
+and opens Local Mac pairing directly; a physical iPhone must not offer sign-in
+through the Mac loopback Auth emulator. Detect the simulator through the native
+environment channel. Restore offline onboarding defaults after Settings clears
+preferences on sign-out; re-entry must still request runtime permissions. `make test-transport-app`
 at the repo root covers pairing, network policy, legacy auth, and the analyzer.
 After deletion from the local web library, pull down the Conversations list to
 refresh. A successful empty server page must clear the cache; cached rows may

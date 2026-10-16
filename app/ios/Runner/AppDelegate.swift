@@ -216,6 +216,12 @@ final class QuickActionsIconPatcher: NSObject {
         if call.method == "isTestFlight" {
             let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
             result(isTestFlight)
+        } else if call.method == "isSimulator" {
+            #if targetEnvironment(simulator)
+            result(true)
+            #else
+            result(false)
+            #endif
         } else {
             result(FlutterMethodNotImplemented)
         }
