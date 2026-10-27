@@ -9829,4 +9829,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get diarizationFailed => '화자 분리 실패';
+
+  @override
+  String get liveTranslationBidirectional => '양방향 번역';
+
+  @override
+  String get liveTranslationPairHelp => '각 문장의 언어를 감지하여 선택한 다른 언어로 번역합니다.';
 }

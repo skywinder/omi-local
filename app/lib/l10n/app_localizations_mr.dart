@@ -10006,4 +10006,10 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'वक्ता ओळख अयशस्वी';
+
+  @override
+  String get liveTranslationBidirectional => 'दुतर्फी भाषांतर';
+
+  @override
+  String get liveTranslationPairHelp => 'प्रत्येक वाक्याची भाषा ओळखा आणि निवडलेल्या दुसऱ्या भाषेत भाषांतर करा.';
 }

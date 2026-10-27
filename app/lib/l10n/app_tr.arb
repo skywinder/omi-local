@@ -3291,6 +3291,8 @@
     "speakersCount": "{count} konuşmacı",
     "diarizationNotPerformed": "Konuşmacı ayrımı yapılmadı",
     "diarizationFailed": "Konuşmacı ayrımı başarısız",
+    "liveTranslationBidirectional": "Çift yönlü çeviri",
+    "liveTranslationPairHelp": "Her ifadenin dilini algıla ve seçilen diğer dile çevir.",
     "liveTranslation": "Canlı çeviri",
     "liveTranslationTargetLanguage": "Şu dile çevir",
     "liveTranslationHelp": "Bağlı sunucu çeviriyi özgün metnin altında gösterir. Sunucu kitaplığında başka bir model seçmediğiniz sürece özetleme modeli otomatik kullanılır: Settings → Translation.",

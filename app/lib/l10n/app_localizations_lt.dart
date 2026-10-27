@@ -10017,4 +10017,10 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kalbėtojų atskyrimas nepavyko';
+
+  @override
+  String get liveTranslationBidirectional => 'Dvikryptis vertimas';
+
+  @override
+  String get liveTranslationPairHelp => 'Atpažinti kiekvienos frazės kalbą ir išversti į kitą pasirinktą kalbą.';
 }

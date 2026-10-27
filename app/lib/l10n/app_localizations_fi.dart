@@ -9998,4 +9998,10 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Puhujien erottelu epäonnistui';
+
+  @override
+  String get liveTranslationBidirectional => 'Kaksisuuntainen käännös';
+
+  @override
+  String get liveTranslationPairHelp => 'Tunnista kunkin lauseen kieli ja käännä se toiselle valitulle kielelle.';
 }

@@ -9988,4 +9988,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarization failed';
+
+  @override
+  String get liveTranslationBidirectional => 'Two-way translation';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Detect the language of each phrase and translate into the other selected language.';
 }

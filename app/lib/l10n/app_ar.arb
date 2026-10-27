@@ -3232,6 +3232,8 @@
     "speakersCount": "{count} متحدثين",
     "diarizationNotPerformed": "لم يتم فصل المتحدثين",
     "diarizationFailed": "فشل فصل المتحدثين",
+    "liveTranslationBidirectional": "ترجمة ثنائية الاتجاه",
+    "liveTranslationPairHelp": "تحديد لغة كل عبارة وترجمتها إلى اللغة الأخرى المحددة.",
     "liveTranslation": "الترجمة المباشرة",
     "liveTranslationTargetLanguage": "الترجمة إلى",
     "liveTranslationHelp": "يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.",

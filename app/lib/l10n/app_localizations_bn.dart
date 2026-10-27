@@ -10002,4 +10002,10 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'বক্তা শনাক্তকরণ ব্যর্থ';
+
+  @override
+  String get liveTranslationBidirectional => 'দ্বিমুখী অনুবাদ';
+
+  @override
+  String get liveTranslationPairHelp => 'প্রতিটি বাক্যের ভাষা শনাক্ত করে অন্য নির্বাচিত ভাষায় অনুবাদ করুন।';
 }

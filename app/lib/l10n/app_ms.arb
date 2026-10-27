@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} penutur",
     "diarizationNotPerformed": "Pemisahan penutur tidak dilakukan",
     "diarizationFailed": "Pemisahan penutur gagal",
+    "liveTranslationBidirectional": "Terjemahan dua hala",
+    "liveTranslationPairHelp": "Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.",
     "liveTranslation": "Terjemahan langsung",
     "liveTranslationTargetLanguage": "Terjemah ke",
     "liveTranslationHelp": "Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.",

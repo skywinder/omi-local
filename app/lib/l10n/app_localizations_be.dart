@@ -10029,4 +10029,10 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Памылка дыярызацыі';
+
+  @override
+  String get liveTranslationBidirectional => 'Двухбаковы пераклад';
+
+  @override
+  String get liveTranslationPairHelp => 'Вызначаць мову кожнай фразы і перакладаць на іншую выбраную мову.';
 }

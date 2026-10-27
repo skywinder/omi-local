@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} דוברים",
     "diarizationNotPerformed": "זיהוי דוברים לא בוצע",
     "diarizationFailed": "זיהוי דוברים נכשל",
+    "liveTranslationBidirectional": "תרגום דו־כיווני",
+    "liveTranslationPairHelp": "זיהוי השפה של כל משפט ותרגומו לשפה האחרת שנבחרה.",
     "liveTranslation": "תרגום בזמן אמת",
     "liveTranslationTargetLanguage": "תרגום לשפה",
     "liveTranslationHelp": "השרת המחובר מציג את התרגום מתחת למקור. מודל הסיכום משמש אוטומטית, אלא אם נבחר מודל אחר בספריית השרת: Settings → Translation.",

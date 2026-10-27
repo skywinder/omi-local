@@ -3234,6 +3234,8 @@
     "speakersCount": "{count} говорещи",
     "diarizationNotPerformed": "Диаризацията не е изпълнена",
     "diarizationFailed": "Грешка при диаризация",
+    "liveTranslationBidirectional": "Двупосочен превод",
+    "liveTranslationPairHelp": "Разпознаване на езика на всяка фраза и превод на другия избран език.",
     "liveTranslation": "Превод на живо",
     "liveTranslationTargetLanguage": "Превод на",
     "liveTranslationHelp": "Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.",

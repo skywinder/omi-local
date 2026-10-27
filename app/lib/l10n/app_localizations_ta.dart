@@ -10067,4 +10067,11 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'பேச்சாளர் பிரிப்பு தோல்வி';
+
+  @override
+  String get liveTranslationBidirectional => 'இருவழி மொழிபெயர்ப்பு';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'ஒவ்வொரு சொற்றொடரின் மொழியையும் கண்டறிந்து, தேர்ந்தெடுத்த மற்றொரு மொழிக்கு மொழிபெயர்க்கவும்.';
 }

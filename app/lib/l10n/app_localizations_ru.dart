@@ -10034,4 +10034,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Ошибка диаризации';
+
+  @override
+  String get liveTranslationBidirectional => 'Двусторонний перевод';
+
+  @override
+  String get liveTranslationPairHelp => 'Определять язык каждой фразы и переводить на другой выбранный язык.';
 }

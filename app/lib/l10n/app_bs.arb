@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
     "diarizationFailed": "Dijarizacija nije uspjela",
+    "liveTranslationBidirectional": "Dvosmjerni prijevod",
+    "liveTranslationPairHelp": "Prepoznaj jezik svake rečenice i prevedi je na drugi odabrani jezik.",
     "liveTranslation": "Prevođenje uživo",
     "liveTranslationTargetLanguage": "Prevedi na",
     "liveTranslationHelp": "Povezani server prikazuje prijevod ispod originala. Automatski se koristi model za sažimanje, osim ako odaberete drugi u biblioteci servera: Settings → Translation.",

@@ -3234,6 +3234,8 @@
     "speakersCount": "Mluvčích: {count}",
     "diarizationNotPerformed": "Diarizace nebyla provedena",
     "diarizationFailed": "Diarizace selhala",
+    "liveTranslationBidirectional": "Obousměrný překlad",
+    "liveTranslationPairHelp": "Rozpoznat jazyk každé fráze a přeložit ji do druhého vybraného jazyka.",
     "liveTranslation": "Živý překlad",
     "liveTranslationTargetLanguage": "Přeložit do",
     "liveTranslationHelp": "Připojený server zobrazuje překlad pod originálem. Automaticky se použije model pro shrnutí, pokud v knihovně serveru nevyberete jiný: Settings → Translation.",

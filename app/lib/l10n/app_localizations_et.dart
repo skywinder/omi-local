@@ -9991,4 +9991,10 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
+
+  @override
+  String get liveTranslationBidirectional => 'Kahesuunaline tõlge';
+
+  @override
+  String get liveTranslationPairHelp => 'Tuvasta iga fraasi keel ja tõlgi teise valitud keelde.';
 }

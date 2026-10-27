@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} nagsasalita",
     "diarizationNotPerformed": "Hindi isinagawa ang pagkilala ng nagsasalita",
     "diarizationFailed": "Nabigo ang pagkilala ng nagsasalita",
+    "liveTranslationBidirectional": "Pagsasalin sa dalawang direksiyon",
+    "liveTranslationPairHelp": "Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika.",
     "liveTranslation": "Live na pagsasalin",
     "liveTranslationTargetLanguage": "Isalin sa",
     "liveTranslationHelp": "Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.",

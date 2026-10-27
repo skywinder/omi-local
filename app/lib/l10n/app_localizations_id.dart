@@ -10008,4 +10008,10 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan pembicara gagal';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua arah';
+
+  @override
+  String get liveTranslationPairHelp => 'Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

@@ -9995,4 +9995,10 @@ class AppLocalizationsNo extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Talerinndeling mislyktes';
+
+  @override
+  String get liveTranslationBidirectional => 'Toveisoversettelse';
+
+  @override
+  String get liveTranslationPairHelp => 'Gjenkjenn språket i hver setning og oversett til det andre valgte språket.';
 }

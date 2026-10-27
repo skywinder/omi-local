@@ -251,8 +251,9 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                     LiveTranslationToggle(
                       enabled: provider.liveTranslationEnabled,
                       language: provider.liveTranslationLanguage,
-                      onChanged: ({bool? enabled, String? language}) =>
-                          provider.setLiveTranslation(enabled: enabled, language: language),
+                      otherLanguage: provider.liveTranslationOtherLanguage,
+                      bidirectional: provider.liveTranslationBidirectional,
+                      onChanged: provider.setLiveTranslation,
                     ),
                 ],
               ),

@@ -42,7 +42,7 @@ void main() {
     );
   }
 
-  testWidgets('live wire translations appear below the unchanged original', (tester) async {
+  testWidgets('both translation directions appear below their unchanged originals', (tester) async {
     final segment = TranscriptSegment.fromJson({
       'id': 'local-preview-synthetic-line-0',
       'text': 'Добрый день.',
@@ -54,6 +54,17 @@ void main() {
         {'lang': 'es', 'text': 'Buenos días.'}
       ],
     });
+    final reply = TranscriptSegment.fromJson({
+      'id': 'local-preview-synthetic-line-1',
+      'text': '¿Cómo estás?',
+      'speaker': 'SPEAKER_01',
+      'is_user': false,
+      'start': 2.0,
+      'end': 3.0,
+      'translations': [
+        {'lang': 'ru', 'text': 'Как дела?'}
+      ],
+    });
     await tester.pumpWidget(MaterialApp(
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -62,7 +73,7 @@ void main() {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: TranscriptWidget(segments: [segment], isConversationDetail: false)),
+      home: Scaffold(body: TranscriptWidget(segments: [segment, reply], isConversationDetail: false)),
     ));
     await tester.pumpAndSettle();
     final original = find.byWidgetPredicate(
@@ -72,6 +83,12 @@ void main() {
     expect(original, findsOneWidget);
     expect(translated, findsOneWidget);
     expect(tester.getTopLeft(translated).dy, greaterThan(tester.getBottomLeft(original).dy));
+    final replyOriginal = find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == '¿Cómo estás?',
+    );
+    expect(replyOriginal, findsOneWidget);
+    expect(find.text('Как дела?'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Как дела?')).dy, greaterThan(tester.getBottomLeft(replyOriginal).dy));
   });
 
   group('Speaker label display', () {

@@ -10027,4 +10027,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diaryzacja nie powiodła się';
+
+  @override
+  String get liveTranslationBidirectional => 'Tłumaczenie dwukierunkowe';
+
+  @override
+  String get liveTranslationPairHelp => 'Wykrywaj język każdej frazy i tłumacz na drugi wybrany język.';
 }

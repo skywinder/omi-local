@@ -238,10 +238,97 @@ def test_control_language_validation():
     assert translation.normalize_language('yue') == 'yue'
     for value in ('', None, 'e', 'engl', 'en-US', 'e1', 42):
         assert translation.normalize_language(value) is None
+    assert translation.normalize_languages(' ES ', 'RU') == ('es', 'ru')
+    assert translation.normalize_languages('es') == ('es', None)
+    for other in ('es', 'en-US', 42, [], {}):
+        assert translation.normalize_languages('es', other) == (None, None)
 
 
-def test_http_request_shape(monkeypatch):
+def test_bidirectional_translation_keeps_each_original_and_opposite_language():
+    async def scenario():
+        sink = Sink()
+        calls = []
+        def request(settings, key, language, texts, *, other_language):
+            calls.append((language, other_language, texts))
+            return [{'source_lang': 'ru', 'lang': 'es', 'text': ' Hola. '},
+                    {'source_lang': 'es', 'lang': 'ru', 'text': 'Добрый день.'}]
+        translator = make_translator(profile(), 'k', send=sink, request=request)
+        translator.set_language('es', 'ru')
+        original = snapshot('Привет.', 'Buenos días.')
+        translator.annotate(original)
+        await settle(translator)
+        assert calls == [('es', 'ru', ['Привет.', 'Buenos días.'])]
+        lines = sink.messages[-1]['lines']
+        assert [line['text'] for line in lines] == ['Привет.', 'Buenos días.']
+        assert [line['translations'] for line in lines] == [
+            [{'lang': 'es', 'text': 'Hola.'}], [{'lang': 'ru', 'text': 'Добрый день.'}]]
+        translator.annotate(original)
+        await settle(translator)
+        assert len(calls) == 1
+        await translator.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize('answer', [
+    ['Hola.'],
+    [{'source_lang': 'es', 'lang': 'es', 'text': 'Hola.'}],
+    [{'source_lang': 'fr', 'lang': 'es', 'text': 'Hola.'}],
+    [{'source_lang': 'es', 'lang': 'ru', 'text': ''}],
+])
+def test_invalid_pair_answer_is_rejected_without_attaching_a_translation(answer):
+    async def scenario():
+        sink = Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=lambda *args, **kwargs: answer)
+        translator.set_language('es', 'ru')
+        original = snapshot('Hola.')
+        translator.annotate(original)
+        await settle(translator)
+        assert sink.messages == [{'type': 'translation_status', 'status': 'failed'}]
+        assert translator.annotate(original)['lines'][0]['translations'] == []
+        await translator.close()
+    run(scenario())
+
+
+def test_inflight_answer_cannot_replace_new_pair_and_cache_includes_both_languages():
+    async def scenario():
+        import threading
+        sink = Sink()
+        started = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+        calls = []
+        def request(settings, key, language, texts, *, other_language):
+            calls.append(other_language)
+            if len(calls) == 1:
+                loop.call_soon_threadsafe(started.set)
+                assert release.wait(5)
+            return [{'source_lang': 'es', 'lang': other_language, 'text': f'{other_language}:Hola.'}]
+        translator = make_translator(profile(), 'k', send=sink, request=request)
+        translator.set_language('es', 'ru')
+        original = snapshot('Hola.')
+        translator.annotate(original)
+        try:
+            await asyncio.wait_for(started.wait(), 5)
+            translator.set_language('es', 'en')
+        finally:
+            release.set()
+        await settle(translator)
+        emitted = [m['lines'][0]['translations'] for m in sink.messages if 'lines' in m]
+        assert emitted[-1] == [{'lang': 'en', 'text': 'en:Hola.'}]
+        assert all(not row or row[0]['lang'] == 'en' for row in emitted)
+        translator.set_language('es', 'ru')
+        await settle(translator)
+        assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'ru', 'text': 'ru:Hola.'}]
+        assert calls == ['ru', 'en']
+        await translator.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize('other_language', [None, 'es'])
+def test_http_request_shape(monkeypatch, other_language):
     captured = {}
+    answer = ([{'source_lang': 'es', 'lang': 'en', 'text': 'Hello.'},
+               {'source_lang': 'en', 'lang': 'es', 'text': 'Mundo.'}] if other_language else ['Hello.', 'World.'])
 
     class Response:
         status_code = 200
@@ -249,7 +336,7 @@ def test_http_request_shape(monkeypatch):
 
         def json(self):
             return {'choices': [{'finish_reason': 'stop',
-                                 'message': {'content': '```json\n["Hello.", "World."]\n```'}}]}
+                                 'message': {'content': '```json\n' + json.dumps(answer) + '\n```'}}]}
 
     class Client:
         def __init__(self, **kwargs):
@@ -268,11 +355,14 @@ def test_http_request_shape(monkeypatch):
 
     monkeypatch.setattr(translation.httpx, 'Client', Client)
     result = translation.request_translations(profile(reasoning='off')['settings'], 'secret', 'en',
-                                              ['Привет.', 'Мир.'])
-    assert result == ['Hello.', 'World.']
+                                              ['Hola.', 'World.'], other_language=other_language)
+    assert result == answer
     assert captured['url'] == 'https://llm.example/v1/chat/completions'
     assert captured['client']['headers'] == {'Authorization': 'Bearer secret'}
     assert captured['body']['temperature'] == 0 and captured['body']['model'] == 'm'
     assert captured['body']['chat_template_kwargs'] == {'enable_thinking': False}
-    assert json.loads(captured['body']['messages'][1]['content']) == ['Привет.', 'Мир.']
+    assert json.loads(captured['body']['messages'][1]['content']) == ['Hola.', 'World.']
     assert 'en' in captured['body']['messages'][0]['content']
+    if other_language:
+        assert 'es' in captured['body']['messages'][0]['content']
+        assert 'source_lang' in captured['body']['messages'][0]['content']

@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} مقررین",
     "diarizationNotPerformed": "مقررین کی شناخت نہیں ہوئی",
     "diarizationFailed": "مقررین کی شناخت ناکام",
+    "liveTranslationBidirectional": "دو طرفہ ترجمہ",
+    "liveTranslationPairHelp": "ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔",
     "liveTranslation": "براہ راست ترجمہ",
     "liveTranslationTargetLanguage": "اس زبان میں ترجمہ کریں",
     "liveTranslationHelp": "منسلک سرور اصل متن کے نیچے ترجمہ دکھاتا ہے۔ خلاصے کا ماڈل خود بخود استعمال ہوتا ہے، جب تک آپ سرور کی لائبریری میں دوسرا ماڈل نہ چنیں: Settings → Translation۔",

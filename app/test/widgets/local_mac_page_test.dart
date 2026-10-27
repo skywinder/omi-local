@@ -478,10 +478,12 @@ void main() {
           statusFetcher: status,
           stopRecording: () async {},
           refreshConnection: () async {},
-          applyLiveTranslation: ({bool? enabled, String? language}) async {
+          applyLiveTranslation: ({bool? enabled, String? language, bool? bidirectional, String? otherLanguage}) async {
             applied.add({'enabled': enabled, 'language': language});
             if (enabled != null) SharedPreferencesUtil().localLiveTranslationEnabled = enabled;
             if (language != null) SharedPreferencesUtil().localLiveTranslationLanguage = language;
+            if (bidirectional != null) SharedPreferencesUtil().localLiveTranslationBidirectional = bidirectional;
+            if (otherLanguage != null) SharedPreferencesUtil().localLiveTranslationOtherLanguage = otherLanguage;
           },
         ),
       ),
@@ -503,9 +505,13 @@ void main() {
 
     await tester.tap(languageTile);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_translation_second_language')));
+    await tester.pumpAndSettle();
     final german = find.byKey(const ValueKey('live-translation-language-de'));
     await tester.scrollUntilVisible(german, 200, scrollable: find.byType(Scrollable).last);
     await tester.tap(german);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_translation_apply')));
     await tester.pumpAndSettle();
     expect(find.descendant(of: languageTile, matching: find.text('German')), findsOneWidget);
     expect(applied, [
@@ -513,6 +519,16 @@ void main() {
       {'enabled': null, 'language': 'de'},
     ]);
     expect(SharedPreferencesUtil().localLiveTranslationLanguage, 'de');
+    await tester.tap(languageTile);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_translation_bidirectional')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_translation_apply')));
+    await tester.pumpAndSettle();
+    expect(SharedPreferencesUtil().localLiveTranslationBidirectional, isTrue);
+    final other = SharedPreferencesUtil().localLiveTranslationOtherLanguage;
+    expect(other, isNot('de'));
+    expect(find.descendant(of: languageTile, matching: find.text('${other.toUpperCase()} ↔ DE')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

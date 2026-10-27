@@ -9826,4 +9826,10 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get diarizationFailed => '話者分離に失敗しました';
+
+  @override
+  String get liveTranslationBidirectional => '双方向翻訳';
+
+  @override
+  String get liveTranslationPairHelp => '各フレーズの言語を判別し、選択したもう一方の言語に翻訳します。';
 }

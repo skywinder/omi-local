@@ -10822,6 +10822,8 @@
     "speakersCount": "Прамоўцаў: {count}",
     "diarizationNotPerformed": "Дыярызацыя не выконвалася",
     "diarizationFailed": "Памылка дыярызацыі",
+    "liveTranslationBidirectional": "Двухбаковы пераклад",
+    "liveTranslationPairHelp": "Вызначаць мову кожнай фразы і перакладаць на іншую выбраную мову.",
     "liveTranslation": "Пераклад ужывую",
     "liveTranslationTargetLanguage": "Перакладаць на",
     "liveTranslationHelp": "Пераклад на падключаным серверы з'яўляецца пад арыгіналам. Аўтаматычна выкарыстоўваецца мадэль падсумавання, калі іншая не выбрана ў бібліятэцы сервера: Settings → Translation.",

@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} वक्ते",
     "diarizationNotPerformed": "वक्ता ओळख केली नाही",
     "diarizationFailed": "वक्ता ओळख अयशस्वी",
+    "liveTranslationBidirectional": "दुतर्फी भाषांतर",
+    "liveTranslationPairHelp": "प्रत्येक वाक्याची भाषा ओळखा आणि निवडलेल्या दुसऱ्या भाषेत भाषांतर करा.",
     "liveTranslation": "थेट भाषांतर",
     "liveTranslationTargetLanguage": "या भाषेत भाषांतर करा",
     "liveTranslationHelp": "जोडलेला सर्व्हर मूळ मजकुराखाली भाषांतर दाखवतो. सर्व्हरच्या लायब्ररीत दुसरे मॉडेल निवडले नसल्यास सारांश मॉडेल आपोआप वापरले जाते: Settings → Translation.",

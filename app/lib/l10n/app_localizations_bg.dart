@@ -10034,4 +10034,10 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Грешка при диаризация';
+
+  @override
+  String get liveTranslationBidirectional => 'Двупосочен превод';
+
+  @override
+  String get liveTranslationPairHelp => 'Разпознаване на езика на всяка фраза и превод на другия избран език.';
 }

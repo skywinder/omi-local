@@ -742,6 +742,11 @@ void main() {
 
     setUp(() async {
       Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      SharedPreferencesUtil().localLiveTranslationEnabled = false;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'en';
+      SharedPreferencesUtil().localLiveTranslationOtherLanguage = '';
+      SharedPreferencesUtil().localLiveTranslationBidirectional = false;
+      SharedPreferencesUtil().userPrimaryLanguage = '';
       SharedPreferencesUtil().batchModeEnabled = false;
       SharedPreferencesUtil().unlimitedLocalStorageEnabled = false;
       audio = StreamController<List<int>>.broadcast(sync: true);
@@ -788,6 +793,43 @@ void main() {
       expect(socket.stopped, isFalse);
       expect(SharedPreferencesUtil().localLiveTranslationLanguage, 'fr');
       await provider.stopStreamDeviceRecording();
+    });
+
+    test('saved pair reaches the socket and changes atomically without reconnecting', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = true;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'es';
+      SharedPreferencesUtil().localLiveTranslationOtherLanguage = 'ru';
+      SharedPreferencesUtil().localLiveTranslationBidirectional = true;
+      final socket = await connectSocket();
+      expect(socket.controlFrames.single, {'type': 'translation', 'language': 'es', 'other_language': 'ru'});
+      await expectLater(provider.setLiveTranslation(language: 'ru'), throwsArgumentError);
+      expect(provider.liveTranslationLanguage, 'es');
+      expect(socket.controlFrames, hasLength(1));
+      await provider.setLiveTranslation(language: 'ru', otherLanguage: 'es');
+      await provider.setLiveTranslation(enabled: false);
+      await provider.setLiveTranslation(enabled: true);
+      await provider.setLiveTranslation(bidirectional: false);
+      expect(socket.controlFrames.skip(1), [
+        {'type': 'translation', 'language': 'ru', 'other_language': 'es'},
+        {'type': 'translation', 'language': ''},
+        {'type': 'translation', 'language': 'ru', 'other_language': 'es'},
+        {'type': 'translation', 'language': 'ru'},
+      ]);
+      expect(provider.gates, hasLength(1));
+      expect(socket.stopped, isFalse);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('existing settings keep one-way mode and derive a distinct second language', () {
+      final prefs = SharedPreferencesUtil();
+      prefs.localLiveTranslationLanguage = 'es';
+      prefs.userPrimaryLanguage = 'ru-RU';
+      expect(prefs.localLiveTranslationBidirectional, isFalse);
+      expect(prefs.localLiveTranslationOtherLanguage, 'ru');
+      prefs.localLiveTranslationOtherLanguage = 'es';
+      expect(prefs.localLiveTranslationOtherLanguage, 'ru');
+      prefs.userPrimaryLanguage = 'es';
+      expect(prefs.localLiveTranslationOtherLanguage, 'en');
     });
 
     test('stays silent on connect while translation is off', () async {

@@ -9997,4 +9997,10 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'تفکیک گوینده ناموفق بود';
+
+  @override
+  String get liveTranslationBidirectional => 'ترجمهٔ دوطرفه';
+
+  @override
+  String get liveTranslationPairHelp => 'زبان هر عبارت را تشخیص دهید و آن را به زبان انتخابی دیگر ترجمه کنید.';
 }

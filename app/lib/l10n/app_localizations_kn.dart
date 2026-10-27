@@ -10029,4 +10029,10 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ';
+
+  @override
+  String get liveTranslationBidirectional => 'ದ್ವಿಮುಖ ಅನುವಾದ';
+
+  @override
+  String get liveTranslationPairHelp => 'ಪ್ರತಿ ವಾಕ್ಯದ ಭಾಷೆಯನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ಆಯ್ಕೆಮಾಡಿದ ಇನ್ನೊಂದು ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ.';
 }

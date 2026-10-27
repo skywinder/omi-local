@@ -3278,6 +3278,8 @@
     "speakersCount": "{count} 位说话人",
     "diarizationNotPerformed": "未执行说话人分离",
     "diarizationFailed": "说话人分离失败",
+    "liveTranslationBidirectional": "双向翻译",
+    "liveTranslationPairHelp": "识别每句话的语言，并翻译成所选的另一种语言。",
     "liveTranslation": "实时翻译",
     "liveTranslationTargetLanguage": "翻译为",
     "liveTranslationHelp": "已连接的服务器会在原文下方显示译文。默认自动使用摘要模型，除非您在服务器资料库的 Settings → Translation 中选择其他模型。",

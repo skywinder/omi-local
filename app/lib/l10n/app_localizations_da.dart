@@ -9981,4 +9981,10 @@ class AppLocalizationsDa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarisering mislykkedes';
+
+  @override
+  String get liveTranslationBidirectional => 'Tovejsoversættelse';
+
+  @override
+  String get liveTranslationPairHelp => 'Registrer sproget i hver sætning, og oversæt til det andet valgte sprog.';
 }

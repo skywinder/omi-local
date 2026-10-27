@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} گوینده",
     "diarizationNotPerformed": "تفکیک گوینده انجام نشد",
     "diarizationFailed": "تفکیک گوینده ناموفق بود",
+    "liveTranslationBidirectional": "ترجمهٔ دوطرفه",
+    "liveTranslationPairHelp": "زبان هر عبارت را تشخیص دهید و آن را به زبان انتخابی دیگر ترجمه کنید.",
     "liveTranslation": "ترجمهٔ زنده",
     "liveTranslationTargetLanguage": "ترجمه به",
     "liveTranslationHelp": "سرور متصل ترجمه را زیر متن اصلی نشان می‌دهد. مدل خلاصه‌سازی خودکار استفاده می‌شود، مگر اینکه در کتابخانهٔ سرور مدل دیگری انتخاب کنید: Settings → Translation.",

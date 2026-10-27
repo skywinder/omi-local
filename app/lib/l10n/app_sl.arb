@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} govorcev",
     "diarizationNotPerformed": "Diarizacija ni bila izvedena",
     "diarizationFailed": "Diarizacija ni uspela",
+    "liveTranslationBidirectional": "Dvosmerno prevajanje",
+    "liveTranslationPairHelp": "Prepoznaj jezik vsake fraze in jo prevedi v drugi izbrani jezik.",
     "liveTranslation": "Prevajanje v živo",
     "liveTranslationTargetLanguage": "Prevedi v",
     "liveTranslationHelp": "Povezani strežnik prikaže prevod pod izvirnikom. Samodejno se uporabi model za povzemanje, razen če v knjižnici strežnika izberete drugega: Settings → Translation.",

@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} vorbitori",
     "diarizationNotPerformed": "Diarizarea nu a fost efectuată",
     "diarizationFailed": "Diarizarea a eșuat",
+    "liveTranslationBidirectional": "Traducere bidirecțională",
+    "liveTranslationPairHelp": "Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată.",
     "liveTranslation": "Traducere în direct",
     "liveTranslationTargetLanguage": "Tradu în",
     "liveTranslationHelp": "Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.",

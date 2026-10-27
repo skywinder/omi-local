@@ -10088,4 +10088,10 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Nabigo ang pagkilala ng nagsasalita';
+
+  @override
+  String get liveTranslationBidirectional => 'Pagsasalin sa dalawang direksiyon';
+
+  @override
+  String get liveTranslationPairHelp => 'Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika.';
 }

@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} puhujaa",
     "diarizationNotPerformed": "Puhujien erottelua ei tehty",
     "diarizationFailed": "Puhujien erottelu epäonnistui",
+    "liveTranslationBidirectional": "Kaksisuuntainen käännös",
+    "liveTranslationPairHelp": "Tunnista kunkin lauseen kieli ja käännä se toiselle valitulle kielelle.",
     "liveTranslation": "Reaaliaikainen käännös",
     "liveTranslationTargetLanguage": "Käännä kielelle",
     "liveTranslationHelp": "Yhdistetty palvelin näyttää käännöksen alkuperäisen alla. Yhteenvetomallia käytetään automaattisesti, ellet valitse muuta mallia palvelimen kirjastosta: Settings → Translation.",

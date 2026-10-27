@@ -9940,4 +9940,10 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'การแยกผู้พูดล้มเหลว';
+
+  @override
+  String get liveTranslationBidirectional => 'การแปลสองทาง';
+
+  @override
+  String get liveTranslationPairHelp => 'ตรวจจับภาษาของแต่ละวลีและแปลเป็นอีกภาษาที่เลือกไว้';
 }

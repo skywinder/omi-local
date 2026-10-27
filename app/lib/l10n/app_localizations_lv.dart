@@ -10021,4 +10021,10 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Runātāju atdalīšana neizdevās';
+
+  @override
+  String get liveTranslationBidirectional => 'Divvirzienu tulkošana';
+
+  @override
+  String get liveTranslationPairHelp => 'Noteikt katras frāzes valodu un tulkot otrā izvēlētajā valodā.';
 }

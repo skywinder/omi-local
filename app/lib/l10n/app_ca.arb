@@ -3234,6 +3234,8 @@
     "speakersCount": "{count} parlants",
     "diarizationNotPerformed": "Diarització no realitzada",
     "diarizationFailed": "Error de diarització",
+    "liveTranslationBidirectional": "Traducció bidireccional",
+    "liveTranslationPairHelp": "Detecta la llengua de cada frase i tradueix-la a l’altra llengua seleccionada.",
     "liveTranslation": "Traducció en directe",
     "liveTranslationTargetLanguage": "Tradueix a",
     "liveTranslationHelp": "El servidor connectat mostra la traducció sota l'original. S'utilitza automàticament el model de resum, tret que en triïs un altre a la biblioteca del servidor: Settings → Translation.",

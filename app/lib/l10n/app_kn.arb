@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} ಮಾತನಾಡುವವರು",
     "diarizationNotPerformed": "ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ನಡೆದಿಲ್ಲ",
     "diarizationFailed": "ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ",
+    "liveTranslationBidirectional": "ದ್ವಿಮುಖ ಅನುವಾದ",
+    "liveTranslationPairHelp": "ಪ್ರತಿ ವಾಕ್ಯದ ಭಾಷೆಯನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ಆಯ್ಕೆಮಾಡಿದ ಇನ್ನೊಂದು ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ.",
     "liveTranslation": "ನೇರ ಅನುವಾದ",
     "liveTranslationTargetLanguage": "ಈ ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ",
     "liveTranslationHelp": "ಸಂಪರ್ಕಿತ ಸರ್ವರ್ ಮೂಲ ಪಠ್ಯದ ಕೆಳಗೆ ಅನುವಾದವನ್ನು ತೋರಿಸುತ್ತದೆ. ಸರ್ವರ್ ಗ್ರಂಥಾಲಯದ Settings → Translation ನಲ್ಲಿ ಬೇರೆ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆ ಮಾಡದಿದ್ದರೆ ಸಾರಾಂಶ ಮಾದರಿಯೇ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬಳಕೆಯಾಗುತ್ತದೆ.",

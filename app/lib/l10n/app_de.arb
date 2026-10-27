@@ -3233,6 +3233,8 @@
     "speakersCount": "{count} Sprecher",
     "diarizationNotPerformed": "Sprechertrennung nicht durchgeführt",
     "diarizationFailed": "Sprechertrennung fehlgeschlagen",
+    "liveTranslationBidirectional": "Übersetzung in beide Richtungen",
+    "liveTranslationPairHelp": "Die Sprache jedes Satzes erkennen und in die andere ausgewählte Sprache übersetzen.",
     "liveTranslation": "Live-Übersetzung",
     "liveTranslationTargetLanguage": "Übersetzen nach",
     "liveTranslationHelp": "Der verbundene Server zeigt die Übersetzung unter dem Original. Automatisch wird das Zusammenfassungsmodell verwendet, sofern du in der Serverbibliothek kein anderes auswählst: Settings → Translation.",

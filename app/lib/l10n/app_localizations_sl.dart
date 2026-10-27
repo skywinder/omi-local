@@ -10028,4 +10028,10 @@ class AppLocalizationsSl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizacija ni uspela';
+
+  @override
+  String get liveTranslationBidirectional => 'Dvosmerno prevajanje';
+
+  @override
+  String get liveTranslationPairHelp => 'Prepoznaj jezik vsake fraze in jo prevedi v drugi izbrani jezik.';
 }

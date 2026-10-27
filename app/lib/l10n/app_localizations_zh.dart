@@ -9806,4 +9806,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get diarizationFailed => '说话人分离失败';
+
+  @override
+  String get liveTranslationBidirectional => '双向翻译';
+
+  @override
+  String get liveTranslationPairHelp => '识别每句话的语言，并翻译成所选的另一种语言。';
 }

@@ -3261,6 +3261,8 @@
     "speakersCount": "{count} người nói",
     "diarizationNotPerformed": "Chưa phân tách người nói",
     "diarizationFailed": "Phân tách người nói thất bại",
+    "liveTranslationBidirectional": "Dịch hai chiều",
+    "liveTranslationPairHelp": "Nhận diện ngôn ngữ của từng câu và dịch sang ngôn ngữ còn lại đã chọn.",
     "liveTranslation": "Dịch trực tiếp",
     "liveTranslationTargetLanguage": "Dịch sang",
     "liveTranslationHelp": "Máy chủ đã kết nối hiển thị bản dịch dưới bản gốc. Mô hình tóm tắt được dùng tự động trừ khi bạn chọn mô hình khác trong thư viện máy chủ: Settings → Translation.",

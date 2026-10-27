@@ -9917,4 +9917,10 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'זיהוי דוברים נכשל';
+
+  @override
+  String get liveTranslationBidirectional => 'תרגום דו־כיווני';
+
+  @override
+  String get liveTranslationPairHelp => 'זיהוי השפה של כל משפט ותרגומו לשפה האחרת שנבחרה.';
 }

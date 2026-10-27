@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} runātāji",
     "diarizationNotPerformed": "Runātāju atdalīšana nav veikta",
     "diarizationFailed": "Runātāju atdalīšana neizdevās",
+    "liveTranslationBidirectional": "Divvirzienu tulkošana",
+    "liveTranslationPairHelp": "Noteikt katras frāzes valodu un tulkot otrā izvēlētajā valodā.",
     "liveTranslation": "Tulkošana reāllaikā",
     "liveTranslationTargetLanguage": "Tulkot uz",
     "liveTranslationHelp": "Pievienotais serveris rāda tulkojumu zem oriģināla. Automātiski tiek izmantots kopsavilkumu modelis, ja servera bibliotēkā neizvēlaties citu: Settings → Translation.",

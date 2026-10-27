@@ -10080,4 +10080,11 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprechertrennung fehlgeschlagen';
+
+  @override
+  String get liveTranslationBidirectional => 'Übersetzung in beide Richtungen';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Die Sprache jedes Satzes erkennen und in die andere ausgewählte Sprache übersetzen.';
 }

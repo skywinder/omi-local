@@ -10001,4 +10001,10 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Talarindelning misslyckades';
+
+  @override
+  String get liveTranslationBidirectional => 'Översättning åt båda hållen';
+
+  @override
+  String get liveTranslationPairHelp => 'Identifiera språket i varje mening och översätt till det andra valda språket.';
 }

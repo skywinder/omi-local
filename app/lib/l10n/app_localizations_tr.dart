@@ -10009,4 +10009,10 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Konuşmacı ayrımı başarısız';
+
+  @override
+  String get liveTranslationBidirectional => 'Çift yönlü çeviri';
+
+  @override
+  String get liveTranslationPairHelp => 'Her ifadenin dilini algıla ve seçilen diğer dile çevir.';
 }

@@ -10008,4 +10008,10 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'مقررین کی شناخت ناکام';
+
+  @override
+  String get liveTranslationBidirectional => 'دو طرفہ ترجمہ';
+
+  @override
+  String get liveTranslationPairHelp => 'ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔';
 }

@@ -9990,4 +9990,10 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizácia zlyhala';
+
+  @override
+  String get liveTranslationBidirectional => 'Obojsmerný preklad';
+
+  @override
+  String get liveTranslationPairHelp => 'Rozpoznať jazyk každej frázy a preložiť ju do druhého vybraného jazyka.';
 }

@@ -3352,6 +3352,8 @@
     "speakersCount": "{count} beszélő",
     "diarizationNotPerformed": "Beszélőfelismerés nem történt",
     "diarizationFailed": "Beszélőfelismerés sikertelen",
+    "liveTranslationBidirectional": "Kétirányú fordítás",
+    "liveTranslationPairHelp": "Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre.",
     "liveTranslation": "Élő fordítás",
     "liveTranslationTargetLanguage": "Fordítás erre",
     "liveTranslationHelp": "A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.",

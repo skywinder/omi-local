@@ -10050,4 +10050,10 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Дијаризацијата не успеа';
+
+  @override
+  String get liveTranslationBidirectional => 'Двонасочен превод';
+
+  @override
+  String get liveTranslationPairHelp => 'Препознај го јазикот на секоја фраза и преведи ја на другиот избран јазик.';
 }

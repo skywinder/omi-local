@@ -10067,4 +10067,10 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Ο διαχωρισμός ομιλητών απέτυχε';
+
+  @override
+  String get liveTranslationBidirectional => 'Αμφίδρομη μετάφραση';
+
+  @override
+  String get liveTranslationPairHelp => 'Αναγνώριση της γλώσσας κάθε φράσης και μετάφραση στην άλλη επιλεγμένη γλώσσα.';
 }

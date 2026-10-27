@@ -11777,5 +11777,7 @@
         }
     },
     "diarizationNotPerformed": "Diarization not performed",
-    "diarizationFailed": "Diarization failed"
+    "diarizationFailed": "Diarization failed",
+    "liveTranslationBidirectional": "Two-way translation",
+    "liveTranslationPairHelp": "Detect the language of each phrase and translate into the other selected language."
 }

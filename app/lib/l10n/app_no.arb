@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} talere",
     "diarizationNotPerformed": "Talerinndeling ikke utført",
     "diarizationFailed": "Talerinndeling mislyktes",
+    "liveTranslationBidirectional": "Toveisoversettelse",
+    "liveTranslationPairHelp": "Gjenkjenn språket i hver setning og oversett til det andre valgte språket.",
     "liveTranslation": "Direkteoversettelse",
     "liveTranslationTargetLanguage": "Oversett til",
     "liveTranslationHelp": "Den tilkoblede serveren viser oversettelsen under originalen. Oppsummeringsmodellen brukes automatisk med mindre du velger en annen i serverens bibliotek: Settings → Translation.",

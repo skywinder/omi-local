@@ -10046,4 +10046,10 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'వక్తల విభజన విఫలమైంది';
+
+  @override
+  String get liveTranslationBidirectional => 'రెండు దిశల్లో అనువాదం';
+
+  @override
+  String get liveTranslationPairHelp => 'ప్రతి వాక్యం భాషను గుర్తించి, ఎంచుకున్న మరో భాషలోకి అనువదించండి.';
 }

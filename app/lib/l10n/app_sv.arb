@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} talare",
     "diarizationNotPerformed": "Talarindelning inte utförd",
     "diarizationFailed": "Talarindelning misslyckades",
+    "liveTranslationBidirectional": "Översättning åt båda hållen",
+    "liveTranslationPairHelp": "Identifiera språket i varje mening och översätt till det andra valda språket.",
     "liveTranslation": "Direktöversättning",
     "liveTranslationTargetLanguage": "Översätt till",
     "liveTranslationHelp": "Den anslutna servern visar översättningen under originalet. Sammanfattningsmodellen används automatiskt om du inte väljer en annan i serverns bibliotek: Settings → Translation.",

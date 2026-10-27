@@ -194,7 +194,12 @@ by the server. The URL allows only `127.0.0.1` and `/asr`.
 Relay-side translation (see `docs/PROVIDERS.md`, *Live translation*) is layered on
 top of this contract without changing it for the provider. The phone sends
 `{"type":"translation","language":"de"}` (an empty language turns it off) as a text
-frame on `/v4/listen`; the backend forwards the same frame to the loopback relay
+frame on `/v4/listen`. For two-way translation it sends
+`{"type":"translation","language":"es","other_language":"ru"}`. The model detects
+the source independently per line: Spanish goes to Russian and Russian goes to
+Spanish; a source outside the pair goes to `language`. Missing `other_language`
+keeps the one-way protocol. Invalid or identical language codes disable the pair.
+The backend forwards the normalized frame to the loopback relay
 before the first PCM frame and whenever it changes, and only when
 `OMI_LOCAL_LIVE_PROVIDER_RELAY=1` — a directly connected WLK server still receives
 nothing but PCM16 and the EOF frame. The relay never forwards the control frame

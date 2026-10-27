@@ -3291,6 +3291,8 @@
     "speakersCount": "Mówców: {count}",
     "diarizationNotPerformed": "Diaryzacja nie została wykonana",
     "diarizationFailed": "Diaryzacja nie powiodła się",
+    "liveTranslationBidirectional": "Tłumaczenie dwukierunkowe",
+    "liveTranslationPairHelp": "Wykrywaj język każdej frazy i tłumacz na drugi wybrany język.",
     "liveTranslation": "Tłumaczenie na żywo",
     "liveTranslationTargetLanguage": "Tłumacz na",
     "liveTranslationHelp": "Połączony serwer pokazuje tłumaczenie pod oryginałem. Automatycznie używany jest model podsumowań, chyba że wybierzesz inny w bibliotece serwera: Settings → Translation.",

@@ -10038,4 +10038,11 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Beszélőfelismerés sikertelen';
+
+  @override
+  String get liveTranslationBidirectional => 'Kétirányú fordítás';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre.';
 }

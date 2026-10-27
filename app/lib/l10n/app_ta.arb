@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} பேச்சாளர்கள்",
     "diarizationNotPerformed": "பேச்சாளர் பிரிப்பு செய்யப்படவில்லை",
     "diarizationFailed": "பேச்சாளர் பிரிப்பு தோல்வி",
+    "liveTranslationBidirectional": "இருவழி மொழிபெயர்ப்பு",
+    "liveTranslationPairHelp": "ஒவ்வொரு சொற்றொடரின் மொழியையும் கண்டறிந்து, தேர்ந்தெடுத்த மற்றொரு மொழிக்கு மொழிபெயர்க்கவும்.",
     "liveTranslation": "நேரடி மொழிபெயர்ப்பு",
     "liveTranslationTargetLanguage": "இந்த மொழிக்கு மொழிபெயர்",
     "liveTranslationHelp": "இணைக்கப்பட்ட சேவையகம் மூல உரையின் கீழே மொழிபெயர்ப்பைக் காட்டும். சேவையக நூலகத்தில் வேறு மாதிரியைத் தேர்ந்தெடுக்காவிட்டால் சுருக்க மாதிரி தானாகப் பயன்படும்: Settings → Translation.",

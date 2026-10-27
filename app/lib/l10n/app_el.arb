@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} ομιλητές",
     "diarizationNotPerformed": "Ο διαχωρισμός ομιλητών δεν εκτελέστηκε",
     "diarizationFailed": "Ο διαχωρισμός ομιλητών απέτυχε",
+    "liveTranslationBidirectional": "Αμφίδρομη μετάφραση",
+    "liveTranslationPairHelp": "Αναγνώριση της γλώσσας κάθε φράσης και μετάφραση στην άλλη επιλεγμένη γλώσσα.",
     "liveTranslation": "Ζωντανή μετάφραση",
     "liveTranslationTargetLanguage": "Μετάφραση σε",
     "liveTranslationHelp": "Ο συνδεδεμένος διακομιστής εμφανίζει τη μετάφραση κάτω από το πρωτότυπο. Χρησιμοποιείται αυτόματα το μοντέλο σύνοψης, εκτός αν επιλέξετε άλλο στη βιβλιοθήκη του: Settings → Translation.",

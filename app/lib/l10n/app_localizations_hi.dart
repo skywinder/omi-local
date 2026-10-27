@@ -9976,4 +9976,10 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'वक्ता पहचान विफल';
+
+  @override
+  String get liveTranslationBidirectional => 'दोतरफ़ा अनुवाद';
+
+  @override
+  String get liveTranslationPairHelp => 'हर वाक्य की भाषा पहचानें और दूसरी चुनी हुई भाषा में अनुवाद करें।';
 }

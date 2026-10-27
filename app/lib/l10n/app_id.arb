@@ -3298,6 +3298,8 @@
     "speakersCount": "{count} pembicara",
     "diarizationNotPerformed": "Pemisahan pembicara tidak dilakukan",
     "diarizationFailed": "Pemisahan pembicara gagal",
+    "liveTranslationBidirectional": "Terjemahan dua arah",
+    "liveTranslationPairHelp": "Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.",
     "liveTranslation": "Terjemahan langsung",
     "liveTranslationTargetLanguage": "Terjemahkan ke",
     "liveTranslationHelp": "Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.",

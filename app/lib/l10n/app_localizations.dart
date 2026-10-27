@@ -18608,6 +18608,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Diarization failed'**
   String get diarizationFailed;
+
+  /// No description provided for @liveTranslationBidirectional.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-way translation'**
+  String get liveTranslationBidirectional;
+
+  /// No description provided for @liveTranslationPairHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect the language of each phrase and translate into the other selected language.'**
+  String get liveTranslationPairHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

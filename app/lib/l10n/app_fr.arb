@@ -3291,6 +3291,8 @@
     "speakersCount": "{count} locuteurs",
     "diarizationNotPerformed": "Diarisation non effectuée",
     "diarizationFailed": "Échec de la diarisation",
+    "liveTranslationBidirectional": "Traduction bidirectionnelle",
+    "liveTranslationPairHelp": "Détecter la langue de chaque phrase et la traduire dans l’autre langue sélectionnée.",
     "liveTranslation": "Traduction en direct",
     "liveTranslationTargetLanguage": "Traduire en",
     "liveTranslationHelp": "Le serveur connecté affiche la traduction sous l’original. Le modèle de résumé est utilisé automatiquement, sauf si vous en choisissez un autre dans sa bibliothèque : Settings → Translation.",

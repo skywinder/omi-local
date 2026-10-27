@@ -10019,4 +10019,10 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Помилка діаризації';
+
+  @override
+  String get liveTranslationBidirectional => 'Двосторонній переклад';
+
+  @override
+  String get liveTranslationPairHelp => 'Визначати мову кожної фрази й перекладати іншою вибраною мовою.';
 }

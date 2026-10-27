@@ -9998,4 +9998,10 @@ class AppLocalizationsCs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizace selhala';
+
+  @override
+  String get liveTranslationBidirectional => 'Obousměrný překlad';
+
+  @override
+  String get liveTranslationPairHelp => 'Rozpoznat jazyk každé fráze a přeložit ji do druhého vybraného jazyka.';
 }

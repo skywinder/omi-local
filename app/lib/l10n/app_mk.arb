@@ -10822,6 +10822,8 @@
     "speakersCount": "{count} говорници",
     "diarizationNotPerformed": "Дијаризацијата не е извршена",
     "diarizationFailed": "Дијаризацијата не успеа",
+    "liveTranslationBidirectional": "Двонасочен превод",
+    "liveTranslationPairHelp": "Препознај го јазикот на секоја фраза и преведи ја на другиот избран јазик.",
     "liveTranslation": "Превод во живо",
     "liveTranslationTargetLanguage": "Преведи на",
     "liveTranslationHelp": "Поврзаниот сервер го прикажува преводот под оригиналот. Автоматски се користи моделот за резиме, освен ако изберете друг во библиотеката на серверот: Settings → Translation.",

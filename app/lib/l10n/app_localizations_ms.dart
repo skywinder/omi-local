@@ -10023,4 +10023,10 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan penutur gagal';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua hala';
+
+  @override
+  String get liveTranslationPairHelp => 'Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

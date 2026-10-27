@@ -9992,4 +9992,10 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Phân tách người nói thất bại';
+
+  @override
+  String get liveTranslationBidirectional => 'Dịch hai chiều';
+
+  @override
+  String get liveTranslationPairHelp => 'Nhận diện ngôn ngữ của từng câu và dịch sang ngôn ngữ còn lại đã chọn.';
 }

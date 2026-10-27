@@ -3256,6 +3256,8 @@
     "speakersCount": "화자 {count}명",
     "diarizationNotPerformed": "화자 분리가 수행되지 않음",
     "diarizationFailed": "화자 분리 실패",
+    "liveTranslationBidirectional": "양방향 번역",
+    "liveTranslationPairHelp": "각 문장의 언어를 감지하여 선택한 다른 언어로 번역합니다.",
     "liveTranslation": "실시간 번역",
     "liveTranslationTargetLanguage": "번역할 언어",
     "liveTranslationHelp": "연결된 서버에서 번역하여 원문 아래에 표시합니다. 서버 라이브러리의 Settings → Translation에서 다른 모델을 선택하지 않으면 요약 모델이 자동으로 사용됩니다.",

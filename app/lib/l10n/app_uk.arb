@@ -3256,6 +3256,8 @@
     "speakersCount": "Мовців: {count}",
     "diarizationNotPerformed": "Діаризацію не виконано",
     "diarizationFailed": "Помилка діаризації",
+    "liveTranslationBidirectional": "Двосторонній переклад",
+    "liveTranslationPairHelp": "Визначати мову кожної фрази й перекладати іншою вибраною мовою.",
     "liveTranslation": "Переклад наживо",
     "liveTranslationTargetLanguage": "Перекладати на",
     "liveTranslationHelp": "Підключений сервер показує переклад під оригіналом. Автоматично використовується модель підсумовування, якщо іншу не вибрано в бібліотеці сервера: Settings → Translation.",

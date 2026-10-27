@@ -27,7 +27,7 @@ class LocalMacPage extends StatefulWidget {
   final Future<LocalRuntimeStatus> Function()? statusFetcher;
 
   /// Live-translation changes go to the capture socket; tests inject a recorder.
-  final Future<void> Function({bool? enabled, String? language})? applyLiveTranslation;
+  final LiveTranslationChanged? applyLiveTranslation;
 
   /// Sign-in flow: return `true` to the caller as soon as the pairing is verified.
   final bool popOnConnect;
@@ -233,9 +233,10 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
     }
   }
 
-  Future<void> _setLiveTranslation({bool? enabled, String? language}) async {
+  Future<void> _setLiveTranslation(
+      {bool? enabled, String? language, bool? bidirectional, String? otherLanguage}) async {
     final apply = widget.applyLiveTranslation ?? context.read<CaptureProvider>().setLiveTranslation;
-    await apply(enabled: enabled, language: language);
+    await apply(enabled: enabled, language: language, bidirectional: bidirectional, otherLanguage: otherLanguage);
     if (mounted) setState(() {});
   }
 
@@ -243,6 +244,8 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
     final prefs = SharedPreferencesUtil();
     final enabled = prefs.localLiveTranslationEnabled;
     final language = prefs.localLiveTranslationLanguage;
+    final otherLanguage = prefs.localLiveTranslationOtherLanguage;
+    final bidirectional = prefs.localLiveTranslationBidirectional;
     return Material(
       color: const Color(0xFF222222),
       borderRadius: BorderRadius.circular(12),
@@ -262,11 +265,14 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
           ListTile(
             key: const ValueKey('local-mac-live-translation-language'),
             enabled: enabled && !_busy,
-            title: Text(context.l10n.liveTranslationTargetLanguage),
+            title: Text(bidirectional ? context.l10n.language : context.l10n.liveTranslationTargetLanguage),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(LiveTranslationSettings.label(language),
+                Text(
+                    bidirectional
+                        ? '${otherLanguage.toUpperCase()} ↔ ${language.toUpperCase()}'
+                        : LiveTranslationSettings.label(language),
                     style: TextStyle(color: enabled ? Colors.white : Colors.white38)),
                 const SizedBox(width: 4),
                 Icon(Icons.chevron_right, color: enabled ? Colors.white70 : Colors.white24),
@@ -274,8 +280,14 @@ class _LocalMacPageState extends State<LocalMacPage> with WidgetsBindingObserver
             ),
             contentPadding: const EdgeInsets.fromLTRB(16, 0, 12, 4),
             onTap: () async {
-              final picked = await showLiveTranslationLanguagePicker(context, current: language);
-              if (picked != null && picked != language) await _setLiveTranslation(language: picked);
+              final picked = await showLiveTranslationSettings(context,
+                  language: language, otherLanguage: otherLanguage, bidirectional: bidirectional);
+              if (picked != null) {
+                await _setLiveTranslation(
+                    language: picked.language,
+                    otherLanguage: picked.otherLanguage,
+                    bidirectional: picked.bidirectional);
+              }
             },
           ),
         ],

@@ -153,10 +153,23 @@ class CaptureController extends ChangeNotifier
 
   String get liveTranslationLanguage => SharedPreferencesUtil().localLiveTranslationLanguage;
 
-  Future<void> setLiveTranslation({bool? enabled, String? language}) async {
+  bool get liveTranslationBidirectional => SharedPreferencesUtil().localLiveTranslationBidirectional;
+
+  String get liveTranslationOtherLanguage => SharedPreferencesUtil().localLiveTranslationOtherLanguage;
+
+  Future<void> setLiveTranslation({bool? enabled, String? language, bool? bidirectional, String? otherLanguage}) async {
+    final target = language ?? liveTranslationLanguage;
+    final other = otherLanguage ?? liveTranslationOtherLanguage;
+    final twoWay = bidirectional ?? liveTranslationBidirectional;
+    final code = RegExp(r'^[a-z]{2,3}$');
+    if (!code.hasMatch(target) || (twoWay && (!code.hasMatch(other) || other == target))) {
+      throw ArgumentError('Translation requires valid, distinct language codes');
+    }
     if (enabled != null) SharedPreferencesUtil().localLiveTranslationEnabled = enabled;
-    if (language != null && language.isNotEmpty) SharedPreferencesUtil().localLiveTranslationLanguage = language;
-    if (enabled == false) _liveTranslationStatus = null;
+    if (language != null) SharedPreferencesUtil().localLiveTranslationLanguage = language;
+    if (otherLanguage != null) SharedPreferencesUtil().localLiveTranslationOtherLanguage = otherLanguage;
+    if (bidirectional != null) SharedPreferencesUtil().localLiveTranslationBidirectional = bidirectional;
+    _liveTranslationStatus = null;
     _sendLiveTranslationControl();
     notifyListeners();
   }
@@ -165,7 +178,11 @@ class CaptureController extends ChangeNotifier
     if (!Env.isOfflineRuntime || _socket?.state != SocketServiceState.connected) return;
     final target = liveTranslationEnabled ? liveTranslationLanguage : '';
     if (onlyWhenEnabled && target.isEmpty) return;
-    _socket?.send(jsonEncode({'type': 'translation', 'language': target}));
+    _socket?.send(jsonEncode({
+      'type': 'translation',
+      'language': target,
+      if (target.isNotEmpty && liveTranslationBidirectional) 'other_language': liveTranslationOtherLanguage,
+    }));
   }
 
   // When custom STT is configured, its polling socket keeps

@@ -3256,6 +3256,8 @@
     "speakersCount": "{count} sprekers",
     "diarizationNotPerformed": "Sprekerherkenning niet uitgevoerd",
     "diarizationFailed": "Sprekerherkenning mislukt",
+    "liveTranslationBidirectional": "Vertaling in beide richtingen",
+    "liveTranslationPairHelp": "Herken de taal van elke zin en vertaal naar de andere geselecteerde taal.",
     "liveTranslation": "Livevertaling",
     "liveTranslationTargetLanguage": "Vertalen naar",
     "liveTranslationHelp": "De verbonden server toont de vertaling onder het origineel. Het samenvattingsmodel wordt automatisch gebruikt, tenzij je een ander model kiest in de serverbibliotheek: Settings → Translation.",

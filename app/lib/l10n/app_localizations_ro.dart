@@ -10044,4 +10044,10 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizarea a eșuat';
+
+  @override
+  String get liveTranslationBidirectional => 'Traducere bidirecțională';
+
+  @override
+  String get liveTranslationPairHelp => 'Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată.';
 }

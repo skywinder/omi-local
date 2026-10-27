@@ -9938,4 +9938,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'فشل فصل المتحدثين';
+
+  @override
+  String get liveTranslationBidirectional => 'ترجمة ثنائية الاتجاه';
+
+  @override
+  String get liveTranslationPairHelp => 'تحديد لغة كل عبارة وترجمتها إلى اللغة الأخرى المحددة.';
 }

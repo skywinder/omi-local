@@ -10024,4 +10024,10 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprekerherkenning mislukt';
+
+  @override
+  String get liveTranslationBidirectional => 'Vertaling in beide richtingen';
+
+  @override
+  String get liveTranslationPairHelp => 'Herken de taal van elke zin en vertaal naar de andere geselecteerde taal.';
 }

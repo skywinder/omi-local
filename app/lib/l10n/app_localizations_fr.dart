@@ -10084,4 +10084,11 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Échec de la diarisation';
+
+  @override
+  String get liveTranslationBidirectional => 'Traduction bidirectionnelle';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Détecter la langue de chaque phrase et la traduire dans l’autre langue sélectionnée.';
 }
