@@ -1,0 +1,99 @@
+# Recovering audio from Omi after Bluetooth loss
+
+Status: source assessment and implementation plan, not an enabled feature.
+The local runtime resumes live capture after reconnect, but does not import the
+wearable's offline buffer. A running timer is not evidence of recovered audio.
+
+## Verified boundaries
+
+The published `Omi_CV1_v3.0.21` tag resolves to
+`f12031d15ea177bf8f6ac0781d7f28f3dc433eae`. The findings below refer to that
+source, not a readback of a particular device's installed binary or storage.
+
+| Interval | Current path | Recovery limitation |
+| --- | --- | --- |
+| Bluetooth disconnected | Firmware writes packed Opus records to SD when storage is available and its clock is valid. | The local app has no wearable-to-local-outbox importer. Actual stored coverage must be measured. |
+| Connected, audio notifications not ready | Firmware removes frames from its transmission queue but neither sends nor stores them. | Downloading the existing ring cannot recover frames that were never stored. |
+| Phone receives audio, live ASR not ready | The app journals received frames before attempting live preview. | Final processing can recover journaled audio; a replacement live preview currently starts with new audio. |
+
+Firmware evidence:
+
+- [Transport](https://github.com/BasedHardware/omi/blob/f12031d15ea177bf8f6ac0781d7f28f3dc433eae/omi/firmware/omi/src/lib/core/transport.c):
+  `pusher`, `push_to_gatt`, `write_to_storage`. The connected/unsubscribed branch
+  discards frames; failed live sends also have no storage fallback. The partial
+  440-byte packing buffer has no explicit flush at the return to live mode.
+- [Storage transfer](https://github.com/BasedHardware/omi/blob/f12031d15ea177bf8f6ac0781d7f28f3dc433eae/omi/firmware/omi/src/lib/core/storage.c):
+  `storage_data_tx_done` increments a byte counter; `sync_checkpoint_advance`
+  advances the persistent read cursor during transfer, completion and disconnect.
+  This occurs without an application-level durable receipt. The
+  [Zephyr notification callback](https://docs.zephyrproject.org/latest/doxygen/html/group__bt__gatt__server.html)
+  reports notification transmission, not an iPhone filesystem or server commit.
+- [SD storage](https://github.com/BasedHardware/omi/blob/f12031d15ea177bf8f6ac0781d7f28f3dc433eae/omi/firmware/omi/src/sd_card.c):
+  `process_write_data_req` requires valid RTC; records carry second-resolution
+  write timestamps. `advance_read_seq_internal` persists the new cursor, and
+  `read_packets_internal` rejects ranges older than that cursor.
+
+`CMD_RING_READ` is therefore **not a non-destructive inspection operation** on
+this version. Merely omitting the app's `CMD_RING_ADVANCE` does not preserve the
+device buffer. Reading a newer range can also advance past older unread history.
+Use status/INFO only for initial device diagnostics; neither requests audio nor
+advances the ring. Do not use READ, CLEAR or ADVANCE as a diagnostic probe.
+
+The existing `RingProtocol` handles 444-byte records and bounded sequence reads.
+`RingStorageSyncImpl` targets the cloud WAL pipeline; its app-side advance guard
+does not override firmware auto-advance. `SyncProvider` deliberately skips that
+coordinator in offline runtime. Enabling it is not a local-server implementation.
+
+## App-only feasibility
+
+The existing READ can support best-effort extraction without updating firmware,
+but cannot provide durable, non-consuming recovery. Reading one record at a time
+limits the exposure; it does not remove it, because DONE forces cursor advance
+even before the two-second periodic checkpoint. Omitting ADVANCE or CLEAR has
+no effect on this firmware-side action. STOP is timing-dependent and cannot
+undo an already persisted cursor. Starting at a recent gap also risks consuming
+older unread history. Starting at the current read cursor instead requires
+handling that older history and still has the receipt-to-disk failure window.
+
+A host probe compiled the exact tagged `sync_confirmed_seq` and
+`sync_checkpoint_advance` functions with simulated SD, time and atomic inputs.
+It confirmed advance for one-record completion, a newer start that skips older
+history, and periodic advance without an application receipt. This is a software
+boundary check, not a physical transfer test.
+
+The current decision is to retain automatic reconnect and phone journaling,
+without enabling an experimental consuming import or updating firmware.
+The plan below is deferred; it is not a prerequisite for the working release.
+
+## Deferred implementation order
+
+1. Observe status/INFO across one controlled disconnect: unread counts, sequence
+   range, dropped count, clock validity and advertised capabilities. Keep device
+   identifiers and audio out of diagnostic output. This establishes actual
+   storage availability without consuming existing recordings.
+2. Add a capability-negotiated, non-consuming bounded read to firmware. Advance
+   only a contiguous acknowledged prefix after durable delivery, with a storage
+   generation identity so card reset or sequence reuse cannot alias old data.
+   Preserve older unread history when recovering only new gaps. Separately store
+   frames until live notifications are ready, handle failed sends, and flush the
+   partial packing buffer at mode changes with accurate capture timestamps.
+3. Add one local recovery owner in the app. Persist the exact device generation,
+   sequence window and original pairing before transfer. Validate READ_BEGIN,
+   complete records and DONE. Store recovered Opus through the existing durable
+   outbox with stable part identity; retries must reuse identical bytes. Retain a
+   durable receipt ledger before allowing device release. Live capture has
+   priority and must continue during buffer download.
+4. Process recovered parts on the paired server and display them at their
+   capture time, with an explicit recovered-audio origin. Do not append historical
+   text as if spoken now. Preserve timestamp uncertainty and explicit gaps;
+   second-resolution storage timestamps alone cannot prove seamless alignment.
+   Audio already in the phone journal needs final processing, not another device
+   download. Joining separate recordings is an independent presentation change.
+5. Test interrupted transfer, phone restart before/after receipt, lost ACK,
+   duplicate delivery, storage reset/overflow, RTC failure, pairing change and
+   simultaneous live audio. Then physically verify speech before, during and
+   immediately after Bluetooth loss. Software tests alone cannot establish that
+   every phrase is recovered.
+
+This assessment does not flash firmware, consume historical audio, change the
+device cursor, or require rebuilding the currently working iPhone application.

@@ -100,6 +100,9 @@ the replacement connects; old preview messages cannot overwrite the new text.
 The phone journal covers audio already received by the phone. Audio spoken while
 Bluetooth is absent requires recovery from the wearable's own storage; a connected
 status alone does not prove that this interval was recovered.
+See [wearable recovery](WEARABLE_RECOVERY.md) for the firmware 3.0.21 boundaries
+and implementation plan. Its ring READ operation automatically advances the
+device cursor; it must not be treated as a non-destructive diagnostic read.
 Older apps continue to use the original server-side WAV capture path.
 
 New protected recordings use journal protocol version 2 and require authenticated
