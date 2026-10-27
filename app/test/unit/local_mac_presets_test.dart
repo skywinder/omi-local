@@ -85,7 +85,7 @@ void main() {
     await session.importServerPresets(payload([preset(name: allowed)]));
     expect((await session.readServers()).single.name, allowed);
     await expectLater(
-      session.importServerPresets(payload([preset(id: 'too_long', name: allowed + '🌲')])),
+      session.importServerPresets(payload([preset(id: 'too_long', name: '$allowed🌲')])),
       throwsFormatException,
     );
     expect((await session.readServers()).single.name, allowed);
