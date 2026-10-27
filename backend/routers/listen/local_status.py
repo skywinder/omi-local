@@ -141,14 +141,29 @@ async def preview_snapshot(uid: str) -> dict:
     result = await snapshot(uid)
     result['sessions'] = []
     for session in registry._sessions_for(uid):
-        if not session.state.active or session.state.shutdown_event.is_set() or session.capture_sink is None:
+        if not session.state.active or session.state.shutdown_event.is_set():
             continue
         sink, preview = session.capture_sink, session.local_preview
+        if sink is not None:
+            capture = {
+                'source': sink.source, 'codec': sink.input_codec,
+                'audio_seconds': round(sink.decoded_pcm_bytes / 32000, 3),
+                'frames_received': sink.frames_received, 'decode_errors': sink.decode_errors,
+            }
+        elif getattr(session, 'outbox_preview_only', False) is True:
+            # This owner decision already validated the local PCM/Opus format.
+            # Durable WAV ownership lives on the phone; its preview still has
+            # the same RAM-only draft and decoded-audio counters.
+            capture = {
+                'source': session.request.source, 'codec': session.original_codec,
+                'audio_seconds': round(session.outbox_preview_pcm_bytes / 32000, 3),
+                'frames_received': session.outbox_preview_frames, 'decode_errors': 0,
+            }
+        else:
+            continue
         text = preview.segment.text if preview is not None else ''
         result['sessions'].append({
-            'source': sink.source, 'codec': sink.input_codec,
-            'audio_seconds': round(sink.decoded_pcm_bytes / 32000, 3),
-            'frames_received': sink.frames_received, 'decode_errors': sink.decode_errors,
+            **capture,
             # This ephemeral preview token already identifies the draft on iPhone;
             # it is not the persisted recording or owner's identifier.
             'preview_id': preview.segment.id if preview is not None else None,

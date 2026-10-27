@@ -658,6 +658,69 @@ async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypat
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize('source,codec', [('phone', 'pcm16'), ('omi', 'opus'), ('omi', 'opus_fs320')])
+async def test_outbox_owned_library_draft_uses_preview_without_server_wav(monkeypatch, source, codec):
+    from utils.local_audio_delivery import initialize_local_capture
+
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+
+    def owner(uid, text):
+        segment = PreviewSegment()
+        segment.update({'lines': [], 'buffer_transcription': text}, 1.25)
+        session = StatusSession(uid, preview=SimpleNamespace(segment=segment, updates=1, failed=False))
+        session.request.source = source
+        # Receiver normalization must not erase the original CV1 codec in UI metadata.
+        session.request.codec = 'opus' if codec == 'opus_fs320' else codec
+        session.original_codec = codec
+        session.outbox_preview_only, session.capture_sink = initialize_local_capture(
+            offline=True, headers={'x-omi-local-audio-outbox': '1'},
+            session_id='synthetic-recording-canary', source=source, codec=codec, sample_rate=16000, channels=1,
+        )
+        session.outbox_preview_frames = 5
+        session.outbox_preview_pcm_bytes = 40000
+        assert session.outbox_preview_only is True and session.capture_sink is None
+        return session
+
+    current = owner('synthetic-owner', 'текущий черновик')
+    other = owner('synthetic-other', 'чужой черновик')
+    inactive = owner('synthetic-owner', 'неактивный черновик')
+    inactive.state.active = False
+    closed = owner('synthetic-owner', 'закрытый черновик')
+    closed.state.shutdown_event.set()
+    unvalidated = owner('synthetic-owner', 'неподтверждённый черновик')
+    unvalidated.outbox_preview_only = False
+    sessions = [current, other, inactive, closed, unvalidated]
+    for session in sessions:
+        registry.register(session)
+    try:
+        data = await local_status.preview_snapshot('synthetic-owner')
+        assert len(data['sessions']) == 1
+        draft = data['sessions'][0]
+        fields = ('source', 'codec', 'audio_seconds', 'frames_received', 'decode_errors')
+        assert {key: draft[key] for key in fields} == {
+            'source': source, 'codec': codec, 'audio_seconds': 1.25, 'frames_received': 5, 'decode_errors': 0,
+        }
+        assert draft['text'] == 'текущий черновик' and draft['segments'][0]['text'] == draft['text']
+        assert draft['preview_id'] == current.local_preview.segment.id and draft['revision'] == 1
+        encoded = json.dumps(data, ensure_ascii=False)
+        assert all(value not in encoded for value in (
+            'synthetic-owner', 'synthetic-other', 'synthetic-recording-canary', 'чужой черновик',
+            'неактивный черновик', 'закрытый черновик', 'неподтверждённый черновик',
+        ))
+        current.local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, 1.25)
+        corrected = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        assert corrected['text'] == 'исправлено' and corrected['revision'] == 2
+        current.local_preview.segment.update({'lines': [], 'buffer_transcription': ''}, 1.25)
+        retracted = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        assert retracted['text'] == '' and retracted['segments'] == [] and retracted['revision'] == 3
+        current.state.shutdown_event.set()
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
+    finally:
+        for session in sessions:
+            registry.unregister(session)
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize('capability,expected', [(True, 'pending'), (False, 'disabled'), (None, 'unknown')])
 async def test_diarization_requires_explicit_capability_and_real_labels(monkeypatch, capability, expected):
     socket = Socket(config={'diarization': capability}, response={
