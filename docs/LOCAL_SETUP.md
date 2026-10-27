@@ -48,9 +48,17 @@ app again. This is an [Apple limitation](https://developer.apple.com/help/accoun
    certificate properties. The number in parentheses in its name may differ;
    [Apple explains the distinction](https://developer.apple.com/forums/thread/811970).
 4. Connect the unlocked iPhone with a USB data cable and confirm trust on the Mac.
-   In Xcode, open **Window → Devices and Simulators** and wait for the phone to
+   In Xcode 27, open **Xcode → Open Developer Tool → Device Hub**
+   ([Apple's guide](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices)). In older
+   versions, use **Window → Devices and Simulators**. Wait for the phone to
    become ready. On the iPhone, enable **Settings → Privacy & Security → Developer
    Mode**, restart the phone, and confirm the setting.
+
+Keep the phone unlocked until device preparation and installation finish.
+If Device Hub remains at **Preparing for development…** or installation times
+out, reconnect the USB data cable and recheck device readiness. Retain the
+attested app; a device-connection failure alone does not require rebuilding it
+or clearing build caches.
 
 ## Installation
 
