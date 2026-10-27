@@ -67,3 +67,26 @@ def test_runtime_normalizes_language_and_updates_an_existing_preview():
     runtime.set_live_translation('fr')
     assert runtime.live_translation_language == 'fr'
     assert calls == [None, 'fr']
+
+
+def test_live_preview_runtime_preserves_original_pcm_capture(tmp_path):
+    import wave
+
+    from routers.listen.runtime import ListenSessionRuntime
+    from utils.offline_audio_capture import OfflineAudioCapture
+
+    capture = OfflineAudioCapture(session_id='00000000-0000-0000-0000-000000000001',
+                                  input_codec='pcm16', source='phone', root=tmp_path)
+    received = []
+    runtime = ListenSessionRuntime.__new__(ListenSessionRuntime)
+    runtime.capture_sink = capture
+    runtime.local_preview = SimpleNamespace(feed=received.append)
+    frames = [b'\x01\x00' * 320, b'\x02\x00' * 320]
+    for pcm in frames:
+        runtime.capture_decoded_audio(encoded_bytes=len(pcm), pcm=pcm)
+    assert runtime.capture_sink is capture
+    assert received == frames
+    metadata = capture.finalize()
+    with wave.open(str(capture.wav_path), 'rb') as wav:
+        assert wav.readframes(wav.getnframes()) == b''.join(frames)
+    assert metadata['frames_received'] == 2
