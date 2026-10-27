@@ -165,6 +165,7 @@ PR CI runs `flutter test` and an analyzer ratchet (`app/scripts/analyze_ratchet.
 
 ### Test Patterns
 - Mock singletons (SharedPreferencesUtil, AuthService, FirebaseAuth) since they aren't injectable
+- Connectivity provider tests use the declared `connectivity_plus_platform_interface` dev dependency; keep it direct when importing its test seam.
 - Test state machine logic via minimal abstractions mirroring production flow
 - Everything under `test/` must be hermetic — no network, live backends, or real devices — because `bash test.sh` (the CI suite) runs all of it.
 - Chat transcript layout: a test that only pumps `AIMessage` in a `SingleChildScrollView` misses scroll-extent bugs. Chat list changes must keep `test/widgets/chat_scroll_layout_test.dart` green (ListView drag + citation/markdown sizes). That file is the Mobile App Checks contract for this class.

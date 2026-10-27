@@ -167,6 +167,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   fake_async: ^1.3.3
+  connectivity_plus_platform_interface: 2.0.1
   # Direct dev deps for the phone-call provider test's fake WebSocketChannel:
   # the forwarding signatures need these types, which web_socket_channel
   # consumes but does not re-export.
