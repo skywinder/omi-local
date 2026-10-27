@@ -10106,5 +10106,5 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'I-update ang server bago mag-record. Mananatili ang audio na naka-save sa telepono.';
+      'I-update ang server para i-sync ang audio. Mananatili ang audio na naka-save sa telepono.';
 }

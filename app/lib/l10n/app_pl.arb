@@ -3298,7 +3298,7 @@
     "localProcessingFinished": "Zakończone nagrania",
     "localProcessingProbe": "Sprawdź połączenie",
     "localProcessingPending": "Zapisane zmiany nie są jeszcze aktywne. Stuknij Potwierdź, aby je zastosować.",
-    "localAudioServerUpdateRequired": "Zaktualizuj serwer przed nagrywaniem. Dźwięk zapisany w telefonie zostanie zachowany.",
+    "localAudioServerUpdateRequired": "Zaktualizuj serwer, aby zsynchronizować dźwięk. Dźwięk zapisany w telefonie pozostaje zachowany.",
     "liveTranslation": "Tłumaczenie na żywo",
     "liveTranslationFailed": "Tłumaczenie jest teraz niedostępne. Sprawdź dostawcę tłumaczenia na Macu.",
     "liveTranslationHelp": "Tłumacz transkrypcję na żywo na Macu. Oryginał zostaje zachowany, a tłumaczenie pojawia się pod każdym wierszem. Najpierw dodaj dostawcę tłumaczenia w ustawieniach lokalnej biblioteki.",

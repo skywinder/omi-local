@@ -10043,5 +10043,5 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Абнавіце сервер перад запісам. Аўдыя, захаванае на тэлефоне, застаецца.';
+      'Абнавіце сервер для перадачы аўдыя. Аўдыя, захаванае на тэлефоне, застаецца.';
 }

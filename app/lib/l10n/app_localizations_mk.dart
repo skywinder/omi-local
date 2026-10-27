@@ -10066,5 +10066,5 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Ажурирајте го серверот пред снимање. Аудиото зачувано на телефонот се задржува.';
+      'Ажурирајте го серверот за синхронизација на аудио. Аудиото зачувано на телефонот се задржува.';
 }

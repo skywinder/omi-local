@@ -3240,7 +3240,7 @@
     "localProcessingFinished": "Abgeschlossene Aufnahmen",
     "localProcessingProbe": "Verbindung testen",
     "localProcessingPending": "Gespeicherte Änderungen sind noch nicht aktiv. Tippe auf Bestätigen, um sie anzuwenden.",
-    "localAudioServerUpdateRequired": "Aktualisiere den Server vor der Aufnahme. Auf dem Telefon gespeicherte Audiodaten bleiben erhalten.",
+    "localAudioServerUpdateRequired": "Aktualisiere den Server, um Audio zu synchronisieren. Auf dem Telefon gespeicherte Audiodaten bleiben erhalten.",
     "liveTranslation": "Live-Übersetzung",
     "liveTranslationFailed": "Die Übersetzung ist derzeit nicht verfügbar. Prüfe den Übersetzungsanbieter auf deinem Mac.",
     "liveTranslationHelp": "Übersetze das Live-Transkript auf deinem Mac. Das Original bleibt erhalten; die Übersetzung erscheint unter jeder Zeile. Füge zuerst einen Übersetzungsanbieter in den Einstellungen der lokalen Bibliothek hinzu.",

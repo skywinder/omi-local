@@ -10039,5 +10039,6 @@ class AppLocalizationsKn extends AppLocalizations {
   String get localProcessingPending => 'ಉಳಿಸಿದ ಬದಲಾವಣೆಗಳು ಸಕ್ರಿಯವಾಗಿಲ್ಲ. ಅನ್ವಯಿಸಲು ದೃಢೀಕರಿಸಿ ಒತ್ತಿರಿ.';
 
   @override
-  String get localAudioServerUpdateRequired => 'ರೆಕಾರ್ಡಿಂಗ್ ಮೊದಲು ಸರ್ವರ್ ನವೀಕರಿಸಿ. ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ಆಡಿಯೊ ಉಳಿಯುತ್ತದೆ.';
+  String get localAudioServerUpdateRequired =>
+      'ಆಡಿಯೊ ಸಿಂಕ್ ಮಾಡಲು ಸರ್ವರ್ ನವೀಕರಿಸಿ. ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ಆಡಿಯೊ ಸುರಕ್ಷಿತವಾಗಿರುತ್ತದೆ.';
 }

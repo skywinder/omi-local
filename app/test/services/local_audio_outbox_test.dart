@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:omi/services/capture/local_audio_outbox.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/capture/local_opus_preroll.dart';
@@ -222,6 +224,128 @@ void main() {
     await outbox.drain();
     expect(received.single, before);
     expect(directory.listSync(), isEmpty);
+  });
+
+  test('reconnection delivers the current flushed part before rotation and keeps recording without gaps', () async {
+    var online = false;
+    final delivered = <Uint8List>[];
+    final recovering = LocalAudioOutbox(
+      directory: directory,
+      upload: (body, _) async {
+        if (!online) throw const SocketException('synthetic elevator outage');
+        delivered.add(body);
+        return receipt(body);
+      },
+    );
+    await recovering.initialize();
+    final recording = recovering.begin(
+      source: 'phone',
+      codec: 'pcm16',
+      address: 'https://synthetic.example/',
+      key: 'same-key',
+    );
+    final expected = List.generate(120, (i) => List<int>.filled(320, i));
+    for (final packet in expected.take(80)) {
+      await recording.add(packet);
+    }
+    expect(delivered, isEmpty);
+    expect(directory.listSync().whereType<File>().single.path, endsWith('.part'));
+
+    // A foreground return without connectivity must still leave the prefix
+    // intact. Only its exact receipt can remove it on the next available route.
+    await recovering.recoverConnection();
+    await recovering.drain();
+    final retained = directory.listSync().whereType<File>().single.readAsBytesSync();
+    expect(recovering.deliveryFailed, isTrue);
+    online = true;
+    for (final packet in expected.skip(80).take(20)) {
+      await recording.add(packet);
+    }
+    await recovering.recoverConnection();
+    await recovering.drain();
+    expect(delivered, contains(equals(retained)));
+    expect(recovering.activeRecordings, 1, reason: 'Delivery cannot stop acquisition');
+    for (final packet in expected.skip(100)) {
+      await recording.add(packet);
+    }
+    await recording.stop();
+    await recovering.drain();
+    final parts = delivered.map(envelope).toList()
+      ..sort((a, b) => (a.header['index'] as int).compareTo(b.header['index'] as int));
+    expect(parts.map((part) => part.header['index']), [0, 1, 2]);
+    expect(parts.map((part) => part.header['recording_id']).toSet(), hasLength(1));
+    expect(parts.expand((part) => part.packets).toList(), expected);
+    expect(directory.listSync(), isEmpty);
+    expect(recovering.deliveryFailed, isFalse);
+    recovering.dispose();
+  });
+
+  test('a checkpoint made during an in-flight upload drains without waiting for another retry tick', () async {
+    final firstReceipt = Completer<Map<String, dynamic>>();
+    final started = Completer<void>();
+    final delivered = <Uint8List>[];
+    final recovering = LocalAudioOutbox(
+      directory: directory,
+      upload: (body, _) async {
+        delivered.add(body);
+        if (delivered.length == 1) {
+          started.complete();
+          return firstReceipt.future;
+        }
+        return receipt(body);
+      },
+    );
+    await recovering.initialize();
+    final recording = recovering.begin(
+      source: 'phone',
+      codec: 'pcm16',
+      address: 'https://synthetic.example/',
+      key: 'same-key',
+    );
+    await recording.add([1, 0]);
+    await recording.checkpoint();
+    await started.future;
+    final inFlight = recovering.drain();
+    await recording.add([2, 0]);
+    await recovering.recoverConnection();
+    firstReceipt.complete(receipt(delivered.first));
+    await inFlight;
+    expect(delivered, hasLength(2), reason: 'No second manual drain or 15-second timer is needed');
+    expect(directory.listSync(), isEmpty);
+    expect(recovering.activeRecordings, 1);
+    await recording.stop();
+    await recovering.drain();
+    recovering.dispose();
+  });
+
+  test('foreground return publishes pending audio without stopping or losing Opus context', () async {
+    final recording = outbox.begin(
+      source: 'omi',
+      codec: 'opus_fs320',
+      address: 'https://synthetic.example/',
+      key: 'same-key',
+    );
+    for (var i = 1; i <= 5; i++) {
+      await recording.add([0x78, i]);
+    }
+    outbox.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await outbox.flushPendingWrites();
+    await pumpEventQueue();
+    expect(received, hasLength(1));
+    expect(outbox.activeRecordings, 1);
+    await recording.add([0x78, 6]);
+    await recording.stop();
+    await outbox.drain();
+    final parts = received.map(envelope).toList();
+    expect(parts.last.header['preroll_frames'], 4);
+    expect(parts.last.packets.take(4).toList(), [
+      [0x78, 2],
+      [0x78, 3],
+      [0x78, 4],
+      [0x78, 5],
+    ]);
+    final fresh = parts.expand((part) => part.packets.skip(part.header['preroll_frames'] as int)).toList();
+    expect(fresh, List.generate(6, (i) => [0x78, i + 1]));
   });
 
   test('a mismatched receipt cannot delete unacknowledged audio', () async {

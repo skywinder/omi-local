@@ -10005,5 +10005,5 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Uuenda serverit enne salvestamist. Telefonis salvestatud heli säilitatakse.';
+      'Heli sünkroonimiseks uuenda serverit. Telefonis salvestatud heli säilitatakse.';
 }

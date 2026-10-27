@@ -3359,7 +3359,7 @@
     "localProcessingFinished": "Befejezett felvételek",
     "localProcessingProbe": "Kapcsolat tesztelése",
     "localProcessingPending": "A mentett módosítások még nem aktívak. Az alkalmazásukhoz koppintson a Megerősítés gombra.",
-    "localAudioServerUpdateRequired": "Felvétel előtt frissítsd a szervert. A telefonon mentett hang megmarad.",
+    "localAudioServerUpdateRequired": "A hang szinkronizálásához frissítsd a szervert. A telefonon mentett hang megmarad.",
     "liveTranslation": "Valós idejű fordítás",
     "liveTranslationFailed": "A fordítás jelenleg nem érhető el. Ellenőrizd a fordítási szolgáltatót a Maceden.",
     "liveTranslationHelp": "Fordítsd le az élő átiratot a Maceden. Az eredeti szöveg megmarad, a fordítás pedig minden sor alatt megjelenik. Először adj hozzá egy fordítási szolgáltatót a helyi könyvtár beállításaiban.",

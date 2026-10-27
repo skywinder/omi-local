@@ -10017,5 +10017,5 @@ class AppLocalizationsCs extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Před nahráváním aktualizujte server. Zvuk uložený v telefonu zůstane zachován.';
+      'Pro synchronizaci zvuku aktualizujte server. Zvuk uložený v telefonu zůstane zachován.';
 }

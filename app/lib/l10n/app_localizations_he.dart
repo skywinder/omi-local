@@ -9925,5 +9925,5 @@ class AppLocalizationsHe extends AppLocalizations {
   String get localProcessingPending => 'השינויים השמורים עדיין אינם פעילים. הקש על אישור כדי להחיל אותם.';
 
   @override
-  String get localAudioServerUpdateRequired => 'יש לעדכן את השרת לפני ההקלטה. השמע שנשמר בטלפון יישמר.';
+  String get localAudioServerUpdateRequired => 'יש לעדכן את השרת כדי לסנכרן שמע. השמע שנשמר בטלפון יישמר.';
 }

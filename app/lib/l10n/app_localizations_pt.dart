@@ -10029,5 +10029,5 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Atualize o servidor antes de gravar. O áudio salvo no telefone é mantido.';
+      'Atualize o servidor para sincronizar o áudio. O áudio salvo no telefone é mantido.';
 }

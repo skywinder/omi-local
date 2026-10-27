@@ -9833,5 +9833,5 @@ class AppLocalizationsKo extends AppLocalizations {
   String get localProcessingPending => '저장된 변경 사항이 아직 적용되지 않았습니다. 확인을 눌러 적용하세요.';
 
   @override
-  String get localAudioServerUpdateRequired => '녹음하기 전에 서버를 업데이트하세요. 휴대폰에 저장된 오디오는 유지됩니다.';
+  String get localAudioServerUpdateRequired => '오디오를 동기화하려면 서버를 업데이트하세요. 휴대전화에 저장된 오디오는 유지됩니다.';
 }

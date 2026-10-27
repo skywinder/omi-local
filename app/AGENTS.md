@@ -29,8 +29,14 @@ Phone actions and failure feedback must follow the selected input and capture st
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
 Paired audio is journaled before live send and retained until an exact durable
-part receipt. Socket send is not proof of server storage. Verify server delivery
-capability before the preview-only protocol; old pairings refresh automatically.
+part receipt. Socket send is not proof of server storage. Saved pairings may start
+phone journaling offline; capability and socket requests must not delay capture.
+Verify server delivery capability before upload or the preview-only protocol.
+Network loss must not interrupt or restart the input. Reachability recovery,
+successful route changes and foreground return checkpoint active parts for delivery;
+ordinary health polls do not rotate parts. Keep previous live-draft words within
+the same recording across sockets, with recording-relative timestamps and
+draft-scoped corrections; clear them when starting a new recording.
 Keep pending parts bound to the original authenticated pairing, including key
 identity. Connection and storage failures must remain visible without deleting
 unacknowledged audio. See `../docs/RECORDING_DURABILITY.md`.

@@ -10,7 +10,7 @@ The target branch is `sky-uat`; upstream cloud services are outside this plan.
 | Startup | One `omiloc` entry point; explicit preparation, startup, status and diagnostics | Existing settings survive; startup does not download models silently |
 | Phone setup | Private `.env.servers` presets, saved server cards and distinct connection errors | Keychain import is atomic; repeat imports preserve edits and deletions; keys never enter the build |
 | Server selection | Verify before switching; separate server caches | Failed checks leave recording active; older cached data is retained |
-| Recording | Flushed phone outbox, bounded parts, retry and exact server receipts | Lost acknowledgements and app restarts preserve pending audio; retries create no duplicate WAV |
+| Recording | Flushed phone outbox, offline Start, route/foreground checkpoints and exact receipts | Network recovery keeps capture and received draft words; pending audio survives lost acknowledgements and retries create no duplicate WAV |
 | Opus continuity | Version 2 parts with decoder pre-roll; old pending parts accepted | Decode context without duplicating fresh samples or duration |
 | Processing | Independent Live, final transcription and diarization profiles | Authenticated settings with explicit activation and uncertain-write recovery |
 | Security | Authenticated streaming ingress, bounded uploads/provider responses, storage reserve and secret scanning | Unauthorized requests are rejected before upload; low disk leaves audio queued |

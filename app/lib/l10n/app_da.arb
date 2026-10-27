@@ -3281,7 +3281,7 @@
     "localProcessingFinished": "Færdige optagelser",
     "localProcessingProbe": "Test forbindelse",
     "localProcessingPending": "Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.",
-    "localAudioServerUpdateRequired": "Opdater serveren før optagelse. Lyd gemt på telefonen bevares.",
+    "localAudioServerUpdateRequired": "Opdater serveren for at synkronisere lyd. Lyd gemt på telefonen bevares.",
     "liveTranslation": "Oversættelse i realtid",
     "liveTranslationFailed": "Oversættelse er ikke tilgængelig lige nu. Tjek oversættelsesudbyderen på din Mac.",
     "liveTranslationHelp": "Oversæt den løbende transskription på din Mac. Originalen bevares, og oversættelsen vises under hver linje. Tilføj først en oversættelsesudbyder i indstillingerne for det lokale bibliotek.",

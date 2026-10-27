@@ -10061,5 +10061,5 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Felvétel előtt frissítsd a szervert. A telefonon mentett hang megmarad.';
+      'A hang szinkronizálásához frissítsd a szervert. A telefonon mentett hang megmarad.';
 }

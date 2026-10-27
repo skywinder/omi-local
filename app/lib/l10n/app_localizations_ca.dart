@@ -10071,5 +10071,5 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Actualitzeu el servidor abans de gravar. Es conserva l’àudio desat al telèfon.';
+      'Actualitzeu el servidor per sincronitzar l’àudio. Es conserva l’àudio desat al telèfon.';
 }

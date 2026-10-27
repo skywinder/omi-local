@@ -10829,7 +10829,7 @@
     "localProcessingFinished": "Mga tapos na recording",
     "localProcessingProbe": "Subukan ang koneksyon",
     "localProcessingPending": "Hindi pa aktibo ang mga na-save na pagbabago. I-tap ang Kumpirmahin para ilapat.",
-    "localAudioServerUpdateRequired": "I-update ang server bago mag-record. Mananatili ang audio na naka-save sa telepono.",
+    "localAudioServerUpdateRequired": "I-update ang server para i-sync ang audio. Mananatili ang audio na naka-save sa telepono.",
     "liveTranslation": "Pagsasalin nang live",
     "liveTranslationFailed": "Hindi available ang pagsasalin sa ngayon. Suriin ang tagapagbigay ng pagsasalin sa iyong Mac.",
     "liveTranslationHelp": "Isalin ang live na transcript sa iyong Mac. Mananatili ang orihinal; lalabas ang salin sa ilalim ng bawat linya. Magdagdag muna ng tagapagbigay ng pagsasalin sa mga setting ng lokal na aklatan.",

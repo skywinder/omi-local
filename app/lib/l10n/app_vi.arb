@@ -3268,7 +3268,7 @@
     "localProcessingFinished": "Bản ghi đã hoàn tất",
     "localProcessingProbe": "Kiểm tra kết nối",
     "localProcessingPending": "Các thay đổi đã lưu chưa có hiệu lực. Nhấn Xác nhận để áp dụng.",
-    "localAudioServerUpdateRequired": "Cập nhật máy chủ trước khi ghi âm. Âm thanh đã lưu trên điện thoại được giữ lại.",
+    "localAudioServerUpdateRequired": "Cập nhật máy chủ để đồng bộ âm thanh. Âm thanh đã lưu trên điện thoại được giữ lại.",
     "liveTranslation": "Dịch trực tiếp",
     "liveTranslationFailed": "Hiện chưa thể dịch. Hãy kiểm tra nhà cung cấp dịch thuật trên Mac của bạn.",
     "liveTranslationHelp": "Dịch bản chép lời trực tiếp trên Mac của bạn. Văn bản gốc được giữ lại; bản dịch xuất hiện bên dưới từng dòng. Trước tiên, hãy thêm nhà cung cấp dịch thuật trong phần cài đặt thư viện cục bộ.",

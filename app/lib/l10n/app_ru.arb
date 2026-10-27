@@ -3303,5 +3303,5 @@
     "localProcessingFinished": "Готовые записи",
     "localProcessingProbe": "Проверить соединение",
     "localProcessingPending": "Сохранённые изменения ещё не действуют. Нажмите «Подтвердить», чтобы применить.",
-    "localAudioServerUpdateRequired": "Обновите сервер перед записью. Сохранённое на телефоне аудио останется."
+    "localAudioServerUpdateRequired": "Обновите сервер для отправки аудио. Запись сохраняется на телефоне."
 }

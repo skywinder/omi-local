@@ -10054,5 +10054,5 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Обновете сървъра преди запис. Запазеното аудио на телефона се съхранява.';
+      'Обновете сървъра, за да синхронизирате аудиото. Запазеното аудио на телефона се съхранява.';
 }

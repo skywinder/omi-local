@@ -10056,5 +10056,5 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'రికార్డింగ్‌కు ముందు సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
+      'ఆడియోను సమకాలీకరించడానికి సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
 }

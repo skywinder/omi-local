@@ -10018,5 +10018,6 @@ class AppLocalizationsUr extends AppLocalizations {
       'محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔';
 
   @override
-  String get localAudioServerUpdateRequired => 'ریکارڈنگ سے پہلے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
+  String get localAudioServerUpdateRequired =>
+      'آڈیو سنک کرنے کے لیے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
 }

@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Ferdige opptak",
     "localProcessingProbe": "Test tilkobling",
     "localProcessingPending": "Lagrede endringer er ikke aktive. Trykk på Bekreft for å bruke dem.",
-    "localAudioServerUpdateRequired": "Oppdater serveren før opptak. Lyd som er lagret på telefonen beholdes.",
+    "localAudioServerUpdateRequired": "Oppdater serveren for å synkronisere lyd. Lyd som er lagret på telefonen beholdes.",
     "liveTranslation": "Direkteoversettelse",
     "liveTranslationFailed": "Oversettelse er ikke tilgjengelig akkurat nå. Sjekk oversettelsesleverandøren på Macen din.",
     "liveTranslationHelp": "Oversett den løpende transkripsjonen på Macen din. Originalen beholdes; oversettelsen vises under hver linje. Legg først til en oversettelsesleverandør i innstillingene for det lokale biblioteket.",

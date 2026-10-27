@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Voltooide opnamen",
     "localProcessingProbe": "Verbinding testen",
     "localProcessingPending": "Opgeslagen wijzigingen zijn nog niet actief. Tik op Bevestigen om ze toe te passen.",
-    "localAudioServerUpdateRequired": "Werk de server bij voordat je opneemt. Audio die op de telefoon is opgeslagen blijft bewaard.",
+    "localAudioServerUpdateRequired": "Werk de server bij om audio te synchroniseren. Audio die op de telefoon is opgeslagen blijft bewaard.",
     "liveTranslation": "Livevertaling",
     "liveTranslationFailed": "Vertaling is momenteel niet beschikbaar. Controleer de vertaaldienst op je Mac.",
     "liveTranslationHelp": "Vertaal het live transcript op je Mac. Het origineel blijft bewaard; de vertaling verschijnt onder elke regel. Voeg eerst een vertaaldienst toe in de instellingen van de lokale bibliotheek.",

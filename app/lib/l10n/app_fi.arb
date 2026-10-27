@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Valmiit tallenteet",
     "localProcessingProbe": "Testaa yhteys",
     "localProcessingPending": "Tallennetut muutokset eivät ole käytössä. Ota ne käyttöön napauttamalla Vahvista.",
-    "localAudioServerUpdateRequired": "Päivitä palvelin ennen tallennusta. Puhelimeen tallennettu ääni säilytetään.",
+    "localAudioServerUpdateRequired": "Päivitä palvelin äänen synkronointia varten. Puhelimeen tallennettu ääni säilytetään.",
     "liveTranslation": "Reaaliaikainen käännös",
     "liveTranslationFailed": "Käännös ei ole juuri nyt saatavilla. Tarkista käännöspalvelun tarjoaja Macillasi.",
     "liveTranslationHelp": "Käännä reaaliaikainen litterointi Macillasi. Alkuperäinen teksti säilyy, ja käännös näkyy jokaisen rivin alla. Lisää ensin käännöspalvelun tarjoaja paikallisen kirjaston asetuksissa.",

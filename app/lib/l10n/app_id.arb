@@ -3305,7 +3305,7 @@
     "localProcessingFinished": "Rekaman selesai",
     "localProcessingProbe": "Uji koneksi",
     "localProcessingPending": "Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.",
-    "localAudioServerUpdateRequired": "Perbarui server sebelum merekam. Audio yang tersimpan di ponsel tetap disimpan.",
+    "localAudioServerUpdateRequired": "Perbarui server untuk menyinkronkan audio. Audio yang tersimpan di ponsel tetap disimpan.",
     "liveTranslation": "Terjemahan langsung",
     "liveTranslationFailed": "Terjemahan sedang tidak tersedia. Periksa penyedia terjemahan di Mac Anda.",
     "liveTranslationHelp": "Terjemahkan transkrip langsung di Mac Anda. Teks asli tetap tersimpan dan terjemahan muncul di bawah setiap baris. Tambahkan penyedia terjemahan di pengaturan pustaka lokal terlebih dahulu.",

@@ -3239,7 +3239,7 @@
     "localProcessingFinished": "التسجيلات المكتملة",
     "localProcessingProbe": "اختبار الاتصال",
     "localProcessingPending": "التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.",
-    "localAudioServerUpdateRequired": "حدّث الخادم قبل التسجيل. يُحتفظ بالصوت المحفوظ على الهاتف.",
+    "localAudioServerUpdateRequired": "حدّث الخادم لمزامنة الصوت. يبقى الصوت المحفوظ على الهاتف محفوظًا.",
     "liveTranslation": "الترجمة الفورية",
     "liveTranslationFailed": "الترجمة غير متاحة حاليًا. تحقّق من مزوّد الترجمة على جهاز Mac الخاص بك.",
     "liveTranslationHelp": "ترجم النص المباشر على جهاز Mac الخاص بك. يبقى النص الأصلي، وتظهر الترجمة أسفل كل سطر. أضف أولًا مزوّد ترجمة في إعدادات المكتبة المحلية.",

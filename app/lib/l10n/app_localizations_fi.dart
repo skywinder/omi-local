@@ -10021,5 +10021,5 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Päivitä palvelin ennen tallennusta. Puhelimeen tallennettu ääni säilytetään.';
+      'Päivitä palvelin äänen synkronointia varten. Puhelimeen tallennettu ääni säilytetään.';
 }

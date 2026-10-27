@@ -10010,5 +10010,5 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Pred nahrávaním aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
+      'Ak chcete synchronizovať zvuk, aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
 }

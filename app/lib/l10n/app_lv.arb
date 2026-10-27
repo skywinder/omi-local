@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Pabeigtie ieraksti",
     "localProcessingProbe": "Pārbaudīt savienojumu",
     "localProcessingPending": "Saglabātās izmaiņas vēl nav aktīvas. Pieskarieties Apstiprināt, lai tās lietotu.",
-    "localAudioServerUpdateRequired": "Pirms ierakstīšanas atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.",
+    "localAudioServerUpdateRequired": "Lai sinhronizētu audio, atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.",
     "liveTranslation": "Tulkojums reāllaikā",
     "liveTranslationFailed": "Tulkojums pašlaik nav pieejams. Pārbaudiet tulkošanas pakalpojuma sniedzēju savā Mac datorā.",
     "liveTranslationHelp": "Tulkojiet reāllaika transkripciju savā Mac datorā. Oriģināls tiek saglabāts, un tulkojums parādās zem katras rindas. Vispirms vietējās bibliotēkas iestatījumos pievienojiet tulkošanas pakalpojuma sniedzēju.",

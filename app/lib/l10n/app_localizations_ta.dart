@@ -10084,5 +10084,5 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'பதிவுசெய்யும் முன் சேவையகத்தைப் புதுப்பிக்கவும். தொலைபேசியில் சேமித்த ஆடியோ பாதுகாக்கப்படும்.';
+      'ஒலியை ஒத்திசைக்க சேவையகத்தைப் புதுப்பிக்கவும். தொலைபேசியில் சேமித்த ஆடியோ பாதுகாக்கப்படும்.';
 }

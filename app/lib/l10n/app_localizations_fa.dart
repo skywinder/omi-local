@@ -10006,5 +10006,6 @@ class AppLocalizationsFa extends AppLocalizations {
   String get localProcessingPending => 'تغییرات ذخیره‌شده فعال نیستند. برای اعمال، روی تأیید بزنید.';
 
   @override
-  String get localAudioServerUpdateRequired => 'پیش از ضبط، سرور را به‌روز کنید. صدای ذخیره‌شده در تلفن حفظ می‌شود.';
+  String get localAudioServerUpdateRequired =>
+      'برای همگام‌سازی صدا، سرور را به‌روزرسانی کنید. صدای ذخیره‌شده در تلفن حفظ می‌شود.';
 }

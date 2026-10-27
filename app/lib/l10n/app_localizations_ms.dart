@@ -10036,5 +10036,5 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Kemas kini pelayan sebelum merakam. Audio yang disimpan pada telefon dikekalkan.';
+      'Kemas kini pelayan untuk menyegerakkan audio. Audio yang disimpan pada telefon dikekalkan.';
 }

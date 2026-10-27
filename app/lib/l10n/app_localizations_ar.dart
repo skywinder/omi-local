@@ -9958,5 +9958,5 @@ class AppLocalizationsAr extends AppLocalizations {
   String get localProcessingPending => 'التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.';
 
   @override
-  String get localAudioServerUpdateRequired => 'حدّث الخادم قبل التسجيل. يُحتفظ بالصوت المحفوظ على الهاتف.';
+  String get localAudioServerUpdateRequired => 'حدّث الخادم لمزامنة الصوت. يبقى الصوت المحفوظ على الهاتف محفوظًا.';
 }

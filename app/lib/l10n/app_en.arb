@@ -11785,5 +11785,5 @@
     "localProcessingFinished": "Finished recordings",
     "localProcessingProbe": "Test connection",
     "localProcessingPending": "Saved changes are not active. Tap Confirm to apply.",
-    "localAudioServerUpdateRequired": "Update the server before recording. Audio saved on the phone is kept."
+    "localAudioServerUpdateRequired": "Update the server to sync audio. Audio saved on the phone is kept."
 }

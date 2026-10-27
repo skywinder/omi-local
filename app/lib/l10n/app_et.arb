@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Lõpetatud salvestised",
     "localProcessingProbe": "Kontrolli ühendust",
     "localProcessingPending": "Salvestatud muudatused pole aktiivsed. Rakendamiseks puuduta Kinnita.",
-    "localAudioServerUpdateRequired": "Uuenda serverit enne salvestamist. Telefonis salvestatud heli säilitatakse.",
+    "localAudioServerUpdateRequired": "Heli sünkroonimiseks uuenda serverit. Telefonis salvestatud heli säilitatakse.",
     "liveTranslation": "Reaalajas tõlge",
     "liveTranslationFailed": "Tõlge pole praegu saadaval. Kontrolli oma Macis tõlketeenuse pakkujat.",
     "liveTranslationHelp": "Tõlgi oma Macis reaalajas transkriptsiooni. Algtekst säilib ja tõlge kuvatakse iga rea all. Lisa esmalt kohaliku teegi seadetes tõlketeenuse pakkuja.",

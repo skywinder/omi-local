@@ -10065,5 +10065,5 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Actualizați serverul înainte de înregistrare. Sunetul salvat pe telefon este păstrat.';
+      'Actualizați serverul pentru a sincroniza sunetul. Sunetul salvat pe telefon este păstrat.';
 }

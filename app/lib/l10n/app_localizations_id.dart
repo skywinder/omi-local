@@ -10020,5 +10020,5 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Perbarui server sebelum merekam. Audio yang tersimpan di ponsel tetap disimpan.';
+      'Perbarui server untuk menyinkronkan audio. Audio yang tersimpan di ponsel tetap disimpan.';
 }

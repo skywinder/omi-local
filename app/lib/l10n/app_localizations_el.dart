@@ -10089,5 +10089,5 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Ενημερώστε τον διακομιστή πριν την εγγραφή. Ο ήχος που αποθηκεύτηκε στο τηλέφωνο διατηρείται.';
+      'Ενημερώστε τον διακομιστή για συγχρονισμό ήχου. Ο ήχος που έχει αποθηκευτεί στο τηλέφωνο διατηρείται.';
 }

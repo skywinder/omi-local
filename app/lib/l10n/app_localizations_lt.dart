@@ -10039,5 +10039,5 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.';
+      'Norėdami sinchronizuoti garsą, atnaujinkite serverį. Telefone išsaugotas garsas išlieka.';
 }

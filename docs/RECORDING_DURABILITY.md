@@ -4,8 +4,8 @@ The updated local iPhone application keeps a private audio outbox on the phone.
 For CV1 Opus and phone-microphone PCM16, each packet delivered to Flutter is
 appended and flushed to a local journal before it is sent to live transcription.
 A disconnected live socket does not discard this journal.
-During startup, a bounded raw BLE buffer receives packets while codec and server
-capability checks complete. Those packets enter the journal after validation,
+During startup, a bounded raw BLE buffer receives packets while codec
+validation completes. Those packets enter the journal after validation,
 before opening live preview. Termination during this initial validation can lose
 the RAM-only startup buffer; it is not a durable recording yet.
 
@@ -17,6 +17,15 @@ Network bursts and changes to the phone clock do not extend the audio limit.
 The server library receives one recording per part, as in the existing
 five-minute capture workflow. Live preview remains available while recording;
 archiving a part is a separate operation.
+
+When the server cannot be reached, live transcription pauses while the phone
+journal continues. Received draft words remain visible through socket changes
+within the same recording, with new draft timestamps offset by captured audio
+time. Corrections and retractions affect only their originating draft. Starting
+a new recording clears this transient text. After reconnection, the server
+processes the uploaded prefix into a saved recording and final transcript,
+including audio captured during the outage. Live drafts themselves are RAM-only;
+the persisted audio is the recovery source after an app restart.
 
 Opus parts carry a bounded suffix of at least 80 ms of preceding packets, as
 recommended for independent decoding in [RFC 7845 section 4.6](https://www.rfc-editor.org/rfc/rfc7845.html#section-4.6).
@@ -35,20 +44,29 @@ Parts disappear from the phone outbox only after the server acknowledges the
 same part identity and SHA-256 after saving its WAV and metadata.
 
 Delivery retries every fifteen seconds while the application can execute, and
-on pairing changes and application startup. Stopping recording seals the part
-without waiting for the network. Quota or filesystem failure stops acquisition
+on pairing changes and application startup. Restored server reachability, a
+successful Wi-Fi/cellular route change, and foreground return seal the current
+flushed prefix for immediate delivery; they do not wait for five minutes or stop
+the input. Subsequent packets continue in the next part of the same recording.
+An upload already in progress picks up newly sealed parts in its next pass,
+without waiting for another retry tick. Ordinary health polls do not seal parts
+or replace healthy sockets. Stopping recording seals the part without waiting
+for the network. Quota or filesystem failure stops acquisition
 and shows a storage error; pending audio is retained. The default phone outbox
 limit is 512 MiB, with at most 4 MiB of packets awaiting local writes.
 
 ## Server and app updates
 
-The app verifies the server's authenticated delivery capability before using
-this path. Existing pairings refresh this evidence on their first recording
-after an app restart. An old server produces an update-required message and
-does not enter the preview-only protocol. Pairing and pending audio remain.
-If that first capability check cannot reach the server, starting a new recording
-is blocked with a connection error. Once verified in this app session, subsequent
-live connection loss does not block phone journaling or discard accepted audio.
+An existing saved pairing is enough to start journaling without a network,
+including after restarting the app. Phone-microphone capture begins before
+waiting for server capability or the live socket; opening words are journaled
+while those requests run. This does not automatically select an unpaired preset.
+The app verifies the server's authenticated delivery capability before sending
+version-two parts or entering the preview-only protocol. An old server produces
+an update-required message and receives neither protocol. Pairing and pending
+audio remain on the phone until a compatible server can acknowledge them.
+Network socket loss changes transcription readiness, not microphone capture;
+reconnecting does not stop or restart the recording input.
 Older apps continue to use the original server-side WAV capture path.
 
 New protected recordings use journal protocol version 2 and require authenticated
@@ -85,7 +103,9 @@ or terminates the app, physical device endurance, or a working background upload
 budget. A process or power failure during a local write can leave a partial last
 packet. Hardware testing must measure these boundaries separately.
 
-The delivery tests cover persisted-before-send ordering, lost acknowledgements,
-restart replay, incomplete journals, quota bounds, checksum conflicts, request
-authentication/limits, and the legacy client capture path. Physical iPhone/CV1
+The delivery tests cover persisted-before-send ordering, offline Start after
+pairing restore, route and foreground recovery, checkpoints during an in-flight
+upload, microphone continuity across socket failure, retained draft words,
+lost acknowledgements, restart replay, incomplete journals, quota bounds,
+checksum conflicts, request authentication/limits, and the legacy client capture path. Physical iPhone/CV1
 recording and sustained interruption recovery still require fresh evidence.

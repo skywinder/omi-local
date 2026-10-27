@@ -3241,7 +3241,7 @@
     "localProcessingFinished": "Gravacions acabades",
     "localProcessingProbe": "Prova la connexió",
     "localProcessingPending": "Els canvis desats no estan actius. Toca Confirma per aplicar-los.",
-    "localAudioServerUpdateRequired": "Actualitzeu el servidor abans de gravar. Es conserva l’àudio desat al telèfon.",
+    "localAudioServerUpdateRequired": "Actualitzeu el servidor per sincronitzar l’àudio. Es conserva l’àudio desat al telèfon.",
     "liveTranslation": "Traducció en directe",
     "liveTranslationFailed": "La traducció no està disponible ara mateix. Comprova el proveïdor de traducció al teu Mac.",
     "liveTranslationHelp": "Tradueix la transcripció en directe al teu Mac. Es conserva l’original i la traducció apareix sota cada línia. Afegeix primer un proveïdor de traducció a la configuració de la biblioteca local.",

@@ -10011,5 +10011,5 @@ class AppLocalizationsBn extends AppLocalizations {
   String get localProcessingPending => 'সংরক্ষিত পরিবর্তনগুলি সক্রিয় নয়। প্রয়োগ করতে নিশ্চিত করুন চাপুন।';
 
   @override
-  String get localAudioServerUpdateRequired => 'রেকর্ডিংয়ের আগে সার্ভার আপডেট করুন। ফোনে সংরক্ষিত অডিও রাখা হয়।';
+  String get localAudioServerUpdateRequired => 'অডিও সিঙ্ক করতে সার্ভার আপডেট করুন। ফোনে সংরক্ষিত অডিও রাখা হয়।';
 }

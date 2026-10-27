@@ -3285,7 +3285,7 @@
     "localProcessingFinished": "已完成的录音",
     "localProcessingProbe": "测试连接",
     "localProcessingPending": "已保存的更改尚未生效。点击“确认”以应用。",
-    "localAudioServerUpdateRequired": "录音前请更新服务器。手机上保存的音频会保留。",
+    "localAudioServerUpdateRequired": "请更新服务器以同步音频。手机上保存的音频会保留。",
     "liveTranslation": "实时翻译",
     "liveTranslationFailed": "目前无法翻译。请检查 Mac 上的翻译服务提供商。",
     "liveTranslationHelp": "在 Mac 上翻译实时转写。原文会保留，译文显示在每行下方。请先在本地资料库设置中添加翻译服务提供商。",

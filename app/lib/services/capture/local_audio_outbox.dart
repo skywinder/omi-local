@@ -4,12 +4,14 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:omi/env/env.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/capture/local_opus_preroll.dart';
+import 'package:omi/services/connectivity_service.dart';
 import 'package:omi/utils/offline_network_policy.dart';
 
 typedef LocalPartUploader = Future<Map<String, dynamic>> Function(Uint8List body, String serverId);
@@ -17,7 +19,7 @@ typedef LocalPartUploader = Future<Map<String, dynamic>> Function(Uint8List body
 /// Audio accepted from Flutter is flushed locally before it enters live preview.
 /// Immutable parts survive network failure and are removed only on a matching
 /// durable server receipt. The cloud WAL and its send-time flags are unrelated.
-class LocalAudioOutbox extends ChangeNotifier {
+class LocalAudioOutbox extends ChangeNotifier with WidgetsBindingObserver {
   LocalAudioOutbox({
     required this.directory,
     required this.upload,
@@ -42,14 +44,18 @@ class LocalAudioOutbox extends ChangeNotifier {
   final int maxQueuedBytes;
   Future<void> _writes = Future<void>.value();
   Future<void>? _uploading;
+  bool _drainRequested = false;
   Timer? _retry;
+  StreamSubscription<bool>? _connectionChanges;
+  final _recordings = <LocalAudioRecording>{};
+  bool _observingLifecycle = false;
   int _queuedBytes = 0;
   int pendingParts = 0;
   int pendingBytes = 0;
   bool deliveryFailed = false;
   bool _recoveryFailed = false;
   String? captureIssue;
-  int activeRecordings = 0;
+  int get activeRecordings => _recordings.length;
   bool get uploading => _uploading != null;
   bool _disposed = false;
 
@@ -67,6 +73,11 @@ class LocalAudioOutbox extends ChangeNotifier {
     await outbox.initialize();
     shared = outbox;
     LocalMacSession.instance.addListener(outbox.retry);
+    outbox._connectionChanges = ConnectivityService().onConnectionChange.listen((connected) {
+      if (connected) unawaited(outbox.recoverConnection());
+    });
+    WidgetsBinding.instance.addObserver(outbox);
+    outbox._observingLifecycle = true;
     outbox.retry();
   }
 
@@ -198,12 +209,13 @@ class LocalAudioOutbox extends ChangeNotifier {
     if (!const {'omi:opus', 'omi:opus_fs320', 'phone:pcm16'}.contains('$source:$codec')) {
       throw StateError('Unsupported local recording format');
     }
-    activeRecordings++;
     captureIssue = null;
-    return LocalAudioRecording._(this, source, codec, serverIdentity(address, key));
+    final recording = LocalAudioRecording._(this, source, codec, serverIdentity(address, key));
+    _recordings.add(recording);
+    return recording;
   }
 
-  void reportCaptureIssue(String issue) {
+  void reportCaptureIssue(String? issue) {
     captureIssue = issue;
     if (!_disposed) notifyListeners();
   }
@@ -231,16 +243,46 @@ class LocalAudioOutbox extends ChangeNotifier {
     unawaited(drain());
   }
 
+  /// Publish the flushed prefix now, without stopping input or waiting for a
+  /// five-minute rotation. New packets retain this recording's next part index.
+  Future<void> recoverConnection() async {
+    if (_disposed) return;
+    for (final recording in _recordings.toList()) {
+      try {
+        await recording.checkpoint();
+      } catch (_) {
+        // The original journal remains. Acquisition reports the latched write
+        // failure instead of appending behind a damaged or unpublishable tail.
+        reportCaptureIssue('storage');
+      }
+    }
+    retry();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(recoverConnection());
+  }
+
   Future<void> drain() {
     if (_disposed) return Future<void>.value();
     final active = _uploading;
-    if (active != null) return active;
-    final run = _drain();
+    if (active != null) {
+      _drainRequested = true;
+      return active;
+    }
+    final run =
+        (() async {
+          do {
+            _drainRequested = false;
+            await _drain();
+          } while (_drainRequested && !_disposed);
+        })().whenComplete(() {
+          _uploading = null;
+          if (!_disposed) notifyListeners();
+        });
     _uploading = run;
-    return run.whenComplete(() {
-      _uploading = null;
-      if (!_disposed) notifyListeners();
-    });
+    return run;
   }
 
   Future<void> _drain() async {
@@ -278,6 +320,11 @@ class LocalAudioOutbox extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _retry?.cancel();
+    _connectionChanges?.cancel();
+    if (_observingLifecycle) {
+      WidgetsBinding.instance.removeObserver(this);
+      LocalMacSession.instance.removeListener(retry);
+    }
     super.dispose();
   }
 }
@@ -296,6 +343,8 @@ class LocalAudioRecording {
   DateTime? _started;
   int _bytes = 0;
   int _audioMicroseconds = 0;
+  int _totalAudioMicroseconds = 0;
+  double get audioSeconds => _totalAudioMicroseconds / 1000000;
   int _packetCount = 0;
   final _preroll = LocalOpusPreroll();
   bool _closed = false;
@@ -337,6 +386,7 @@ class LocalAudioRecording {
         await _handle!.flush();
         _bytes += snapshot.length + 4;
         _audioMicroseconds += duration;
+        _totalAudioMicroseconds += duration;
         _packetCount++;
         outbox.pendingBytes += snapshot.length + 4;
         if (codec != 'pcm16') _preroll.remember(snapshot, duration);
@@ -436,7 +486,17 @@ class LocalAudioRecording {
   Future<void> stop() {
     if (_stopping != null) return _stopping!;
     _closed = true; // Fence future hardware callbacks before draining accepted ones.
-    outbox.activeRecordings--;
+    outbox._recordings.remove(this);
     return _stopping = outbox._serial(_seal);
   }
+
+  Future<void> checkpoint() => outbox._serial(() async {
+    if (_closed || _writeFailed) return;
+    try {
+      await _seal();
+    } catch (_) {
+      _writeFailed = true;
+      rethrow;
+    }
+  });
 }

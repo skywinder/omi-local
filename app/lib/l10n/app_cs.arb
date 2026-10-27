@@ -3241,7 +3241,7 @@
     "localProcessingFinished": "Dokončené nahrávky",
     "localProcessingProbe": "Otestovat připojení",
     "localProcessingPending": "Uložené změny nejsou aktivní. Klepnutím na Potvrdit je použijete.",
-    "localAudioServerUpdateRequired": "Před nahráváním aktualizujte server. Zvuk uložený v telefonu zůstane zachován.",
+    "localAudioServerUpdateRequired": "Pro synchronizaci zvuku aktualizujte server. Zvuk uložený v telefonu zůstane zachován.",
     "liveTranslation": "Překlad v reálném čase",
     "liveTranslationFailed": "Překlad teď není dostupný. Zkontrolujte poskytovatele překladu na svém Macu.",
     "liveTranslationHelp": "Překládejte živý přepis na svém Macu. Originál zůstane zachován a překlad se zobrazí pod každým řádkem. Nejprve přidejte poskytovatele překladu v nastavení místní knihovny.",

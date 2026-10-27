@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Registrazioni concluse",
     "localProcessingProbe": "Verifica connessione",
     "localProcessingPending": "Le modifiche salvate non sono attive. Tocca Conferma per applicarle.",
-    "localAudioServerUpdateRequired": "Aggiorna il server prima di registrare. L’audio salvato sul telefono viene conservato.",
+    "localAudioServerUpdateRequired": "Aggiorna il server per sincronizzare l’audio. L’audio salvato sul telefono viene conservato.",
     "liveTranslation": "Traduzione in tempo reale",
     "liveTranslationFailed": "La traduzione non è disponibile al momento. Controlla il fornitore di traduzione sul tuo Mac.",
     "liveTranslationHelp": "Traduci la trascrizione in tempo reale sul tuo Mac. Il testo originale viene conservato e la traduzione appare sotto ogni riga. Aggiungi prima un fornitore di traduzione nelle impostazioni della libreria locale.",

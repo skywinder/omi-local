@@ -10107,5 +10107,5 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Mettez le serveur à jour avant d’enregistrer. L’audio enregistré sur le téléphone est conservé.';
+      'Mettez le serveur à jour pour synchroniser l’audio. L’audio enregistré sur le téléphone est conservé.';
 }

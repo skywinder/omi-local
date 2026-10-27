@@ -10015,5 +10015,6 @@ class AppLocalizationsNo extends AppLocalizations {
   String get localProcessingPending => 'Lagrede endringer er ikke aktive. Trykk på Bekreft for å bruke dem.';
 
   @override
-  String get localAudioServerUpdateRequired => 'Oppdater serveren før opptak. Lyd som er lagret på telefonen beholdes.';
+  String get localAudioServerUpdateRequired =>
+      'Oppdater serveren for å synkronisere lyd. Lyd som er lagret på telefonen beholdes.';
 }

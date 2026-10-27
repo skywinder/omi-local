@@ -10041,5 +10041,5 @@ class AppLocalizationsBs extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Ažurirajte server prije snimanja. Zvuk sačuvan na telefonu ostaje sačuvan.';
+      'Ažurirajte server za sinhronizaciju zvuka. Zvuk sačuvan na telefonu ostaje sačuvan.';
 }

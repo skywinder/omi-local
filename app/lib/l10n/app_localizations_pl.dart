@@ -10051,5 +10051,5 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Zaktualizuj serwer przed nagrywaniem. Dźwięk zapisany w telefonie zostanie zachowany.';
+      'Zaktualizuj serwer, aby zsynchronizować dźwięk. Dźwięk zapisany w telefonie pozostaje zachowany.';
 }

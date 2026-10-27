@@ -10037,5 +10037,6 @@ class AppLocalizationsUk extends AppLocalizations {
   String get localProcessingPending => 'Збережені зміни ще не діють. Натисніть «Підтвердити», щоб застосувати.';
 
   @override
-  String get localAudioServerUpdateRequired => 'Оновіть сервер перед записом. Збережене на телефоні аудіо залишиться.';
+  String get localAudioServerUpdateRequired =>
+      'Оновіть сервер для передавання аудіо. Збережене на телефоні аудіо залишиться.';
 }

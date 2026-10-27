@@ -10005,5 +10005,6 @@ class AppLocalizationsDa extends AppLocalizations {
   String get localProcessingPending => 'Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.';
 
   @override
-  String get localAudioServerUpdateRequired => 'Opdater serveren før optagelse. Lyd gemt på telefonen bevares.';
+  String get localAudioServerUpdateRequired =>
+      'Opdater serveren for at synkronisere lyd. Lyd gemt på telefonen bevares.';
 }

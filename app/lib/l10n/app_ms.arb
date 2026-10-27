@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Rakaman selesai",
     "localProcessingProbe": "Uji sambungan",
     "localProcessingPending": "Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.",
-    "localAudioServerUpdateRequired": "Kemas kini pelayan sebelum merakam. Audio yang disimpan pada telefon dikekalkan.",
+    "localAudioServerUpdateRequired": "Kemas kini pelayan untuk menyegerakkan audio. Audio yang disimpan pada telefon dikekalkan.",
     "liveTranslation": "Terjemahan langsung",
     "liveTranslationFailed": "Terjemahan tidak tersedia buat masa ini. Semak penyedia terjemahan pada Mac anda.",
     "liveTranslationHelp": "Terjemahkan transkrip langsung pada Mac anda. Teks asal dikekalkan; terjemahan muncul di bawah setiap baris. Tambahkan penyedia Terjemahan dalam tetapan pustaka setempat terlebih dahulu.",

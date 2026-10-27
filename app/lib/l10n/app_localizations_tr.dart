@@ -10023,5 +10023,6 @@ class AppLocalizationsTr extends AppLocalizations {
   String get localProcessingPending => 'Kaydedilen değişiklikler henüz etkin değil. Uygulamak için Onayla’ya dokunun.';
 
   @override
-  String get localAudioServerUpdateRequired => 'Kayıttan önce sunucuyu güncelleyin. Telefona kaydedilen ses korunur.';
+  String get localAudioServerUpdateRequired =>
+      'Sesi eşitlemek için sunucuyu güncelleyin. Telefona kaydedilen ses korunur.';
 }

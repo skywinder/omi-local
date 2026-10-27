@@ -10003,5 +10003,5 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Cập nhật máy chủ trước khi ghi âm. Âm thanh đã lưu trên điện thoại được giữ lại.';
+      'Cập nhật máy chủ để đồng bộ âm thanh. Âm thanh đã lưu trên điện thoại được giữ lại.';
 }

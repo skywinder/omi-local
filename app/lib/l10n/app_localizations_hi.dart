@@ -10001,5 +10001,5 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'रिकॉर्डिंग से पहले सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।';
+      'ऑडियो सिंक करने के लिए सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।';
 }

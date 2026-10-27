@@ -10059,6 +10059,5 @@ class AppLocalizationsRu extends AppLocalizations {
       'Сохранённые изменения ещё не действуют. Нажмите «Подтвердить», чтобы применить.';
 
   @override
-  String get localAudioServerUpdateRequired =>
-      'Обновите сервер перед записью. Сохранённое на телефоне аудио останется.';
+  String get localAudioServerUpdateRequired => 'Обновите сервер для отправки аудио. Запись сохраняется на телефоне.';
 }

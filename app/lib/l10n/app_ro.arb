@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Înregistrări finalizate",
     "localProcessingProbe": "Testează conexiunea",
     "localProcessingPending": "Modificările salvate nu sunt active. Atinge Confirmă pentru a le aplica.",
-    "localAudioServerUpdateRequired": "Actualizați serverul înainte de înregistrare. Sunetul salvat pe telefon este păstrat.",
+    "localAudioServerUpdateRequired": "Actualizați serverul pentru a sincroniza sunetul. Sunetul salvat pe telefon este păstrat.",
     "liveTranslation": "Traducere în timp real",
     "liveTranslationFailed": "Traducerea nu este disponibilă momentan. Verificați furnizorul de traducere de pe Mac.",
     "liveTranslationHelp": "Traduceți transcrierea în timp real pe Mac. Originalul este păstrat, iar traducerea apare sub fiecare rând. Adăugați mai întâi un furnizor de traducere în setările bibliotecii locale.",

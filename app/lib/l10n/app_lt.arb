@@ -3263,7 +3263,7 @@
     "localProcessingFinished": "Baigti įrašai",
     "localProcessingProbe": "Tikrinti ryšį",
     "localProcessingPending": "Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.",
-    "localAudioServerUpdateRequired": "Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.",
+    "localAudioServerUpdateRequired": "Norėdami sinchronizuoti garsą, atnaujinkite serverį. Telefone išsaugotas garsas išlieka.",
     "liveTranslation": "Vertimas realiuoju laiku",
     "liveTranslationFailed": "Vertimas šiuo metu nepasiekiamas. Patikrinkite vertimo paslaugos teikėją savo „Mac“.",
     "liveTranslationHelp": "Verskite tiesioginę transkripciją savo „Mac“. Originalas išsaugomas, o vertimas rodomas po kiekviena eilute. Pirmiausia vietinės bibliotekos nustatymuose pridėkite vertimo paslaugos teikėją.",

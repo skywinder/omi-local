@@ -9810,5 +9810,5 @@ class AppLocalizationsZh extends AppLocalizations {
   String get localProcessingPending => '已保存的更改尚未生效。点击“确认”以应用。';
 
   @override
-  String get localAudioServerUpdateRequired => '录音前请更新服务器。手机上保存的音频会保留。';
+  String get localAudioServerUpdateRequired => '请更新服务器以同步音频。手机上保存的音频会保留。';
 }

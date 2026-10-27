@@ -10046,5 +10046,5 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Werk de server bij voordat je opneemt. Audio die op de telefoon is opgeslagen blijft bewaard.';
+      'Werk de server bij om audio te synchroniseren. Audio die op de telefoon is opgeslagen blijft bewaard.';
 }

@@ -3299,7 +3299,7 @@
     "localProcessingFinished": "Gravações concluídas",
     "localProcessingProbe": "Testar conexão",
     "localProcessingPending": "As alterações salvas ainda não estão ativas. Toque em Confirmar para aplicá-las.",
-    "localAudioServerUpdateRequired": "Atualize o servidor antes de gravar. O áudio salvo no telefone é mantido.",
+    "localAudioServerUpdateRequired": "Atualize o servidor para sincronizar o áudio. O áudio salvo no telefone é mantido.",
     "liveTranslation": "Tradução ao vivo",
     "liveTranslationFailed": "A tradução não está disponível no momento. Verifique o provedor de tradução no seu Mac.",
     "liveTranslationHelp": "Traduza a transcrição ao vivo no seu Mac. O original é mantido; a tradução aparece abaixo de cada linha. Primeiro, adicione um provedor de Tradução nas configurações da biblioteca local.",

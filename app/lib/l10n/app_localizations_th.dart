@@ -9946,5 +9946,5 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'อัปเดตเซิร์ฟเวอร์ก่อนบันทึกเสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่';
+      'อัปเดตเซิร์ฟเวอร์เพื่อซิงค์เสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่';
 }

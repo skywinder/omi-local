@@ -9829,5 +9829,5 @@ class AppLocalizationsJa extends AppLocalizations {
   String get localProcessingPending => '保存した変更はまだ有効ではありません。「確認」をタップして適用してください。';
 
   @override
-  String get localAudioServerUpdateRequired => '録音前にサーバーを更新してください。電話に保存された音声は保持されます。';
+  String get localAudioServerUpdateRequired => '音声を同期するにはサーバーを更新してください。電話に保存された音声は保持されます。';
 }

@@ -10043,5 +10043,5 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Pirms ierakstīšanas atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.';
+      'Lai sinhronizētu audio, atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.';
 }

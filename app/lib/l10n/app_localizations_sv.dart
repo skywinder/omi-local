@@ -10022,5 +10022,5 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired =>
-      'Uppdatera servern före inspelning. Ljud som sparats på telefonen behålls.';
+      'Uppdatera servern för att synkronisera ljud. Ljud som sparats på telefonen behålls.';
 }

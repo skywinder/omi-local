@@ -18654,7 +18654,7 @@ abstract class AppLocalizations {
   /// No description provided for @localAudioServerUpdateRequired.
   ///
   /// In en, this message translates to:
-  /// **'Update the server before recording. Audio saved on the phone is kept.'**
+  /// **'Update the server to sync audio. Audio saved on the phone is kept.'**
   String get localAudioServerUpdateRequired;
 }
 

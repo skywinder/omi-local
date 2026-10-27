@@ -10829,7 +10829,7 @@
     "localProcessingFinished": "Končani posnetki",
     "localProcessingProbe": "Preizkusi povezavo",
     "localProcessingPending": "Shranjene spremembe še niso aktivne. Tapnite Potrdi, da jih uveljavite.",
-    "localAudioServerUpdateRequired": "Pred snemanjem posodobite strežnik. Zvok, shranjen v telefonu, se ohrani.",
+    "localAudioServerUpdateRequired": "Posodobite strežnik za sinhronizacijo zvoka. Zvok, shranjen v telefonu, se ohrani.",
     "liveTranslation": "Prevajanje v živo",
     "liveTranslationFailed": "Prevod trenutno ni na voljo. Preverite ponudnika prevajanja v svojem Macu.",
     "liveTranslationHelp": "Prevajajte prepis v živo v svojem Macu. Izvirnik se ohrani, prevod pa se prikaže pod vsako vrstico. Najprej dodajte ponudnika prevajanja v nastavitvah lokalne knjižnice.",

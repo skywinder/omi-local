@@ -3298,7 +3298,7 @@
     "localProcessingFinished": "Tamamlanan kayıtlar",
     "localProcessingProbe": "Bağlantıyı test et",
     "localProcessingPending": "Kaydedilen değişiklikler henüz etkin değil. Uygulamak için Onayla’ya dokunun.",
-    "localAudioServerUpdateRequired": "Kayıttan önce sunucuyu güncelleyin. Telefona kaydedilen ses korunur.",
+    "localAudioServerUpdateRequired": "Sesi eşitlemek için sunucuyu güncelleyin. Telefona kaydedilen ses korunur.",
     "liveTranslation": "Canlı çeviri",
     "liveTranslationFailed": "Çeviri şu anda kullanılamıyor. Mac'inizdeki çeviri sağlayıcısını kontrol edin.",
     "liveTranslationHelp": "Canlı dökümü Mac'inizde çevirin. Özgün metin korunur; çeviri her satırın altında görünür. Önce yerel kitaplık ayarlarından bir Çeviri sağlayıcısı ekleyin.",

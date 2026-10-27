@@ -200,6 +200,7 @@ class _BufferedStartProvider extends CaptureProvider {
   final gates = <Completer<TranscriptSegmentSocketService?>>[];
   final sockets = <_AudioPacketSocket>[];
   final stopOperations = <Future<dynamic>>[];
+  final requestedForces = <bool>[];
 
   @override
   Future<dynamic> stopStreamDeviceRecording({bool cleanDevice = false}) {
@@ -220,6 +221,7 @@ class _BufferedStartProvider extends CaptureProvider {
   }) {
     final gate = Completer<TranscriptSegmentSocketService?>();
     gates.add(gate);
+    requestedForces.add(force);
     return gate.future;
   }
 
@@ -1014,8 +1016,10 @@ void main() {
         phoneMicRecorder: mic,
       );
       final starting = provider.streamRecording();
+      await starting.timeout(const Duration(seconds: 5));
       await pumpEventQueue();
       expect(provider.gates, hasLength(1));
+      expect(mic.starts, 1, reason: 'Native acquisition must begin before the socket finishes connecting');
       provider.gates.single.complete(null);
       await starting;
       expect(mic.starts, 1);
@@ -1027,6 +1031,156 @@ void main() {
       expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 1)]);
       expect(outbox.activeRecordings, 0);
       provider.dispose();
+    });
+
+    test('a restored pairing records opening words while the server capability probe is unreachable', () async {
+      final profile = Completer<Map<String, dynamic>>();
+      final restored = LocalMacSession(probe: (_, __) => profile.future);
+      await restored.restore();
+      expect(restored.supportsAudioDelivery, isFalse);
+      final mic = _FakeLiveMicRecorder();
+      final provider = _BufferedStartProvider(
+        localMacSession: restored,
+        audioListenerLoader: (_, __) async => null,
+        microphonePermissionRequester: () async => true,
+        phoneMicRecorder: mic,
+      );
+      final starting = provider.streamRecording();
+      try {
+        await starting.timeout(const Duration(seconds: 5));
+        expect(mic.starts, 1);
+        expect(provider.recordingState, RecordingState.record);
+        expect(provider.gates, isEmpty, reason: 'No preview-only protocol before positive capability evidence');
+        mic.receive!(Uint8List.fromList(List.filled(320, 7)));
+        await outbox.flushPendingWrites();
+        expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 7)]);
+        await starting;
+        profile.complete({'uid': 'alice', 'local_audio_delivery_version': 2});
+        await pumpEventQueue();
+        expect(provider.gates, hasLength(1));
+        provider.connect(0, codec: BleAudioCodec.pcm16);
+        await pumpEventQueue();
+      } finally {
+        if (!profile.isCompleted) profile.complete({'uid': 'alice', 'local_audio_delivery_version': 2});
+        await pumpEventQueue();
+        for (final gate in provider.gates) {
+          if (!gate.isCompleted) gate.complete(null);
+        }
+        await starting;
+        await provider.stopStreamRecording();
+        provider.dispose();
+        restored.dispose();
+      }
+    });
+
+    test(
+      'server disconnect and route recovery never restart the recording microphone or lose journal packets',
+      () async {
+        final mic = _FakeLiveMicRecorder();
+        final provider = _BufferedStartProvider(
+          localMacSession: session,
+          audioListenerLoader: (_, __) async => null,
+          microphonePermissionRequester: () async => true,
+          phoneMicRecorder: mic,
+        );
+        await provider.streamRecording();
+        await pumpEventQueue();
+        final initial = provider.connect(0, codec: BleAudioCodec.pcm16);
+        await pumpEventQueue();
+        final stopsBeforeNetworkFailure = mic.stops;
+        mic.receive!(Uint8List.fromList(List.filled(320, 1)));
+        await outbox.flushPendingWrites();
+        provider.onMessageEventReceived(
+          LocalTranscriptSnapshotEvent(
+            previewId: 'local-preview-before-outage',
+            revision: 1,
+            segments: [_segment('before-outage', 'Before outage')..end = 0.005],
+          ),
+        );
+
+        initial.stopped = true;
+        provider.onClosed(1006);
+        expect(provider.recordingState, RecordingState.record, reason: 'Network loss is not an audio interruption');
+        mic.receive!(Uint8List.fromList(List.filled(320, 2)));
+        provider.onConnectionStateChanged(true);
+        provider.onConnectionStateChanged(true);
+        await pumpEventQueue();
+        expect(provider.gates, hasLength(2), reason: 'Reachability recovery wakes one connection attempt immediately');
+        mic.receive!(Uint8List.fromList(List.filled(320, 3)));
+        await outbox.flushPendingWrites();
+        provider.connect(1, codec: BleAudioCodec.pcm16);
+        await pumpEventQueue();
+        provider.onConnected();
+        expect(mic.starts, 1);
+        expect(mic.stops, stopsBeforeNetworkFailure);
+        expect(outbox.activeRecordings, 1);
+        provider.onMessageEventReceived(
+          LocalTranscriptSnapshotEvent(
+            previewId: 'local-preview-after-outage',
+            revision: 1,
+            segments: [_segment('after-outage', 'After outage')..end = 0.005],
+          ),
+        );
+        expect(provider.segments.map((segment) => segment.text), ['Before outage', 'After outage']);
+        expect(provider.segments.last.start, closeTo(0.03, 0.00001));
+        provider.onMessageEventReceived(
+          LocalTranscriptSnapshotEvent(previewId: 'local-preview-after-outage', revision: 2, segments: []),
+        );
+        expect(
+          provider.segments.single.text,
+          'Before outage',
+          reason: 'A correction owns only its current socket draft',
+        );
+
+        // A successful handoff can have no disconnected reachability edge at all.
+        provider.onConnectionStateChanged(true);
+        await pumpEventQueue();
+        expect(provider.gates, hasLength(3));
+        expect(provider.requestedForces.last, isTrue, reason: 'Replace the half-open socket retained on the old route');
+        provider.connect(2, codec: BleAudioCodec.pcm16);
+        await pumpEventQueue();
+
+        mic.receive!(Uint8List.fromList(List.filled(320, 4)));
+        await provider.stopStreamRecording();
+        await outbox.drain();
+        expect(packets(directory.listSync().whereType<File>().single), [
+          List.filled(320, 1),
+          List.filled(320, 2),
+          List.filled(320, 3),
+          List.filled(320, 4),
+        ]);
+        expect(outbox.activeRecordings, 0);
+        await provider.streamRecording();
+        await pumpEventQueue();
+        expect(provider.segments, isEmpty, reason: 'A new recording cannot inherit the preceding recording draft');
+        provider.gates.last.complete(null);
+        await pumpEventQueue();
+        await provider.stopStreamRecording();
+        provider.dispose();
+      },
+    );
+
+    test('an unmigrated server cannot receive preview audio but the offline journal is preserved', () async {
+      final legacy = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+      await legacy.restore();
+      final mic = _FakeLiveMicRecorder();
+      final provider = _BufferedStartProvider(
+        localMacSession: legacy,
+        audioListenerLoader: (_, __) async => null,
+        microphonePermissionRequester: () async => true,
+        phoneMicRecorder: mic,
+      );
+      await provider.streamRecording();
+      await pumpEventQueue();
+      expect(mic.starts, 1);
+      expect(provider.gates, isEmpty);
+      expect(outbox.captureIssue, 'unsupported_server');
+      mic.receive!(Uint8List.fromList(List.filled(320, 5)));
+      await provider.stopStreamRecording();
+      await outbox.drain();
+      expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 5)]);
+      provider.dispose();
+      legacy.dispose();
     });
 
     test('missing local outbox fails before starting native microphone or batch fallback', () async {

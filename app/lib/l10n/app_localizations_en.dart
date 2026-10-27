@@ -9992,5 +9992,5 @@ class AppLocalizationsEn extends AppLocalizations {
   String get localProcessingPending => 'Saved changes are not active. Tap Confirm to apply.';
 
   @override
-  String get localAudioServerUpdateRequired => 'Update the server before recording. Audio saved on the phone is kept.';
+  String get localAudioServerUpdateRequired => 'Update the server to sync audio. Audio saved on the phone is kept.';
 }
