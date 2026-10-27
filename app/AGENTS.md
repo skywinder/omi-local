@@ -22,6 +22,10 @@ finishes the phone session. Home entry/BLE reconnect must not take over phone au
 Local Omi starts automatically on device connection unless explicitly stopped or
 muted; transient BLE loss must invalidate the old subscription/state without
 changing that intent. A selected phone mic keeps ownership across BLE reconnect.
+Adapter-off/reset events invalidate the transport even without a peripheral
+disconnect callback; queued device-ready cannot restore it while the radio is off.
+On iOS radio-on, retry known peripherals through the existing native reconnect
+policy; preserve manual disconnect and rebuild notification subscriptions.
 Device setup must recheck the owning connection after battery/listener awaits
 before starting capture; a raw disconnect invalidates it before the UI debounce.
 Stop fences pending phone startup and reconnect; native Start waits for native Stop.
