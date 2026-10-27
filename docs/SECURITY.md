@@ -12,7 +12,9 @@ stay private. The library stays on loopback unless its documented authenticated
 Tailscale Serve access is explicitly configured. Never expose emulator ports.
 
 HTTP and WebSocket credentials are confined to the exact paired origin, with
-redirects disabled. The public health endpoint proves reachability only. Check
+redirects disabled. Docker's API ingress streams request bodies to that boundary
+instead of buffering them first, with a 16 MiB request cap. The public health
+endpoint proves reachability only. Check
 an authenticated profile, then actual audio storage and transcription separately.
 See [connection diagnostics](CONNECTION_DIAGNOSTICS.md).
 
