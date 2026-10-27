@@ -18558,19 +18558,19 @@ abstract class AppLocalizations {
   /// No description provided for @liveTranslationHelp.
   ///
   /// In en, this message translates to:
-  /// **'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.'**
+  /// **'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.'**
   String get liveTranslationHelp;
 
   /// No description provided for @liveTranslationUnconfigured.
   ///
   /// In en, this message translates to:
-  /// **'Translation provider is not configured on your Mac. Add one in the local library settings.'**
+  /// **'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.'**
   String get liveTranslationUnconfigured;
 
   /// No description provided for @liveTranslationFailed.
   ///
   /// In en, this message translates to:
-  /// **'Translation is unavailable right now. Check the translation provider on your Mac.'**
+  /// **'Translation is unavailable on the connected server. Check its web library → Settings → Translation.'**
   String get liveTranslationFailed;
 
   /// No description provided for @diarization.

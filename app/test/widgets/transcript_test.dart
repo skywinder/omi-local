@@ -42,6 +42,38 @@ void main() {
     );
   }
 
+  testWidgets('live wire translations appear below the unchanged original', (tester) async {
+    final segment = TranscriptSegment.fromJson({
+      'id': 'local-preview-synthetic-line-0',
+      'text': 'Добрый день.',
+      'speaker': 'SPEAKER_00',
+      'is_user': false,
+      'start': 0.0,
+      'end': 1.0,
+      'translations': [
+        {'lang': 'es', 'text': 'Buenos días.'}
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: TranscriptWidget(segments: [segment], isConversationDetail: false)),
+    ));
+    await tester.pumpAndSettle();
+    final original = find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == 'Добрый день.',
+    );
+    final translated = find.text('Buenos días.');
+    expect(original, findsOneWidget);
+    expect(translated, findsOneWidget);
+    expect(tester.getTopLeft(translated).dy, greaterThan(tester.getBottomLeft(original).dy));
+  });
+
   group('Speaker label display', () {
     testWidgets('shows person name when personId is set and in cache', (tester) async {
       final now = DateTime.now();

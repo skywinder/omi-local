@@ -114,7 +114,8 @@ def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
         assert registry.lookups == ['synthetic-key-ref', 'changed-ref']
 
 
-def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch):
+@pytest.mark.parametrize('enable_after_text', [False, True])
+def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch, enable_after_text):
     from dev_harness import local_live_translation as translation
     requests = []
     def fake_request(settings, key, language, texts):
@@ -132,15 +133,21 @@ def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monk
     with TestClient(relay.create_app(cfg, registry=registry, connector=connect), client=('127.0.0.1', 1234)) as client:
         with client.websocket_connect('/asr') as socket:
             socket.receive_json()
-            socket.send_text(json.dumps({'type': 'translation', 'language': 'en'}))
+            if not enable_after_text:
+                socket.send_text(json.dumps({'type': 'translation', 'language': 'en'}))
             socket.send_bytes(b'\x01\x00' * 100)
             first = socket.receive_json()
+            if enable_after_text:
+                assert first['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
+                socket.send_text(json.dumps({'type': 'translation', 'language': 'en'}))
+                first = socket.receive_json()  # No further audio/snapshot required.
             assert first['lines'][0]['text'] == 'initial' and first['lines'][0]['translations'] == []
             assert socket.receive_json() == {'type': 'translation_status', 'status': 'ready'}
             translated = socket.receive_json()
             assert translated['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:initial'}]
             assert translated['buffer_transcription'] == 'draft'
             socket.send_text(json.dumps({'type': 'translation', 'language': ''}))
+            assert socket.receive_json()['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
             socket.send_bytes(b'')
             assert socket.receive_json()['buffer_transcription'] == 'corrected'
             assert socket.receive_json() == {'type': 'ready_to_stop'}

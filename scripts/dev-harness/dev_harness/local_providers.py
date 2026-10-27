@@ -269,14 +269,31 @@ class Registry:
     def read(self):
         state = self._load()
         effective = {stage: self._public(state['effective'].get(stage)) for stage in STAGES}
+        effective['translation'] = self._public(self._translation(state))
         return {'version': 1, 'revision': state['revision'],
                 'profiles': [self._public(p) for p in state['profiles']], 'effective': effective,
-                'active': {stage: p['id'] if p else None for stage, p in effective.items()}}
+                'active': {stage: p['id'] if (p := state['effective'].get(stage)) else None for stage in STAGES}}
+
+    @staticmethod
+    def _translation(state):
+        """An explicit translator overrides the connected server's active text LLM.
+
+        Resolve only applied settings, never drafts or speech-recognition models.
+        Keep the credential reference pinned to that exact model/endpoint version.
+        """
+        effective = state['effective']
+        if effective.get('translation'):
+            return deepcopy(effective['translation'])
+        summary = effective.get('summary')
+        if summary and summary['kind'] == 'openai-compatible':
+            return {**deepcopy(summary), 'stage': 'translation', 'inherited_from': 'summary'}
+        return None
 
     def snapshot(self, stage):
         if stage not in STAGES:
             raise SettingsError('Неизвестный этап обработки.')
-        return deepcopy(self._load()['effective'].get(stage))
+        state = self._load()
+        return self._translation(state) if stage == 'translation' else deepcopy(state['effective'].get(stage))
 
     def pipeline(self):
         effective = self._load()['effective']

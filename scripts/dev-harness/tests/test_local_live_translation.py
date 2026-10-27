@@ -39,9 +39,37 @@ class Sink:
         self.messages.append(json.loads(raw))
 
 
-async def settle():
-    for _ in range(20):
-        await asyncio.sleep(0)
+class ObservableWake(asyncio.Event):
+    """Signal when the real worker has drained its queue, including to_thread."""
+
+    def __init__(self):
+        super().__init__()
+        self.idle = asyncio.Event()
+
+    def set(self):
+        self.idle.clear()
+        super().set()
+
+    async def wait(self):
+        if not self.is_set():
+            self.idle.set()
+        result = await super().wait()
+        self.idle.clear()
+        return result
+
+
+def make_translator(*args, **kwargs):
+    translator = translation.LiveTranslator(*args, **kwargs)
+    translator.wake = ObservableWake()
+    return translator
+
+
+async def settle(translator):
+    # Event-loop yields do not guarantee that an OS worker thread has finished.
+    # Observe the next empty-queue wait instead, without replacing to_thread.
+    await asyncio.gather(*translator.status_tasks)
+    if translator.worker is not None:
+        await asyncio.wait_for(translator.wake.idle.wait(), 5)
 
 
 def run(coroutine):
@@ -51,11 +79,52 @@ def run(coroutine):
 def test_passthrough_when_language_is_off():
     async def scenario():
         backend, sink = Backend(), Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink, request=backend)
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
         message = snapshot('hello there.', 'second line.')
         assert translator.annotate(message) == message
-        await settle()
+        await settle(translator)
         assert backend.calls == [] and sink.messages == []
+        await translator.close()
+    run(scenario())
+
+
+def test_enabling_and_changing_language_translates_existing_text_without_more_speech():
+    async def scenario():
+        backend, sink = Backend(), Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
+        original = snapshot('Привет мир.')
+        translator.annotate(original)
+        for language in ('es', 'en', 'es'):
+            translator.set_language(language)
+            await settle(translator)
+            assert sink.messages[-1]['lines'][0]['translations'] == [
+                {'lang': language, 'text': f'{language}:Привет мир.'}]
+        assert len(backend.calls) == 2  # Switching back uses the cached result.
+        translator.set_language(None)
+        await settle(translator)
+        assert sink.messages[-1] == original
+        await translator.close()
+    run(scenario())
+
+
+def test_repeated_snapshots_do_not_postpone_stable_text_translation():
+    async def scenario():
+        backend, sink = Backend(), Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
+        translator.set_language('es')
+        translator.annotate(snapshot('stable text'))
+        timer = translator.settle_handle
+        translator.annotate(snapshot('stable text', buffer='changed draft'))
+        assert translator.settle_handle is timer and not timer.cancelled()
+        translator.annotate(snapshot('changed text'))
+        assert timer.cancelled()
+        timer = translator.settle_handle
+        # Drive the real deadline callback without wall-clock sleeps.
+        timer.cancel()
+        translator._settled('changed text')
+        await settle(translator)
+        assert backend.calls == [('k', 'es', ['changed text'])]
+        assert sink.messages[-1]['lines'][0]['translations'][0]['text'] == 'es:changed text'
         await translator.close()
     run(scenario())
 
@@ -63,11 +132,11 @@ def test_passthrough_when_language_is_off():
 def test_translates_completed_lines_and_reemits_snapshot():
     async def scenario():
         backend, sink = Backend(), Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink, request=backend)
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
         translator.set_language('en')
         first = translator.annotate(snapshot('Привет мир.', 'Как дела'))
         assert first['lines'][0]['translations'] == [] and first['lines'][1]['translations'] == []
-        await settle()
+        await settle(translator)
         # Only the punctuated line and settled lines are translated; the growing last line waits.
         assert backend.calls == [('k', 'en', ['Привет мир.'])]
         assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:Привет мир.'}]
@@ -76,7 +145,7 @@ def test_translates_completed_lines_and_reemits_snapshot():
         # Cached translation is attached synchronously on the next snapshot without a new request.
         again = translator.annotate(snapshot('Привет мир.', 'Как дела?'))
         assert again['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:Привет мир.'}]
-        await settle()
+        await settle(translator)
         assert backend.calls[-1] == ('k', 'en', ['Как дела?'])
         assert sink.messages[-1]['lines'][1]['translations'] == [{'lang': 'en', 'text': 'en:Как дела?'}]
         await translator.close()
@@ -86,13 +155,13 @@ def test_translates_completed_lines_and_reemits_snapshot():
 def test_unpunctuated_last_line_is_translated_after_it_settles():
     async def scenario():
         backend, sink = Backend(), Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink, request=backend, settle_seconds=0.01)
+        translator = make_translator(profile(), 'k', send=sink, request=backend, settle_seconds=0.01)
         translator.set_language('de')
         translator.annotate(snapshot('erste zeile'))
-        await settle()
+        await settle(translator)
         assert backend.calls == []
         await asyncio.sleep(0.03)
-        await settle()
+        await settle(translator)
         assert backend.calls == [('k', 'de', ['erste zeile'])]
         assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'de', 'text': 'de:erste zeile'}]
         await translator.close()
@@ -102,14 +171,14 @@ def test_unpunctuated_last_line_is_translated_after_it_settles():
 def test_language_change_retranslates_and_keeps_only_target_language():
     async def scenario():
         backend, sink = Backend(), Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink, request=backend)
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
         translator.set_language('en')
         translator.annotate(snapshot('Bonjour.', 'Salut.'))
-        await settle()
+        await settle(translator)
         translator.set_language('de')
         message = translator.annotate(snapshot('Bonjour.', 'Salut.'))
         assert all(line['translations'] == [] for line in message['lines'])
-        await settle()
+        await settle(translator)
         assert backend.calls[-1] == ('k', 'de', ['Bonjour.', 'Salut.'])
         assert [line['translations'] for line in sink.messages[-1]['lines']] == [
             [{'lang': 'de', 'text': 'de:Bonjour.'}], [{'lang': 'de', 'text': 'de:Salut.'}]]
@@ -122,12 +191,12 @@ def test_language_change_retranslates_and_keeps_only_target_language():
 def test_failures_are_negative_cached_and_reported_once():
     async def scenario():
         backend, sink = Backend(fail=True), Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink, request=backend)
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
         translator.set_language('en')
         translator.annotate(snapshot('One.', 'Two.'))
-        await settle()
+        await settle(translator)
         translator.annotate(snapshot('One.', 'Two.', 'Three.'))
-        await settle()
+        await settle(translator)
         assert [call[2] for call in backend.calls] == [['One.', 'Two.'], ['Three.']]
         assert sink.messages.count({'type': 'translation_status', 'status': 'failed'}) == 1
         assert not any('lines' in message for message in sink.messages)
@@ -138,11 +207,11 @@ def test_failures_are_negative_cached_and_reported_once():
 def test_invalid_provider_answer_counts_as_failure():
     async def scenario():
         sink = Sink()
-        translator = translation.LiveTranslator(profile(), 'k', send=sink,
+        translator = make_translator(profile(), 'k', send=sink,
                                                 request=lambda *_: ['only one'])
         translator.set_language('en')
         translator.annotate(snapshot('One.', 'Two.'))
-        await settle()
+        await settle(translator)
         assert sink.messages == [{'type': 'translation_status', 'status': 'failed'}]
         await translator.close()
     run(scenario())
@@ -151,13 +220,14 @@ def test_invalid_provider_answer_counts_as_failure():
 def test_unconfigured_provider_reports_once_and_never_requests():
     async def scenario():
         sink = Sink()
-        translator = translation.LiveTranslator(None, '', send=sink, request=lambda *_: pytest.fail('no provider'))
+        translator = make_translator(None, '', send=sink, request=lambda *_: pytest.fail('no provider'))
         translator.set_language('en')
         message = translator.annotate(snapshot('One.'))
         assert message == snapshot('One.')
         translator.set_language('de')
-        await settle()
-        assert sink.messages == [{'type': 'translation_status', 'status': 'unconfigured'}]
+        await settle(translator)
+        assert [m for m in sink.messages if m.get('type') == 'translation_status'] == [
+            {'type': 'translation_status', 'status': 'unconfigured'}]
         await translator.close()
     run(scenario())
 

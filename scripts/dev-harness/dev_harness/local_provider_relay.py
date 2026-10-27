@@ -172,7 +172,9 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     # Corrections, retractions, pending buffers, diarization state
                     # and final snapshots all keep their original WLK shape; only
                     # committed lines gain relay-side translations.
-                    await send(json.dumps(translator.annotate(decoded)) if translator.active else message)
+                    # Remember text while translation is off so enabling it can
+                    # translate the visible snapshot without waiting for speech.
+                    await send(json.dumps(translator.annotate(decoded)))
                 raise RelayError('Live provider closed without end acknowledgement')
 
             feeder = asyncio.create_task(feed(), name='provider-relay-feed')

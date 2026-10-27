@@ -85,6 +85,7 @@ class LiveTranslator:
         self.wake = asyncio.Event()
         self.worker = None
         self.settle_handle = None
+        self.settle_text = None
         self.status_tasks = []
 
     # --- control -----------------------------------------------------------
@@ -97,6 +98,8 @@ class LiveTranslator:
         self.pending.clear()
         self.queued.clear()
         self._cancel_settle()
+        if self.last is not None:
+            self.status_tasks.append(asyncio.create_task(self._publish()))
         if language is None:
             return
         if self.settings is None:
@@ -105,6 +108,10 @@ class LiveTranslator:
             return
         if self.worker is None:
             self.worker = asyncio.create_task(self._run(), name='live-translation')
+
+    async def _publish(self):
+        if self.last is not None:
+            await self.send(json.dumps(self.annotate(self.last)))
 
     @property
     def active(self):
@@ -123,11 +130,13 @@ class LiveTranslator:
 
     def annotate(self, message):
         """Attach cached translations to committed lines; queue the rest."""
-        if not self.active or not isinstance(message.get('lines'), list):
+        if not isinstance(message.get('lines'), list):
+            return message
+        self.last = message
+        if not self.active:
             return message
         language = self.language
-        self.last = message
-        self._cancel_settle()
+        settling = None
         lines = []
         for index, line in enumerate(message['lines']):
             text = line.get('text') if isinstance(line, dict) else None
@@ -145,12 +154,20 @@ class LiveTranslator:
             if index < len(message['lines']) - 1 or SENTENCE_END.search(text):
                 self._enqueue(text)
             else:
+                settling = text
+        # WLK may resend an unchanged line while buffers/timestamps change.
+        # Measure stability of the text, not the time since the last snapshot.
+        if settling != self.settle_text:
+            self._cancel_settle()
+            if settling is not None:
+                self.settle_text = settling
                 self.settle_handle = asyncio.get_running_loop().call_later(
-                    self.settle_seconds, self._settled, text)
+                    self.settle_seconds, self._settled, settling)
         return {**message, 'lines': lines}
 
     def _settled(self, text):
         self.settle_handle = None
+        self.settle_text = None
         if not self.active or self.last is None or (text, self.language) in self.cache:
             return
         tail = self.last['lines'][-1] if self.last['lines'] else None
@@ -166,6 +183,7 @@ class LiveTranslator:
         self.wake.set()
 
     def _cancel_settle(self):
+        self.settle_text = None
         if self.settle_handle is not None:
             self.settle_handle.cancel()
             self.settle_handle = None

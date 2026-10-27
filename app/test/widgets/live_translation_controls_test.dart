@@ -71,6 +71,8 @@ void main() {
     await tester.pumpWidget(app(const LiveTranslationStatusHint(enabled: true, status: 'unconfigured')));
     final l10n = AppLocalizations.of(tester.element(find.byType(LiveTranslationStatusHint)));
     expect(find.text(l10n.liveTranslationUnconfigured), findsOneWidget);
+    expect(l10n.liveTranslationUnconfigured, contains('connected server'));
+    expect(l10n.liveTranslationUnconfigured, contains('Settings'));
     await tester.pumpWidget(app(const LiveTranslationStatusHint(enabled: true, status: 'failed')));
     expect(find.text(l10n.liveTranslationFailed), findsOneWidget);
     for (final hidden in [
