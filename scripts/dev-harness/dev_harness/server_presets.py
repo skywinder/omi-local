@@ -33,12 +33,11 @@ def clean_environment(environ):
 
 def normalize_url(value):
     """Match the paired app's HTTP/Tailscale or public HTTPS origin shape."""
-    from .local_mac import endpoint
-    from .local_transport import normalize_tailscale_url
+    from .local_transport import normalize_https_url, normalize_tailscale_url
 
     try:
         if value.startswith('https://'):
-            normalized = endpoint(value)
+            normalized = normalize_https_url(value)
         else:
             normalized = normalize_tailscale_url(value)
         return normalized.rstrip('/') + '/'

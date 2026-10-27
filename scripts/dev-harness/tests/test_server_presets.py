@@ -27,6 +27,45 @@ def decode(env):
     return json.loads(base64.b64decode(env[server_presets.CHILD_ENV]))
 
 
+@pytest.mark.parametrize('source', ['catalog', 'single-env'])
+def test_runtime_provisioning_requires_only_stdlib_without_site_packages(tmp_path, source):
+    if source == 'catalog':
+        path, key = write_presets(tmp_path)
+        path.write_text(path.read_text() + 'OMI_SERVER_remote_NAME=Remote\n'
+                        'OMI_SERVER_remote_URL=https://Synthetic.Example:443/\n'
+                        f'OMI_SERVER_remote_KEY={key}\n')
+    else:
+        path = tmp_path / '.env'
+        path.write_text('OMI_NGROK_URL=https://synthetic.example\n'
+                        'NGROK_AUTHTOKEN=synthetic-agent-1234\n'
+                        'OMI_LOCAL_APP_KEY=' + 's' * 43 + '\n')
+        path.chmod(0o600)
+    code = '''
+import base64
+import json
+from pathlib import Path
+import sys
+from dev_harness import launch_iphone, server_presets
+
+assert sys.flags.no_site == 1
+assert server_presets.normalize_url('100.64.0.1') == 'http://100.64.0.1:20000/'
+assert server_presets.normalize_url('http://100.64.0.1') == 'http://100.64.0.1:80/'
+assert server_presets.normalize_url('https://Synthetic.Example:443/') == 'https://synthetic.example/'
+env, hidden = server_presets.launch_environment(Path.cwd(), environ={}, required=True)
+payload = json.loads(base64.b64decode(env[server_presets.CHILD_ENV]))
+assert payload['version'] == 1
+assert payload['servers'][-1]['url'] == 'https://synthetic.example/'
+assert hidden and callable(launch_iphone.launch)
+assert 'dotenv' not in sys.modules and 'dev_harness.local_mac' not in sys.modules
+print('stdlib provisioning passed')
+'''
+    result = subprocess.run([sys.executable, '-S', '-c', code], cwd=tmp_path, timeout=5,
+                            env={**os.environ, 'PYTHONPATH': str(Path(__file__).resolve().parents[1])},
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'stdlib provisioning passed'
+
+
 def test_private_literal_presets_normalize_and_do_not_execute_or_probe(tmp_path, monkeypatch):
     marker = tmp_path / 'must-not-exist'
     monkeypatch.chdir(tmp_path)

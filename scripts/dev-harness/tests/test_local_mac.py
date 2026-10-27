@@ -6,8 +6,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dev_harness import config, safety
-from dev_harness.local_mac import endpoint, pairing_data, private_json, prepare_emulator, require_auth_boundary
+from dev_harness import config, local_mac, safety
+from dev_harness.local_mac import pairing_data, private_json, prepare_emulator, require_auth_boundary
+from dev_harness.local_transport import TransportError, normalize_https_url
 
 
 def env_fixture(tmp_path):
@@ -219,16 +220,18 @@ def test_iphone_build_selection_can_skip_unlock_but_still_probes_connection(monk
         'https://demo.ngrok.app/path',
         'https://demo.ngrok.app?key=x',
         'https://demo.ngrok.app:8000',
+        'https://demo.ngrok.app:sensitive-port-canary/',
         'https://127.0.0.1',
     ],
 )
 def test_bad_endpoint_rejected(url):
-    with pytest.raises(ValueError):
-        endpoint(url)
+    with pytest.raises(TransportError) as error:
+        normalize_https_url(url)
+    assert 'sensitive-port-canary' not in str(error.value)
 
 
 def test_endpoint_and_private_pairing(tmp_path):
-    assert endpoint(' https://demo.ngrok.app/ ') == 'https://demo.ngrok.app'
+    assert normalize_https_url(' https://demo.ngrok.app/ ') == 'https://demo.ngrok.app'
     path = tmp_path / 'pairing.json'
     key = 'a' * 43
     private_json(path, pairing_data(key))
@@ -514,18 +517,18 @@ def test_env_wizard_reads_both_values_and_only_explicit_edit_reloads(env_wizard,
     assert 'synthetic-replacement' not in output.out + output.err
 
 
-@pytest.mark.parametrize('contents', [
-    'NGROK_URL=http://synthetic.ngrok.app\nNGROK_AUTHTOKEN=synthetic-agent-token-123456\n',
-    'NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=bad-token\n',
-    'NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=${SYNTHETIC_TOKEN}\n',
+@pytest.mark.parametrize('contents,error_type', [
+    ('NGROK_URL=http://synthetic.ngrok.app\nNGROK_AUTHTOKEN=synthetic-agent-token-123456\n', TransportError),
+    ('NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=bad-token\n', local_mac.LocalMacError),
+    ('NGROK_URL=https://synthetic.ngrok.app\nNGROK_AUTHTOKEN=${SYNTHETIC_TOKEN}\n', local_mac.LocalMacError),
 ])
-def test_env_wizard_rejects_invalid_values_before_writing(env_wizard, monkeypatch, contents):
+def test_env_wizard_rejects_invalid_values_before_writing(env_wizard, monkeypatch, contents, error_type):
     from dev_harness import local_mac
 
     cfg, path = env_wizard
     path.write_text(contents)
     monkeypatch.setenv('SYNTHETIC_TOKEN', 'synthetic-agent-token-123456')
-    with pytest.raises(local_mac.LocalMacError):
+    with pytest.raises(error_type):
         local_mac.configure(cfg)
     assert not cfg.layout.state_root.exists()
 
