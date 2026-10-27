@@ -8,6 +8,24 @@ command="${1:-help}"
 fail() { echo "$*" >&2; exit 1; }
 usage() { echo 'Run ./omiloc --help. Docker settings are saved by bootstrap in .env.docker.'; }
 case "$command" in help|-h|--help) usage; exit 0 ;; esac
+# Provider JSON uses the running volume's registry, without startup probes or
+# banners on stdout. Forward key variable names, never their values in argv.
+if [[ "$command" == providers ]]; then
+  provider_command=(docker compose --env-file /dev/null -f compose.yaml exec -T)
+  provider_args=("$@")
+  for ((i=0; i<${#provider_args[@]}; i++)); do
+    if [[ "${provider_args[i]}" == --api-key-env ]]; then
+      key_name="${provider_args[i+1]:-}"
+      [[ "$key_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail 'Invalid key environment variable name.'
+      provider_command+=(-e "$key_name")
+    elif [[ "${provider_args[i]}" == --api-key-env=* ]]; then
+      key_name="${provider_args[i]#*=}"
+      [[ "$key_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail 'Invalid key environment variable name.'
+      provider_command+=(-e "$key_name")
+    fi
+  done
+  exec "${provider_command[@]}" app python -m dev_harness.local_provider_cli "$@"
+fi
 case "$command" in bootstrap|up|dev|down|status|logs|doctor|open|pair|config|configure|tunnel) ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -23,6 +41,12 @@ config_file=.env.docker
 [[ ! -L "$config_file" ]] || fail '.env.docker must not be a symlink.'
 if [[ -e "$config_file" ]]; then
   [[ -f "$config_file" && $(wc -c < "$config_file") -le 4096 ]] || fail 'Invalid .env.docker file.'
+  if [[ "$(uname -s)" == Darwin ]]; then
+    config_mode=$(stat -f '%Lp' "$config_file")
+  else
+    config_mode=$(stat -c '%a' "$config_file")
+  fi
+  [[ "$config_mode" == 600 ]] || fail '.env.docker must be private. Run: chmod 600 .env.docker'
   seen=' '
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -n "$line" && "$line" != \#* ]] || continue
@@ -212,14 +236,17 @@ case "$command" in
     docker info >/dev/null
     compose config --quiet
     echo 'Docker prerequisites and configuration passed.'
+    compose --profile tunnel ps --all
+    if ! compose exec -T app python docker/runtime.py health; then
+      fail 'Docker runtime readiness failed. Inspect logs; run up if the stack is stopped.'
+    fi
+    echo 'Docker runtime readiness passed. Phone authentication and audio delivery require separate checks.'
     if "$inference"; then
-      compose exec -T app python docker/runtime.py health
       probe_device=$OMI_DOCKER_DEVICE
       [[ "$OMI_DOCKER_STT" != external ]] || probe_device=external
       compose exec -T app python docker/runtime.py inference "$probe_device"
     else
-      compose --profile tunnel ps --all
-      echo 'Run doctor --inference after up to verify synthetic transcription.'
+      echo 'Inference was not tested. Run doctor --inference to transcribe synthetic speech.'
     fi ;;
   pair)
     [[ -t 0 && -t 1 ]] || fail 'Run pair in your own interactive terminal; keys must not enter logs.'

@@ -22,6 +22,7 @@ Usage: ./omiloc [--runtime native|docker] <command> [options]
   doctor [--inference]  Check prerequisites; optionally test synthetic speech.
   open                  Open the library, or print its URL on a headless host.
   pair                  Show the address and app key in an interactive terminal.
+  providers ...         List, export, save, check or select processing profiles.
   dev                   Run Docker Compose Watch in the foreground (Docker only).
   --install             Install the native library command for this user.
 

@@ -40,7 +40,12 @@ services:
       - '127.0.0.1:21000:22000'
       - '127.0.0.1:21001:22001'
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - type: bind
+        source: ./docker/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
     restart: unless-stopped
   stt:
     build:

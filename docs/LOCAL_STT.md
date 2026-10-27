@@ -190,9 +190,14 @@ Older jobs retain their previous mode; use `transcribe` for an older recording.
 
 ## Continuous recording and pending audio
 
-The local receiver saves a WAV part after five minutes of decoded audio and
-continues receiving into a new part on the same socket. The final partial part
-is saved when capture stops. Transcription consumes finished parts independently.
+Updated apps retain received packets on the phone and seal parts after at most
+five minutes of audio or Stop. Authenticated uploads publish completed WAVs;
+only a matching saved receipt releases the phone copy. Live preview uses the
+socket independently and does not create a duplicate recording.
+Older apps retain the receiver's five-minute WAV rotation on the same socket.
+Transcription consumes finished parts independently in both paths.
+See [recording delivery and recovery](RECORDING_DURABILITY.md) for retry,
+capability-check and physical-device boundaries.
 Conversations shows saved parts before a transcript exists, including queued,
 processing, failed and no-transcript outcomes. These cards are read-only views
 of the local audio library and disappear after successful transcript import.

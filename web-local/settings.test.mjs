@@ -107,6 +107,36 @@ function serverState() {
     effective: {live: null, stt: null, diarization: null, summary: structuredClone(profile)}};
 }
 
+test('finished-recording speaker selection stays independent of the live server', async t => {
+  const ui = dom(t), calls = [], state = serverState();
+  const live = {...providerDefaults('live', 'external'), id: 'live-1', name: 'Live server'};
+  live.settings.url = 'wss://speech.example/asr';
+  const speakers = {...providerDefaults('diarization', 'mycelia'), id: 'speakers-1', name: 'Recording speakers'};
+  speakers.settings.base_url = 'https://speakers.example';
+  state.profiles.push(live, speakers);
+  state.active.live = live.id; state.effective.live = structuredClone(live);
+  const settings = mountSettings(ui.root, {request: async (path, body) => {
+    calls.push({path, body});
+    if (path === '/activate') {
+      state.active[body.stage] = body.id;
+      state.effective[body.stage] = structuredClone(state.profiles.find(profile => profile.id === body.id));
+      state.revision++;
+    }
+    return structuredClone(state);
+  }});
+  await settings.show();
+  assert.match(ui.root.textContent, /Mac или контейнер/);
+  assert.match(ui.root.textContent, /разделение говорящих в реальном времени/i);
+  ui.click('Диаризация');
+  assert.match(ui.root.textContent, /в готовой записи/);
+  ui.click('Использовать'); await settle();
+  assert.deepEqual(calls.at(-1), {path: '/activate', body: {revision: 7, stage: 'diarization', id: speakers.id}});
+  assert.match(ui.root.textContent, /Действует: Recording speakers/);
+  ui.click('Live STT');
+  assert.match(ui.root.textContent, /Действует: Live server/);
+  assert.equal(calls.filter(call => call.path === '/activate').length, 1);
+});
+
 test('editing and checking a draft does not save or activate; save and use are distinct actions', async t => {
   const ui = dom(t), calls = [], state = serverState();
   const settings = mountSettings(ui.root, {request: async (path, body, method) => {

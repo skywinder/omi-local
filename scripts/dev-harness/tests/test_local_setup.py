@@ -64,6 +64,60 @@ def test_pair_refuses_noninteractive_secret_output(monkeypatch):
         local_setup.pair(SimpleNamespace())
 
 
+@pytest.mark.parametrize('ready,inference', [(False, False), (False, True), (True, False), (True, True)])
+def test_doctor_requires_runtime_readiness_before_optional_inference(monkeypatch, capsys, ready, inference):
+    from dev_harness import local_transport, runtime_probe
+
+    cfg, probes = SimpleNamespace(), []
+    monkeypatch.setattr(local_transport, 'prepare_environment', lambda *_a, **_k: None)
+    monkeypatch.setattr(local_setup.config, 'load_config', lambda *_a, **_k: cfg)
+    monkeypatch.setattr(local_setup, 'check', lambda value: None)
+    monkeypatch.setattr(local_setup, 'status', lambda value: 0 if ready else 1)
+    monkeypatch.setattr(runtime_probe, 'native_inference', lambda value: probes.append(value))
+    assert local_setup.main(['doctor', *(['--inference'] if inference else [])]) == (0 if ready else 1)
+    output = capsys.readouterr()
+    assert probes == ([cfg] if ready and inference else [])
+    if ready:
+        assert 'runtime readiness passed' in output.out
+        assert ('Inference was not tested' in output.out) == (not inference)
+    else:
+        assert 'readiness failed' in output.err and 'readiness passed' not in output.out
+
+
+@pytest.mark.parametrize('owned', [False, True])
+def test_native_status_requires_owned_process_before_health(monkeypatch, capsys, owned):
+    cfg = SimpleNamespace(layout=SimpleNamespace(process_manifest=Path('synthetic-processes.json')))
+    records = [{'service': name, 'pid': index} for index, name in
+               enumerate(('firestore', 'auth', 'redis', 'backend', 'library'), 1)]
+    monkeypatch.setattr(local_setup.cli, '_process_records', lambda _: records)
+    def ownership(*_a, **kwargs):
+        if kwargs['service'] == 'backend' and not owned:
+            raise local_setup.safety.SafetyError('private process details')
+    monkeypatch.setattr(local_setup.safety, 'validate_owned_pid', ownership)
+    def health(_cfg, service):
+        if service == 'backend' and not owned:
+            pytest.fail('cannot trust a foreign listener')
+        return True, 'ready'
+    monkeypatch.setattr(local_setup.cli, '_service_health', health)
+    monkeypatch.setattr(local_setup, 'require_transcription_ready', lambda _: None)
+    assert local_setup.status(cfg) == (0 if owned else 1)
+    output = capsys.readouterr().out
+    assert ('ownership unavailable' in output) == (not owned)
+    assert 'private' not in output
+
+
+def test_native_status_does_not_treat_library_only_as_a_running_server(monkeypatch, capsys):
+    cfg = SimpleNamespace(local_transport='tailscale',
+                          layout=SimpleNamespace(process_manifest=Path('synthetic-processes.json')))
+    monkeypatch.setattr(local_setup.cli, '_process_records', lambda _: [{'service': 'library', 'pid': 42}])
+    monkeypatch.setattr(local_setup.safety, 'validate_owned_pid', lambda *_a, **_k: None)
+    monkeypatch.setattr(local_setup.cli, '_service_health', lambda *_a: (True, 'ready'))
+    monkeypatch.setattr(local_setup, 'require_transcription_ready', lambda _: None)
+    assert local_setup.status(cfg) == 1
+    output = capsys.readouterr().out
+    assert 'backend: not running' in output and 'library: ready' in output
+
+
 def test_setup_does_not_open_library_or_claim_success_when_live_is_unavailable(monkeypatch, tmp_path):
     from dev_harness import config
 

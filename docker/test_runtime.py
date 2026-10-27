@@ -191,6 +191,7 @@ if "run" in args and "stt" in args and os.environ.get("DOCKER_FAIL") == "cuda":
     print("CUDA unavailable", file=sys.stderr)
     sys.exit(7)
 if "up" in args and os.environ.get("DOCKER_FAIL") == "up": sys.exit(7)
+if "exec" in args and args[-1] == "health" and os.environ.get("DOCKER_FAIL") == "health": sys.exit(7)
 ''')
     docker.chmod(0o755)
     tailscale = fake / 'tailscale'
@@ -224,6 +225,45 @@ def test_wrapper_start_reuses_saved_selection_without_build_or_download(tmp_path
     assert '--no-build' in startup and '--pull' in startup and 'never' in startup
     assert ('--watch' in startup) == (command == 'dev')
     assert ('--wait' in startup) == (command == 'up')
+
+
+def test_wrapper_refuses_readable_settings_before_docker_operations(tmp_path):
+    result, _ = docker_wrapper(tmp_path, ['status'])
+    assert result.returncode == 0
+    settings = tmp_path / 'project with spaces/.env.docker'
+    settings.chmod(0o644)
+    result, calls = docker_wrapper(tmp_path, ['up'])
+    assert result.returncode != 0 and 'chmod 600' in result.stderr
+    assert calls == []
+
+
+def test_wrapper_provider_export_uses_running_registry_without_startup_or_banner(tmp_path):
+    result, calls = docker_wrapper(tmp_path, ['providers', 'export'], OMI_DOCKER_DEVICE='auto')
+    assert result.returncode == 0 and result.stdout == ''
+    assert [call['args'] for call in calls] == [['compose', '--env-file', '/dev/null', '-f', 'compose.yaml', 'exec', '-T',
+        'app', 'python', '-m', 'dev_harness.local_provider_cli', 'export']]
+
+
+@pytest.mark.parametrize('option', [['--api-key-env', 'TEST_PROVIDER_KEY'], ['--api-key-env=TEST_PROVIDER_KEY']])
+def test_wrapper_provider_key_passes_only_environment_name(tmp_path, option):
+    result, calls = docker_wrapper(tmp_path, ['providers', 'save', '--file', '-', *option],
+                                   TEST_PROVIDER_KEY='synthetic-private-key')
+    assert result.returncode == 0
+    assert calls[0]['args'][7:10] == ['-e', 'TEST_PROVIDER_KEY', 'app']
+    assert 'synthetic-private-key' not in json.dumps(calls) + result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('failure', ['', 'health'])
+def test_doctor_reports_runtime_readiness_without_claiming_inference(tmp_path, failure):
+    result, calls = docker_wrapper(tmp_path, ['doctor'], DOCKER_FAIL=failure)
+    assert any(call['args'][-1:] == ['health'] for call in calls)
+    assert not any('inference' in call['args'] for call in calls)
+    if failure:
+        assert result.returncode != 0 and 'readiness failed' in result.stderr
+        assert 'readiness passed' not in result.stdout
+    else:
+        assert result.returncode == 0
+        assert 'readiness passed' in result.stdout and 'Inference was not tested' in result.stdout
 
 
 @pytest.mark.parametrize('env', [
@@ -364,6 +404,10 @@ def test_tailscale_compose_render_publishes_only_paired_api_on_host_vpn():
         assert services[name]['network_mode'] == 'service:ingress'
         assert 'ports' not in services[name]
     assert services['app']['volumes'][0]['type'] == 'volume'
+    ingress_config = next(mount for mount in services['ingress']['volumes']
+                          if mount['target'] == '/etc/nginx/nginx.conf')
+    assert ingress_config['type'] == 'bind' and ingress_config['read_only'] is True
+    assert ingress_config.get('bind', {}).get('create_host_path', False) is False
     gpu = services['stt']['deploy']['resources']['reservations']['devices'][0]
     assert gpu['device_ids'] == ['0'] and 'count' not in gpu
 

@@ -298,6 +298,10 @@ class Registry:
         previous = next((p for p in state['profiles'] if p['id'] == profile.get('id')), None)
         if previous and (previous['stage'], previous['kind']) != (profile['stage'], profile['kind']):
             raise SettingsError('Для другого типа создайте новую карточку.')
+        # Embedded execution is registry-owned metadata, not an editable field.
+        # Editing/exporting a legacy card must not turn it into a separate worker.
+        if previous and previous.get('embedded'):
+            profile['embedded'] = True
         if previous and identity(previous) == identity(profile) and previous.get('credential_ref'):
             profile['credential_ref'] = previous['credential_ref']
         if body.get('clear_key'):

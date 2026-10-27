@@ -306,6 +306,8 @@ def byte_range(value, size):
 
 def handler(library, assets, delete=None, runtime=None, settings=None, access=None):
     access = access or Access()
+    from .local_provider_api import Processing
+    processing = Processing(settings.cfg) if settings is not None else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -331,6 +333,10 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.headers_for(401, 'application/json; charset=utf-8', 0, {'WWW-Authenticate': 'Basic realm="omiloc"'})
                 return
             return self.send_json({'error': message}, status)
+
+        def processing_allowed(self):
+            return (self.client_address[0] in {'127.0.0.1', '::1'}
+                    and self.headers.get('Host') == f'127.0.0.1:{self.server.server_port}')
 
         def headers_for(self, status, content_type, length, extra=None):
             self.send_response(status)
@@ -359,9 +365,12 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
         def settings_request(self):
             from .local_providers import SettingsError
             from .local_stt_services import ActivationIndeterminate
-            if not self.allowed(request='settings'):
+            phone = self.path.startswith('/api/processing/')
+            controls = processing if phone else settings
+            if (not self.allowed(request='processing' if phone else 'settings')
+                    or (phone and not self.processing_allowed())):
                 return self.reject('Настройки доступны только на этом Mac.')
-            if settings is None:
+            if controls is None:
                 return self.send_json({'error': 'Настройки недоступны.'}, 503)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -371,7 +380,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if hasattr(self.connection, 'settimeout'):
                     self.connection.settimeout(15)
                 body = json.loads(self.rfile.read(length))
-                self.send_json(settings.dispatch(self.command, self.path, body))
+                self.send_json(controls.dispatch(self.command, self.path, body))
             except SettingsError as error:
                 self.send_json({'error': str(error), **({'field': error.field} if error.field else {})}, error.status)
             except ActivationIndeterminate:
@@ -383,7 +392,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Не удалось применить настройки. Проверьте готовность сервера.'}, 503)
 
         def do_POST(self):
-            if self.path.startswith('/api/settings/'):
+            if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='open-folder'):
                 return self.reject('Открыть папку можно только на этом Mac.')
@@ -399,7 +408,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
 
         def do_DELETE(self):
-            if self.path.startswith('/api/settings/'):
+            if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='delete'):
                 return self.reject('Удаление доступно только на этом Mac.')
@@ -449,6 +458,10 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json(runtime.snapshot())
             elif path == '/api/settings' and settings is not None:
                 self.send_json(settings.read())
+            elif path == '/api/processing' and processing is not None:
+                if not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                self.send_json(processing.read())
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])

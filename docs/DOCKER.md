@@ -21,8 +21,16 @@ Bootstrap builds the images, prepares the model volume, validates the selected
 GPU (CUDA mode), and writes `.env.docker`. It never starts the long-running
 stack. `up` uses the prepared images and cached model with `--no-build` and
 `--pull never`; if preparation is missing, it exits with the bootstrap command.
+The ingress requires the checkout's existing `docker/nginx.conf`; Compose must
+not create a directory when that configuration file is missing. Restore the
+verified file before retrying a mount error.
 The same saved selection is used by `status`, `logs`, `doctor`, `pair`, and
 `down`. `dev` starts Compose Watch in the foreground.
+
+`doctor` also checks the running app/library and configured worker readiness;
+it fails when the stack is stopped or unavailable. `--inference` additionally
+submits synthetic speech to final STT without importing a recording. These checks
+do not establish iPhone authentication, CV1 audio delivery or live-ASR quality.
 
 ## `.env.docker`
 
@@ -31,14 +39,15 @@ literal `NAME=value` data, never sourced as shell code, and must be mode `0600`.
 It is independent from the native `.env`; native ngrok tokens and app keys are
 never imported into Docker.
 
-Example:
+Example selection; bootstrap also writes the resolved model revision:
 
 ```dotenv
 OMI_DOCKER_DEVICE=cuda
+OMI_DOCKER_STT=builtin
 OMI_DOCKER_GPU_ID=0
 OMI_DOCKER_TRANSPORT=tailscale
 STT_MODEL=Systran/faster-whisper-small
-STT_REVISION=8f3f6b0d8d8b2b6d1a0d4c6e9b7a2f1c0d5e6f7a
+# bootstrap writes the actual immutable model revision here.
 STT_THREADS=4
 ```
 
@@ -397,11 +406,11 @@ For development, use `./omiloc --runtime docker dev` after selecting Tailscale.
 
 In the iPhone app's **Local Mac** screen, enter **the host Tailscale IPv4 followed
 by `:21000`** and the Docker app key, then check the connection. The port is required:
-entering only an IP defaults to the native Mac port `20000`. Retrieve the Docker
-key locally in your own Terminal; do not copy it into chat or logs:
+entering only an IP defaults to the native Mac port `20000`. Show the Docker
+address and key in your own interactive terminal; do not copy them into chat or logs:
 
 ```bash
-docker compose exec app cat /data/connection.env
+./omiloc --runtime docker pair
 ```
 
 The app uses HTTP/WS inside the encrypted Tailscale network. The library remains
@@ -410,12 +419,10 @@ is additionally published on the Tailscale IPv4. Firebase, Redis, STT, and inter
 backend sockets stay on container loopback. A binding failure stops startup;
 the launcher never substitutes `0.0.0.0` or the LAN address.
 
-You can also choose the transport through exported configuration:
+Bootstrap saves the transport in `.env.docker`; later commands reuse it:
 
 ```bash
-export OMI_LOCAL_TRANSPORT=tailscale
-# Optional: set OMI_TAILSCALE_IP to this host's actual Tailscale IPv4.
-# If omitted, the launcher discovers and validates it on each startup.
+./omiloc --runtime docker bootstrap --transport tailscale
 ./omiloc --runtime docker up
 ```
 
@@ -423,10 +430,10 @@ These are Docker host settings; the native `.env` is not imported into the Docke
 volume. New Tailscale volumes require only a generated app key. Existing keys,
 ngrok configuration, provider settings, and recordings are preserved. To switch
 an existing running stack, finish recording/processing, run `./omiloc --runtime docker down`,
-then start the selected transport. Stop/status/logs continue to work even when
+then bootstrap the selected transport and run `up`. Stop/status/logs continue to work even when
 Tailscale is disconnected. Tailscale startup also stops this Compose project's
-optional ngrok tunnel if it was left running. Switching back to ngrok is explicit: unset the exported
-transport (or set it to `ngrok`), then follow the ngrok section below.
+optional ngrok tunnel if it was left running. Switching back to ngrok is explicit:
+stop the stack, bootstrap with `--transport ngrok`, then follow the ngrok section below.
 
 For direct Compose use, verify that `tailscale status` reports a connected host,
 then set its own IPv4 and include the override in every build/start command:

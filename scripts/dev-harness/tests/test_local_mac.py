@@ -119,13 +119,50 @@ def test_iphone_launch_probes_stale_wifi_status_and_forwards_only_app_pairing(tm
     assert [args[4] for args, _ in calls if 'info' in args] == ['details', 'lockState']
     args, env = calls[-1]
     assert 'launch' in args
-    assert env['DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY'] == 'a' * 43
-    assert env['DEVICECTL_CHILD_OMI_LOCAL_MAC_URL'] == 'https://synthetic.ngrok.app'
+    import base64
+    payload = json.loads(base64.b64decode(env['DEVICECTL_CHILD_OMI_LOCAL_SERVER_PRESETS_B64']))
+    assert payload == {'version': 1, 'servers': [{'id': 'local', 'name': 'Local Mac',
+                       'url': 'https://synthetic.ngrok.app/', 'key': 'a' * 43}]}
+    assert 'DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY' not in env and 'DEVICECTL_CHILD_OMI_LOCAL_MAC_URL' not in env
     assert 'NGROK_AUTHTOKEN' not in env and 'DEVICECTL_CHILD_NGROK_AUTHTOKEN' not in env
     assert all('a' * 43 not in str(args) and 'synthetic-agent-token' not in str(args) for args, _ in calls)
     assert all(env is None for _, env in calls[:-1])
     output = capsys.readouterr().out
     assert 'a' * 43 not in output and 'synthetic-agent-token' not in output and 'synthetic-phone' not in output
+
+
+def test_iphone_selection_prefers_one_usb_phone_over_stale_wifi_discovery(monkeypatch, capsys):
+    from dev_harness import launch_iphone
+    wifi = iphone_fixture(tunnel='disconnected')
+    wifi['hardwareProperties']['udid'] = 'SYNTHETIC-STALE-WIFI'
+    wired = iphone_fixture()
+    wired['hardwareProperties']['udid'] = 'SYNTHETIC-WIRED'
+    wired['connectionProperties']['transportType'] = 'wired'
+    checked = []
+    def capture(args, **_kwargs):
+        if 'devices' in args:
+            return json.dumps({'result': {'devices': [wifi, wired]}}).encode()
+        checked.append(args[args.index('--device') + 1])
+        if 'details' in args:
+            return json.dumps({'result': wired}).encode()
+        return json.dumps({'result': {'unlockedSinceBoot': True, 'passcodeRequired': False}}).encode()
+    monkeypatch.setattr(launch_iphone, 'capture', capture)
+    assert launch_iphone.select_iphone() is not None
+    assert checked == ['SYNTHETIC-WIRED', 'SYNTHETIC-WIRED']
+    assert capsys.readouterr().out == ''
+
+
+def test_iphone_selection_rejects_multiple_wired_phones_before_device_probes(monkeypatch):
+    from dev_harness import launch_iphone
+    phones = [iphone_fixture(), iphone_fixture()]
+    for phone in phones:
+        phone['connectionProperties']['transportType'] = 'wired'
+    def capture(args, **_kwargs):
+        assert 'devices' in args
+        return json.dumps({'result': {'devices': phones}}).encode()
+    monkeypatch.setattr(launch_iphone, 'capture', capture)
+    with pytest.raises(launch_iphone.LocalEnvError, match='exactly one'):
+        launch_iphone.select_iphone()
 
 
 @pytest.mark.parametrize('failure', ['locked', 'not-unlocked-since-boot', 'offline', 'probe-failed', 'ambiguous'])
@@ -210,6 +247,7 @@ def test_tunnel_requires_loopback_offline_and_disables_admin(monkeypatch, tmp_pa
     assert child['OMI_LOCAL_TRANSPORT'] == 'ngrok'
     assert child['ADMIN_KEY_AUTH_ENABLED'] == 'false'
     assert child['OMI_LOCAL_PAIRING_FILE'].endswith('/pairing.json')
+    assert child['OMI_LOCAL_PROCESSING_URL'] == f'http://127.0.0.1:{cfg.backend_port + 1}'
     with pytest.raises(safety.SafetyError):
         config.load_config(repo, {**source, 'OMI_DEV_BIND_HOST': '192.168.50.2'})
 
@@ -589,9 +627,10 @@ def test_fresh_personal_setup_creates_required_custom_config(tmp_path):
 
 
 def test_manual_no_speech_is_successful_and_content_free(monkeypatch, capsys):
-    from dev_harness import local_mac, local_stt
+    from dev_harness import local_mac, local_stt, local_transport
     monkeypatch.setattr(sys, 'argv', ['local-mac', 'transcribe', 'synthetic.wav'])
     monkeypatch.setattr(config, 'load_config', lambda *a, **kw: object())
+    monkeypatch.setattr(local_transport, 'prepare_environment', lambda *a, **kw: None)
     def no_speech(*a, **kw):
         raise local_stt.NoSpeechDetected('No speech detected; original WAV retained')
     monkeypatch.setattr(local_stt, 'transcribe', no_speech)

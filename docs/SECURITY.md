@@ -23,6 +23,11 @@ unexpected compressed responses and redirects are rejected. The time budget is
 checked between blocks, with each network operation separately timed out. It is
 not a precise wall-clock cancellation guarantee for synchronous I/O.
 
+New durable audio uploads require a 128 MiB free-space reserve plus bounded
+PCM/WAV staging space. Insufficient capacity returns HTTP 507 and leaves the
+phone part queued. An already stored identical part can still be acknowledged
+without spending that reserve. Storage errors do not trigger archive deletion.
+
 ## Dependencies
 
 Use Node 22 for the pinned Firebase CLI. `npm ci --ignore-scripts --omit=optional`
