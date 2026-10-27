@@ -171,32 +171,22 @@ def test_control_language_validation():
 
 
 def test_http_request_shape(monkeypatch):
+    import httpx
     captured = {}
 
-    class Response:
-        status_code = 200
-        content = b'{}'
+    def respond(request):
+        captured['url'] = str(request.url)
+        captured['body'] = json.loads(request.read())
+        assert request.headers['Accept-Encoding'] == 'identity'
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop',
+                                                     'message': {'content': '```json\n["Hello.", "World."]\n```'}}]})
 
-        def json(self):
-            return {'choices': [{'finish_reason': 'stop',
-                                 'message': {'content': '```json\n["Hello.", "World."]\n```'}}]}
+    factory = httpx.Client
+    def client(**kwargs):
+        captured['client'] = kwargs
+        return factory(transport=httpx.MockTransport(respond), **kwargs)
 
-    class Client:
-        def __init__(self, **kwargs):
-            captured['client'] = kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-        def post(self, url, *, json):
-            captured['url'] = url
-            captured['body'] = json
-            return Response()
-
-    monkeypatch.setattr(translation.httpx, 'Client', Client)
+    monkeypatch.setattr(translation.httpx, 'Client', client)
     result = translation.request_translations(profile(reasoning='off')['settings'], 'secret', 'en',
                                               ['Привет.', 'Мир.'])
     assert result == ['Hello.', 'World.']

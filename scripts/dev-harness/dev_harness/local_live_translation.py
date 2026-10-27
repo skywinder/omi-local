@@ -52,7 +52,7 @@ def request_translations(settings, key, language, texts):
         # Same opt-in switch as the summary stage (Qwen3 on llama.cpp/vLLM).
         body['chat_template_kwargs'] = {'enable_thinking': False}
     with transport.client(key=key, timeout=REQUEST_TIMEOUT) as client:
-        payload = transport.json_response(client.post(endpoint, json=body))
+        payload = transport.post_json(client, endpoint, json=body, deadline_seconds=REQUEST_TIMEOUT)
     choice = payload['choices'][0]
     if choice.get('finish_reason') not in (None, 'stop'):
         raise ValueError('translation_truncated')

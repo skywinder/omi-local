@@ -81,9 +81,9 @@ def remote_diarization(snapshot, key, audio, folder, manifest, raw):
             if stt_install.digest(copied) != manifest['audio_sha256']:
                 raise PipelineError('WAV changed during diarization preparation')
             with transport.client(key=key, timeout=3600) as client, copied.open('rb') as source:
-                response = client.post(endpoint, params=params,
-                                       files={'file': ('audio.wav', source, 'audio/wav')})
-                report = transport.json_response(response, limit=32 * 1024 * 1024)
+                report = transport.post_json(client, endpoint, limit=32 * 1024 * 1024,
+                                             deadline_seconds=3600, params=params,
+                                             files={'file': ('audio.wav', source, 'audio/wav')})
         segments = report['segments']
         if not isinstance(segments, list):
             raise ValueError()
@@ -163,8 +163,7 @@ def summarize(snapshot, key, raw, folder, write):
                     # thinking otherwise consumes the whole answer budget. Opt-in only:
                     # strict OpenAI-compatible servers reject unknown fields.
                     body['chat_template_kwargs'] = {'enable_thinking': False}
-                response = client.post(endpoint, json=body)
-                body = transport.json_response(response)
+                body = transport.post_json(client, endpoint, json=body, deadline_seconds=180)
             choice = body['choices'][0]
             if choice.get('finish_reason') not in (None, 'stop'):
                 raise ValueError()
