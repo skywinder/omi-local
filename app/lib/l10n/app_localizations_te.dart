@@ -1731,12 +1731,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8519,12 +8514,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9859,12 +9849,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count నెలలు ఉచితం',
-      one: '1 నెల ఉచితం',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count నెలలు ఉచితం', one: '1 నెల ఉచితం');
     return '$_temp0';
   }
 
@@ -10046,6 +10031,33 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'వక్తల విభజన విఫలమైంది';
+
+  @override
+  String get localProcessingHelp =>
+      'ప్రత్యక్ష వక్త లేబుల్‌లు Live ప్రొవైడర్ నుంచి వస్తాయి. దిగువ వక్త విభజన పూర్తయిన రికార్డింగ్‌లను ప్రాసెస్ చేస్తుంది.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'మార్చే ముందు రికార్డింగ్ ఆపండి. ఎంచుకున్న సర్వర్‌లు మీ ఆడియోను స్వీకరిస్తాయి.';
+
+  @override
+  String get localProcessingKeyHelp => 'ఖాళీగా ఉంచితే సేవ్ చేసిన కీ అలాగే ఉంటుంది. వేరే సర్వర్‌కు దాని స్వంత కీ అవసరం.';
+
+  @override
+  String get localProcessingUnsupported => 'ఈ సెట్టింగ్‌లను మార్చడానికి జత చేసిన సర్వర్‌ను అప్‌డేట్ చేయండి.';
+
+  @override
+  String get localProcessingFinished => 'పూర్తయిన రికార్డింగ్‌లు';
+
+  @override
+  String get localProcessingProbe => 'కనెక్షన్‌ను పరీక్షించండి';
+
+  @override
+  String get localProcessingPending => 'సేవ్ చేసిన మార్పులు ఇంకా అమలులో లేవు. వర్తింపజేయడానికి నిర్ధారించు నొక్కండి.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'రికార్డింగ్‌కు ముందు సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
 
   @override
   String get liveTranslationBidirectional => 'రెండు దిశల్లో అనువాదం';

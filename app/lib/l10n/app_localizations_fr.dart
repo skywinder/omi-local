@@ -1739,12 +1739,7 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'APPAREILS',
-      one: 'APPAREIL',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'APPAREILS', one: 'APPAREIL');
     return '$count $_temp0 TROUVÉ(S) À PROXIMITÉ';
   }
 
@@ -10084,6 +10079,35 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Échec de la diarisation';
+
+  @override
+  String get localProcessingHelp =>
+      'Les étiquettes des locuteurs en direct proviennent du fournisseur Live. La diarisation ci-dessous traite les enregistrements terminés.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Arrêtez l’enregistrement avant de changer. Les serveurs sélectionnés reçoivent votre audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Laissez vide pour conserver la clé enregistrée. Un autre serveur nécessite sa propre clé.';
+
+  @override
+  String get localProcessingUnsupported => 'Mettez à jour le serveur associé pour modifier ces réglages.';
+
+  @override
+  String get localProcessingFinished => 'Enregistrements terminés';
+
+  @override
+  String get localProcessingProbe => 'Tester la connexion';
+
+  @override
+  String get localProcessingPending =>
+      'Les modifications enregistrées ne sont pas actives. Appuyez sur Confirmer pour les appliquer.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Mettez le serveur à jour avant d’enregistrer. L’audio enregistré sur le téléphone est conservé.';
 
   @override
   String get liveTranslationBidirectional => 'Traduction bidirectionnelle';

@@ -3256,11 +3256,19 @@
     "speakersCount": "{count} vorbitori",
     "diarizationNotPerformed": "Diarizarea nu a fost efectuată",
     "diarizationFailed": "Diarizarea a eșuat",
-    "liveTranslationBidirectional": "Traducere bidirecțională",
-    "liveTranslationPairHelp": "Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată.",
+    "localProcessingHelp": "Etichetele vorbitorilor în direct vin de la furnizorul Live. Diarizarea de mai jos procesează înregistrări finalizate.",
+    "localProcessingApplyHelp": "Oprește înregistrarea înainte de schimbare. Serverele selectate primesc sunetul tău.",
+    "localProcessingKeyHelp": "Câmpul gol păstrează cheia salvată. Un alt server necesită propria cheie.",
+    "localProcessingUnsupported": "Actualizează serverul asociat pentru a modifica aceste setări.",
+    "localProcessingFinished": "Înregistrări finalizate",
+    "localProcessingProbe": "Testează conexiunea",
+    "localProcessingPending": "Modificările salvate nu sunt active. Atinge Confirmă pentru a le aplica.",
+    "localAudioServerUpdateRequired": "Actualizați serverul înainte de înregistrare. Sunetul salvat pe telefon este păstrat.",
     "liveTranslation": "Traducere în direct",
-    "liveTranslationTargetLanguage": "Tradu în",
+    "liveTranslationFailed": "Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation.",
     "liveTranslationHelp": "Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Tradu în",
     "liveTranslationUnconfigured": "Niciun model de traducere nu este configurat pe serverul conectat. Deschide biblioteca: Settings → Summarization sau Translation → Save → Use.",
-    "liveTranslationFailed": "Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation."
+    "liveTranslationBidirectional": "Traducere bidirecțională",
+    "liveTranslationPairHelp": "Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată."
 }

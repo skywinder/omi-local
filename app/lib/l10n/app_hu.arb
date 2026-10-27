@@ -3352,11 +3352,19 @@
     "speakersCount": "{count} beszélő",
     "diarizationNotPerformed": "Beszélőfelismerés nem történt",
     "diarizationFailed": "Beszélőfelismerés sikertelen",
-    "liveTranslationBidirectional": "Kétirányú fordítás",
-    "liveTranslationPairHelp": "Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre.",
+    "localProcessingHelp": "Az élő beszélőcímkék a Live szolgáltatótól érkeznek. Az alábbi diarizáció befejezett felvételeket dolgoz fel.",
+    "localProcessingApplyHelp": "Váltás előtt állítsd le a felvételt. A kiválasztott szerverek megkapják a hangodat.",
+    "localProcessingKeyHelp": "Az üres mező megőrzi a mentett kulcsot. Másik szerverhez saját kulcs szükséges.",
+    "localProcessingUnsupported": "A beállítások szerkesztéséhez frissítsd a párosított szervert.",
+    "localProcessingFinished": "Befejezett felvételek",
+    "localProcessingProbe": "Kapcsolat tesztelése",
+    "localProcessingPending": "A mentett módosítások még nem aktívak. Az alkalmazásukhoz koppintson a Megerősítés gombra.",
+    "localAudioServerUpdateRequired": "Felvétel előtt frissítsd a szervert. A telefonon mentett hang megmarad.",
     "liveTranslation": "Élő fordítás",
-    "liveTranslationTargetLanguage": "Fordítás erre",
+    "liveTranslationFailed": "A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation.",
     "liveTranslationHelp": "A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Fordítás erre",
     "liveTranslationUnconfigured": "Nincs fordítási modell beállítva a csatlakoztatott szerveren. Nyissa meg a könyvtárát: Settings → Summarization vagy Translation → Save → Use.",
-    "liveTranslationFailed": "A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation."
+    "liveTranslationBidirectional": "Kétirányú fordítás",
+    "liveTranslationPairHelp": "Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre."
 }

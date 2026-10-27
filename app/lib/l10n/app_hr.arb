@@ -10822,11 +10822,19 @@
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
     "diarizationFailed": "Dijarizacija nije uspjela",
-    "liveTranslationBidirectional": "Dvosmjerni prijevod",
-    "liveTranslationPairHelp": "Prepoznaj jezik svake rečenice i prevedi je na drugi odabrani jezik.",
+    "localProcessingHelp": "Oznake govornika uživo dolaze od pružatelja Live usluge. Dijarizacija u nastavku obrađuje završene snimke.",
+    "localProcessingApplyHelp": "Zaustavite snimanje prije prebacivanja. Odabrani poslužitelji primaju vaš zvuk.",
+    "localProcessingKeyHelp": "Prazno polje zadržava spremljeni ključ. Drugi poslužitelj zahtijeva vlastiti ključ.",
+    "localProcessingUnsupported": "Ažurirajte upareni poslužitelj za uređivanje ovih postavki.",
+    "localProcessingFinished": "Završene snimke",
+    "localProcessingProbe": "Provjeri vezu",
+    "localProcessingPending": "Spremljene promjene nisu aktivne. Dodirnite Potvrdi da ih primijenite.",
+    "localAudioServerUpdateRequired": "Ažurirajte poslužitelj prije snimanja. Zvuk spremljen na telefonu ostaje sačuvan.",
     "liveTranslation": "Prijevod uživo",
-    "liveTranslationTargetLanguage": "Prevedi na",
+    "liveTranslationFailed": "Prijevod nije dostupan na povezanom poslužitelju. Provjerite njegovu biblioteku: Settings → Translation.",
     "liveTranslationHelp": "Povezani poslužitelj prikazuje prijevod ispod izvornika. Automatski se koristi model za sažimanje, osim ako odaberete drugi u njegovoj biblioteci: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Prevedi na",
     "liveTranslationUnconfigured": "Na povezanom poslužitelju nije postavljen model za prijevod. Otvorite njegovu biblioteku: Settings → Summarization ili Translation → Save → Use.",
-    "liveTranslationFailed": "Prijevod nije dostupan na povezanom poslužitelju. Provjerite njegovu biblioteku: Settings → Translation."
+    "liveTranslationBidirectional": "Dvosmjerni prijevod",
+    "liveTranslationPairHelp": "Prepoznaj jezik svake rečenice i prevedi je na drugi odabrani jezik."
 }

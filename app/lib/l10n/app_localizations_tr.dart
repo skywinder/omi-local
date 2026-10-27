@@ -1731,12 +1731,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'CİHAZ',
-      one: 'CİHAZ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'CİHAZ', one: 'CİHAZ');
     return '$count $_temp0 YAKINLARDA BULUNDU';
   }
 
@@ -9822,12 +9817,7 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count ay ücretsiz',
-      one: '1 ay ücretsiz',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count ay ücretsiz', one: '1 ay ücretsiz');
     return '$_temp0';
   }
 
@@ -10009,6 +9999,32 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Konuşmacı ayrımı başarısız';
+
+  @override
+  String get localProcessingHelp =>
+      'Canlı konuşmacı etiketleri Live sağlayıcısından gelir. Aşağıdaki konuşmacı ayrımı tamamlanmış kayıtları işler.';
+
+  @override
+  String get localProcessingApplyHelp => 'Değiştirmeden önce kaydı durdurun. Seçilen sunucular sesinizi alır.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Boş bırakmak kayıtlı anahtarı korur. Farklı bir sunucu kendi anahtarını gerektirir.';
+
+  @override
+  String get localProcessingUnsupported => 'Bu ayarları düzenlemek için eşleştirilmiş sunucuyu güncelleyin.';
+
+  @override
+  String get localProcessingFinished => 'Tamamlanan kayıtlar';
+
+  @override
+  String get localProcessingProbe => 'Bağlantıyı test et';
+
+  @override
+  String get localProcessingPending => 'Kaydedilen değişiklikler henüz etkin değil. Uygulamak için Onayla’ya dokunun.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Kayıttan önce sunucuyu güncelleyin. Telefona kaydedilen ses korunur.';
 
   @override
   String get liveTranslationBidirectional => 'Çift yönlü çeviri';

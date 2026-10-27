@@ -1727,12 +1727,7 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8481,12 +8476,7 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count संभाषण$_temp0 तयार केले गेले';
   }
 
@@ -9819,12 +9809,7 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count महिने मोफत',
-      one: '1 महिना मोफत',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count महिने मोफत', one: '1 महिना मोफत');
     return '$_temp0';
   }
 
@@ -10006,6 +9991,33 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'वक्ता ओळख अयशस्वी';
+
+  @override
+  String get localProcessingHelp =>
+      'थेट वक्त्यांची लेबले Live प्रदात्याकडून येतात. खालील वक्ता विभाजन पूर्ण झालेल्या रेकॉर्डिंगवर प्रक्रिया करते.';
+
+  @override
+  String get localProcessingApplyHelp => 'बदलण्यापूर्वी रेकॉर्डिंग थांबवा. निवडलेल्या सर्व्हरना तुमचा ऑडिओ मिळतो.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'रिकामे ठेवल्यास जतन केलेली कळ कायम राहते. दुसऱ्या सर्व्हरसाठी त्याची स्वतःची कळ आवश्यक आहे.';
+
+  @override
+  String get localProcessingUnsupported => 'ही सेटिंग्ज बदलण्यासाठी जोडलेला सर्व्हर अपडेट करा.';
+
+  @override
+  String get localProcessingFinished => 'पूर्ण झालेली रेकॉर्डिंग';
+
+  @override
+  String get localProcessingProbe => 'कनेक्शन तपासा';
+
+  @override
+  String get localProcessingPending => 'जतन केलेले बदल सक्रिय नाहीत. लागू करण्यासाठी पुष्टी करा वर टॅप करा.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'रेकॉर्डिंगपूर्वी सर्व्हर अपडेट करा. फोनवर जतन केलेला ऑडिओ सुरक्षित राहतो.';
 
   @override
   String get liveTranslationBidirectional => 'दुतर्फी भाषांतर';

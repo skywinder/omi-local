@@ -1726,12 +1726,7 @@ class AppLocalizationsSl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8493,12 +8488,7 @@ class AppLocalizationsSl extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10028,6 +10018,32 @@ class AppLocalizationsSl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizacija ni uspela';
+
+  @override
+  String get localProcessingHelp =>
+      'Oznake govorcev v živo prihajajo od ponudnika Live. Diarizacija spodaj obdeluje končane posnetke.';
+
+  @override
+  String get localProcessingApplyHelp => 'Pred preklopom ustavite snemanje. Izbrani strežniki prejmejo vaš zvok.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prazno polje ohrani shranjeni ključ. Drug strežnik potrebuje svoj ključ.';
+
+  @override
+  String get localProcessingUnsupported => 'Za urejanje teh nastavitev posodobite seznanjeni strežnik.';
+
+  @override
+  String get localProcessingFinished => 'Končani posnetki';
+
+  @override
+  String get localProcessingProbe => 'Preizkusi povezavo';
+
+  @override
+  String get localProcessingPending => 'Shranjene spremembe še niso aktivne. Tapnite Potrdi, da jih uveljavite.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Pred snemanjem posodobite strežnik. Zvok, shranjen v telefonu, se ohrani.';
 
   @override
   String get liveTranslationBidirectional => 'Dvosmerno prevajanje';

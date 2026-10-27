@@ -10036,6 +10036,34 @@ class AppLocalizationsRu extends AppLocalizations {
   String get diarizationFailed => 'Ошибка диаризации';
 
   @override
+  String get localProcessingHelp =>
+      'Метки спикеров в реальном времени поступают от Live-провайдера. Диаризация ниже обрабатывает завершённые записи.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Перед переключением остановите запись. Выбранные серверы получают ваше аудио.';
+
+  @override
+  String get localProcessingKeyHelp => 'Пустое поле сохраняет ключ. Для другого сервера нужен его собственный ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Обновите подключённый сервер, чтобы менять эти настройки.';
+
+  @override
+  String get localProcessingFinished => 'Готовые записи';
+
+  @override
+  String get localProcessingProbe => 'Проверить соединение';
+
+  @override
+  String get localProcessingPending =>
+      'Сохранённые изменения ещё не действуют. Нажмите «Подтвердить», чтобы применить.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Обновите сервер перед записью. Сохранённое на телефоне аудио останется.';
+
+  @override
   String get liveTranslationBidirectional => 'Двусторонний перевод';
 
   @override

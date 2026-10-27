@@ -10822,11 +10822,19 @@
     "speakersCount": "{count} nagsasalita",
     "diarizationNotPerformed": "Hindi isinagawa ang pagkilala ng nagsasalita",
     "diarizationFailed": "Nabigo ang pagkilala ng nagsasalita",
-    "liveTranslationBidirectional": "Pagsasalin sa dalawang direksiyon",
-    "liveTranslationPairHelp": "Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika.",
+    "localProcessingHelp": "Galing sa Live provider ang mga live na label ng nagsasalita. Pinoproseso ng diarization sa ibaba ang mga tapos nang recording.",
+    "localProcessingApplyHelp": "Ihinto ang pag-record bago lumipat. Matatanggap ng mga napiling server ang iyong audio.",
+    "localProcessingKeyHelp": "Iwanang blangko para panatilihin ang naka-save na key. Kailangan ng ibang server ang sarili nitong key.",
+    "localProcessingUnsupported": "I-update ang nakapares na server para baguhin ang mga setting na ito.",
+    "localProcessingFinished": "Mga tapos na recording",
+    "localProcessingProbe": "Subukan ang koneksyon",
+    "localProcessingPending": "Hindi pa aktibo ang mga na-save na pagbabago. I-tap ang Kumpirmahin para ilapat.",
+    "localAudioServerUpdateRequired": "I-update ang server bago mag-record. Mananatili ang audio na naka-save sa telepono.",
     "liveTranslation": "Live na pagsasalin",
-    "liveTranslationTargetLanguage": "Isalin sa",
+    "liveTranslationFailed": "Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation.",
     "liveTranslationHelp": "Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Isalin sa",
     "liveTranslationUnconfigured": "Walang nakatakdang modelo ng pagsasalin sa nakakonektang server. Buksan ang library nito: Settings → Summarization o Translation → Save → Use.",
-    "liveTranslationFailed": "Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation."
+    "liveTranslationBidirectional": "Pagsasalin sa dalawang direksiyon",
+    "liveTranslationPairHelp": "Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika."
 }

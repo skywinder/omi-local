@@ -9983,6 +9983,31 @@ class AppLocalizationsDa extends AppLocalizations {
   String get diarizationFailed => 'Diarisering mislykkedes';
 
   @override
+  String get localProcessingHelp =>
+      'Talermærker i realtid kommer fra Live-udbyderen. Diariseringen nedenfor behandler færdige optagelser.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stop optagelsen før du skifter. De valgte servere modtager din lyd.';
+
+  @override
+  String get localProcessingKeyHelp => 'Et tomt felt beholder den gemte nøgle. En anden server kræver sin egen nøgle.';
+
+  @override
+  String get localProcessingUnsupported => 'Opdater den parrede server for at redigere disse indstillinger.';
+
+  @override
+  String get localProcessingFinished => 'Færdige optagelser';
+
+  @override
+  String get localProcessingProbe => 'Test forbindelse';
+
+  @override
+  String get localProcessingPending => 'Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Opdater serveren før optagelse. Lyd gemt på telefonen bevares.';
+
+  @override
   String get liveTranslationBidirectional => 'Tovejsoversættelse';
 
   @override

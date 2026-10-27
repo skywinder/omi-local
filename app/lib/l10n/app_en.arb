@@ -11778,6 +11778,14 @@
     },
     "diarizationNotPerformed": "Diarization not performed",
     "diarizationFailed": "Diarization failed",
+    "localProcessingHelp": "Live speaker labels come from the Live provider. Diarization below processes finished recordings.",
+    "localProcessingApplyHelp": "Stop recording before switching. Selected servers receive your audio.",
+    "localProcessingKeyHelp": "Blank keeps the saved key. A different server requires its own key.",
+    "localProcessingUnsupported": "Update the paired server to edit these settings.",
+    "localProcessingFinished": "Finished recordings",
+    "localProcessingProbe": "Test connection",
+    "localProcessingPending": "Saved changes are not active. Tap Confirm to apply.",
+    "localAudioServerUpdateRequired": "Update the server before recording. Audio saved on the phone is kept.",
     "liveTranslationBidirectional": "Two-way translation",
     "liveTranslationPairHelp": "Detect the language of each phrase and translate into the other selected language."
 }

@@ -32,12 +32,12 @@ void main() {
   });
 
   Future<LocalRuntimeStatus> status() async => const LocalRuntimeStatus(
-        captureState: LocalCaptureState.idle,
-        audioSeconds: 0,
-        framesReceived: 0,
-        liveTranscriptState: LocalLiveTranscriptState.disabled,
-        transcriptUpdates: 0,
-      );
+    captureState: LocalCaptureState.idle,
+    audioSeconds: 0,
+    framesReceived: 0,
+    liveTranscriptState: LocalLiveTranscriptState.disabled,
+    transcriptUpdates: 0,
+  );
 
   Future<void> tapFormButton(WidgetTester tester, String key) async {
     final button = find.byKey(ValueKey(key));
@@ -57,7 +57,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('pairing screen hides key and stops capture before connecting', (tester) async {
+  testWidgets('pairing screen hides key and checks credentials before stopping capture', (tester) async {
     final order = <String>[];
     final session = LocalMacSession(
       probe: (_, __) async {
@@ -104,7 +104,7 @@ void main() {
     await enterField(tester, find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
     await enterField(tester, find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
     await tapFormButton(tester, 'local-mac-connect');
-    expect(order, ['stop', 'probe']);
+    expect(order, ['probe', 'stop']);
     expect(session.isSignedIn, isTrue);
     expect(find.byType(LocalMacPage), findsOneWidget);
     expect(
@@ -125,18 +125,24 @@ void main() {
     null,
     {
       'live': {'status': 'disabled'},
-      'final': {'status': 'unavailable'}
-    }
+      'final': {'status': 'unavailable'},
+    },
   ]) {
     testWidgets('pairing warns for readiness $readiness while keeping audio connection usable', (tester) async {
       final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice', 'local_transcription': readiness});
-      await tester.pumpWidget(MaterialApp(
-        locale: const Locale('en'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: LocalMacPage(
-            session: session, statusFetcher: status, stopRecording: () async {}, refreshConnection: () async {}),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: LocalMacPage(
+            session: session,
+            statusFetcher: status,
+            stopRecording: () async {},
+            refreshConnection: () async {},
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await enterField(tester, find.byKey(const ValueKey('local-mac-address')), 'https://synthetic.ngrok.app');
       await enterField(tester, find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
@@ -146,11 +152,15 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       await tester.ensureVisible(find.byKey(const ValueKey('local-mac-result')));
       expect(find.text(readiness == null ? 'Live Transcript: Unknown' : 'Live Transcript: Off'), findsOneWidget);
-      expect(find.text(readiness == null ? 'Transcript: Unknown' : 'Transcript: Transcription unavailable'),
-          findsOneWidget);
+      expect(
+        find.text(readiness == null ? 'Transcript: Unknown' : 'Transcript: Transcription unavailable'),
+        findsOneWidget,
+      );
       expect(find.byType(LocalMacPage), findsOneWidget);
-      expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text,
-          List.filled(43, 's').join());
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('local-mac-key'))).controller!.text,
+        List.filled(43, 's').join(),
+      );
       expect(session.isSignedIn, isTrue);
       expect(find.byType(AlertDialog), findsNothing);
       expect(tester.takeException(), isNull);
@@ -178,15 +188,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('saved servers can be added selected edited and deleted without changing the active session',
-      (tester) async {
+  testWidgets('saved servers can be added selected edited and deleted without changing the active session', (
+    tester,
+  ) async {
     final key = List.filled(43, 's').join();
     var probes = 0;
-    final session = LocalMacSession(probe: (base, _) async {
-      probes++;
-      if (base.host == '100.64.0.2') throw LocalMacUnauthorized();
-      return {'uid': 'alice'};
-    });
+    final session = LocalMacSession(
+      probe: (base, _) async {
+        probes++;
+        if (base.host == '100.64.0.2') throw LocalMacUnauthorized();
+        return {'uid': 'alice'};
+      },
+    );
     await openPage(tester, session);
     await enterField(tester, find.byKey(const ValueKey('local-mac-name')), 'Home Mac');
     await enterField(tester, find.byKey(const ValueKey('local-mac-address')), '100.64.0.1:21000');
@@ -211,9 +224,8 @@ void main() {
     await tapFormButton(tester, 'local-mac-connect');
     expect(session.address, 'http://100.64.0.1:21000/');
     expect(session.accessKey, key);
-    await tapFormButton(tester, 'local-mac-servers');
-    await tester.tap(find.text('Home Mac').last);
-    await tester.pumpAndSettle();
+    final homeServer = (await session.readServers()).firstWhere((server) => server.name == 'Home Mac');
+    await tapFormButton(tester, 'local-mac-server-${homeServer.id}');
     expect(tester.widget<TextField>(find.byKey(const ValueKey('local-mac-name'))).controller!.text, 'Home Mac');
     expect(probes, 2); // Selection never probes or switches.
     await tapFormButton(tester, 'local-mac-delete-server');
@@ -228,11 +240,13 @@ void main() {
 
   testWidgets('Tailscale address saves as a draft and connects using the explicit Docker port', (tester) async {
     var probes = 0;
-    final session = LocalMacSession(probe: (base, _) async {
-      probes++;
-      expect(base.toString(), 'http://100.64.0.1:21000/');
-      return {'uid': 'alice'};
-    });
+    final session = LocalMacSession(
+      probe: (base, _) async {
+        probes++;
+        expect(base.toString(), 'http://100.64.0.1:21000/');
+        return {'uid': 'alice'};
+      },
+    );
     await openPage(tester, session);
     await enterField(tester, find.byKey(const ValueKey('local-mac-address')), '100.64.0.1:21000');
     await enterField(tester, find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
@@ -338,6 +352,81 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('checking an unchanged server or rejecting another server never stops active capture', (tester) async {
+    final key = List.filled(43, 's').join();
+    var stops = 0;
+    var probes = 0;
+    final session = LocalMacSession(
+      probe: (base, _) async {
+        probes++;
+        if (base.host == 'rejected.example') throw LocalMacUnauthorized();
+        return {'uid': 'alice'};
+      },
+    );
+    await session.connect('https://working.example/', key);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+          session: session,
+          statusFetcher: status,
+          stopRecording: () async {
+            stops++;
+          },
+          refreshConnection: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Save Changes'), findsOneWidget);
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(stops, 0);
+    await enterField(tester, find.byKey(const ValueKey('local-mac-address')), 'https://rejected.example/');
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(stops, 0);
+    expect(probes, 3);
+    expect(session.address, 'https://working.example/');
+    expect(session.accessKey, key);
+    expect(find.text('The access key was rejected. Check the key on your Mac.'), findsOneWidget);
+  });
+
+  testWidgets('malformed address and short key report distinct errors before any probe or stop', (tester) async {
+    var probes = 0;
+    var stops = 0;
+    final session = LocalMacSession(
+      probe: (_, __) async {
+        probes++;
+        return {'uid': 'alice'};
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalMacPage(
+          session: session,
+          statusFetcher: status,
+          stopRecording: () async {
+            stops++;
+          },
+          refreshConnection: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await enterField(tester, find.byKey(const ValueKey('local-mac-address')), 'http://unsafe.example/');
+    await enterField(tester, find.byKey(const ValueKey('local-mac-key')), List.filled(43, 's').join());
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(find.text('Please enter a valid URL'), findsOneWidget);
+    await enterField(tester, find.byKey(const ValueKey('local-mac-address')), 'https://safe.example/');
+    await enterField(tester, find.byKey(const ValueKey('local-mac-key')), 'short');
+    await tapFormButton(tester, 'local-mac-connect');
+    expect(find.text('Invalid key'), findsOneWidget);
+    expect(probes, 0);
+    expect(stops, 0);
+  });
+
   testWidgets('pending check disables actions; rejection stays inline and can be retried', (tester) async {
     final probe = Completer<Map<String, dynamic>>();
     var attempts = 0;
@@ -373,7 +462,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    await openPage(tester, LocalMacSession());
+    final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
+    final key = List.filled(43, 's').join();
+    await session.saveServer(name: 'Personal Docker server', address: '100.64.0.1:21000', key: key);
+    await session.connect('100.64.0.1:21000', key);
+    await openPage(tester, session);
     await tapFormButton(tester, 'local-mac-save');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

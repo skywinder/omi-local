@@ -1729,12 +1729,7 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'IERĪCES',
-      one: 'IERĪCE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'IERĪCES', one: 'IERĪCE');
     return '$count $_temp0 ATRASTAS TUVUMĀ';
   }
 
@@ -10021,6 +10016,34 @@ class AppLocalizationsLv extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Runātāju atdalīšana neizdevās';
+
+  @override
+  String get localProcessingHelp =>
+      'Runātāju etiķetes tiešraidē nodrošina Live pakalpojumu sniedzējs. Zemāk esošā runātāju nošķiršana apstrādā pabeigtus ierakstus.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Pirms pārslēgšanas apturiet ierakstīšanu. Atlasītie serveri saņem jūsu audio.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tukšs lauks saglabā esošo atslēgu. Citam serverim vajadzīga sava atslēga.';
+
+  @override
+  String get localProcessingUnsupported => 'Lai mainītu šos iestatījumus, atjauniniet pārī savienoto serveri.';
+
+  @override
+  String get localProcessingFinished => 'Pabeigtie ieraksti';
+
+  @override
+  String get localProcessingProbe => 'Pārbaudīt savienojumu';
+
+  @override
+  String get localProcessingPending =>
+      'Saglabātās izmaiņas vēl nav aktīvas. Pieskarieties Apstiprināt, lai tās lietotu.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Pirms ierakstīšanas atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.';
 
   @override
   String get liveTranslationBidirectional => 'Divvirzienu tulkošana';

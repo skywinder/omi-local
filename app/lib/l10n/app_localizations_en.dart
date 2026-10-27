@@ -1723,12 +1723,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8467,12 +8462,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9223,12 +9213,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count recording$_temp0 need attention';
   }
 
@@ -9804,12 +9789,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count Months Free',
-      one: '1 Month Free',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count Months Free', one: '1 Month Free');
     return '$_temp0';
   }
 
@@ -9988,6 +9968,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarization failed';
+
+  @override
+  String get localProcessingHelp =>
+      'Live speaker labels come from the Live provider. Diarization below processes finished recordings.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stop recording before switching. Selected servers receive your audio.';
+
+  @override
+  String get localProcessingKeyHelp => 'Blank keeps the saved key. A different server requires its own key.';
+
+  @override
+  String get localProcessingUnsupported => 'Update the paired server to edit these settings.';
+
+  @override
+  String get localProcessingFinished => 'Finished recordings';
+
+  @override
+  String get localProcessingProbe => 'Test connection';
+
+  @override
+  String get localProcessingPending => 'Saved changes are not active. Tap Confirm to apply.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Update the server before recording. Audio saved on the phone is kept.';
 
   @override
   String get liveTranslationBidirectional => 'Two-way translation';

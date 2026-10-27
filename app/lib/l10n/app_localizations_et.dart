@@ -1725,12 +1725,7 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'SEADET',
-      one: 'SEADE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'SEADET', one: 'SEADE');
     return '$count $_temp0 LEITUD LÄHEDALT';
   }
 
@@ -9806,12 +9801,7 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count kuud tasuta',
-      one: '1 kuu tasuta',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count kuud tasuta', one: '1 kuu tasuta');
     return '$_temp0';
   }
 
@@ -9991,6 +9981,32 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
+
+  @override
+  String get localProcessingHelp =>
+      'Kõnelejate reaalajas sildid tulevad Live-teenusepakkujalt. Allolev diariseerimine töötleb lõpetatud salvestisi.';
+
+  @override
+  String get localProcessingApplyHelp => 'Peata salvestamine enne vahetamist. Valitud serverid saavad sinu heli.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tühi väli säilitab salvestatud võtme. Teine server vajab oma võtit.';
+
+  @override
+  String get localProcessingUnsupported => 'Nende seadete muutmiseks uuenda seotud serverit.';
+
+  @override
+  String get localProcessingFinished => 'Lõpetatud salvestised';
+
+  @override
+  String get localProcessingProbe => 'Kontrolli ühendust';
+
+  @override
+  String get localProcessingPending => 'Salvestatud muudatused pole aktiivsed. Rakendamiseks puuduta Kinnita.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Uuenda serverit enne salvestamist. Telefonis salvestatud heli säilitatakse.';
 
   @override
   String get liveTranslationBidirectional => 'Kahesuunaline tõlge';

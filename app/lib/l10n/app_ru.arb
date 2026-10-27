@@ -3296,6 +3296,14 @@
     "speakersCount": "Говорящих: {count}",
     "diarizationNotPerformed": "Диаризация не выполнялась",
     "diarizationFailed": "Ошибка диаризации",
+    "localProcessingHelp": "Метки спикеров в реальном времени поступают от Live-провайдера. Диаризация ниже обрабатывает завершённые записи.",
+    "localProcessingApplyHelp": "Перед переключением остановите запись. Выбранные серверы получают ваше аудио.",
+    "localProcessingKeyHelp": "Пустое поле сохраняет ключ. Для другого сервера нужен его собственный ключ.",
+    "localProcessingUnsupported": "Обновите подключённый сервер, чтобы менять эти настройки.",
+    "localProcessingFinished": "Готовые записи",
+    "localProcessingProbe": "Проверить соединение",
+    "localProcessingPending": "Сохранённые изменения ещё не действуют. Нажмите «Подтвердить», чтобы применить.",
+    "localAudioServerUpdateRequired": "Обновите сервер перед записью. Сохранённое на телефоне аудио останется.",
     "liveTranslationBidirectional": "Двусторонний перевод",
     "liveTranslationPairHelp": "Определять язык каждой фразы и переводить на другой выбранный язык."
 }

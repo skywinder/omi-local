@@ -1713,12 +1713,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'أجهزة',
-      one: 'جهاز',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'أجهزة', one: 'جهاز');
     return '$count $_temp0 تم العثور عليها بالقرب منك';
   }
 
@@ -9938,6 +9933,32 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'فشل فصل المتحدثين';
+
+  @override
+  String get localProcessingHelp =>
+      'تأتي تسميات المتحدثين المباشرة من مزوّد البث المباشر. يعالج فصل المتحدثين أدناه التسجيلات المكتملة.';
+
+  @override
+  String get localProcessingApplyHelp => 'أوقف التسجيل قبل التبديل. تتلقى الخوادم المحددة صوتك.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'اترك الحقل فارغًا للاحتفاظ بالمفتاح المحفوظ. يحتاج الخادم الآخر إلى مفتاحه الخاص.';
+
+  @override
+  String get localProcessingUnsupported => 'حدّث الخادم المقترن لتعديل هذه الإعدادات.';
+
+  @override
+  String get localProcessingFinished => 'التسجيلات المكتملة';
+
+  @override
+  String get localProcessingProbe => 'اختبار الاتصال';
+
+  @override
+  String get localProcessingPending => 'التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'حدّث الخادم قبل التسجيل. يُحتفظ بالصوت المحفوظ على الهاتف.';
 
   @override
   String get liveTranslationBidirectional => 'ترجمة ثنائية الاتجاه';

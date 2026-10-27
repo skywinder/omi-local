@@ -1728,12 +1728,7 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ENHETER',
-      one: 'ENHET',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ENHETER', one: 'ENHET');
     return '$count $_temp0 HITTAD(E) I NÄRHETEN';
   }
 
@@ -10001,6 +9996,33 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Talarindelning misslyckades';
+
+  @override
+  String get localProcessingHelp =>
+      'Talaretiketter i realtid kommer från Live-leverantören. Diariseringen nedan bearbetar färdiga inspelningar.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stoppa inspelningen innan du byter. De valda servrarna tar emot ditt ljud.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Ett tomt fält behåller den sparade nyckeln. En annan server kräver sin egen nyckel.';
+
+  @override
+  String get localProcessingUnsupported => 'Uppdatera den parkopplade servern för att ändra dessa inställningar.';
+
+  @override
+  String get localProcessingFinished => 'Färdiga inspelningar';
+
+  @override
+  String get localProcessingProbe => 'Testa anslutning';
+
+  @override
+  String get localProcessingPending => 'Sparade ändringar är inte aktiva. Tryck på Bekräfta för att tillämpa dem.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Uppdatera servern före inspelning. Ljud som sparats på telefonen behålls.';
 
   @override
   String get liveTranslationBidirectional => 'Översättning åt båda hållen';

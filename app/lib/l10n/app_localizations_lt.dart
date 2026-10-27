@@ -1725,12 +1725,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ĮRENGINIAI',
-      one: 'ĮRENGINYS',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ĮRENGINIAI', one: 'ĮRENGINYS');
     return 'RASTA $count $_temp0 NETOLIESE';
   }
 
@@ -10017,6 +10012,34 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kalbėtojų atskyrimas nepavyko';
+
+  @override
+  String get localProcessingHelp =>
+      'Tiesiogines kalbėtojų žymas pateikia Live teikėjas. Toliau esantis kalbėtojų atskyrimas apdoroja baigtus įrašus.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Prieš perjungdami sustabdykite įrašymą. Pasirinkti serveriai gauna jūsų garsą.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tuščias laukas išsaugo įrašytą raktą. Kitam serveriui reikia atskiro rakto.';
+
+  @override
+  String get localProcessingUnsupported => 'Norėdami keisti šiuos nustatymus, atnaujinkite susietą serverį.';
+
+  @override
+  String get localProcessingFinished => 'Baigti įrašai';
+
+  @override
+  String get localProcessingProbe => 'Tikrinti ryšį';
+
+  @override
+  String get localProcessingPending =>
+      'Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.';
 
   @override
   String get liveTranslationBidirectional => 'Dvikryptis vertimas';

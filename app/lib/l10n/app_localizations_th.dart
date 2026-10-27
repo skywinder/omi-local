@@ -1718,12 +1718,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'อุปกรณ์',
-      one: 'อุปกรณ์',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'อุปกรณ์', one: 'อุปกรณ์');
     return 'พบ $count $_temp0 ในบริเวณใกล้เคียง';
   }
 
@@ -9163,11 +9158,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'การบันทึก $count รายการพร้อมซิงค์',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'การบันทึก $count รายการพร้อมซิงค์');
     return '$_temp0';
   }
 
@@ -9179,11 +9170,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'การบันทึก $count รายการต้องการความสนใจ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'การบันทึก $count รายการต้องการความสนใจ');
     return '$_temp0';
   }
 
@@ -9756,12 +9743,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ฟรี $count เดือน',
-      one: 'ฟรี 1 เดือน',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ฟรี $count เดือน', one: 'ฟรี 1 เดือน');
     return '$_temp0';
   }
 
@@ -9940,6 +9922,32 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'การแยกผู้พูดล้มเหลว';
+
+  @override
+  String get localProcessingHelp =>
+      'ป้ายผู้พูดแบบสดมาจากผู้ให้บริการ Live การแยกผู้พูดด้านล่างจะประมวลผลการบันทึกที่เสร็จแล้ว';
+
+  @override
+  String get localProcessingApplyHelp => 'หยุดบันทึกก่อนสลับ เซิร์ฟเวอร์ที่เลือกจะได้รับเสียงของคุณ';
+
+  @override
+  String get localProcessingKeyHelp => 'เว้นว่างเพื่อเก็บคีย์เดิม เซิร์ฟเวอร์อื่นต้องใช้คีย์ของตนเอง';
+
+  @override
+  String get localProcessingUnsupported => 'อัปเดตเซิร์ฟเวอร์ที่จับคู่เพื่อแก้ไขการตั้งค่าเหล่านี้';
+
+  @override
+  String get localProcessingFinished => 'การบันทึกที่เสร็จแล้ว';
+
+  @override
+  String get localProcessingProbe => 'ทดสอบการเชื่อมต่อ';
+
+  @override
+  String get localProcessingPending => 'การเปลี่ยนแปลงที่บันทึกไว้ยังไม่ทำงาน แตะยืนยันเพื่อนำไปใช้';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'อัปเดตเซิร์ฟเวอร์ก่อนบันทึกเสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่';
 
   @override
   String get liveTranslationBidirectional => 'การแปลสองทาง';

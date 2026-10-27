@@ -1727,12 +1727,7 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8472,12 +8467,7 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9812,12 +9802,7 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count ماه رایگان',
-      one: '۱ ماه رایگان',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count ماه رایگان', one: '۱ ماه رایگان');
     return '$_temp0';
   }
 
@@ -9997,6 +9982,32 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'تفکیک گوینده ناموفق بود';
+
+  @override
+  String get localProcessingHelp =>
+      'برچسب‌های زندهٔ گویندگان از ارائه‌دهندهٔ Live می‌آیند. تفکیک گویندگان در زیر، ضبط‌های تمام‌شده را پردازش می‌کند.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'پیش از تغییر، ضبط را متوقف کنید. سرورهای انتخاب‌شده صدای شما را دریافت می‌کنند.';
+
+  @override
+  String get localProcessingKeyHelp => 'خالی گذاشتن، کلید ذخیره‌شده را حفظ می‌کند. سرور دیگر به کلید خودش نیاز دارد.';
+
+  @override
+  String get localProcessingUnsupported => 'برای ویرایش این تنظیمات، سرور جفت‌شده را به‌روزرسانی کنید.';
+
+  @override
+  String get localProcessingFinished => 'ضبط‌های تمام‌شده';
+
+  @override
+  String get localProcessingProbe => 'آزمایش اتصال';
+
+  @override
+  String get localProcessingPending => 'تغییرات ذخیره‌شده فعال نیستند. برای اعمال، روی تأیید بزنید.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'پیش از ضبط، سرور را به‌روز کنید. صدای ذخیره‌شده در تلفن حفظ می‌شود.';
 
   @override
   String get liveTranslationBidirectional => 'ترجمهٔ دوطرفه';

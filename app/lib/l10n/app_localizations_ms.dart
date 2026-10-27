@@ -1732,12 +1732,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'PERANTI',
-      one: 'PERANTI',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'PERANTI', one: 'PERANTI');
     return '$count $_temp0 DIJUMPAI BERDEKATAN';
   }
 
@@ -9233,11 +9228,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rakaman sedia untuk disegerakkan',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rakaman sedia untuk disegerakkan');
     return '$_temp0';
   }
 
@@ -9249,11 +9240,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rakaman memerlukan perhatian',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rakaman memerlukan perhatian');
     return '$_temp0';
   }
 
@@ -10023,6 +10010,33 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan penutur gagal';
+
+  @override
+  String get localProcessingHelp =>
+      'Label penutur langsung datang daripada penyedia Live. Diarisasi di bawah memproses rakaman yang telah selesai.';
+
+  @override
+  String get localProcessingApplyHelp => 'Hentikan rakaman sebelum bertukar. Pelayan yang dipilih menerima audio anda.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Biarkan kosong untuk mengekalkan kunci tersimpan. Pelayan lain memerlukan kuncinya sendiri.';
+
+  @override
+  String get localProcessingUnsupported => 'Kemas kini pelayan berpasangan untuk menyunting tetapan ini.';
+
+  @override
+  String get localProcessingFinished => 'Rakaman selesai';
+
+  @override
+  String get localProcessingProbe => 'Uji sambungan';
+
+  @override
+  String get localProcessingPending => 'Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Kemas kini pelayan sebelum merakam. Audio yang disimpan pada telefon dikekalkan.';
 
   @override
   String get liveTranslationBidirectional => 'Terjemahan dua hala';

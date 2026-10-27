@@ -1725,12 +1725,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8482,12 +8477,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9824,12 +9814,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count ماہ مفت',
-      one: '1 ماہ مفت',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count ماہ مفت', one: '1 ماہ مفت');
     return '$_temp0';
   }
 
@@ -10008,6 +9993,32 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'مقررین کی شناخت ناکام';
+
+  @override
+  String get localProcessingHelp =>
+      'لائیو بولنے والوں کے لیبل Live فراہم کنندہ سے آتے ہیں۔ نیچے بولنے والوں کی علیحدگی مکمل ریکارڈنگز پر کارروائی کرتی ہے۔';
+
+  @override
+  String get localProcessingApplyHelp => 'تبدیل کرنے سے پہلے ریکارڈنگ روکیں۔ منتخب سرورز آپ کی آڈیو وصول کرتے ہیں۔';
+
+  @override
+  String get localProcessingKeyHelp => 'خالی چھوڑنے سے محفوظ کلید برقرار رہتی ہے۔ دوسرے سرور کو اپنی کلید درکار ہے۔';
+
+  @override
+  String get localProcessingUnsupported => 'ان ترتیبات میں ترمیم کرنے کے لیے منسلک سرور اپ ڈیٹ کریں۔';
+
+  @override
+  String get localProcessingFinished => 'مکمل ریکارڈنگز';
+
+  @override
+  String get localProcessingProbe => 'کنکشن جانچیں';
+
+  @override
+  String get localProcessingPending =>
+      'محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔';
+
+  @override
+  String get localAudioServerUpdateRequired => 'ریکارڈنگ سے پہلے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
 
   @override
   String get liveTranslationBidirectional => 'دو طرفہ ترجمہ';

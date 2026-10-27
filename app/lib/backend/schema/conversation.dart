@@ -150,20 +150,27 @@ class ConversationExternalData {
 
   /// The Mac import's `local_transcript` block, kept verbatim for round trips.
   final Map<String, dynamic>? localTranscript;
+  final Map<String, dynamic>? localRecording;
 
-  ConversationExternalData({required this.text, this.localTranscript});
+  ConversationExternalData({required this.text, this.localTranscript, this.localRecording});
 
   factory ConversationExternalData.fromJson(Map<String, dynamic> json) {
     final local = json['local_transcript'];
+    final recording = json['local_recording'];
     return ConversationExternalData(
       text: json['text'] ?? '',
       localTranscript: local is Map ? Map<String, dynamic>.from(local) : null,
+      localRecording: recording is Map ? Map<String, dynamic>.from(recording) : null,
     );
   }
 
   LocalTranscriptStages? get localTranscriptStages => LocalTranscriptStages.fromJson(localTranscript?['stages']);
 
-  Map<String, dynamic> toJson() => {'text': text, if (localTranscript != null) 'local_transcript': localTranscript};
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        if (localTranscript != null) 'local_transcript': localTranscript,
+        if (localRecording != null) 'local_recording': localRecording,
+      };
 }
 
 // ignore: constant_identifier_names

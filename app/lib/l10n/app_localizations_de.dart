@@ -1739,12 +1739,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'GERÄTE',
-      one: 'GERÄT',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'GERÄTE', one: 'GERÄT');
     return '$count $_temp0 IN DER NÄHE GEFUNDEN';
   }
 
@@ -10080,6 +10075,35 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprechertrennung fehlgeschlagen';
+
+  @override
+  String get localProcessingHelp =>
+      'Live-Sprechermarkierungen stammen vom Live-Anbieter. Die Diarisierung unten verarbeitet abgeschlossene Aufnahmen.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Stoppe die Aufnahme vor dem Wechsel. Die gewählten Server erhalten dein Audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Ein leeres Feld behält den gespeicherten Schlüssel. Ein anderer Server benötigt einen eigenen Schlüssel.';
+
+  @override
+  String get localProcessingUnsupported => 'Aktualisiere den gekoppelten Server, um diese Einstellungen zu bearbeiten.';
+
+  @override
+  String get localProcessingFinished => 'Abgeschlossene Aufnahmen';
+
+  @override
+  String get localProcessingProbe => 'Verbindung testen';
+
+  @override
+  String get localProcessingPending =>
+      'Gespeicherte Änderungen sind noch nicht aktiv. Tippe auf Bestätigen, um sie anzuwenden.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Aktualisiere den Server vor der Aufnahme. Auf dem Telefon gespeicherte Audiodaten bleiben erhalten.';
 
   @override
   String get liveTranslationBidirectional => 'Übersetzung in beide Richtungen';

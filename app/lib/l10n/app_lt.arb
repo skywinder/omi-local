@@ -3256,11 +3256,19 @@
     "speakersCount": "Kalbėtojų: {count}",
     "diarizationNotPerformed": "Kalbėtojų atskyrimas neatliktas",
     "diarizationFailed": "Kalbėtojų atskyrimas nepavyko",
-    "liveTranslationBidirectional": "Dvikryptis vertimas",
-    "liveTranslationPairHelp": "Atpažinti kiekvienos frazės kalbą ir išversti į kitą pasirinktą kalbą.",
+    "localProcessingHelp": "Tiesiogines kalbėtojų žymas pateikia Live teikėjas. Toliau esantis kalbėtojų atskyrimas apdoroja baigtus įrašus.",
+    "localProcessingApplyHelp": "Prieš perjungdami sustabdykite įrašymą. Pasirinkti serveriai gauna jūsų garsą.",
+    "localProcessingKeyHelp": "Tuščias laukas išsaugo įrašytą raktą. Kitam serveriui reikia atskiro rakto.",
+    "localProcessingUnsupported": "Norėdami keisti šiuos nustatymus, atnaujinkite susietą serverį.",
+    "localProcessingFinished": "Baigti įrašai",
+    "localProcessingProbe": "Tikrinti ryšį",
+    "localProcessingPending": "Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.",
+    "localAudioServerUpdateRequired": "Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.",
     "liveTranslation": "Tiesioginis vertimas",
-    "liveTranslationTargetLanguage": "Versti į",
+    "liveTranslationFailed": "Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation.",
     "liveTranslationHelp": "Prijungtas serveris rodo vertimą po originalu. Automatiškai naudojamas santraukų modelis, nebent serverio bibliotekoje pasirinksite kitą: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Versti į",
     "liveTranslationUnconfigured": "Prijungtame serveryje nenustatytas vertimo modelis. Atverkite jo biblioteką: Settings → Summarization arba Translation → Save → Use.",
-    "liveTranslationFailed": "Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation."
+    "liveTranslationBidirectional": "Dvikryptis vertimas",
+    "liveTranslationPairHelp": "Atpažinti kiekvienos frazės kalbą ir išversti į kitą pasirinktą kalbą."
 }

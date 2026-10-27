@@ -1728,12 +1728,7 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8494,12 +8489,7 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10029,6 +10019,32 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Памылка дыярызацыі';
+
+  @override
+  String get localProcessingHelp =>
+      'Меткі спікераў у рэальным часе паступаюць ад Live-правайдара. Дыярызацыя ніжэй апрацоўвае завершаныя запісы.';
+
+  @override
+  String get localProcessingApplyHelp => 'Перад пераключэннем спыніце запіс. Выбраныя серверы атрымліваюць ваша аўдыя.';
+
+  @override
+  String get localProcessingKeyHelp => 'Пустое поле захоўвае ключ. Іншаму серверу патрэбны ўласны ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Абнавіце падключаны сервер, каб змяняць гэтыя налады.';
+
+  @override
+  String get localProcessingFinished => 'Завершаныя запісы';
+
+  @override
+  String get localProcessingProbe => 'Праверыць злучэнне';
+
+  @override
+  String get localProcessingPending => 'Захаваныя змены яшчэ не дзейнічаюць. Націсніце «Пацвердзіць», каб прымяніць.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Абнавіце сервер перад запісам. Аўдыя, захаванае на тэлефоне, застаецца.';
 
   @override
   String get liveTranslationBidirectional => 'Двухбаковы пераклад';

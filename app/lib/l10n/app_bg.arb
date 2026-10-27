@@ -3234,11 +3234,19 @@
     "speakersCount": "{count} говорещи",
     "diarizationNotPerformed": "Диаризацията не е изпълнена",
     "diarizationFailed": "Грешка при диаризация",
-    "liveTranslationBidirectional": "Двупосочен превод",
-    "liveTranslationPairHelp": "Разпознаване на езика на всяка фраза и превод на другия избран език.",
+    "localProcessingHelp": "Етикетите на говорителите на живо идват от Live доставчика. Диаризацията по-долу обработва завършени записи.",
+    "localProcessingApplyHelp": "Спрете записа, преди да превключите. Избраните сървъри получават вашето аудио.",
+    "localProcessingKeyHelp": "Празното поле запазва ключа. Друг сървър изисква собствен ключ.",
+    "localProcessingUnsupported": "Обновете свързания сървър, за да редактирате тези настройки.",
+    "localProcessingFinished": "Завършени записи",
+    "localProcessingProbe": "Проверка на връзката",
+    "localProcessingPending": "Запазените промени не са активни. Натиснете „Потвърди“, за да ги приложите.",
+    "localAudioServerUpdateRequired": "Обновете сървъра преди запис. Запазеното аудио на телефона се съхранява.",
     "liveTranslation": "Превод на живо",
-    "liveTranslationTargetLanguage": "Превод на",
+    "liveTranslationFailed": "Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation.",
     "liveTranslationHelp": "Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Превод на",
     "liveTranslationUnconfigured": "Няма настроен модел за превод на свързания сървър. Отворете библиотеката му: Settings → Summarization или Translation → Save → Use.",
-    "liveTranslationFailed": "Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation."
+    "liveTranslationBidirectional": "Двупосочен превод",
+    "liveTranslationPairHelp": "Разпознаване на езика на всяка фраза и превод на другия избран език."
 }

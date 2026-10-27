@@ -1731,12 +1731,7 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8516,12 +8511,7 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10050,6 +10040,33 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Дијаризацијата не успеа';
+
+  @override
+  String get localProcessingHelp =>
+      'Ознаките на говорниците во живо доаѓаат од Live давателот. Дијаризацијата подолу обработува завршени снимки.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Запрете го снимањето пред префрлување. Избраните сервери го добиваат вашето аудио.';
+
+  @override
+  String get localProcessingKeyHelp => 'Празно поле го задржува зачуваниот клуч. Друг сервер бара свој клуч.';
+
+  @override
+  String get localProcessingUnsupported => 'Ажурирајте го спарениот сервер за да ги уредите овие поставки.';
+
+  @override
+  String get localProcessingFinished => 'Завршени снимки';
+
+  @override
+  String get localProcessingProbe => 'Провери врска';
+
+  @override
+  String get localProcessingPending => 'Зачуваните промени не се активни. Допрете Потврди за да ги примените.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ажурирајте го серверот пред снимање. Аудиото зачувано на телефонот се задржува.';
 
   @override
   String get liveTranslationBidirectional => 'Двонасочен превод';

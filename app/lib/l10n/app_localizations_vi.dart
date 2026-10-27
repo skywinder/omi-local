@@ -1731,12 +1731,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'THIẾT BỊ',
-      one: 'THIẾT BỊ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'THIẾT BỊ', one: 'THIẾT BỊ');
     return 'ĐÃ TÌM THẤY $count $_temp0 GẦN ĐÂY';
   }
 
@@ -9210,11 +9205,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count bản ghi sẵn sàng để đồng bộ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count bản ghi sẵn sàng để đồng bộ');
     return '$_temp0';
   }
 
@@ -9226,11 +9217,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count bản ghi cần chú ý',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count bản ghi cần chú ý');
     return '$_temp0';
   }
 
@@ -9992,6 +9979,32 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Phân tách người nói thất bại';
+
+  @override
+  String get localProcessingHelp =>
+      'Nhãn người nói trực tiếp đến từ nhà cung cấp Live. Tính năng phân tách người nói bên dưới xử lý bản ghi đã hoàn tất.';
+
+  @override
+  String get localProcessingApplyHelp => 'Dừng ghi âm trước khi chuyển. Các máy chủ đã chọn sẽ nhận âm thanh của bạn.';
+
+  @override
+  String get localProcessingKeyHelp => 'Để trống để giữ khóa đã lưu. Máy chủ khác cần khóa riêng.';
+
+  @override
+  String get localProcessingUnsupported => 'Cập nhật máy chủ đã ghép nối để sửa các cài đặt này.';
+
+  @override
+  String get localProcessingFinished => 'Bản ghi đã hoàn tất';
+
+  @override
+  String get localProcessingProbe => 'Kiểm tra kết nối';
+
+  @override
+  String get localProcessingPending => 'Các thay đổi đã lưu chưa có hiệu lực. Nhấn Xác nhận để áp dụng.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Cập nhật máy chủ trước khi ghi âm. Âm thanh đã lưu trên điện thoại được giữ lại.';
 
   @override
   String get liveTranslationBidirectional => 'Dịch hai chiều';

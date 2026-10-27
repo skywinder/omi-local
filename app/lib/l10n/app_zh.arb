@@ -3278,11 +3278,19 @@
     "speakersCount": "{count} 位说话人",
     "diarizationNotPerformed": "未执行说话人分离",
     "diarizationFailed": "说话人分离失败",
-    "liveTranslationBidirectional": "双向翻译",
-    "liveTranslationPairHelp": "识别每句话的语言，并翻译成所选的另一种语言。",
+    "localProcessingHelp": "实时说话人标签来自 Live 提供商。下方的说话人分离处理已完成的录音。",
+    "localProcessingApplyHelp": "切换前请停止录音。所选服务器将接收您的音频。",
+    "localProcessingKeyHelp": "留空可保留已保存的密钥。其他服务器需要自己的密钥。",
+    "localProcessingUnsupported": "请更新已配对的服务器以编辑这些设置。",
+    "localProcessingFinished": "已完成的录音",
+    "localProcessingProbe": "测试连接",
+    "localProcessingPending": "已保存的更改尚未生效。点击“确认”以应用。",
+    "localAudioServerUpdateRequired": "录音前请更新服务器。手机上保存的音频会保留。",
     "liveTranslation": "实时翻译",
-    "liveTranslationTargetLanguage": "翻译为",
+    "liveTranslationFailed": "已连接的服务器暂时无法翻译。请检查其资料库：Settings → Translation。",
     "liveTranslationHelp": "已连接的服务器会在原文下方显示译文。默认自动使用摘要模型，除非您在服务器资料库的 Settings → Translation 中选择其他模型。",
+    "liveTranslationTargetLanguage": "翻译为",
     "liveTranslationUnconfigured": "已连接的服务器尚未配置翻译模型。请打开其资料库：Settings → Summarization 或 Translation → Save → Use。",
-    "liveTranslationFailed": "已连接的服务器暂时无法翻译。请检查其资料库：Settings → Translation。"
+    "liveTranslationBidirectional": "双向翻译",
+    "liveTranslationPairHelp": "识别每句话的语言，并翻译成所选的另一种语言。"
 }

@@ -740,6 +740,12 @@ class SharedPreferencesUtil {
   set preferredSummarizationAppId(String value) => saveString('preferredSummarizationAppId', value);
 
   List<ServerConversation> get cachedConversations {
+    final namespace = getString('localConversationCacheNamespace');
+    if (namespace.isNotEmpty) {
+      return getStringList(
+        'localConversations.$namespace',
+      ).map((e) => ServerConversation.fromJson(jsonDecode(e))).toList();
+    }
     if (getBool('migratedMemories')) {
       final cachedMemories = getStringList('cachedMemories');
       if (cachedMemories.isNotEmpty) {
@@ -754,7 +760,21 @@ class SharedPreferencesUtil {
 
   set cachedConversations(List<ServerConversation> value) {
     final List<String> conversations = value.map((e) => jsonEncode(e.toJson())).toList();
-    saveStringList('cachedConversations', conversations);
+    final namespace = getString('localConversationCacheNamespace');
+    saveStringList(namespace.isEmpty ? 'cachedConversations' : 'localConversations.$namespace', conversations);
+  }
+
+  /// Select the paired server's projection without deleting any other cache.
+  /// Only a restored authenticated pairing may adopt the unscoped legacy rows.
+  Future<void> selectLocalConversationCache(String namespace, {bool adoptLegacy = false}) async {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(namespace)) throw const FormatException('Invalid local cache namespace');
+    final previous = getString('localConversationCacheNamespace');
+    if (previous == namespace) return;
+    final key = 'localConversations.$namespace';
+    if (adoptLegacy && previous.isEmpty && !(_preferences?.containsKey(key) ?? false)) {
+      await saveStringList(key, getStringList('cachedConversations'));
+    }
+    await saveString('localConversationCacheNamespace', namespace);
   }
 
   List<ServerMessage> get cachedMessages {

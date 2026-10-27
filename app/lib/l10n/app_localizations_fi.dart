@@ -1725,12 +1725,7 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'LAITETTA',
-      one: 'LAITE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'LAITETTA', one: 'LAITE');
     return '$count $_temp0 LÖYDETTY LÄHISTÖLTÄ';
   }
 
@@ -9998,6 +9993,35 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Puhujien erottelu epäonnistui';
+
+  @override
+  String get localProcessingHelp =>
+      'Reaaliaikaiset puhujatunnisteet tulevat Live-palveluntarjoajalta. Alla oleva puhujanerottelu käsittelee valmiita tallenteita.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Lopeta tallennus ennen vaihtamista. Valitut palvelimet vastaanottavat äänesi.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Tyhjä kenttä säilyttää tallennetun avaimen. Toinen palvelin tarvitsee oman avaimensa.';
+
+  @override
+  String get localProcessingUnsupported => 'Päivitä yhdistetty palvelin muokataksesi näitä asetuksia.';
+
+  @override
+  String get localProcessingFinished => 'Valmiit tallenteet';
+
+  @override
+  String get localProcessingProbe => 'Testaa yhteys';
+
+  @override
+  String get localProcessingPending =>
+      'Tallennetut muutokset eivät ole käytössä. Ota ne käyttöön napauttamalla Vahvista.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Päivitä palvelin ennen tallennusta. Puhelimeen tallennettu ääni säilytetään.';
 
   @override
   String get liveTranslationBidirectional => 'Kaksisuuntainen käännös';

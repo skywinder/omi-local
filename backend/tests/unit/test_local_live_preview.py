@@ -142,6 +142,7 @@ async def test_unconfigured_live_preview_is_disabled_during_capture(monkeypatch)
     status = await local_status.snapshot('synthetic-user')
     assert status['capture']['state'] == 'received'
     assert status['live_transcript']['state'] == 'disabled'
+    assert status['diarization'] == {'state': 'disabled', 'labeled_segments': 0}
     assert preview.disabled and not preview.failed
     send.assert_not_awaited()
     connect.assert_not_called()
@@ -287,6 +288,7 @@ async def test_diarized_provider_handshake_reaches_phone_as_complete_snapshot(mo
     assert snapshot['type'] == 'local_transcript_snapshot' and snapshot['revision'] == 1
     assert [row['speaker'] for row in snapshot['segments']] == ['SPEAKER_00', 'SPEAKER_01']
     assert all(row['stt_provider'] == 'synthetic-live' and not row['is_draft'] for row in snapshot['segments'])
+    assert preview.diarization_status == {'state': 'labeled', 'labeled_segments': 2}
     await preview.finish()
     assert preview.eof_ack and not preview.failed
 
@@ -317,6 +319,7 @@ async def test_diarization_degradation_retracts_labels_and_keeps_preview_alive(m
     assert len(fallback) == 1 and fallback[0]['from_mode'] == 'local_live_diarization'
     assert fallback[0]['to_mode'] == 'local_live_preview' and fallback[0]['outcome'] == 'degraded'
     assert not preview.failed and not preview.task.done()
+    assert preview.diarization_status == {'state': 'degraded', 'labeled_segments': 0}
     # Repeated snapshot status does not spam telemetry or restore placeholders.
     await socket.incoming.put(json.dumps({**socket.response, 'diarization_status': 'degraded'}))
     await asyncio.sleep(0)
@@ -488,11 +491,12 @@ class StatusSession:
 async def test_local_status_disabled_makes_no_worker_request(monkeypatch):
     monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
     probe = AsyncMock(side_effect=AssertionError('disabled must not probe'))
-    monkeypatch.setattr(local_status, '_worker_state', probe)
+    monkeypatch.setattr(local_status, '_worker_status', probe)
     assert await local_status.snapshot('synthetic-status-owner') == {
         'backend': 'ready',
         'capture': {'state': 'idle', 'audio_seconds': 0, 'frames_received': 0},
         'live_transcript': {'state': 'disabled', 'updates': 0},
+        'diarization': {'state': 'disabled', 'labeled_segments': 0},
     }
     probe.assert_not_called()
 
@@ -500,6 +504,10 @@ async def test_local_status_disabled_makes_no_worker_request(monkeypatch):
 @pytest.mark.parametrize('status,body,expected', [
     (200, {'ready': True, 'active': False}, 'ready'),
     (200, {'ready': True, 'active': True}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': True}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': False}, 'ready'),
+    (200, {'ready': True, 'active': True, 'busy': False}, 'busy'),
+    (200, {'ready': True, 'active': False, 'busy': 'false'}, 'unavailable'),
     (200, {'ready': False, 'active': False}, 'unavailable'),
     (200, {'ready': True, 'active': 'false'}, 'unavailable'),
     (200, ['not', 'health'], 'unavailable'),
@@ -532,7 +540,7 @@ async def test_local_status_probes_only_bounded_loopback_health(monkeypatch, sta
 async def test_local_status_invalid_worker_config_is_unavailable_without_network(monkeypatch):
     monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://example.com/asr')
     probe = AsyncMock(side_effect=AssertionError('invalid config must not probe'))
-    monkeypatch.setattr(local_status, '_worker_state', probe)
+    monkeypatch.setattr(local_status, '_worker_status', probe)
     assert (await local_status.snapshot('synthetic-status-owner'))['live_transcript']['state'] == 'unavailable'
     probe.assert_not_called()
 
@@ -578,8 +586,8 @@ async def test_local_status_failed_preview_overrides_ready_worker(monkeypatch):
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', refused)
     preview = LocalLivePreview('ws://127.0.0.1:18090/asr', AsyncMock())
     await preview.finish()
-    probe = AsyncMock(return_value='ready')
-    monkeypatch.setattr(local_status, '_worker_state', probe)
+    probe = AsyncMock(return_value={'state': 'ready', 'diarization': {'state': 'unknown', 'labeled_segments': 0}})
+    monkeypatch.setattr(local_status, '_worker_status', probe)
     owner = StatusSession('synthetic-status-owner', preview=preview)
     registry.register(owner)
     try:
@@ -598,8 +606,8 @@ async def test_local_status_reports_actual_preview_updates_and_forgets_closed_se
     preview = LocalLivePreview('ws://127.0.0.1:18090/asr', sent)
     owner = StatusSession('synthetic-status-owner', preview=preview)
     registry.register(owner)
-    probe = AsyncMock(return_value='ready')
-    monkeypatch.setattr(local_status, '_worker_state', probe)
+    probe = AsyncMock(return_value={'state': 'ready', 'diarization': {'state': 'unknown', 'labeled_segments': 0}})
+    monkeypatch.setattr(local_status, '_worker_status', probe)
     try:
         preview.feed(b'\0\0' * 320)
         for _ in range(1000):
@@ -651,3 +659,113 @@ async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypat
         for owner in owners:
             registry.unregister(owner)
             owner.capture_sink.finalize()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('source,codec', [('phone', 'pcm16'), ('omi', 'opus'), ('omi', 'opus_fs320')])
+async def test_outbox_owned_library_draft_uses_preview_without_server_wav(monkeypatch, source, codec):
+    from utils.local_audio_delivery import initialize_local_capture
+
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+
+    def owner(uid, text):
+        segment = PreviewSegment()
+        segment.update({'lines': [], 'buffer_transcription': text}, 1.25)
+        session = StatusSession(uid, preview=SimpleNamespace(segment=segment, updates=1, failed=False))
+        session.request.source = source
+        # Receiver normalization must not erase the original CV1 codec in UI metadata.
+        session.request.codec = 'opus' if codec == 'opus_fs320' else codec
+        session.original_codec = codec
+        session.outbox_preview_only, session.capture_sink = initialize_local_capture(
+            offline=True, headers={'x-omi-local-audio-outbox': '1'},
+            session_id='synthetic-recording-canary', source=source, codec=codec, sample_rate=16000, channels=1,
+        )
+        session.outbox_preview_frames = 5
+        session.outbox_preview_pcm_bytes = 40000
+        assert session.outbox_preview_only is True and session.capture_sink is None
+        return session
+
+    current = owner('synthetic-owner', 'текущий черновик')
+    other = owner('synthetic-other', 'чужой черновик')
+    inactive = owner('synthetic-owner', 'неактивный черновик')
+    inactive.state.active = False
+    closed = owner('synthetic-owner', 'закрытый черновик')
+    closed.state.shutdown_event.set()
+    unvalidated = owner('synthetic-owner', 'неподтверждённый черновик')
+    unvalidated.outbox_preview_only = False
+    sessions = [current, other, inactive, closed, unvalidated]
+    for session in sessions:
+        registry.register(session)
+    try:
+        data = await local_status.preview_snapshot('synthetic-owner')
+        assert len(data['sessions']) == 1
+        draft = data['sessions'][0]
+        fields = ('source', 'codec', 'audio_seconds', 'frames_received', 'decode_errors')
+        assert {key: draft[key] for key in fields} == {
+            'source': source, 'codec': codec, 'audio_seconds': 1.25, 'frames_received': 5, 'decode_errors': 0,
+        }
+        assert draft['text'] == 'текущий черновик' and draft['segments'][0]['text'] == draft['text']
+        assert draft['preview_id'] == current.local_preview.segment.id and draft['revision'] == 1
+        encoded = json.dumps(data, ensure_ascii=False)
+        assert all(value not in encoded for value in (
+            'synthetic-owner', 'synthetic-other', 'synthetic-recording-canary', 'чужой черновик',
+            'неактивный черновик', 'закрытый черновик', 'неподтверждённый черновик',
+        ))
+        current.local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, 1.25)
+        corrected = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        assert corrected['text'] == 'исправлено' and corrected['revision'] == 2
+        current.local_preview.segment.update({'lines': [], 'buffer_transcription': ''}, 1.25)
+        retracted = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        assert retracted['text'] == '' and retracted['segments'] == [] and retracted['revision'] == 3
+        current.state.shutdown_event.set()
+        assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
+    finally:
+        for session in sessions:
+            registry.unregister(session)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('capability,expected', [(True, 'pending'), (False, 'disabled'), (None, 'unknown')])
+async def test_diarization_requires_explicit_capability_and_real_labels(monkeypatch, capability, expected):
+    socket = Socket(config={'diarization': capability}, response={
+        'lines': [{'text': 'Synthetic speech', 'speaker': -1, 'start': 0, 'end': .1}], 'buffer_transcription': ''})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    sent = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', sent)
+    preview.feed(b'\0\0' * 16000)
+    for _ in range(30):
+        await asyncio.sleep(0)
+        if preview.updates:
+            break
+    assert preview.updates
+    assert preview.diarization_status == {'state': expected, 'labeled_segments': 0}
+    owner = StatusSession('synthetic-owner', preview=preview)
+    registry.register(owner)
+    try:
+        assert (await local_status.snapshot(owner.request.uid))['diarization'] == preview.diarization_status
+        assert (await local_status.snapshot('different-owner'))['diarization']['labeled_segments'] == 0
+        preview._fail('other')
+        assert preview.diarization_status['state'] == ('disabled' if capability is False else 'failed')
+    finally:
+        registry.unregister(owner)
+        await preview.finish()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('extra,expected', [
+    ({}, 'unknown'), ({'diarization': False}, 'disabled'), ({'diarization': True}, 'ready'),
+    ({'diarization': True, 'busy': True}, 'busy'),
+    ({'diarization': False, 'busy': True}, 'disabled'),
+    ({'diarization': {'state': 'ready'}, 'relay': True}, 'ready'),
+    ({'diarization': {'state': 'labeled'}, 'relay': True}, 'unknown'),
+])
+async def test_idle_diarization_health_never_claims_inference(monkeypatch, extra, expected):
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(
+        200, json={'ready': True, 'active': False, **extra})))
+    monkeypatch.setattr(local_status, 'get_local_preview_client', lambda: client)
+    try:
+        data = await local_status.snapshot('synthetic-health-owner')
+        assert data['diarization'] == {'state': expected, 'labeled_segments': 0}
+    finally:
+        await client.aclose()

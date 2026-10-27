@@ -1738,12 +1738,7 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ΣΥΣΚΕΥΕΣ',
-      one: 'ΣΥΣΚΕΥΗ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ΣΥΣΚΕΥΕΣ', one: 'ΣΥΣΚΕΥΗ');
     return '$count $_temp0 ΒΡΕΘΗΚΑΝ ΚΟΝΤΑ';
   }
 
@@ -10067,6 +10062,34 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Ο διαχωρισμός ομιλητών απέτυχε';
+
+  @override
+  String get localProcessingHelp =>
+      'Οι ζωντανές ετικέτες ομιλητών προέρχονται από τον πάροχο Live. Η διαχωριστική αναγνώριση ομιλητών παρακάτω επεξεργάζεται ολοκληρωμένες εγγραφές.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Σταματήστε την εγγραφή πριν από την αλλαγή. Οι επιλεγμένοι διακομιστές λαμβάνουν τον ήχο σας.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Το κενό πεδίο διατηρεί το αποθηκευμένο κλειδί. Ένας άλλος διακομιστής απαιτεί δικό του κλειδί.';
+
+  @override
+  String get localProcessingUnsupported => 'Ενημερώστε τον συζευγμένο διακομιστή για να αλλάξετε αυτές τις ρυθμίσεις.';
+
+  @override
+  String get localProcessingFinished => 'Ολοκληρωμένες εγγραφές';
+
+  @override
+  String get localProcessingProbe => 'Δοκιμή σύνδεσης';
+
+  @override
+  String get localProcessingPending => 'Οι αποθηκευμένες αλλαγές δεν είναι ενεργές. Πατήστε Επιβεβαίωση για εφαρμογή.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ενημερώστε τον διακομιστή πριν την εγγραφή. Ο ήχος που αποθηκεύτηκε στο τηλέφωνο διατηρείται.';
 
   @override
   String get liveTranslationBidirectional => 'Αμφίδρομη μετάφραση';

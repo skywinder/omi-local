@@ -10029,6 +10029,32 @@ class AppLocalizationsPl extends AppLocalizations {
   String get diarizationFailed => 'Diaryzacja nie powiodła się';
 
   @override
+  String get localProcessingHelp =>
+      'Etykiety mówców na żywo pochodzą od dostawcy Live. Diaryzacja poniżej przetwarza zakończone nagrania.';
+
+  @override
+  String get localProcessingApplyHelp => 'Zatrzymaj nagrywanie przed zmianą. Wybrane serwery otrzymują Twój dźwięk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Puste pole zachowuje zapisany klucz. Inny serwer wymaga własnego klucza.';
+
+  @override
+  String get localProcessingUnsupported => 'Zaktualizuj sparowany serwer, aby zmienić te ustawienia.';
+
+  @override
+  String get localProcessingFinished => 'Zakończone nagrania';
+
+  @override
+  String get localProcessingProbe => 'Sprawdź połączenie';
+
+  @override
+  String get localProcessingPending => 'Zapisane zmiany nie są jeszcze aktywne. Stuknij Potwierdź, aby je zastosować.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Zaktualizuj serwer przed nagrywaniem. Dźwięk zapisany w telefonie zostanie zachowany.';
+
+  @override
   String get liveTranslationBidirectional => 'Tłumaczenie dwukierunkowe';
 
   @override

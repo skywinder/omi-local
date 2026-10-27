@@ -17,17 +17,33 @@ Pairing profile-check diagnostics log only the HTTP response status; never exten
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
-Authenticated `/v1/local/status` is paired-transport/offline-only. Capture counters
-come from the caller's active listen sessions; live-ASR health is separate from WAV
+Authenticated `/v1/local/status` is paired-transport/offline-only. Its capture counters come
+from the caller's active listen sessions; live-ASR health is separate from WAV
 capture. An absent live-preview URL means disabled, including during active recording;
 only invalid configuration or a failing configured provider reports a preview error.
+The status response also carries content-free `diarization` evidence: readiness
+from bounded selected-worker health and labels only from this owner's active previews.
+Worker health's optional boolean `busy` includes shared inference contention;
+combine it with `active` before reporting readiness. Missing `busy` preserves
+older providers; malformed values must not imply readiness.
+Never infer working diarization from ASR updates or placeholder speaker numbers.
 Never return transcript text, identifiers, filesystem paths or credentials.
 The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts
 to the loopback library. It requires the existing paired key, rejects non-loopback
 clients, non-loopback receiving sockets and all forwarded headers, and uses
 `Cache-Control: no-store`. Never add draft text to the status endpoint, logs or a diagnostic file.
+Updated paired clients send bounded immutable parts to `/v1/local/audio/parts`.
+Authenticate before consuming bodies. Publish the complete WAV and metadata
+outside watcher staging, sync them, and return a receipt for that exact ID/hash.
+Retries must not overwrite or duplicate audio. The explicit outbox header makes
+the listen socket preview-only; legacy clients retain server WAV capture.
+See `docs/RECORDING_DURABILITY.md` for capability and recovery boundaries.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
+Offline capture rotates at decoded packet boundaries after five minutes without
+closing the listen socket. Saved audio is projected read-only into the paired
+owner's Conversations list/detail until import succeeds; never expose capture
+paths, provider credentials, or add processing placeholders to Firestore.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.

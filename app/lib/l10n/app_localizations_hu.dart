@@ -1737,12 +1737,7 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ESZKÖZ',
-      one: 'ESZKÖZ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ESZKÖZ', one: 'ESZKÖZ');
     return '$count $_temp0 TALÁLHATÓ A KÖZELBEN';
   }
 
@@ -10038,6 +10033,35 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Beszélőfelismerés sikertelen';
+
+  @override
+  String get localProcessingHelp =>
+      'Az élő beszélőcímkék a Live szolgáltatótól érkeznek. Az alábbi diarizáció befejezett felvételeket dolgoz fel.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Váltás előtt állítsd le a felvételt. A kiválasztott szerverek megkapják a hangodat.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Az üres mező megőrzi a mentett kulcsot. Másik szerverhez saját kulcs szükséges.';
+
+  @override
+  String get localProcessingUnsupported => 'A beállítások szerkesztéséhez frissítsd a párosított szervert.';
+
+  @override
+  String get localProcessingFinished => 'Befejezett felvételek';
+
+  @override
+  String get localProcessingProbe => 'Kapcsolat tesztelése';
+
+  @override
+  String get localProcessingPending =>
+      'A mentett módosítások még nem aktívak. Az alkalmazásukhoz koppintson a Megerősítés gombra.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Felvétel előtt frissítsd a szervert. A telefonon mentett hang megmarad.';
 
   @override
   String get liveTranslationBidirectional => 'Kétirányú fordítás';

@@ -1734,12 +1734,7 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 NAHANAP SA MALAPIT';
   }
 
@@ -8547,12 +8542,7 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 na ginawa';
   }
 
@@ -10088,6 +10078,35 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Nabigo ang pagkilala ng nagsasalita';
+
+  @override
+  String get localProcessingHelp =>
+      'Galing sa Live provider ang mga live na label ng nagsasalita. Pinoproseso ng diarization sa ibaba ang mga tapos nang recording.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Ihinto ang pag-record bago lumipat. Matatanggap ng mga napiling server ang iyong audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Iwanang blangko para panatilihin ang naka-save na key. Kailangan ng ibang server ang sarili nitong key.';
+
+  @override
+  String get localProcessingUnsupported => 'I-update ang nakapares na server para baguhin ang mga setting na ito.';
+
+  @override
+  String get localProcessingFinished => 'Mga tapos na recording';
+
+  @override
+  String get localProcessingProbe => 'Subukan ang koneksyon';
+
+  @override
+  String get localProcessingPending =>
+      'Hindi pa aktibo ang mga na-save na pagbabago. I-tap ang Kumpirmahin para ilapat.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'I-update ang server bago mag-record. Mananatili ang audio na naka-save sa telepono.';
 
   @override
   String get liveTranslationBidirectional => 'Pagsasalin sa dalawang direksiyon';

@@ -10822,11 +10822,19 @@
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
     "diarizationFailed": "Dijarizacija nije uspela",
-    "liveTranslationBidirectional": "Двосмерни превод",
-    "liveTranslationPairHelp": "Препознај језик сваке фразе и преведи је на други изабрани језик.",
+    "localProcessingHelp": "Ознаке говорника уживо долазе од Live добављача. Дијаризација испод обрађује завршене снимке.",
+    "localProcessingApplyHelp": "Зауставите снимање пре пребацивања. Изабрани сервери примају ваш звук.",
+    "localProcessingKeyHelp": "Празно поље задржава сачувани кључ. Други сервер захтева свој кључ.",
+    "localProcessingUnsupported": "Ажурирајте упарени сервер да измените ова подешавања.",
+    "localProcessingFinished": "Завршени снимци",
+    "localProcessingProbe": "Провери везу",
+    "localProcessingPending": "Сачуване промене нису активне. Додирните Потврди да их примените.",
+    "localAudioServerUpdateRequired": "Ажурирајте сервер пре снимања. Звук сачуван на телефону остаје сачуван.",
     "liveTranslation": "Превод уживо",
-    "liveTranslationTargetLanguage": "Преведи на",
+    "liveTranslationFailed": "Превод није доступан на повезаном серверу. Проверите његову библиотеку: Settings → Translation.",
     "liveTranslationHelp": "Повезани сервер приказује превод испод оригинала. Аутоматски се користи модел за сажимање, осим ако изаберете други у библиотеци сервера: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Преведи на",
     "liveTranslationUnconfigured": "На повезаном серверу није подешен модел за превод. Отворите његову библиотеку: Settings → Summarization или Translation → Save → Use.",
-    "liveTranslationFailed": "Превод није доступан на повезаном серверу. Проверите његову библиотеку: Settings → Translation."
+    "liveTranslationBidirectional": "Двосмерни превод",
+    "liveTranslationPairHelp": "Препознај језик сваке фразе и преведи је на други изабрани језик."
 }

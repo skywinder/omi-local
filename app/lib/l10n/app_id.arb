@@ -3298,11 +3298,19 @@
     "speakersCount": "{count} pembicara",
     "diarizationNotPerformed": "Pemisahan pembicara tidak dilakukan",
     "diarizationFailed": "Pemisahan pembicara gagal",
-    "liveTranslationBidirectional": "Terjemahan dua arah",
-    "liveTranslationPairHelp": "Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.",
+    "localProcessingHelp": "Label pembicara langsung berasal dari penyedia Live. Diarisasi di bawah memproses rekaman yang selesai.",
+    "localProcessingApplyHelp": "Hentikan perekaman sebelum beralih. Server yang dipilih menerima audio Anda.",
+    "localProcessingKeyHelp": "Kosongkan untuk mempertahankan kunci tersimpan. Server lain memerlukan kuncinya sendiri.",
+    "localProcessingUnsupported": "Perbarui server yang dipasangkan untuk mengedit pengaturan ini.",
+    "localProcessingFinished": "Rekaman selesai",
+    "localProcessingProbe": "Uji koneksi",
+    "localProcessingPending": "Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.",
+    "localAudioServerUpdateRequired": "Perbarui server sebelum merekam. Audio yang tersimpan di ponsel tetap disimpan.",
     "liveTranslation": "Terjemahan langsung",
-    "liveTranslationTargetLanguage": "Terjemahkan ke",
+    "liveTranslationFailed": "Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation.",
     "liveTranslationHelp": "Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Terjemahkan ke",
     "liveTranslationUnconfigured": "Belum ada model terjemahan di server yang terhubung. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.",
-    "liveTranslationFailed": "Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation."
+    "liveTranslationBidirectional": "Terjemahan dua arah",
+    "liveTranslationPairHelp": "Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih."
 }

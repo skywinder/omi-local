@@ -10822,11 +10822,19 @@
     "speakersCount": "{count} говорници",
     "diarizationNotPerformed": "Дијаризацијата не е извршена",
     "diarizationFailed": "Дијаризацијата не успеа",
-    "liveTranslationBidirectional": "Двонасочен превод",
-    "liveTranslationPairHelp": "Препознај го јазикот на секоја фраза и преведи ја на другиот избран јазик.",
+    "localProcessingHelp": "Ознаките на говорниците во живо доаѓаат од Live давателот. Дијаризацијата подолу обработува завршени снимки.",
+    "localProcessingApplyHelp": "Запрете го снимањето пред префрлување. Избраните сервери го добиваат вашето аудио.",
+    "localProcessingKeyHelp": "Празно поле го задржува зачуваниот клуч. Друг сервер бара свој клуч.",
+    "localProcessingUnsupported": "Ажурирајте го спарениот сервер за да ги уредите овие поставки.",
+    "localProcessingFinished": "Завршени снимки",
+    "localProcessingProbe": "Провери врска",
+    "localProcessingPending": "Зачуваните промени не се активни. Допрете Потврди за да ги примените.",
+    "localAudioServerUpdateRequired": "Ажурирајте го серверот пред снимање. Аудиото зачувано на телефонот се задржува.",
     "liveTranslation": "Превод во живо",
-    "liveTranslationTargetLanguage": "Преведи на",
+    "liveTranslationFailed": "Преводот не е достапен на поврзаниот сервер. Проверете ја неговата библиотека: Settings → Translation.",
     "liveTranslationHelp": "Поврзаниот сервер го прикажува преводот под оригиналот. Автоматски се користи моделот за резиме, освен ако изберете друг во библиотеката на серверот: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Преведи на",
     "liveTranslationUnconfigured": "На поврзаниот сервер не е поставен модел за превод. Отворете ја неговата библиотека: Settings → Summarization или Translation → Save → Use.",
-    "liveTranslationFailed": "Преводот не е достапен на поврзаниот сервер. Проверете ја неговата библиотека: Settings → Translation."
+    "liveTranslationBidirectional": "Двонасочен превод",
+    "liveTranslationPairHelp": "Препознај го јазикот на секоја фраза и преведи ја на другиот избран јазик."
 }

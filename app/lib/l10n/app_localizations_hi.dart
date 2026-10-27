@@ -9978,6 +9978,33 @@ class AppLocalizationsHi extends AppLocalizations {
   String get diarizationFailed => 'वक्ता पहचान विफल';
 
   @override
+  String get localProcessingHelp =>
+      'लाइव वक्ता लेबल Live प्रदाता से आते हैं। नीचे का वक्ता विभाजन पूरी हुई रिकॉर्डिंग को प्रोसेस करता है।';
+
+  @override
+  String get localProcessingApplyHelp => 'बदलने से पहले रिकॉर्डिंग रोकें। चुने गए सर्वर आपका ऑडियो प्राप्त करते हैं।';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'खाली छोड़ने पर सहेजी गई कुंजी बनी रहती है। दूसरे सर्वर के लिए उसकी अपनी कुंजी चाहिए।';
+
+  @override
+  String get localProcessingUnsupported => 'इन सेटिंग्स को बदलने के लिए जुड़े सर्वर को अपडेट करें।';
+
+  @override
+  String get localProcessingFinished => 'पूरी हुई रिकॉर्डिंग';
+
+  @override
+  String get localProcessingProbe => 'कनेक्शन जाँचें';
+
+  @override
+  String get localProcessingPending => 'सहेजे गए बदलाव सक्रिय नहीं हैं। लागू करने के लिए पुष्टि करें पर टैप करें।';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'रिकॉर्डिंग से पहले सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।';
+
+  @override
   String get liveTranslationBidirectional => 'दोतरफ़ा अनुवाद';
 
   @override

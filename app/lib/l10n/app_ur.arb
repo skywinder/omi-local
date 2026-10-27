@@ -10822,11 +10822,19 @@
     "speakersCount": "{count} مقررین",
     "diarizationNotPerformed": "مقررین کی شناخت نہیں ہوئی",
     "diarizationFailed": "مقررین کی شناخت ناکام",
-    "liveTranslationBidirectional": "دو طرفہ ترجمہ",
-    "liveTranslationPairHelp": "ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔",
+    "localProcessingHelp": "لائیو بولنے والوں کے لیبل Live فراہم کنندہ سے آتے ہیں۔ نیچے بولنے والوں کی علیحدگی مکمل ریکارڈنگز پر کارروائی کرتی ہے۔",
+    "localProcessingApplyHelp": "تبدیل کرنے سے پہلے ریکارڈنگ روکیں۔ منتخب سرورز آپ کی آڈیو وصول کرتے ہیں۔",
+    "localProcessingKeyHelp": "خالی چھوڑنے سے محفوظ کلید برقرار رہتی ہے۔ دوسرے سرور کو اپنی کلید درکار ہے۔",
+    "localProcessingUnsupported": "ان ترتیبات میں ترمیم کرنے کے لیے منسلک سرور اپ ڈیٹ کریں۔",
+    "localProcessingFinished": "مکمل ریکارڈنگز",
+    "localProcessingProbe": "کنکشن جانچیں",
+    "localProcessingPending": "محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔",
+    "localAudioServerUpdateRequired": "ریکارڈنگ سے پہلے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔",
     "liveTranslation": "براہ راست ترجمہ",
-    "liveTranslationTargetLanguage": "اس زبان میں ترجمہ کریں",
+    "liveTranslationFailed": "منسلک سرور پر ترجمہ دستیاب نہیں۔ اس کی لائبریری دیکھیں: Settings → Translation۔",
     "liveTranslationHelp": "منسلک سرور اصل متن کے نیچے ترجمہ دکھاتا ہے۔ خلاصے کا ماڈل خود بخود استعمال ہوتا ہے، جب تک آپ سرور کی لائبریری میں دوسرا ماڈل نہ چنیں: Settings → Translation۔",
+    "liveTranslationTargetLanguage": "اس زبان میں ترجمہ کریں",
     "liveTranslationUnconfigured": "منسلک سرور پر ترجمے کا ماڈل ترتیب نہیں دیا گیا۔ اس کی لائبریری کھولیں: Settings → Summarization یا Translation → Save → Use۔",
-    "liveTranslationFailed": "منسلک سرور پر ترجمہ دستیاب نہیں۔ اس کی لائبریری دیکھیں: Settings → Translation۔"
+    "liveTranslationBidirectional": "دو طرفہ ترجمہ",
+    "liveTranslationPairHelp": "ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔"
 }

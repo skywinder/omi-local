@@ -11,7 +11,10 @@ change clears them. Run **Check and connect** first.
 ## The Omi button and recording state
 
 The home and recording screens show capture state and brief feedback for completed
-button actions separately. A short press starts recording; the next one stops it.
+button actions separately. A neutral button icon acknowledges each received BLE gesture
+for four seconds, including short press and release, even if starting audio stalls.
+The separate action result and capture status confirm what happened next.
+A short press starts recording; the next one stops it.
 Releasing the button does not start or stop recording again.
 Raw button events remain diagnostic: some firmware versions report only a recognized
 short press and release, so the physical press time cannot be inferred without an event.
@@ -24,6 +27,13 @@ not stop the session; the status recovers when audio resumes. Pause and errors h
 separate states. Phone status does not prove Mac storage or successful transcription.
 
 ## Mac status
+
+The Local Mac card also shows phone pending-part count/size, **Syncing** or
+**Sync failed**. These describe the phone's retained audio, separately from live
+server counters. A failed upload preserves its part; Refresh retries delivery.
+The app releases a part only after matching the server's saved receipt.
+See [recording delivery](RECORDING_DURABILITY.md) before clearing files or
+diagnosing interruption recovery.
 
 - **Mac**: a successful request authenticated with the app key. A public
   `/v1/health` response alone proves neither authentication nor transcription.
@@ -40,6 +50,16 @@ Automatic processing of completed WAVs is separate: [LOCAL_STT.md](LOCAL_STT.md)
 The live card does not verify its readiness.
 
 ## Mac logs
+
+Run `./omiloc doctor` first (`./omiloc --runtime docker doctor` for Docker).
+This checks runtime readiness and fails for a stopped/unavailable server.
+Use `doctor --inference` for a synthetic final-transcription request; it does
+not verify live ASR or the phone-to-server audio path. A fresh CV1 recording
+and its saved WAV remain the delivery check.
+An old server without the authenticated delivery capability blocks new capture
+in the updated app with an update-required message. Update server and app
+together; pairing credentials and retained audio remain. Older apps still use
+the original capture path without the new phone outbox protection.
 
 In Terminal, enter the project directory. To watch connection events:
 

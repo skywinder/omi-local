@@ -1737,12 +1737,7 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DISPOSITIUS',
-      one: 'DISPOSITIU',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DISPOSITIUS', one: 'DISPOSITIU');
     return '$count $_temp0 TROBATS A PROP';
   }
 
@@ -9866,12 +9861,7 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count mesos gratis',
-      one: '1 mes gratis',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count mesos gratis', one: '1 mes gratis');
     return '$_temp0';
   }
 
@@ -10054,6 +10044,34 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Error de diarització';
+
+  @override
+  String get localProcessingHelp =>
+      'Les etiquetes de parlants en directe provenen del proveïdor Live. La diarització següent processa gravacions acabades.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Atura la gravació abans de canviar. Els servidors seleccionats reben el teu àudio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Deixa-ho en blanc per conservar la clau desada. Un altre servidor necessita la seva pròpia clau.';
+
+  @override
+  String get localProcessingUnsupported => 'Actualitza el servidor vinculat per editar aquests ajustos.';
+
+  @override
+  String get localProcessingFinished => 'Gravacions acabades';
+
+  @override
+  String get localProcessingProbe => 'Prova la connexió';
+
+  @override
+  String get localProcessingPending => 'Els canvis desats no estan actius. Toca Confirma per aplicar-los.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Actualitzeu el servidor abans de gravar. Es conserva l’àudio desat al telèfon.';
 
   @override
   String get liveTranslationBidirectional => 'Traducció bidireccional';

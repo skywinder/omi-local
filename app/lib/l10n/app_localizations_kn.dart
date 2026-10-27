@@ -1728,12 +1728,7 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8500,12 +8495,7 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9842,12 +9832,7 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count ತಿಂಗಳು ಉಚಿತ',
-      one: '1 ತಿಂಗಳು ಉಚಿತ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count ತಿಂಗಳು ಉಚಿತ', one: '1 ತಿಂಗಳು ಉಚಿತ');
     return '$_temp0';
   }
 
@@ -10029,6 +10014,32 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ';
+
+  @override
+  String get localProcessingHelp =>
+      'ನೇರ ವಕ್ತೃ ಲೇಬಲ್‌ಗಳು Live ಪೂರೈಕೆದಾರರಿಂದ ಬರುತ್ತವೆ. ಕೆಳಗಿನ ವಕ್ತೃ ಪ್ರತ್ಯೇಕಿಸುವಿಕೆ ಪೂರ್ಣಗೊಂಡ ರೆಕಾರ್ಡಿಂಗ್‌ಗಳನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸುತ್ತದೆ.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'ಬದಲಾಯಿಸುವ ಮೊದಲು ರೆಕಾರ್ಡಿಂಗ್ ನಿಲ್ಲಿಸಿ. ಆಯ್ಕೆ ಮಾಡಿದ ಸರ್ವರ್‌ಗಳು ನಿಮ್ಮ ಆಡಿಯೊ ಪಡೆಯುತ್ತವೆ.';
+
+  @override
+  String get localProcessingKeyHelp => 'ಖಾಲಿ ಬಿಟ್ಟರೆ ಉಳಿಸಿದ ಕೀ ಉಳಿಯುತ್ತದೆ. ಬೇರೆ ಸರ್ವರ್‌ಗೆ ಅದರದೇ ಕೀ ಅಗತ್ಯ.';
+
+  @override
+  String get localProcessingUnsupported => 'ಈ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಬದಲಾಯಿಸಲು ಜೋಡಿಸಿದ ಸರ್ವರ್ ನವೀಕರಿಸಿ.';
+
+  @override
+  String get localProcessingFinished => 'ಪೂರ್ಣಗೊಂಡ ರೆಕಾರ್ಡಿಂಗ್‌ಗಳು';
+
+  @override
+  String get localProcessingProbe => 'ಸಂಪರ್ಕ ಪರೀಕ್ಷಿಸಿ';
+
+  @override
+  String get localProcessingPending => 'ಉಳಿಸಿದ ಬದಲಾವಣೆಗಳು ಸಕ್ರಿಯವಾಗಿಲ್ಲ. ಅನ್ವಯಿಸಲು ದೃಢೀಕರಿಸಿ ಒತ್ತಿರಿ.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'ರೆಕಾರ್ಡಿಂಗ್ ಮೊದಲು ಸರ್ವರ್ ನವೀಕರಿಸಿ. ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ಆಡಿಯೊ ಉಳಿಯುತ್ತದೆ.';
 
   @override
   String get liveTranslationBidirectional => 'ದ್ವಿಮುಖ ಅನುವಾದ';

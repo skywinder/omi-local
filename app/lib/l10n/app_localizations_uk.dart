@@ -1728,12 +1728,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ПРИСТРОЇВ',
-      one: 'ПРИСТРІЙ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ПРИСТРОЇВ', one: 'ПРИСТРІЙ');
     return '$count $_temp0 ЗНАЙДЕНО ПОБЛИЗУ';
   }
 
@@ -10019,6 +10014,31 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Помилка діаризації';
+
+  @override
+  String get localProcessingHelp =>
+      'Мітки мовців у реальному часі надходять від Live-провайдера. Діаризація нижче обробляє завершені записи.';
+
+  @override
+  String get localProcessingApplyHelp => 'Перед перемиканням зупиніть запис. Вибрані сервери отримують ваше аудіо.';
+
+  @override
+  String get localProcessingKeyHelp => 'Порожнє поле зберігає ключ. Іншому серверу потрібен власний ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Оновіть підключений сервер, щоб змінювати ці налаштування.';
+
+  @override
+  String get localProcessingFinished => 'Завершені записи';
+
+  @override
+  String get localProcessingProbe => 'Перевірити з’єднання';
+
+  @override
+  String get localProcessingPending => 'Збережені зміни ще не діють. Натисніть «Підтвердити», щоб застосувати.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Оновіть сервер перед записом. Збережене на телефоні аудіо залишиться.';
 
   @override
   String get liveTranslationBidirectional => 'Двосторонній переклад';

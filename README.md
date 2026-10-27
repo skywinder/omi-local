@@ -6,8 +6,9 @@
 
 Record audio from an Omi CV1, browse transcripts, and jump from a transcript
 segment to its audio. The iPhone app sends audio through Tailscale or an authenticated ngrok
-tunnel; recordings stay on your Mac. Processing uses local engines or explicitly
-selected servers.
+tunnel. The server keeps the audio library; the phone retains pending audio
+locally until the server confirms storage. Processing uses local engines or
+explicitly selected servers.
 
 [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
@@ -20,10 +21,13 @@ selected servers.
   mute audio without ending the recording.
 - **Audio library:** browse recordings, search by date, source, or transcript
   prefix, adjust playback speed, and seek to transcript timestamps.
+- **Delivery recovery:** retain received audio on the iPhone until the paired
+  server acknowledges its saved part. See [delivery boundaries](docs/RECORDING_DURABILITY.md).
 - **Local transcription:** prepare local models for final transcripts and an
   experimental live preview.
 - **Provider settings:** select independent Live STT, final transcription,
-  diarization, and summary providers in the library. See [Providers](docs/PROVIDERS.md).
+  diarization, and summary providers in the library; select transcription and
+  diarization on iPhone or through profile JSON too. See [Providers](docs/PROVIDERS.md).
 - **Mac-local storage:** open audio and transcript folders in Finder through the
   library's **Folders** section, currently labeled **Папки**.
 - **Flutter development workflow:** run the iPhone app with hot reload using the
@@ -42,7 +46,7 @@ inside the containers. Installing the iPhone app still requires a Mac with Xcode
 | iPhone | The local Omi app, installed separately |
 | Recording device | Omi CV1 |
 | Transport | Tailscale on the server and iPhone; optional ngrok |
-| iOS development | Flutter 3.44.5 or later, CocoaPods, and an Apple account for signing |
+| iOS development | Flutter 3.47.4, CocoaPods, and an Apple account for signing |
 | Initial setup | Internet access for dependencies and models; at least 4 GiB of free space for model preparation |
 
 The Mac must remain awake while receiving recordings. A free Apple Personal Team
@@ -56,10 +60,13 @@ provisioning and Developer Mode requirements.
 ```bash
 git clone https://github.com/vquaron/omi-local.git omiloc
 cd omiloc
-./start.command
+./omiloc bootstrap
+./omiloc up
+./omiloc open
 ```
 
-You can also open `start.command` in Finder. The launcher:
+You can also open `start.command` in Finder. The launcher runs the same
+`bootstrap`, `up`, and `open` commands:
 
 1. Installs missing Mac dependencies and checks prerequisites.
 2. Prepares and verifies WhisperKit for final transcription and Parakeet for live
@@ -80,14 +87,28 @@ See [Getting started](docs/START.md) for the complete installation flow and
 `start.command` prepares the Mac services; install the local iPhone app separately
 by following the [iPhone setup guide](docs/LOCAL_SETUP.md).
 
-In the app, open **Local Mac** (**Локальный Mac**), enter the Tailscale IP or ngrok HTTPS address and app
-key from your private `.env` or launcher, and check the connection. A bare Tailscale IP uses port 20000; Docker uses IP:21000. The app key is separate from
+For prefilled saved servers after installation, prepare a private `.env.servers`
+on the Mac that launches the phone app before running `./iphone.command profile`.
+The [preset setup](docs/LOCAL_SETUP.md#prefill-saved-servers) sends those settings
+only during launch and saves them in Keychain. Keys are never built into the app.
+Later launches from the app icon reuse the saved entries; select one and tap
+**Check and connect** to activate it.
+
+Run `./omiloc pair` in your own interactive terminal to view the native address
+and app key (`./omiloc --runtime docker pair` for Docker).
+In the app, open **Local Mac** (**Локальный Mac**), enter that address and key,
+and select **Check and connect**. A bare Tailscale IP uses port 20000; Docker uses IP:21000. The app key is separate from
 the ngrok authtoken; the authtoken stays on the Mac.
 
 ### 3. Record and browse
 
-Connect your CV1 in the iPhone app. Press the CV1 button once to start a recording
-and again to finish it. Muting temporarily pauses audio within the same session.
+Connect your CV1 in the iPhone app to start recording automatically. Recording
+resumes after a Bluetooth reconnect unless you explicitly stopped or muted it.
+The CV1 button and app controls still start/stop recording. The updated app saves
+received audio on the phone and uploads parts of at most five minutes to the
+paired server. Pending parts remain on the phone until the server acknowledges
+them; temporary network failure does not erase them. Saved server parts
+remain visible in Conversations while queued, processing, or failed.
 
 After setup, open the library from any directory in Terminal:
 
@@ -115,15 +136,17 @@ From a new checkout of `main`:
 ```bash
 git clone --branch main https://github.com/vquaron/omi-local.git omiloc
 cd omiloc
-./docker.sh up
+./omiloc --runtime docker bootstrap --device cpu --transport local
+./omiloc --runtime docker up
 ```
 
-If you already have this repository, run `./docker.sh up` from its root. Open the
+If you already have this repository, run the Docker bootstrap and startup commands
+from its root. Open the
 [audio library](http://127.0.0.1:21001/). The first launch builds the images and
 caches the default `faster-whisper-small` model; later launches reuse them.
 `up` waits for readiness and leaves the services running in the background.
 
-To launch directly with Docker Compose, without `docker.sh`, run these commands
+To launch directly with Docker Compose, without the CLI, run these commands
 from the repository root (CPU on Mac or Linux):
 
 ```bash
@@ -138,28 +161,30 @@ hot reload, logs, and shutdown commands, see
 
 | Task | Command |
 | --- | --- |
-| Start or rebuild after updating the code | `./docker.sh up` |
-| Develop with Python reload and automatic web refresh | `./docker.sh dev` |
-| Check container status | `./docker.sh status` |
-| Follow service logs | `./docker.sh logs` |
-| Stop and keep recordings, settings, and models | `./docker.sh down` |
+| Prepare or rebuild after updating the code | `./omiloc --runtime docker bootstrap` |
+| Develop with Python reload and automatic web refresh | `./omiloc --runtime docker dev` |
+| Check container status | `./omiloc --runtime docker status` |
+| Follow service logs | `./omiloc --runtime docker logs -f` |
+| Stop and keep recordings, settings, and models | `./omiloc --runtime docker down` |
 
 Run `dev` in your own terminal and finish active recordings before backend edits.
-When changing between `up` and `dev`, stop the stack with `./docker.sh down` first.
+When changing between `up` and `dev`, stop the stack with `./omiloc --runtime docker down` first.
 
 Docker uses CPU on Mac. For Linux/WSL2 with a configured NVIDIA GPU runtime:
 
 ```bash
-OMI_DOCKER_DEVICE=cuda ./docker.sh up
+./omiloc --runtime docker bootstrap --device cuda --gpu 0 --transport tailscale
+./omiloc --runtime docker up
 ```
 
-The default `auto` mode selects CUDA when Docker reports the NVIDIA runtime;
-otherwise it selects CPU. NVIDIA hardware execution remains unverified.
+Docker bootstrap requires an explicit `cpu` or `cuda` choice. CUDA execution
+requires the NVIDIA prerequisites described in the Docker guide and is verified
+inside the selected container; there is no silent CPU fallback.
 WhisperKit/Core ML uses the [native Mac stack](#quick-start).
 
 The library starts without ngrok. To receive recordings over Tailscale, use
-`./docker.sh tailscale up` and pair to **IP:21000**. See
-[Docker pairing](docs/DOCKER.md#iphone-and-tailscale); ngrok remains optional. Docker has its own
+`./omiloc --runtime docker bootstrap --transport tailscale` and pair to **IP:21000**. See
+[Docker pairing](docs/DOCKER.md#iphone-through-tailscale); ngrok remains optional. Docker has its own
 app key and data volumes; native Mac recordings and settings are not imported.
 For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 [Docker guide](docs/DOCKER.md).
@@ -177,8 +202,9 @@ For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 
 `prod` is an alias for the local `profile` mode. Debug installs **Omi Local Dev**
 with a `.dev` bundle suffix, alongside **Omi Local**. Each app has its own settings
-and Keychain; pair the Dev app separately. Install them one at a time, ending the
-previous Flutter session first. The launcher checks for existing Omi builds and
+and Keychain; pair the Dev app separately. Install them one at a time. Profile
+exits after installation; end an active Debug session before another launch.
+The launcher checks for existing Omi builds and
 Flutter sessions across worktrees and refuses a duplicate or an unobservable launch.
 Start Mac services separately with `./start.command`.
 
@@ -240,10 +266,12 @@ See [Development](docs/DEVELOPMENT.md) for build verification and additional tes
 - Live preview is experimental. Final transcription runs after recording ends.
 - The iPhone microphone is available through the app's **+** control. Switching
   inputs finishes the previous recording while preserving the Bluetooth connection.
-- Autonomous recording without a Mac connection and later phone upload are not
-  part of the supported local workflow.
-- Recording durability across connection loss, long-session reliability, and
-  clean-machine setup remain unverified.
+- Starting capture after an app restart requires an authenticated check of the
+  updated server. After that check, received packets are retained during temporary
+  server outages and retried. See [delivery and recovery](docs/RECORDING_DURABILITY.md).
+- Continuous BLE capture through iOS suspension/termination, background upload
+  availability, physical interruption recovery, long-session reliability and
+  clean-machine setup still require fresh device evidence.
 
 See [Current limitations](docs/TEMPORARY_DISABLED_FEATURES.md) for details.
 
@@ -253,13 +281,13 @@ Run these commands from the project directory:
 
 | Problem | First step |
 | --- | --- |
-| Docker services are unavailable | `./docker.sh status`, then `./docker.sh logs` |
-| Mac services or transcription are unavailable | `./start.command --check` |
-| iPhone tools, signing, or device readiness fail | `./start.command --iphone-check` |
+| Docker services are unavailable | `./omiloc --runtime docker status`, then `./omiloc --runtime docker logs` |
+| Mac services or transcription are unavailable | `./omiloc doctor`, then `./omiloc logs` |
+| iPhone tools, signing, or device readiness fail | `./iphone.command --check` |
 | `omiloc` is not found | Run `./omiloc --install`, then open a new terminal |
 | Setup was interrupted | Run `./start.command` again to resume preparation |
 | The phone cannot connect | Follow [Connection diagnostics](docs/CONNECTION_DIAGNOSTICS.md) |
-| You need to stop the Mac services | `bash scripts/local-mac.sh down` |
+| You need to stop the Mac services | `./omiloc down` |
 
 Setup output is saved in `.local/install.log`. Keep recordings, logs, app keys,
 ngrok credentials, and signing files private.
@@ -277,11 +305,15 @@ speech fixture retain their original text.
 | [Tailscale](docs/TAILSCALE.md) | Direct IP pairing, native/Docker ports, and private configuration |
 | [Ngrok](docs/NGROK.md) | Optional HTTPS tunnel and pairing |
 | [Connection diagnostics](docs/CONNECTION_DIAGNOSTICS.md) | Investigating phone-to-Mac connectivity |
+| [Recording delivery](docs/RECORDING_DURABILITY.md) | Phone pending audio, acknowledged uploads and recovery limits |
+| [Repository plan](docs/REPOSITORY_PLAN.md) | Implemented improvements and remaining acceptance gates |
 | [Transcription](docs/LOCAL_STT.md) | Preparing and running local engines |
+| [WhisperKit migration](docs/WHISPERKIT_MIGRATION.md) | Switching final ASR while preserving diarization, live providers and history |
 | [Providers](docs/PROVIDERS.md) | Live STT, final transcription, diarization, and summaries |
 | [Live preview](docs/LIVE_PREVIEW.md) | Experimental live text and diagnostics |
 | [Development](docs/DEVELOPMENT.md) | Tests, builds, hot reload, and verification |
 | [Current limitations](docs/TEMPORARY_DISABLED_FEATURES.md) | Supported features and verification limits |
+| [Security and recovery](docs/SECURITY.md) | Network boundaries, dependency checks and archive recovery |
 
 ## Contributing
 

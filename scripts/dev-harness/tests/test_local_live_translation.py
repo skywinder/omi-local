@@ -152,15 +152,29 @@ def test_translates_completed_lines_and_reemits_snapshot():
     run(scenario())
 
 
-def test_unpunctuated_last_line_is_translated_after_it_settles():
+def test_unpunctuated_last_line_is_translated_after_it_settles(monkeypatch):
     async def scenario():
         backend, sink = Backend(), Sink()
-        translator = make_translator(profile(), 'k', send=sink, request=backend, settle_seconds=0.01)
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
+        loop = asyncio.get_running_loop()
+        original_call_later = loop.call_later
+        scheduled = []
+
+        def call_later(delay, callback, *args, context=None):
+            if callback == translator._settled:
+                handle = asyncio.Handle(callback, args, loop)
+                scheduled.append((delay, lambda: callback(*args), handle))
+                return handle
+            return original_call_later(delay, callback, *args, context=context)
+
+        monkeypatch.setattr(loop, 'call_later', call_later)
         translator.set_language('de')
         translator.annotate(snapshot('erste zeile'))
         await settle(translator)
         assert backend.calls == []
-        await asyncio.sleep(0.03)
+        assert len(scheduled) == 1 and scheduled[0][0] == translation.SETTLE_SECONDS
+        assert not scheduled[0][2].cancelled()
+        scheduled[0][1]()
         await settle(translator)
         assert backend.calls == [('k', 'de', ['erste zeile'])]
         assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'de', 'text': 'de:erste zeile'}]
@@ -326,34 +340,24 @@ def test_inflight_answer_cannot_replace_new_pair_and_cache_includes_both_languag
 
 @pytest.mark.parametrize('other_language', [None, 'es'])
 def test_http_request_shape(monkeypatch, other_language):
+    import httpx
     captured = {}
     answer = ([{'source_lang': 'es', 'lang': 'en', 'text': 'Hello.'},
                {'source_lang': 'en', 'lang': 'es', 'text': 'Mundo.'}] if other_language else ['Hello.', 'World.'])
 
-    class Response:
-        status_code = 200
-        content = b'{}'
+    def respond(request):
+        captured['url'] = str(request.url)
+        captured['body'] = json.loads(request.read())
+        assert request.headers['Accept-Encoding'] == 'identity'
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop',
+                                                     'message': {'content': '```json\n' + json.dumps(answer) + '\n```'}}]})
 
-        def json(self):
-            return {'choices': [{'finish_reason': 'stop',
-                                 'message': {'content': '```json\n' + json.dumps(answer) + '\n```'}}]}
+    factory = httpx.Client
+    def client(**kwargs):
+        captured['client'] = kwargs
+        return factory(transport=httpx.MockTransport(respond), **kwargs)
 
-    class Client:
-        def __init__(self, **kwargs):
-            captured['client'] = kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            pass
-
-        def post(self, url, *, json):
-            captured['url'] = url
-            captured['body'] = json
-            return Response()
-
-    monkeypatch.setattr(translation.httpx, 'Client', Client)
+    monkeypatch.setattr(translation.httpx, 'Client', client)
     result = translation.request_translations(profile(reasoning='off')['settings'], 'secret', 'en',
                                               ['Hola.', 'World.'], other_language=other_language)
     assert result == answer
@@ -363,6 +367,7 @@ def test_http_request_shape(monkeypatch, other_language):
     assert captured['body']['chat_template_kwargs'] == {'enable_thinking': False}
     assert json.loads(captured['body']['messages'][1]['content']) == ['Hola.', 'World.']
     assert 'en' in captured['body']['messages'][0]['content']
+
     if other_language:
         assert 'es' in captured['body']['messages'][0]['content']
         assert 'source_lang' in captured['body']['messages'][0]['content']

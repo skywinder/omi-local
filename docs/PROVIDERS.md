@@ -4,14 +4,40 @@ For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 To replace the Docker stack's built-in STT with a server you already run, see
 [External STT server](DOCKER.md#external-stt-server-instead-of-the-built-in-container).
 
-Open **Settings** in the omiloc web library of the connected server (Mac or Linux). Each stage can have
-several saved provider cards; one selected provider performs the work.
+On iPhone open **Settings → Local Mac → Transcription · Diarization** after
+pairing with your Omi server. In the web library open **Settings**. Both edit the
+same server registry: each stage has saved profiles and one selected provider.
+The Local Mac address selects the Omi server that stores recordings; processing
+profiles select the engines that server calls. Switching an Omi server also
+changes the processing profiles shown on the phone.
+
+## Choose local or remote processing
+
+| Where | What to do |
+|---|---|
+| iPhone | Select a profile under Live, finished transcription, or finished diarization, then **Confirm**. **Add** creates a server profile; **Edit** changes its URL, model and optional API key. |
+| Web library | Select a stage and **Use** a saved card. **Add** supports both prepared native engines and server connections. |
+| Config / terminal | Export, edit and save profile JSON, then run `providers use`; commands below. |
+
+Local means **on the Omi server**, not on the iPhone. An API endpoint can be on
+that same machine or a remote server. URLs are resolved from the Omi server:
+`127.0.0.1` means its own runtime, and inside Docker it means the shared container
+network namespace. To call a service on the Docker host, follow the address rules
+in [Docker](DOCKER.md#external-stt-server-instead-of-the-built-in-container).
+
+Prepare local models first ([native setup](START.md), [final STT and Pyannote](LOCAL_STT.md),
+[Live](LIVE_PREVIEW.md)). The phone selects prepared profiles; executable and model
+paths are edited on the host/web library. Old imported profiles may also be
+selection-only: add a new server profile to edit its connection from the phone.
+An older Omi backend shows an update message instead of these controls. Updating
+the backend/harness and installing an updated iPhone build is required once;
+subsequent provider switches need no app rebuild.
 
 | Stage | Supported protocol or engine |
 |---|---|
 | Live STT | Prepared WhisperLiveKit; external WLK-compatible `/asr` servers, including an existing Parakeet server |
 | Transcription | Prepared WhisperKit, WhisperX, Parakeet MLX; OpenAI-compatible `/v1/audio/transcriptions` with timestamps |
-| Diarization | Prepared Pyannote; Mycelia `POST /diarize` |
+| Finished-recording diarization | Prepared Pyannote; Mycelia `POST /diarize` |
 | Summarization | OpenAI-compatible `/chat/completions` relative to the configured base URL, usually ending in `/v1` |
 | Translation | Active summarization model by default, or a separate OpenAI-compatible text model |
 
@@ -24,6 +50,9 @@ Prepare Mac models and environments beforehand; opening or saving settings does
 not download anything.
 
 Live STT, diarization, and summarization can be disabled independently.
+Live speaker labels belong to the **Live server/profile**. Turning finished-recording
+diarization on or off does not change Live speaker labels. An external Live
+server must have its own diarization enabled; the phone cannot install its models.
 Completed WAVs pass through transcription, then enabled diarization and
 summarization. Summaries and titles use the conversation's language; long
 transcripts are processed in parts. The library shows each stage, its provider,
@@ -54,10 +83,66 @@ The first save imports settings from `stt-engine.json` and `live-stt.json` into
 private `providers.json` in the harness state directory. The editor and workers
 then use the registry; the older JSON files remain as source copies.
 A previous STT engine's built-in diarization is retained as a separate card.
+Editing or importing that card preserves its embedded execution mode. To move
+to independent diarization, add a new Pyannote/Mycelia card and select it.
 Before switching that engine to an STT server, select independent Pyannote/Mycelia
 or disable diarization; an incompatible switch is rejected.
 Secrets are stored separately in `provider-secrets.json` with mode `0600`.
 Do not commit these files, recordings, or results.
+
+## Profile JSON and terminal switching
+
+Run these commands from the checkout that owns your native instance. Preserve any
+custom `OMI_LOCAL_INSTANCE`, `OMI_LOCAL_STATE_ROOT` and `OMI_HARNESS_PORT_OFFSET` you
+used to start it. Native and Docker registries are independent.
+
+```bash
+./omiloc providers list
+./omiloc providers export --file /tmp/omi-providers.json
+# Edit that file, then save drafts. Existing IDs update cards; new IDs add cards.
+./omiloc providers save --file /tmp/omi-providers.json
+./omiloc providers use stt "Local WhisperKit"
+./omiloc providers use diarization "Local Pyannote"
+./omiloc providers use live "Remote Live"
+./omiloc providers disable diarization
+```
+
+Names above are examples: use the names printed by `list`, or the IDs in `export`.
+`export "Profile name"` exports one card. `check "Profile name"` checks metadata
+without sending audio. Exported files omit keys and are created with mode `0600`;
+they may still contain private URLs and paths. Existing files are not overwritten.
+
+Copy and edit the [remote template](examples/processing.remote.json) or the
+[native final-processing template](examples/processing.local.json). These are
+drafts; their example servers and models are not a running setup. For local Live,
+export the profile created by native setup so its prepared paths remain intact.
+`save` accepts a single card or a version-1 document with `profiles`. The optional
+`active` map in an export is informational: **save never switches providers**.
+All cards are validated first, then saved individually. If another editor changes
+the registry mid-import, completed saves remain and the command stops; inspect
+`list` before retrying. Each `use` runs the same checks/idle guard as the UI.
+
+For an already running Docker stack, use the same subcommands inside its app:
+
+```bash
+./omiloc --runtime docker providers list
+./omiloc --runtime docker providers export > /tmp/omi-docker-providers.json
+# A host file reaches the container through stdin.
+./omiloc --runtime docker providers save --file - < /tmp/omi-docker-providers.json
+./omiloc --runtime docker providers use stt "Remote transcription"
+./omiloc --runtime docker providers use diarization "Remote diarization"
+```
+
+For a single card, `save --file ... --api-key-env OMI_PROVIDER_KEY` reads a key
+already supplied in that environment variable. Docker forwards only the variable
+name in command arguments. Do not put the key in JSON or command-line arguments.
+Omitting the option preserves an existing key when the endpoint identity is
+unchanged; `--clear-key` removes it from the draft. Finish with `use` to activate.
+
+The phone calls authenticated `/v1/local/processing` routes. The backend forwards
+only to the fixed loopback library URL generated as `OMI_LOCAL_PROCESSING_URL` by
+the harness; remote destinations and keys remain in the harness. Do not expose
+the library's internal `/api/processing` endpoint or emulators to the network.
 
 ## Summarization
 

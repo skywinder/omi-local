@@ -8334,12 +8334,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count件の会話を作成',
-      one: '1件の会話を作成',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count件の会話を作成', one: '1件の会話を作成');
     return '$_temp0';
   }
 
@@ -9065,11 +9060,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count 件の録音を同期できます',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count 件の録音を同期できます');
     return '$_temp0';
   }
 
@@ -9081,11 +9072,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '確認が必要な録音が$count件',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '確認が必要な録音が$count件');
     return '$_temp0';
   }
 
@@ -9648,12 +9635,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$countか月無料',
-      one: '1か月無料',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$countか月無料', one: '1か月無料');
     return '$_temp0';
   }
 
@@ -9826,6 +9808,30 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get diarizationFailed => '話者分離に失敗しました';
+
+  @override
+  String get localProcessingHelp => 'リアルタイムの話者ラベルはLiveプロバイダーから取得します。下の話者分離は完了した録音を処理します。';
+
+  @override
+  String get localProcessingApplyHelp => '切り替える前に録音を停止してください。選択したサーバーに音声が送信されます。';
+
+  @override
+  String get localProcessingKeyHelp => '空欄にすると保存済みのキーを保持します。別のサーバーには専用のキーが必要です。';
+
+  @override
+  String get localProcessingUnsupported => 'これらの設定を編集するには、ペアリング済みサーバーを更新してください。';
+
+  @override
+  String get localProcessingFinished => '完了した録音';
+
+  @override
+  String get localProcessingProbe => '接続テスト';
+
+  @override
+  String get localProcessingPending => '保存した変更はまだ有効ではありません。「確認」をタップして適用してください。';
+
+  @override
+  String get localAudioServerUpdateRequired => '録音前にサーバーを更新してください。電話に保存された音声は保持されます。';
 
   @override
   String get liveTranslationBidirectional => '双方向翻訳';

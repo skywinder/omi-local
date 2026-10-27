@@ -1726,12 +1726,7 @@ class AppLocalizationsSr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8482,12 +8477,7 @@ class AppLocalizationsSr extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10013,6 +10003,32 @@ class AppLocalizationsSr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Dijarizacija nije uspela';
+
+  @override
+  String get localProcessingHelp =>
+      'Ознаке говорника уживо долазе од Live добављача. Дијаризација испод обрађује завршене снимке.';
+
+  @override
+  String get localProcessingApplyHelp => 'Зауставите снимање пре пребацивања. Изабрани сервери примају ваш звук.';
+
+  @override
+  String get localProcessingKeyHelp => 'Празно поље задржава сачувани кључ. Други сервер захтева свој кључ.';
+
+  @override
+  String get localProcessingUnsupported => 'Ажурирајте упарени сервер да измените ова подешавања.';
+
+  @override
+  String get localProcessingFinished => 'Завршени снимци';
+
+  @override
+  String get localProcessingProbe => 'Провери везу';
+
+  @override
+  String get localProcessingPending => 'Сачуване промене нису активне. Додирните Потврди да их примените.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ажурирајте сервер пре снимања. Звук сачуван на телефону остаје сачуван.';
 
   @override
   String get liveTranslationBidirectional => 'Двосмерни превод';

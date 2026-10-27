@@ -1730,12 +1730,7 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ZARIADENIA',
-      one: 'ZARIADENIE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ZARIADENIA', one: 'ZARIADENIE');
     return '$count $_temp0 NÁJDENÉ V BLÍZKOSTI';
   }
 
@@ -9990,6 +9985,32 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizácia zlyhala';
+
+  @override
+  String get localProcessingHelp =>
+      'Živé označenia hovoriacich pochádzajú od poskytovateľa Live. Diarizácia nižšie spracúva dokončené nahrávky.';
+
+  @override
+  String get localProcessingApplyHelp => 'Pred prepnutím zastavte nahrávanie. Vybrané servery prijímajú váš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prázdne pole zachová uložený kľúč. Iný server vyžaduje vlastný kľúč.';
+
+  @override
+  String get localProcessingUnsupported => 'Ak chcete upraviť tieto nastavenia, aktualizujte spárovaný server.';
+
+  @override
+  String get localProcessingFinished => 'Dokončené nahrávky';
+
+  @override
+  String get localProcessingProbe => 'Otestovať pripojenie';
+
+  @override
+  String get localProcessingPending => 'Uložené zmeny nie sú aktívne. Klepnutím na Potvrdiť ich použijete.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Pred nahrávaním aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
 
   @override
   String get liveTranslationBidirectional => 'Obojsmerný preklad';

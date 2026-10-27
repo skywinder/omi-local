@@ -3257,11 +3257,19 @@
     "speakersCount": "{count} वक्ता",
     "diarizationNotPerformed": "वक्ता पहचान नहीं की गई",
     "diarizationFailed": "वक्ता पहचान विफल",
-    "liveTranslationBidirectional": "दोतरफ़ा अनुवाद",
-    "liveTranslationPairHelp": "हर वाक्य की भाषा पहचानें और दूसरी चुनी हुई भाषा में अनुवाद करें।",
+    "localProcessingHelp": "लाइव वक्ता लेबल Live प्रदाता से आते हैं। नीचे का वक्ता विभाजन पूरी हुई रिकॉर्डिंग को प्रोसेस करता है।",
+    "localProcessingApplyHelp": "बदलने से पहले रिकॉर्डिंग रोकें। चुने गए सर्वर आपका ऑडियो प्राप्त करते हैं।",
+    "localProcessingKeyHelp": "खाली छोड़ने पर सहेजी गई कुंजी बनी रहती है। दूसरे सर्वर के लिए उसकी अपनी कुंजी चाहिए।",
+    "localProcessingUnsupported": "इन सेटिंग्स को बदलने के लिए जुड़े सर्वर को अपडेट करें।",
+    "localProcessingFinished": "पूरी हुई रिकॉर्डिंग",
+    "localProcessingProbe": "कनेक्शन जाँचें",
+    "localProcessingPending": "सहेजे गए बदलाव सक्रिय नहीं हैं। लागू करने के लिए पुष्टि करें पर टैप करें।",
+    "localAudioServerUpdateRequired": "रिकॉर्डिंग से पहले सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।",
     "liveTranslation": "लाइव अनुवाद",
-    "liveTranslationTargetLanguage": "इस भाषा में अनुवाद करें",
+    "liveTranslationFailed": "जुड़े हुए सर्वर पर अनुवाद उपलब्ध नहीं है। उसकी लाइब्रेरी देखें: Settings → Translation।",
     "liveTranslationHelp": "जुड़ा हुआ सर्वर अनुवाद को मूल पाठ के नीचे दिखाता है। सारांश मॉडल अपने आप इस्तेमाल होता है, जब तक आप सर्वर की लाइब्रेरी में दूसरा मॉडल न चुनें: Settings → Translation।",
+    "liveTranslationTargetLanguage": "इस भाषा में अनुवाद करें",
     "liveTranslationUnconfigured": "जुड़े हुए सर्वर पर अनुवाद मॉडल सेट नहीं है। उसकी लाइब्रेरी खोलें: Settings → Summarization या Translation → Save → Use।",
-    "liveTranslationFailed": "जुड़े हुए सर्वर पर अनुवाद उपलब्ध नहीं है। उसकी लाइब्रेरी देखें: Settings → Translation।"
+    "liveTranslationBidirectional": "दोतरफ़ा अनुवाद",
+    "liveTranslationPairHelp": "हर वाक्य की भाषा पहचानें और दूसरी चुनी हुई भाषा में अनुवाद करें।"
 }

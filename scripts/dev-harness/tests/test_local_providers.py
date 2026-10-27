@@ -280,6 +280,70 @@ def test_actual_http_settings_roundtrip_and_origin_guards(cfg):
     assert http_request(cfg, '/api/settings/save', payload=payload, overrides={'Content-Length': '999999'})[0] == 400
 
 
+def phone_request(cfg, operation='', **kwargs):
+    return http_request(cfg, '/api/processing' + operation,
+                        overrides={'X-Omiloc-Request': 'processing'}, **kwargs)
+
+
+def test_phone_remote_profile_roundtrip_reuses_keys_revision_and_activation(cfg, monkeypatch):
+    from dev_harness import local_provider_probe
+    monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'ready'})
+    profile = {'name': 'Synthetic server', 'stage': 'diarization', 'kind': 'mycelia',
+               'settings': {'base_url': 'https://diarization.example', 'min_speakers': 1}}
+    status, saved = phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile, 'api_key': 'synthetic-secret'})
+    selected = saved['profiles'][-1]
+    assert status == 200 and selected['can_edit'] and selected['has_key']
+    assert 'synthetic-secret' not in json.dumps(saved)
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile})[0] == 409
+    status, active = phone_request(cfg, '/activate', payload={'revision': 1, 'stage': 'diarization', 'id': selected['id']})
+    assert status == 200 and active['effective']['diarization']['id'] == selected['id']
+    status, disabled = phone_request(cfg, '/activate', payload={'revision': 2, 'stage': 'diarization', 'id': None})
+    assert status == 200 and disabled['effective']['diarization'] is None
+    assert phone_request(cfg, '/profiles/' + selected['id'], method='DELETE', payload={'revision': 3})[0] == 200
+
+
+def test_phone_can_select_prepared_engines_but_never_edit_host_execution(cfg, monkeypatch):
+    from dev_harness import local_provider_probe
+    monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'available'})
+    registry = Registry(cfg)
+    native = {'name': 'Prepared local', 'stage': 'stt', 'kind': 'whisperx',
+              'settings': {'model': 'small', 'language': 'ru', 'python': '/synthetic/private/bin/python'}}
+    saved = registry.save({'revision': 0, 'profile': native})
+    native['id'] = saved['profiles'][-1]['id']
+    status, public = phone_request(cfg, method='GET')
+    assert status == 200 and not public['profiles'][-1]['can_edit']
+    assert '/synthetic/private' not in json.dumps(public)
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': native})[0] == 403
+    assert phone_request(cfg, '/probe', payload={'profile': native})[0] == 403
+    assert phone_request(cfg, '/profiles/' + native['id'], method='DELETE', payload={'revision': 1})[0] == 403
+    status, selected = phone_request(cfg, '/activate', payload={'revision': 1, 'stage': 'stt', 'id': native['id']})
+    assert status == 200 and selected['active']['stt'] == native['id']
+
+
+def test_phone_external_live_cannot_install_or_replace_managed_diarization(cfg):
+    registry = Registry(cfg)
+    profile = {'name': 'Prepared live speakers', 'stage': 'live', 'kind': 'external',
+               'settings': {'url': 'wss://live.example/asr', 'diarization': {
+                   'enabled': True, 'python': '/synthetic/private/bin/python', 'port': 19091}}}
+    saved = registry.save({'revision': 0, 'profile': profile})
+    profile['id'] = saved['profiles'][-1]['id']
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': profile})[0] == 403
+    profile['settings'] = {'url': 'wss://different.example/asr'}
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': profile})[0] == 403
+    assert registry.read() == saved
+
+
+def test_phone_request_guards_and_url_validation(cfg):
+    profile = {'name': 'Remote', 'stage': 'stt', 'kind': 'openai-compatible',
+               'settings': {'provider_url': 'http://public.example/v1', 'model': 'synthetic'}}
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile})[0] == 400
+    profile['settings']['provider_url'] = 'https://stt.example/v1'
+    assert http_request(cfg, '/api/processing/save', payload={'revision': 0, 'profile': profile})[0] == 403
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': summary()})[0] == 403
+    assert phone_request(cfg, '/activate', payload={'revision': 0, 'stage': 'summary', 'id': None})[0] == 400
+    assert not Registry(cfg).exists
+
+
 def test_live_activation_indeterminate_is_distinct_from_ordinary_failure(cfg, monkeypatch):
     from dev_harness import local_stt_services
     def uncertain(*_args, **_kwargs):

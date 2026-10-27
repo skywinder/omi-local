@@ -1,14 +1,14 @@
 export const stages = {
-  live: {title: 'Live STT', description: 'Текст во время записи. Изменения применяются после завершения текущего потока.'},
+  live: {title: 'Live STT', description: 'Текст во время записи. Разделение говорящих в реальном времени настраивается на выбранном Live-сервере. Переключайте профиль после завершения записи.'},
   stt: {title: 'Распознавание', description: 'Точный транскрипт готовой записи с таймкодами.'},
-  diarization: {title: 'Диаризация', description: 'Кто и когда говорит. Спикеры определяются отдельно для каждой записи.'},
+  diarization: {title: 'Диаризация', description: 'Кто и когда говорит в готовой записи. Спикеры определяются отдельно для каждой записи. Разделение говорящих во время записи задаётся в Live STT.'},
   summary: {title: 'Суммаризация', description: 'Заголовок и краткое содержание на языке разговора.'},
   translation: {title: 'Перевод', description: 'По умолчанию используется активная модель суммаризации подключённого сервера. Здесь можно выбрать отдельную модель. Язык и включение перевода — в приложении.'},
 };
 const kinds = {
-  live: {'whisperlivekit': 'WhisperLiveKit · этот Mac', external: 'Совместимый WebSocket-сервер'},
-  stt: {whisperkit: 'WhisperKit · этот Mac', whisperx: 'WhisperX · этот Mac', 'parakeet-mlx': 'Parakeet MLX · этот Mac', 'openai-compatible': 'OpenAI-совместимый сервер'},
-  diarization: {pyannote: 'Pyannote · этот Mac', mycelia: 'Сервер диаризации Mycelia'},
+  live: {'whisperlivekit': 'WhisperLiveKit · на сервере Omi', external: 'Сервер по WebSocket · протокол WLK'},
+  stt: {whisperkit: 'WhisperKit · на сервере Omi', whisperx: 'WhisperX · на сервере Omi', 'parakeet-mlx': 'Parakeet MLX · на сервере Omi', 'openai-compatible': 'Сервер по API · OpenAI-совместимый'},
+  diarization: {pyannote: 'Pyannote · на сервере Omi', mycelia: 'Сервер по API · Mycelia'},
   summary: {'openai-compatible': 'OpenAI-совместимая LLM'},
   translation: {'openai-compatible': 'OpenAI-совместимая LLM'},
 };
@@ -244,12 +244,12 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
         draftKey.addEventListener('input', () => { if (draftKey.value) clearKey.checked = false; });
         clear.append(clearKey, el('span', '', 'Удалить сохранённый ключ')); editor.append(clear);
       }
-      editor.append(el('p', 'settings-note', 'Ключ хранится на Mac. Для HTTP/WS укажите IP сервера в LAN/VPN или localhost; для доменных имён — HTTPS/WSS.'));
+      editor.append(el('p', 'settings-note', 'URL должен быть доступен серверу Omi. localhost — это Mac или контейнер, где работает Omi. Ключ хранится на сервере Omi. Для HTTP/WS укажите IP сервера в LAN/VPN или localhost; для доменных имён — HTTPS/WSS.'));
     }
-    if (state.stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'Сервер должен поддерживать протокол /asr. Модель и язык задаются на самом сервере.'));
+    if (state.stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'Сервер должен поддерживать протокол WLK /asr. Модель, язык и live-диаризация задаются на самом сервере.'));
     if (state.stage === 'stt' && remote) editor.append(el('p', 'settings-note', 'Для перехода по фразам сервер должен возвращать таймкоды сегментов или слов.'));
     if (state.draft.settings.diarization?.enabled) editor.append(el('p', 'settings-note', 'Для этого live-профиля сохранена диаризация потока. Её параметры сохранятся при редактировании. Вкладка «Диаризация» настраивает обработку готовых записей.'));
-    if (state.draft.embedded) editor.append(el('p', 'settings-note', 'Диаризация выполняется встроенным этапом STT. Сохранение карточки подготовит отдельный этап; нажмите «Использовать», чтобы его применить.'));
+    if (state.draft.embedded) editor.append(el('p', 'settings-note', 'Этот профиль сохраняет встроенную диаризацию STT. Для отдельного этапа добавьте новую карточку Pyannote или Mycelia и выберите её после проверки окружения.'));
     const models = el('datalist'); models.id = 'provider-models';
     for (const model of state.models) { const option = el('option'); option.value = model; models.append(option); }
     editor.append(models);
@@ -311,7 +311,13 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
     const heading = el('header', 'settings-heading');
     const title = el('div'); title.append(el('p', 'eyebrow', 'ОБРАБОТКА АУДИО'), el('h2', '', 'Настройки'));
     heading.append(title, button('Обновить', load)); fragment.append(heading);
-    fragment.append(el('p', 'settings-intro', 'Выберите сервер для каждого этапа: этот Mac, свой сервер или облачный API. На каждом этапе используется один профиль.'));
+    fragment.append(el('p', 'settings-intro', 'Выберите профиль для каждого этапа. Обработка может идти на сервере Omi (Mac или контейнер) либо через API своего или облачного сервера. На каждом этапе действует один профиль.'));
+    const guide = el('details', 'settings-advanced');
+    guide.append(el('summary', '', 'Как переключить обработку'));
+    guide.append(el('p', 'settings-note', 'Локально: выберите карточку подготовленного движка и нажмите «Использовать». Модели и среды сначала подготавливаются на сервере Omi.'));
+    guide.append(el('p', 'settings-note', 'По API: добавьте карточку нужного типа, укажите URL, модель (если требуется) и ключ. Сервер API может работать на том же компьютере, в вашей сети или в облаке. Адрес указывается с точки зрения сервера Omi.'));
+    guide.append(el('p', 'settings-note', 'Проверить подключение → Сохранить → Использовать. Сохранение оставляет текущий профиль действующим. Выбор применяется к новым записям; обработка старых записей сохраняет свои настройки.'));
+    fragment.append(guide);
     const tabs = el('nav', 'settings-tabs'); tabs.setAttribute('aria-label', 'Этап обработки');
     for (const [stage, detail] of Object.entries(stages)) {
       const tab = button(detail.title, () => { state.stage = stage; state.draft = null; state.models = []; render(); }, `settings-tab${state.stage === stage ? ' selected' : ''}`);

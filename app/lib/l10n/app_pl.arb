@@ -3291,11 +3291,19 @@
     "speakersCount": "Mówców: {count}",
     "diarizationNotPerformed": "Diaryzacja nie została wykonana",
     "diarizationFailed": "Diaryzacja nie powiodła się",
-    "liveTranslationBidirectional": "Tłumaczenie dwukierunkowe",
-    "liveTranslationPairHelp": "Wykrywaj język każdej frazy i tłumacz na drugi wybrany język.",
+    "localProcessingHelp": "Etykiety mówców na żywo pochodzą od dostawcy Live. Diaryzacja poniżej przetwarza zakończone nagrania.",
+    "localProcessingApplyHelp": "Zatrzymaj nagrywanie przed zmianą. Wybrane serwery otrzymują Twój dźwięk.",
+    "localProcessingKeyHelp": "Puste pole zachowuje zapisany klucz. Inny serwer wymaga własnego klucza.",
+    "localProcessingUnsupported": "Zaktualizuj sparowany serwer, aby zmienić te ustawienia.",
+    "localProcessingFinished": "Zakończone nagrania",
+    "localProcessingProbe": "Sprawdź połączenie",
+    "localProcessingPending": "Zapisane zmiany nie są jeszcze aktywne. Stuknij Potwierdź, aby je zastosować.",
+    "localAudioServerUpdateRequired": "Zaktualizuj serwer przed nagrywaniem. Dźwięk zapisany w telefonie zostanie zachowany.",
     "liveTranslation": "Tłumaczenie na żywo",
-    "liveTranslationTargetLanguage": "Tłumacz na",
+    "liveTranslationFailed": "Tłumaczenie jest niedostępne na połączonym serwerze. Sprawdź jego bibliotekę: Settings → Translation.",
     "liveTranslationHelp": "Połączony serwer pokazuje tłumaczenie pod oryginałem. Automatycznie używany jest model podsumowań, chyba że wybierzesz inny w bibliotece serwera: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Tłumacz na",
     "liveTranslationUnconfigured": "Na połączonym serwerze nie skonfigurowano modelu tłumaczenia. Otwórz jego bibliotekę: Settings → Summarization lub Translation → Save → Use.",
-    "liveTranslationFailed": "Tłumaczenie jest niedostępne na połączonym serwerze. Sprawdź jego bibliotekę: Settings → Translation."
+    "liveTranslationBidirectional": "Tłumaczenie dwukierunkowe",
+    "liveTranslationPairHelp": "Wykrywaj język każdej frazy i tłumacz na drugi wybrany język."
 }

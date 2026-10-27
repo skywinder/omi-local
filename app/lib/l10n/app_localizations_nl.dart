@@ -1730,12 +1730,7 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'APPARATEN',
-      one: 'APPARAAT',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'APPARATEN', one: 'APPARAAT');
     return '$count $_temp0 GEVONDEN IN DE BUURT';
   }
 
@@ -10024,6 +10019,35 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprekerherkenning mislukt';
+
+  @override
+  String get localProcessingHelp =>
+      'Live-sprekerlabels komen van de Live-provider. De diarizatie hieronder verwerkt voltooide opnamen.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Stop de opname voordat je wisselt. De geselecteerde servers ontvangen je audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Laat leeg om de opgeslagen sleutel te behouden. Een andere server heeft een eigen sleutel nodig.';
+
+  @override
+  String get localProcessingUnsupported => 'Werk de gekoppelde server bij om deze instellingen te wijzigen.';
+
+  @override
+  String get localProcessingFinished => 'Voltooide opnamen';
+
+  @override
+  String get localProcessingProbe => 'Verbinding testen';
+
+  @override
+  String get localProcessingPending =>
+      'Opgeslagen wijzigingen zijn nog niet actief. Tik op Bevestigen om ze toe te passen.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Werk de server bij voordat je opneemt. Audio die op de telefoon is opgeslagen blijft bewaard.';
 
   @override
   String get liveTranslationBidirectional => 'Vertaling in beide richtingen';

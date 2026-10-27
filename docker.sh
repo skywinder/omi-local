@@ -1,28 +1,101 @@
 #!/usr/bin/env bash
+# Docker adapter. No host Python, Node, Java or model runtime required.
 set -euo pipefail
+umask 077
 cd "$(dirname "$0")"
-mode="${OMI_DOCKER_DEVICE:-auto}"
-stt="${OMI_DOCKER_STT:-builtin}"
-transport="${OMI_LOCAL_TRANSPORT:-local}"
-command="${1:-up}"
+command="${1:-help}"
 [[ $# == 0 ]] || shift
-if [[ "$command" == tailscale ]]; then
-  transport=tailscale
-  command="${1:-up}"
-  [[ $# == 0 ]] || shift
+fail() { echo "$*" >&2; exit 1; }
+usage() { echo 'Run ./omiloc --help. Docker settings are saved by bootstrap in .env.docker.'; }
+case "$command" in help|-h|--help) usage; exit 0 ;; esac
+# Provider JSON uses the running volume's registry, without startup probes or
+# banners on stdout. Forward key variable names, never their values in argv.
+if [[ "$command" == providers ]]; then
+  provider_command=(docker compose --env-file /dev/null -f compose.yaml exec -T)
+  provider_args=("$@")
+  for ((i=0; i<${#provider_args[@]}; i++)); do
+    if [[ "${provider_args[i]}" == --api-key-env ]]; then
+      key_name="${provider_args[i+1]:-}"
+      [[ "$key_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail 'Invalid key environment variable name.'
+      provider_command+=(-e "$key_name")
+    elif [[ "${provider_args[i]}" == --api-key-env=* ]]; then
+      key_name="${provider_args[i]#*=}"
+      [[ "$key_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail 'Invalid key environment variable name.'
+      provider_command+=(-e "$key_name")
+    fi
+  done
+  exec "${provider_command[@]}" app python -m dev_harness.local_provider_cli "$@"
 fi
+case "$command" in bootstrap|up|dev|down|status|logs|doctor|open|pair|config|configure|tunnel) ;;
+  *) usage >&2; exit 2 ;;
+esac
+# Read a deliberately small, non-executable format. Never source an env file.
+OMI_DOCKER_DEVICE=${OMI_DOCKER_DEVICE:-cpu}
+OMI_DOCKER_STT=${OMI_DOCKER_STT:-builtin}
+OMI_DOCKER_GPU_ID=${OMI_DOCKER_GPU_ID:-0}
+OMI_DOCKER_TRANSPORT=${OMI_DOCKER_TRANSPORT:-local}
+STT_MODEL=${STT_MODEL:-Systran/faster-whisper-small}
+STT_REVISION=${STT_REVISION:-main}
+STT_THREADS=${STT_THREADS:-4}
+config_file=.env.docker
+[[ ! -L "$config_file" ]] || fail '.env.docker must not be a symlink.'
+if [[ -e "$config_file" ]]; then
+  [[ -f "$config_file" && $(wc -c < "$config_file") -le 4096 ]] || fail 'Invalid .env.docker file.'
+  if [[ "$(uname -s)" == Darwin ]]; then
+    config_mode=$(stat -f '%Lp' "$config_file")
+  else
+    config_mode=$(stat -c '%a' "$config_file")
+  fi
+  [[ "$config_mode" == 600 ]] || fail '.env.docker must be private. Run: chmod 600 .env.docker'
+  seen=' '
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" && "$line" != \#* ]] || continue
+    [[ "$line" == *=* ]] || fail 'Use NAME=value lines in .env.docker.'
+    name=${line%%=*}; value=${line#*=}
+    case "$name" in OMI_DOCKER_DEVICE|OMI_DOCKER_STT|OMI_DOCKER_GPU_ID|OMI_DOCKER_TRANSPORT|STT_MODEL|STT_REVISION|STT_THREADS) ;;
+      *) fail 'Unknown field in .env.docker. See docs/DOCKER.md.' ;;
+    esac
+    [[ "$seen" != *" $name "* ]] || fail 'Duplicate field in .env.docker.'
+    [[ "$value" =~ ^[a-zA-Z0-9_./-]+$ ]] || fail 'Use unquoted literal values in .env.docker.'
+    seen+="$name "
+    printf -v "$name" '%s' "$value"
+  done < "$config_file"
+fi
+follow=false
+inference=false
+while [[ $# -gt 0 ]]; do
+  option=$1; shift
+  case "$command:$option" in
+    logs:-f) follow=true ;;
+    doctor:--inference) inference=true ;;
+    bootstrap:--device|bootstrap:--stt|bootstrap:--gpu|bootstrap:--transport|bootstrap:--model|bootstrap:--revision|bootstrap:--threads)
+      [[ $# -gt 0 && -n "$1" ]] || fail "Missing value for $option."
+      case "$option" in
+        --device) OMI_DOCKER_DEVICE=$1 ;;
+        --stt) OMI_DOCKER_STT=$1 ;;
+        --gpu) OMI_DOCKER_GPU_ID=$1 ;;
+        --transport) OMI_DOCKER_TRANSPORT=$1 ;;
+        --model) STT_MODEL=$1 ;;
+        --revision) STT_REVISION=$1 ;;
+        --threads) STT_THREADS=$1 ;;
+      esac
+      shift ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+case "$OMI_DOCKER_DEVICE" in cpu|cuda) ;; *) fail 'Device must be cpu or cuda; choose it with bootstrap --device.' ;; esac
+case "$OMI_DOCKER_STT" in builtin|external) ;; *) fail 'STT must be builtin or external; choose it with bootstrap --stt.' ;; esac
+case "$OMI_DOCKER_TRANSPORT" in local|ngrok|tailscale) ;; *) fail 'Transport must be local, tailscale or ngrok.' ;; esac
+[[ "$OMI_DOCKER_GPU_ID" =~ ^([0-9]+|GPU-[a-fA-F0-9-]+)$ ]] || fail 'GPU must be an index or NVIDIA GPU UUID.'
+[[ "$STT_MODEL" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]] || fail 'Model must be a Hugging Face owner/model ID.'
+[[ "$STT_REVISION" =~ ^[a-zA-Z0-9_./-]+$ ]] || fail 'Invalid model revision.'
+[[ "$STT_THREADS" =~ ^[1-9][0-9]*$ ]] || fail 'Threads must be a positive integer.'
+export OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS
+transport=$OMI_DOCKER_TRANSPORT
 files=(-f compose.yaml)
-case "$transport" in
-  local|ngrok|tailscale) ;;
-  *) echo 'OMI_LOCAL_TRANSPORT must be tailscale or ngrok (unset for a local library)' >&2; exit 2 ;;
-esac
-case "$stt" in
-  builtin) ;;
-  # An external OpenAI-compatible server selected in the library replaces the stt container.
-  external) mode=cpu; files+=(-f compose.external.yaml) ;;
-  *) echo 'OMI_DOCKER_STT must be builtin or external' >&2; exit 2 ;;
-esac
-
+[[ "$OMI_DOCKER_STT" != external ]] || files+=(-f compose.external.yaml)
+# These files never import the native .env. The validated values above win.
+compose() { docker compose --env-file /dev/null "${files[@]}" "$@"; }
 tailscale_address() {
   local cli="${OMI_TAILSCALE_CLI:-}" status own selected a b c d
   if [[ -z "$cli" ]]; then
@@ -68,52 +141,122 @@ require_local_docker() {
   fi
   case "$endpoint" in
     unix://*|npipe://*) ;;
-    *) echo 'Run Tailscale Docker startup on the Docker host with its local context.' >&2; return 1 ;;
+    *) echo 'Run Docker commands on the Docker host with its local context; use SSH for a remote server.' >&2; return 1 ;;
   esac
 }
 
-# Diagnostics and shutdown must still work after the host leaves Tailscale.
+
+if [[ "$command" == open ]]; then
+  address=http://127.0.0.1:21001/
+  echo "Library: $address"
+  if [[ -t 1 && -z "${SSH_CONNECTION:-}${SSH_TTY:-}" ]]; then
+    if [[ "$(uname -s)" == Darwin ]]; then open "$address"
+    elif [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] && command -v xdg-open >/dev/null; then xdg-open "$address"; fi
+  fi
+  exit 0
+fi
+command -v docker >/dev/null || fail 'Install Docker Engine/Desktop and Docker Compose first. See docs/DOCKER.md.'
+version=$(docker compose version --short) || fail 'Docker Compose is unavailable.'
+version=${version#v}
+[[ "$version" =~ ^([0-9]+)\.([0-9]+) ]] || fail 'Cannot identify the Docker Compose version.'
+(( BASH_REMATCH[1] > 2 || (BASH_REMATCH[1] == 2 && BASH_REMATCH[2] >= 32) )) || fail 'Docker Compose 2.32 or later is required.'
+# Recovery commands use the stable project identity, without GPU/VPN discovery.
 case "$command" in
-  up|dev|config)
-    if [[ "$transport" == tailscale ]]; then
-      tailscale_address
-      require_local_docker
-      files+=(-f compose.tailscale.yaml)
-    fi ;;
-  tunnel)
-    [[ "$transport" != tailscale ]] || { echo 'Tailscale connects directly; no ngrok tunnel is needed.' >&2; exit 2; } ;;
+  down) exec docker compose --env-file /dev/null -f compose.yaml --profile tunnel down ;;
+  status) compose --profile tunnel ps --all; exit ;;
+  logs)
+    if "$follow"; then compose --profile tunnel logs --tail 80 -f
+    else compose --profile tunnel logs --tail 80; fi
+    exit ;;
 esac
-case "$mode" in
-  auto)
-    # Probe the Docker server, not the client machine or an unrelated nvidia-smi.
-    runtimes=$(docker info --format '{{json .Runtimes}}')
-    if [[ "$runtimes" == *'"nvidia"'* ]]; then mode=cuda; else mode=cpu; fi ;;
-  cpu|cuda) ;;
-  *) echo 'OMI_DOCKER_DEVICE must be auto, cpu or cuda' >&2; exit 2 ;;
+require_local_docker
+if [[ "$command" != bootstrap && ! -f "$config_file" ]]; then
+  fail 'Docker is not prepared. Run: ./omiloc --runtime docker bootstrap'
+fi
+case "$command" in bootstrap|up|dev|doctor|pair|config)
+  if [[ "$transport" == tailscale ]]; then
+    tailscale_address
+    files+=(-f compose.tailscale.yaml)
+  fi ;;
 esac
-[[ "$mode" != cuda ]] || files+=(-f compose.gpu.yaml)
-if [[ "$stt" == external ]]; then echo 'Docker STT: external server (built-in stt container disabled)'; else echo "Docker STT device: $mode"; fi
+if [[ "$OMI_DOCKER_STT" == builtin && "$OMI_DOCKER_DEVICE" == cuda ]]; then files+=(-f compose.gpu.yaml); fi
+case "$command" in dev) files+=(-f compose.dev.yaml) ;; esac
+# CPU/GPU and transport choices stay fixed until an explicit bootstrap.
 case "$command" in
-  up|dev)
-    if [[ "$stt" == external ]]; then
-      docker compose "${files[@]}" build app
+  bootstrap)
+    [[ ! -L .local ]] || fail 'Unsafe .local directory.'
+    mkdir -p .local
+    mkdir .local/docker-bootstrap.lock 2>/dev/null || fail 'Docker bootstrap is already running. See docs/DOCKER.md for interrupted-lock recovery.'
+    pending=''
+    trap '[[ -z "$pending" ]] || rm -f "$pending"; rmdir .local/docker-bootstrap.lock' EXIT
+    # Changing a live image/model can interrupt recording. Prepare only when stopped.
+    [[ -z "$(compose --profile tunnel ps --status running -q)" ]] || fail 'Stop this Docker stack with omiloc --runtime docker down before bootstrap.'
+    : > .local/docker-bootstrap.pending
+    docker info >/dev/null || fail 'Docker daemon is unavailable.'
+    compose config --quiet
+    echo "Preparing Docker runtime ($OMI_DOCKER_DEVICE)."
+    if [[ "$OMI_DOCKER_STT" == external ]]; then
+      compose build app
     else
-      docker compose "${files[@]}" build app stt download
-      docker compose "${files[@]}" run --rm --no-deps download
+      compose build app stt download
+      if [[ "$OMI_DOCKER_DEVICE" == cuda ]]; then
+        # Exercise this image's CUDA driver path on the selected device, not just nvidia-smi on the host.
+        compose run --rm --no-deps -T stt python3 -c 'import ctranslate2; assert ctranslate2.get_cuda_device_count() == 1, "Selected CUDA device is unavailable"'
+      fi
+      downloaded=$(compose run --rm --no-deps -T download)
+      revision=$(printf '%s\n' "$downloaded" | sed -n 's/^Model revision: //p')
+      [[ "$revision" =~ ^[a-f0-9]{40,64}$ ]] || fail 'Model download did not return an immutable revision; bootstrap is incomplete.'
+      STT_REVISION=$revision
     fi
-    if [[ "$transport" == tailscale ]]; then
-      # Excluding a Compose profile does not stop an already-running service.
-      docker compose "${files[@]}" --profile tunnel stop tunnel
-    fi
+    pending=$(mktemp .env.docker.XXXXXX)
+    {
+      echo '# Docker host settings. Literal values only; no native credentials.'
+      for name in OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS; do
+        printf '%s=%s\n' "$name" "${!name}"
+      done
+    } > "$pending"
+    chmod 600 "$pending"
+    mv -f "$pending" "$config_file"; pending=''
+    rm -f .local/docker-bootstrap.pending
+    echo 'Docker bootstrap complete. Services are stopped. Run: ./omiloc --runtime docker up'
+    ;;
+  up|dev)
+    [[ ! -e .local/docker-bootstrap.pending ]] || fail 'Previous bootstrap was interrupted. Run bootstrap again.'
+    compose config --quiet
+    echo "Starting Docker runtime ($OMI_DOCKER_DEVICE)."
+    if [[ "$transport" == tailscale ]]; then compose --profile tunnel stop tunnel; fi
     if [[ "$command" == dev ]]; then
-      exec docker compose "${files[@]}" -f compose.dev.yaml up --watch "$@"
+      compose up --no-build --pull never --watch
+    else
+      compose up -d --no-build --pull never --wait --wait-timeout 600 || fail 'Startup failed. Run doctor and logs; run bootstrap if images or models are missing.'
+      compose exec -T app python docker/runtime.py health
+      echo 'Docker services ready. Library: http://127.0.0.1:21001/'
+    fi ;;
+  doctor)
+    docker info >/dev/null
+    compose config --quiet
+    echo 'Docker prerequisites and configuration passed.'
+    compose --profile tunnel ps --all
+    if ! compose exec -T app python docker/runtime.py health; then
+      fail 'Docker runtime readiness failed. Inspect logs; run up if the stack is stopped.'
     fi
-    exec docker compose "${files[@]}" up -d --wait "$@" ;;
-  down) exec docker compose "${files[@]}" --profile tunnel down "$@" ;;
-  status) exec docker compose "${files[@]}" --profile tunnel ps "$@" ;;
-  logs) exec docker compose "${files[@]}" logs --tail 80 -f "$@" ;;
-  config) exec docker compose "${files[@]}" config "$@" ;;
-  configure) exec docker compose "${files[@]}" exec app python docker/runtime.py configure ;;
-  tunnel) exec docker compose "${files[@]}" --profile tunnel up -d tunnel ;;
-  *) echo 'Usage: ./docker.sh [tailscale] [up|dev|down|status|logs|config|configure|tunnel]' >&2; exit 2 ;;
+    echo 'Docker runtime readiness passed. Phone authentication and audio delivery require separate checks.'
+    if "$inference"; then
+      probe_device=$OMI_DOCKER_DEVICE
+      [[ "$OMI_DOCKER_STT" != external ]] || probe_device=external
+      compose exec -T app python docker/runtime.py inference "$probe_device"
+    else
+      echo 'Inference was not tested. Run doctor --inference to transcribe synthetic speech.'
+    fi ;;
+  pair)
+    [[ -t 0 && -t 1 ]] || fail 'Run pair in your own interactive terminal; keys must not enter logs.'
+    address=http://127.0.0.1:21000
+    [[ "$transport" != ngrok ]] || address=''
+    [[ "$transport" != tailscale ]] || address="http://$OMI_TAILSCALE_IP:21000"
+    compose exec -e "OMI_PAIR_ADDRESS=$address" app python docker/runtime.py pair ;;
+  config) compose config ;;
+  configure) compose exec app python docker/runtime.py configure ;;
+  tunnel)
+    [[ "$transport" == ngrok ]] || fail 'Select ngrok with bootstrap --transport ngrok before starting its tunnel.'
+    compose --profile tunnel up -d --no-build --pull never tunnel ;;
 esac

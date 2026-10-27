@@ -58,6 +58,7 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
   final BleDiagnosticsLoader _bleDiagnosticsLoader;
   final FindDeviceRunner _findDeviceRunner;
   final ConnectionLoader _connectionLoader;
+  final Future<int> Function(String deviceId) _batteryLevelLoader;
 
   /// Bumped whenever the link drops. An in-flight connect that finishes after
   /// the drop belongs to a dead link and must not mark the device connected.
@@ -114,9 +115,11 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
     BleDiagnosticsLoader? bleDiagnosticsLoader,
     FindDeviceRunner? findDeviceRunner,
     ConnectionLoader? connectionLoader,
+    Future<int> Function(String deviceId)? batteryLevelLoader,
   })  : _bleDiagnosticsLoader = bleDiagnosticsLoader ?? BleHostApi().getDeviceDiagnostics,
         _findDeviceRunner = findDeviceRunner ?? _defaultFindDeviceRunner,
-        _connectionLoader = connectionLoader ?? _defaultConnectionLoader {
+        _connectionLoader = connectionLoader ?? _defaultConnectionLoader,
+        _batteryLevelLoader = batteryLevelLoader ?? _retrieveBatteryLevel {
     ServiceManager.instance().device.subscribe(this, this);
     BleBridge.instance.pairingLostCallback = _showPairingLostDialog;
   }
@@ -285,7 +288,7 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
     await ServiceManager.instance().device.disconnectDevice();
   }
 
-  Future<int> _retrieveBatteryLevel(String deviceId) async {
+  static Future<int> _retrieveBatteryLevel(String deviceId) async {
     var connection = await ServiceManager.instance().device.ensureConnection(deviceId);
     if (connection == null) {
       return -1;
@@ -626,13 +629,17 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
 
   void _onDeviceConnected(BtDevice device) async {
     Logger.debug('_onConnected inside: $connectedDevice');
+    final linkGeneration = _linkGeneration;
     final deviceSetup = setConnectedDevice(device);
     final connectionSession = _firmwareUpdateCheckSessionGuard.capture();
     await deviceSetup;
-    if (connectionSession == null || !_isCurrentDeviceSession(connectionSession)) {
+    if (connectionSession == null ||
+        linkGeneration != _linkGeneration ||
+        !_isCurrentDeviceSession(connectionSession)) {
       Logger.debug('Discarding device setup continuation from a stale connection session');
       return;
     }
+    bool isCurrent() => linkGeneration == _linkGeneration && _isCurrentDeviceSession(connectionSession);
 
     if (captureProvider != null) {
       captureProvider?.updateRecordingDevice(device);
@@ -642,7 +649,8 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
     setIsConnected(true);
 
     // Read initial battery level
-    int currentLevel = await _retrieveBatteryLevel(device.id);
+    int currentLevel = await _batteryLevelLoader(device.id);
+    if (!isCurrent()) return;
     if (currentLevel != -1) {
       batteryLevel = currentLevel;
       BatteryWidgetService().updateBatteryInfo(
@@ -655,14 +663,21 @@ class DeviceProvider extends ChangeNotifier implements IDeviceServiceSubsciption
 
     // Then set up listeners for battery changes and charging status
     await initiateBleBatteryListener();
+    if (!isCurrent()) return;
     await initiateChargingStatusListener();
+    if (!isCurrent()) return;
     if (batteryLevel != -1 && batteryLevel < 20) {
       _hasLowBatteryAlerted = false;
     }
     updateConnectingStatus(false);
-    await captureProvider?.streamDeviceRecording(device: device);
+    await captureProvider?.streamDeviceRecording(
+      device: device,
+      userInitiated: captureProvider?.shouldAutomaticallyStartDeviceRecording ?? false,
+    );
+    if (!isCurrent()) return;
 
     await getDeviceInfo();
+    if (!isCurrent()) return;
     SharedPreferencesUtil().deviceName = device.name;
 
     // Wals — pass the firmware resolved by getDeviceInfo() above so background

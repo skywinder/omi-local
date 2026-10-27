@@ -3256,11 +3256,19 @@
     "speakersCount": "{count} penutur",
     "diarizationNotPerformed": "Pemisahan penutur tidak dilakukan",
     "diarizationFailed": "Pemisahan penutur gagal",
-    "liveTranslationBidirectional": "Terjemahan dua hala",
-    "liveTranslationPairHelp": "Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.",
+    "localProcessingHelp": "Label penutur langsung datang daripada penyedia Live. Diarisasi di bawah memproses rakaman yang telah selesai.",
+    "localProcessingApplyHelp": "Hentikan rakaman sebelum bertukar. Pelayan yang dipilih menerima audio anda.",
+    "localProcessingKeyHelp": "Biarkan kosong untuk mengekalkan kunci tersimpan. Pelayan lain memerlukan kuncinya sendiri.",
+    "localProcessingUnsupported": "Kemas kini pelayan berpasangan untuk menyunting tetapan ini.",
+    "localProcessingFinished": "Rakaman selesai",
+    "localProcessingProbe": "Uji sambungan",
+    "localProcessingPending": "Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.",
+    "localAudioServerUpdateRequired": "Kemas kini pelayan sebelum merakam. Audio yang disimpan pada telefon dikekalkan.",
     "liveTranslation": "Terjemahan langsung",
-    "liveTranslationTargetLanguage": "Terjemah ke",
+    "liveTranslationFailed": "Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation.",
     "liveTranslationHelp": "Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Terjemah ke",
     "liveTranslationUnconfigured": "Tiada model terjemahan dikonfigurasi pada pelayan yang disambungkan. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.",
-    "liveTranslationFailed": "Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation."
+    "liveTranslationBidirectional": "Terjemahan dua hala",
+    "liveTranslationPairHelp": "Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih."
 }

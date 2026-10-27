@@ -1726,12 +1726,7 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8478,12 +8473,7 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9816,12 +9806,7 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count মাস ফ্রি',
-      one: '১ মাস ফ্রি',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count মাস ফ্রি', one: '১ মাস ফ্রি');
     return '$_temp0';
   }
 
@@ -10002,6 +9987,31 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'বক্তা শনাক্তকরণ ব্যর্থ';
+
+  @override
+  String get localProcessingHelp =>
+      'লাইভ বক্তার লেবেল লাইভ প্রদানকারীর কাছ থেকে আসে। নিচের ডায়ারাইজেশন সম্পূর্ণ রেকর্ডিং প্রক্রিয়া করে।';
+
+  @override
+  String get localProcessingApplyHelp => 'পরিবর্তনের আগে রেকর্ডিং বন্ধ করুন। নির্বাচিত সার্ভারগুলি আপনার অডিও পাবে।';
+
+  @override
+  String get localProcessingKeyHelp => 'ফাঁকা রাখলে সংরক্ষিত কী থাকবে। অন্য সার্ভারের জন্য তার নিজস্ব কী প্রয়োজন।';
+
+  @override
+  String get localProcessingUnsupported => 'এই সেটিংস সম্পাদনা করতে সংযুক্ত সার্ভার আপডেট করুন।';
+
+  @override
+  String get localProcessingFinished => 'সম্পূর্ণ রেকর্ডিং';
+
+  @override
+  String get localProcessingProbe => 'সংযোগ পরীক্ষা করুন';
+
+  @override
+  String get localProcessingPending => 'সংরক্ষিত পরিবর্তনগুলি সক্রিয় নয়। প্রয়োগ করতে নিশ্চিত করুন চাপুন।';
+
+  @override
+  String get localAudioServerUpdateRequired => 'রেকর্ডিংয়ের আগে সার্ভার আপডেট করুন। ফোনে সংরক্ষিত অডিও রাখা হয়।';
 
   @override
   String get liveTranslationBidirectional => 'দ্বিমুখী অনুবাদ';

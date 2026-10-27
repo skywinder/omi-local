@@ -1735,12 +1735,7 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8529,12 +8524,7 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10067,6 +10057,34 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'பேச்சாளர் பிரிப்பு தோல்வி';
+
+  @override
+  String get localProcessingHelp =>
+      'நேரலைப் பேச்சாளர் அடையாளங்கள் Live வழங்குநரிடமிருந்து வருகின்றன. கீழே உள்ள பேச்சாளர் பிரிப்பு முடிந்த பதிவுகளைச் செயலாக்குகிறது.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'மாற்றுவதற்கு முன் பதிவை நிறுத்தவும். தேர்ந்தெடுத்த சேவையகங்கள் உங்கள் ஒலியைப் பெறுகின்றன.';
+
+  @override
+  String get localProcessingKeyHelp => 'காலியாக விட்டால் சேமித்த விசை இருக்கும். வேறு சேவையகத்திற்குத் தனி விசை தேவை.';
+
+  @override
+  String get localProcessingUnsupported => 'இந்த அமைப்புகளை மாற்ற இணைக்கப்பட்ட சேவையகத்தைப் புதுப்பிக்கவும்.';
+
+  @override
+  String get localProcessingFinished => 'முடிந்த பதிவுகள்';
+
+  @override
+  String get localProcessingProbe => 'இணைப்பைச் சோதிக்கவும்';
+
+  @override
+  String get localProcessingPending =>
+      'சேமித்த மாற்றங்கள் இன்னும் செயலில் இல்லை. பயன்படுத்த உறுதிப்படுத்து என்பதைத் தட்டவும்.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'பதிவுசெய்யும் முன் சேவையகத்தைப் புதுப்பிக்கவும். தொலைபேசியில் சேமித்த ஆடியோ பாதுகாக்கப்படும்.';
 
   @override
   String get liveTranslationBidirectional => 'இருவழி மொழிபெயர்ப்பு';

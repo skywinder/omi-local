@@ -1728,12 +1728,7 @@ class AppLocalizationsHr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8499,12 +8494,7 @@ class AppLocalizationsHr extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -10033,6 +10023,34 @@ class AppLocalizationsHr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Dijarizacija nije uspjela';
+
+  @override
+  String get localProcessingHelp =>
+      'Oznake govornika uživo dolaze od pružatelja Live usluge. Dijarizacija u nastavku obrađuje završene snimke.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Zaustavite snimanje prije prebacivanja. Odabrani poslužitelji primaju vaš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Prazno polje zadržava spremljeni ključ. Drugi poslužitelj zahtijeva vlastiti ključ.';
+
+  @override
+  String get localProcessingUnsupported => 'Ažurirajte upareni poslužitelj za uređivanje ovih postavki.';
+
+  @override
+  String get localProcessingFinished => 'Završene snimke';
+
+  @override
+  String get localProcessingProbe => 'Provjeri vezu';
+
+  @override
+  String get localProcessingPending => 'Spremljene promjene nisu aktivne. Dodirnite Potvrdi da ih primijenite.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ažurirajte poslužitelj prije snimanja. Zvuk spremljen na telefonu ostaje sačuvan.';
 
   @override
   String get liveTranslationBidirectional => 'Dvosmjerni prijevod';

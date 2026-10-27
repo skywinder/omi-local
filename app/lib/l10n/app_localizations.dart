@@ -186,7 +186,7 @@ abstract class AppLocalizations {
     Locale('uk'),
     Locale('ur'),
     Locale('vi'),
-    Locale('zh')
+    Locale('zh'),
   ];
 
   /// No description provided for @localCaptureIdle.
@@ -18609,6 +18609,54 @@ abstract class AppLocalizations {
   /// **'Diarization failed'**
   String get diarizationFailed;
 
+  /// No description provided for @localProcessingHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Live speaker labels come from the Live provider. Diarization below processes finished recordings.'**
+  String get localProcessingHelp;
+
+  /// No description provided for @localProcessingApplyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop recording before switching. Selected servers receive your audio.'**
+  String get localProcessingApplyHelp;
+
+  /// No description provided for @localProcessingKeyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Blank keeps the saved key. A different server requires its own key.'**
+  String get localProcessingKeyHelp;
+
+  /// No description provided for @localProcessingUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the paired server to edit these settings.'**
+  String get localProcessingUnsupported;
+
+  /// No description provided for @localProcessingFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished recordings'**
+  String get localProcessingFinished;
+
+  /// No description provided for @localProcessingProbe.
+  ///
+  /// In en, this message translates to:
+  /// **'Test connection'**
+  String get localProcessingProbe;
+
+  /// No description provided for @localProcessingPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved changes are not active. Tap Confirm to apply.'**
+  String get localProcessingPending;
+
+  /// No description provided for @localAudioServerUpdateRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the server before recording. Audio saved on the phone is kept.'**
+  String get localAudioServerUpdateRequired;
+
   /// No description provided for @liveTranslationBidirectional.
   ///
   /// In en, this message translates to:
@@ -18632,56 +18680,56 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
 
   @override
   bool isSupported(Locale locale) => <String>[
-        'ar',
-        'be',
-        'bg',
-        'bn',
-        'bs',
-        'ca',
-        'cs',
-        'da',
-        'de',
-        'el',
-        'en',
-        'es',
-        'et',
-        'fa',
-        'fi',
-        'fr',
-        'he',
-        'hi',
-        'hr',
-        'hu',
-        'id',
-        'it',
-        'ja',
-        'kn',
-        'ko',
-        'lt',
-        'lv',
-        'mk',
-        'mr',
-        'ms',
-        'nl',
-        'no',
-        'pl',
-        'pt',
-        'ro',
-        'ru',
-        'sk',
-        'sl',
-        'sr',
-        'sv',
-        'ta',
-        'te',
-        'th',
-        'tl',
-        'tr',
-        'uk',
-        'ur',
-        'vi',
-        'zh'
-      ].contains(locale.languageCode);
+    'ar',
+    'be',
+    'bg',
+    'bn',
+    'bs',
+    'ca',
+    'cs',
+    'da',
+    'de',
+    'el',
+    'en',
+    'es',
+    'et',
+    'fa',
+    'fi',
+    'fr',
+    'he',
+    'hi',
+    'hr',
+    'hu',
+    'id',
+    'it',
+    'ja',
+    'kn',
+    'ko',
+    'lt',
+    'lv',
+    'mk',
+    'mr',
+    'ms',
+    'nl',
+    'no',
+    'pl',
+    'pt',
+    'ro',
+    'ru',
+    'sk',
+    'sl',
+    'sr',
+    'sv',
+    'ta',
+    'te',
+    'th',
+    'tl',
+    'tr',
+    'uk',
+    'ur',
+    'vi',
+    'zh',
+  ].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -18790,8 +18838,10 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsZh();
   }
 
-  throw FlutterError('AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-      'an issue with the localizations generation tool. Please file an issue '
-      'on GitHub with a reproducible sample app and the gen-l10n configuration '
-      'that was used.');
+  throw FlutterError(
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }

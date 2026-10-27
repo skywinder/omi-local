@@ -8336,12 +8336,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '대화 $count개 생성됨',
-      one: '대화 1개 생성됨',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '대화 $count개 생성됨', one: '대화 1개 생성됨');
     return '$_temp0';
   }
 
@@ -9067,11 +9062,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '녹음 $count건 동기화 준비됨',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '녹음 $count건 동기화 준비됨');
     return '$_temp0';
   }
 
@@ -9083,11 +9074,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '확인이 필요한 녹음 $count개',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '확인이 필요한 녹음 $count개');
     return '$_temp0';
   }
 
@@ -9649,12 +9636,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count개월 무료',
-      one: '1개월 무료',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count개월 무료', one: '1개월 무료');
     return '$_temp0';
   }
 
@@ -9829,6 +9811,30 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get diarizationFailed => '화자 분리 실패';
+
+  @override
+  String get localProcessingHelp => '실시간 화자 라벨은 Live 제공업체에서 받습니다. 아래 화자 분리는 완료된 녹음을 처리합니다.';
+
+  @override
+  String get localProcessingApplyHelp => '전환하기 전에 녹음을 중지하세요. 선택한 서버로 오디오가 전송됩니다.';
+
+  @override
+  String get localProcessingKeyHelp => '비워 두면 저장된 키가 유지됩니다. 다른 서버에는 해당 서버의 키가 필요합니다.';
+
+  @override
+  String get localProcessingUnsupported => '이 설정을 수정하려면 연결된 서버를 업데이트하세요.';
+
+  @override
+  String get localProcessingFinished => '완료된 녹음';
+
+  @override
+  String get localProcessingProbe => '연결 테스트';
+
+  @override
+  String get localProcessingPending => '저장된 변경 사항이 아직 적용되지 않았습니다. 확인을 눌러 적용하세요.';
+
+  @override
+  String get localAudioServerUpdateRequired => '녹음하기 전에 서버를 업데이트하세요. 휴대폰에 저장된 오디오는 유지됩니다.';
 
   @override
   String get liveTranslationBidirectional => '양방향 번역';

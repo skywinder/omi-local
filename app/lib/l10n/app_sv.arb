@@ -3256,11 +3256,19 @@
     "speakersCount": "{count} talare",
     "diarizationNotPerformed": "Talarindelning inte utförd",
     "diarizationFailed": "Talarindelning misslyckades",
-    "liveTranslationBidirectional": "Översättning åt båda hållen",
-    "liveTranslationPairHelp": "Identifiera språket i varje mening och översätt till det andra valda språket.",
+    "localProcessingHelp": "Talaretiketter i realtid kommer från Live-leverantören. Diariseringen nedan bearbetar färdiga inspelningar.",
+    "localProcessingApplyHelp": "Stoppa inspelningen innan du byter. De valda servrarna tar emot ditt ljud.",
+    "localProcessingKeyHelp": "Ett tomt fält behåller den sparade nyckeln. En annan server kräver sin egen nyckel.",
+    "localProcessingUnsupported": "Uppdatera den parkopplade servern för att ändra dessa inställningar.",
+    "localProcessingFinished": "Färdiga inspelningar",
+    "localProcessingProbe": "Testa anslutning",
+    "localProcessingPending": "Sparade ändringar är inte aktiva. Tryck på Bekräfta för att tillämpa dem.",
+    "localAudioServerUpdateRequired": "Uppdatera servern före inspelning. Ljud som sparats på telefonen behålls.",
     "liveTranslation": "Direktöversättning",
-    "liveTranslationTargetLanguage": "Översätt till",
+    "liveTranslationFailed": "Översättning är inte tillgänglig på den anslutna servern. Kontrollera biblioteket: Settings → Translation.",
     "liveTranslationHelp": "Den anslutna servern visar översättningen under originalet. Sammanfattningsmodellen används automatiskt om du inte väljer en annan i serverns bibliotek: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Översätt till",
     "liveTranslationUnconfigured": "Ingen översättningsmodell har konfigurerats på den anslutna servern. Öppna biblioteket: Settings → Summarization eller Translation → Save → Use.",
-    "liveTranslationFailed": "Översättning är inte tillgänglig på den anslutna servern. Kontrollera biblioteket: Settings → Translation."
+    "liveTranslationBidirectional": "Översättning åt båda hållen",
+    "liveTranslationPairHelp": "Identifiera språket i varje mening och översätt till det andra valda språket."
 }
