@@ -9949,22 +9949,22 @@ class AppLocalizationsSk extends AppLocalizations {
   String get localMacServers => 'Uložené servery';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Preklad naživo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Preložiť do';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Prekladajte živý prepis na svojom Macu. Originál zostane zachovaný a preklad sa zobrazí pod každým riadkom. Najskôr pridajte poskytovateľa prekladu v nastaveniach miestnej knižnice.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Poskytovateľ prekladu nie je nakonfigurovaný na vašom Macu. Pridajte ho v nastaveniach miestnej knižnice.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Preklad momentálne nie je dostupný. Skontrolujte poskytovateľa prekladu na svojom Macu.';
 
   @override
   String get diarization => 'Diarizácia';
@@ -9985,4 +9985,30 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizácia zlyhala';
+
+  @override
+  String get localProcessingHelp =>
+      'Živé označenia hovoriacich pochádzajú od poskytovateľa Live. Diarizácia nižšie spracúva dokončené nahrávky.';
+
+  @override
+  String get localProcessingApplyHelp => 'Pred prepnutím zastavte nahrávanie. Vybrané servery prijímajú váš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prázdne pole zachová uložený kľúč. Iný server vyžaduje vlastný kľúč.';
+
+  @override
+  String get localProcessingUnsupported => 'Ak chcete upraviť tieto nastavenia, aktualizujte spárovaný server.';
+
+  @override
+  String get localProcessingFinished => 'Dokončené nahrávky';
+
+  @override
+  String get localProcessingProbe => 'Otestovať pripojenie';
+
+  @override
+  String get localProcessingPending => 'Uložené zmeny nie sú aktívne. Klepnutím na Potvrdiť ich použijete.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Pred nahrávaním aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
 }

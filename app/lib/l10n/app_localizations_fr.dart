@@ -10043,22 +10043,22 @@ class AppLocalizationsFr extends AppLocalizations {
   String get localMacServers => 'Serveurs enregistrés';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traduction en direct';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Traduire en';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Traduisez la transcription en direct sur votre Mac. Le texte original est conservé et la traduction apparaît sous chaque ligne. Ajoutez d’abord un fournisseur de traduction dans les réglages de la bibliothèque locale.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Aucun fournisseur de traduction n’est configuré sur votre Mac. Ajoutez-en un dans les réglages de la bibliothèque locale.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'La traduction n’est pas disponible pour le moment. Vérifiez le fournisseur de traduction sur votre Mac.';
 
   @override
   String get diarization => 'Diarisation';
@@ -10079,4 +10079,33 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Échec de la diarisation';
+
+  @override
+  String get localProcessingHelp =>
+      'Les étiquettes des locuteurs en direct proviennent du fournisseur Live. La diarisation ci-dessous traite les enregistrements terminés.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Arrêtez l’enregistrement avant de changer. Les serveurs sélectionnés reçoivent votre audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Laissez vide pour conserver la clé enregistrée. Un autre serveur nécessite sa propre clé.';
+
+  @override
+  String get localProcessingUnsupported => 'Mettez à jour le serveur associé pour modifier ces réglages.';
+
+  @override
+  String get localProcessingFinished => 'Enregistrements terminés';
+
+  @override
+  String get localProcessingProbe => 'Tester la connexion';
+
+  @override
+  String get localProcessingPending =>
+      'Les modifications enregistrées ne sont pas actives. Appuyez sur Confirmer pour les appliquer.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Mettez le serveur à jour avant d’enregistrer. L’audio enregistré sur le téléphone est conservé.';
 }

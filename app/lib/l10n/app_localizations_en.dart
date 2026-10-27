@@ -9968,4 +9968,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarization failed';
+
+  @override
+  String get localProcessingHelp =>
+      'Live speaker labels come from the Live provider. Diarization below processes finished recordings.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stop recording before switching. Selected servers receive your audio.';
+
+  @override
+  String get localProcessingKeyHelp => 'Blank keeps the saved key. A different server requires its own key.';
+
+  @override
+  String get localProcessingUnsupported => 'Update the paired server to edit these settings.';
+
+  @override
+  String get localProcessingFinished => 'Finished recordings';
+
+  @override
+  String get localProcessingProbe => 'Test connection';
+
+  @override
+  String get localProcessingPending => 'Saved changes are not active. Tap Confirm to apply.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Update the server before recording. Audio saved on the phone is kept.';
 }

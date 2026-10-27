@@ -9867,22 +9867,20 @@ class AppLocalizationsHe extends AppLocalizations {
   String get localMacServers => 'שרתים שמורים';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'תרגום בזמן אמת';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'תרגום לשפה';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'ניתן לתרגם את התמלול החי ב-Mac שלך. הטקסט המקורי נשמר והתרגום מופיע מתחת לכל שורה. תחילה יש להוסיף ספק תרגום בהגדרות הספרייה המקומית.';
 
   @override
-  String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+  String get liveTranslationUnconfigured => 'לא הוגדר ספק תרגום ב-Mac שלך. יש להוסיף אחד בהגדרות הספרייה המקומית.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'התרגום אינו זמין כרגע. יש לבדוק את ספק התרגום ב-Mac שלך.';
 
   @override
   String get diarization => 'זיהוי דוברים';
@@ -9903,4 +9901,29 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'זיהוי דוברים נכשל';
+
+  @override
+  String get localProcessingHelp =>
+      'תוויות דוברים בזמן אמת מגיעות מספק Live. הפרדת הדוברים למטה מעבדת הקלטות שהסתיימו.';
+
+  @override
+  String get localProcessingApplyHelp => 'יש לעצור את ההקלטה לפני ההחלפה. השרתים שנבחרו מקבלים את השמע שלך.';
+
+  @override
+  String get localProcessingKeyHelp => 'שדה ריק שומר על המפתח השמור. שרת אחר דורש מפתח משלו.';
+
+  @override
+  String get localProcessingUnsupported => 'יש לעדכן את השרת המותאם כדי לערוך הגדרות אלה.';
+
+  @override
+  String get localProcessingFinished => 'הקלטות שהסתיימו';
+
+  @override
+  String get localProcessingProbe => 'בדיקת חיבור';
+
+  @override
+  String get localProcessingPending => 'השינויים השמורים עדיין אינם פעילים. הקש על אישור כדי להחיל אותם.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'יש לעדכן את השרת לפני ההקלטה. השמע שנשמר בטלפון יישמר.';
 }

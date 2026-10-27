@@ -6,6 +6,7 @@ import 'package:omi/env/env.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/widgets/recording_source_label.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
+import 'package:omi/services/capture/local_audio_outbox.dart';
 import 'package:omi/services/local_runtime_status.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
@@ -55,11 +56,17 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   @override
   void initState() {
     super.initState();
-    _foreground = WidgetsBinding.instance.lifecycleState == null ||
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _pairing = _currentPairing;
     _session.addListener(_sessionChanged);
+    LocalAudioOutbox.shared?.addListener(_outboxChanged);
+  }
+
+  void _outboxChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -157,19 +164,25 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     _generation++;
     _timer?.cancel();
     _session.removeListener(_sessionChanged);
+    LocalAudioOutbox.shared?.removeListener(_outboxChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   String _connectionText(BuildContext context) => switch (_connection) {
-        _ConnectionState.connected => '${context.l10n.connected} · ${context.l10n.apiKeyAuth}',
-        _ConnectionState.loading => context.l10n.loading,
-        _ConnectionState.rejected => context.l10n.localMacKeyRejected,
-        _ConnectionState.unavailable => context.l10n.localMacConnectionFailed,
-        _ConnectionState.unknown => _session.isSignedIn ? context.l10n.unknown : context.l10n.notConnectedStatus,
-      };
+    _ConnectionState.connected => '${context.l10n.connected} · ${context.l10n.apiKeyAuth}',
+    _ConnectionState.loading => context.l10n.loading,
+    _ConnectionState.rejected => context.l10n.localMacKeyRejected,
+    _ConnectionState.unavailable => context.l10n.localMacConnectionFailed,
+    _ConnectionState.unknown => _session.isSignedIn ? context.l10n.unknown : context.l10n.notConnectedStatus,
+  };
 
   String? _errorText(BuildContext context) {
+    final outbox = LocalAudioOutbox.shared;
+    if (outbox?.captureIssue == 'unsupported_server') return context.l10n.localAudioServerUpdateRequired;
+    if (outbox?.captureIssue == 'connection') return context.l10n.localMacConnectionFailed;
+    if (outbox?.captureIssue == 'storage') return '${context.l10n.syncFailed} · ${context.l10n.storageSection}';
+    if (outbox?.deliveryFailed == true) return context.l10n.syncFailed;
     if (_connection == _ConnectionState.rejected) return context.l10n.localMacKeyRejected;
     if (_connection == _ConnectionState.unavailable) return context.l10n.localMacConnectionFailed;
     if (_status?.captureState == LocalCaptureState.decodeError) return context.l10n.error;
@@ -185,9 +198,10 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
     final state = error != null
         ? (_expanded ? context.l10n.error : error)
         : _connection == _ConnectionState.connected
-            ? context.l10n.connected
-            : _connectionText(context);
-    return '${context.l10n.localMacTitle} · $state';
+        ? context.l10n.connected
+        : _connectionText(context);
+    final pending = LocalAudioOutbox.shared?.pendingParts ?? 0;
+    return '${context.l10n.localMacTitle} · $state${pending > 0 ? ' · ${context.l10n.pending}: $pending' : ''}';
   }
 
   String _audioText(BuildContext context) {
@@ -202,27 +216,26 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   }
 
   String _transcriptText(BuildContext context) => switch (_status?.liveTranscriptState) {
-        LocalLiveTranscriptState.disabled => context.l10n.off,
-        LocalLiveTranscriptState.unavailable => context.l10n.transcriptionUnavailable,
-        LocalLiveTranscriptState.ready => context.l10n.modelReady,
-        LocalLiveTranscriptState.busy => context.l10n.processing,
-        LocalLiveTranscriptState.streaming => '${context.l10n.transcriptReceived}: ${_status!.transcriptUpdates}',
-        LocalLiveTranscriptState.failed => context.l10n.transcriptionFailed,
-        null => context.l10n.unknown,
-      };
+    LocalLiveTranscriptState.disabled => context.l10n.off,
+    LocalLiveTranscriptState.unavailable => context.l10n.transcriptionUnavailable,
+    LocalLiveTranscriptState.ready => context.l10n.modelReady,
+    LocalLiveTranscriptState.busy => context.l10n.processing,
+    LocalLiveTranscriptState.streaming => '${context.l10n.transcriptReceived}: ${_status!.transcriptUpdates}',
+    LocalLiveTranscriptState.failed => context.l10n.transcriptionFailed,
+    null => context.l10n.unknown,
+  };
 
   String _diarizationText(BuildContext context) => switch (_status?.diarizationState) {
-        LocalDiarizationState.disabled => context.l10n.off,
-        LocalDiarizationState.ready => context.l10n.modelReady,
-        LocalDiarizationState.busy => context.l10n.processing,
-        LocalDiarizationState.pending => context.l10n.waitingForData,
-        LocalDiarizationState.labeled => context.l10n.nProcessed(_status!.labeledSegments),
-        LocalDiarizationState.degraded ||
-        LocalDiarizationState.failed ||
-        LocalDiarizationState.unavailable =>
-          context.l10n.cancelConsequenceSpeakers,
-        LocalDiarizationState.unknown || null => context.l10n.unknown,
-      };
+    LocalDiarizationState.disabled => context.l10n.off,
+    LocalDiarizationState.ready => context.l10n.modelReady,
+    LocalDiarizationState.busy => context.l10n.processing,
+    LocalDiarizationState.pending => context.l10n.waitingForData,
+    LocalDiarizationState.labeled => context.l10n.nProcessed(_status!.labeledSegments),
+    LocalDiarizationState.degraded ||
+    LocalDiarizationState.failed ||
+    LocalDiarizationState.unavailable => context.l10n.cancelConsequenceSpeakers,
+    LocalDiarizationState.unknown || null => context.l10n.unknown,
+  };
   String _stageText(BuildContext context, LocalStageStatus stage) {
     final state = switch (stage.state) {
       LocalStageState.ready => context.l10n.modelReady,
@@ -238,7 +251,11 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   List<Widget> _stageRows(BuildContext context) {
     final stages = _status?.stages ?? const {};
     // Live readiness already has its own row; list the server pipeline stages.
-    const rows = [('stt', Icons.text_snippet_outlined), ('diarization', Icons.people_outline), ('summary', Icons.summarize_outlined)];
+    const rows = [
+      ('stt', Icons.text_snippet_outlined),
+      ('diarization', Icons.people_outline),
+      ('summary', Icons.summarize_outlined),
+    ];
     return [
       for (final (stage, icon) in rows)
         if (stages[stage] case final status?)
@@ -256,19 +273,29 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
   }
 
   Widget _row(String name, String title, String value, IconData icon) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 18, color: Colors.white70),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.white70),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               const SizedBox(height: 2),
-              Text(value, key: ValueKey('local-runtime-$name'), style: const TextStyle(color: Colors.white)),
-            ]),
+              Text(
+                value,
+                key: ValueKey('local-runtime-$name'),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -279,61 +306,98 @@ class _LocalRuntimeStatusCardState extends State<LocalRuntimeStatusCard> with Wi
       color: const Color(0xFF222222),
       borderRadius: BorderRadius.circular(_expanded ? 12 : 24),
       clipBehavior: Clip.antiAlias,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Semantics(
-          button: true,
-          expanded: _expanded,
-          child: InkWell(
-            key: const ValueKey('local-runtime-toggle'),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Row(children: [
-                if (widget.source == ConversationSource.omi || widget.source == ConversationSource.phone) ...[
-                  Flexible(child: RecordingSourceLabel(source: widget.source)),
-                  const SizedBox(width: 12),
-                ],
-                Icon(error == null ? Icons.computer : Icons.error_outline, size: 18, color: Colors.white70),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Tooltip(
-                    message: _summaryText(context),
-                    child: Text(_summaryText(context),
-                        key: const ValueKey('local-runtime-summary'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 13)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: Colors.white70),
-              ]),
-            ),
-          ),
-        ),
-        if (_expanded)
-          Padding(
-            key: const ValueKey('local-runtime-details'),
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _row('connection', context.l10n.localMacTitle, _connectionText(context), Icons.computer),
-              _row('audio', context.l10n.audioDataReceived, _audioText(context), Icons.graphic_eq),
-              _row('transcript', context.l10n.realtimeTranscript, _transcriptText(context), Icons.subtitles_outlined),
-              _row('diarization', context.l10n.instantSpeakerLabels, _diarizationText(context), Icons.people_outline),
-              ..._stageRows(context),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  key: const ValueKey('local-runtime-refresh'),
-                  onPressed: _canPoll && !_loading ? _refresh : null,
-                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: Text(context.l10n.refresh),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            button: true,
+            expanded: _expanded,
+            child: InkWell(
+              key: const ValueKey('local-runtime-toggle'),
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    if (widget.source == ConversationSource.omi || widget.source == ConversationSource.phone) ...[
+                      Flexible(child: RecordingSourceLabel(source: widget.source)),
+                      const SizedBox(width: 12),
+                    ],
+                    Icon(error == null ? Icons.computer : Icons.error_outline, size: 18, color: Colors.white70),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Tooltip(
+                        message: _summaryText(context),
+                        child: Text(
+                          _summaryText(context),
+                          key: const ValueKey('local-runtime-summary'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20, color: Colors.white70),
+                  ],
                 ),
               ),
-            ]),
+            ),
           ),
-      ]),
+          if (_expanded)
+            Padding(
+              key: const ValueKey('local-runtime-details'),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _row('connection', context.l10n.localMacTitle, _connectionText(context), Icons.computer),
+                  _row('audio', context.l10n.audioDataReceived, _audioText(context), Icons.graphic_eq),
+                  if (LocalAudioOutbox.shared case final outbox?)
+                    _row(
+                      'outbox',
+                      context.l10n.storageLocationPhone,
+                      '${outbox.deliveryFailed
+                              ? context.l10n.syncFailed
+                              : outbox.uploading
+                              ? context.l10n.syncingStatus
+                              : context.l10n.pending}: '
+                          '${outbox.pendingParts} · ${outbox.pendingBytes ~/ 1024} KiB',
+                      Icons.save_outlined,
+                    ),
+                  _row(
+                    'transcript',
+                    context.l10n.realtimeTranscript,
+                    _transcriptText(context),
+                    Icons.subtitles_outlined,
+                  ),
+                  _row(
+                    'diarization',
+                    context.l10n.instantSpeakerLabels,
+                    _diarizationText(context),
+                    Icons.people_outline,
+                  ),
+                  ..._stageRows(context),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      key: const ValueKey('local-runtime-refresh'),
+                      onPressed: _canPoll && !_loading
+                          ? () {
+                              LocalAudioOutbox.shared?.retry();
+                              _refresh();
+                            }
+                          : null,
+                      style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: Text(context.l10n.refresh),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -10821,5 +10821,18 @@
     "providerMisconfigured": "Preverite nastavitve ponudnika",
     "speakersCount": "{count} govorcev",
     "diarizationNotPerformed": "Diarizacija ni bila izvedena",
-    "diarizationFailed": "Diarizacija ni uspela"
+    "diarizationFailed": "Diarizacija ni uspela",
+    "localProcessingHelp": "Oznake govorcev v živo prihajajo od ponudnika Live. Diarizacija spodaj obdeluje končane posnetke.",
+    "localProcessingApplyHelp": "Pred preklopom ustavite snemanje. Izbrani strežniki prejmejo vaš zvok.",
+    "localProcessingKeyHelp": "Prazno polje ohrani shranjeni ključ. Drug strežnik potrebuje svoj ključ.",
+    "localProcessingUnsupported": "Za urejanje teh nastavitev posodobite seznanjeni strežnik.",
+    "localProcessingFinished": "Končani posnetki",
+    "localProcessingProbe": "Preizkusi povezavo",
+    "localProcessingPending": "Shranjene spremembe še niso aktivne. Tapnite Potrdi, da jih uveljavite.",
+    "localAudioServerUpdateRequired": "Pred snemanjem posodobite strežnik. Zvok, shranjen v telefonu, se ohrani.",
+    "liveTranslation": "Prevajanje v živo",
+    "liveTranslationFailed": "Prevod trenutno ni na voljo. Preverite ponudnika prevajanja v svojem Macu.",
+    "liveTranslationHelp": "Prevajajte prepis v živo v svojem Macu. Izvirnik se ohrani, prevod pa se prikaže pod vsako vrstico. Najprej dodajte ponudnika prevajanja v nastavitvah lokalne knjižnice.",
+    "liveTranslationTargetLanguage": "Prevedi v",
+    "liveTranslationUnconfigured": "Ponudnik prevajanja v vašem Macu ni nastavljen. Dodajte ga v nastavitvah lokalne knjižnice."
 }

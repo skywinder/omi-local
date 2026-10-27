@@ -3255,5 +3255,18 @@
     "providerMisconfigured": "Tarkista palveluntarjoajan asetukset",
     "speakersCount": "{count} puhujaa",
     "diarizationNotPerformed": "Puhujien erottelua ei tehty",
-    "diarizationFailed": "Puhujien erottelu epäonnistui"
+    "diarizationFailed": "Puhujien erottelu epäonnistui",
+    "localProcessingHelp": "Reaaliaikaiset puhujatunnisteet tulevat Live-palveluntarjoajalta. Alla oleva puhujanerottelu käsittelee valmiita tallenteita.",
+    "localProcessingApplyHelp": "Lopeta tallennus ennen vaihtamista. Valitut palvelimet vastaanottavat äänesi.",
+    "localProcessingKeyHelp": "Tyhjä kenttä säilyttää tallennetun avaimen. Toinen palvelin tarvitsee oman avaimensa.",
+    "localProcessingUnsupported": "Päivitä yhdistetty palvelin muokataksesi näitä asetuksia.",
+    "localProcessingFinished": "Valmiit tallenteet",
+    "localProcessingProbe": "Testaa yhteys",
+    "localProcessingPending": "Tallennetut muutokset eivät ole käytössä. Ota ne käyttöön napauttamalla Vahvista.",
+    "localAudioServerUpdateRequired": "Päivitä palvelin ennen tallennusta. Puhelimeen tallennettu ääni säilytetään.",
+    "liveTranslation": "Reaaliaikainen käännös",
+    "liveTranslationFailed": "Käännös ei ole juuri nyt saatavilla. Tarkista käännöspalvelun tarjoaja Macillasi.",
+    "liveTranslationHelp": "Käännä reaaliaikainen litterointi Macillasi. Alkuperäinen teksti säilyy, ja käännös näkyy jokaisen rivin alla. Lisää ensin käännöspalvelun tarjoaja paikallisen kirjaston asetuksissa.",
+    "liveTranslationTargetLanguage": "Käännä kielelle",
+    "liveTranslationUnconfigured": "Macillasi ei ole määritetty käännöspalvelun tarjoajaa. Lisää sellainen paikallisen kirjaston asetuksissa."
 }

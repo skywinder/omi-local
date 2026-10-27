@@ -3255,5 +3255,18 @@
     "providerMisconfigured": "Pārbaudiet pakalpojumu sniedzēja iestatījumus",
     "speakersCount": "{count} runātāji",
     "diarizationNotPerformed": "Runātāju atdalīšana nav veikta",
-    "diarizationFailed": "Runātāju atdalīšana neizdevās"
+    "diarizationFailed": "Runātāju atdalīšana neizdevās",
+    "localProcessingHelp": "Runātāju etiķetes tiešraidē nodrošina Live pakalpojumu sniedzējs. Zemāk esošā runātāju nošķiršana apstrādā pabeigtus ierakstus.",
+    "localProcessingApplyHelp": "Pirms pārslēgšanas apturiet ierakstīšanu. Atlasītie serveri saņem jūsu audio.",
+    "localProcessingKeyHelp": "Tukšs lauks saglabā esošo atslēgu. Citam serverim vajadzīga sava atslēga.",
+    "localProcessingUnsupported": "Lai mainītu šos iestatījumus, atjauniniet pārī savienoto serveri.",
+    "localProcessingFinished": "Pabeigtie ieraksti",
+    "localProcessingProbe": "Pārbaudīt savienojumu",
+    "localProcessingPending": "Saglabātās izmaiņas vēl nav aktīvas. Pieskarieties Apstiprināt, lai tās lietotu.",
+    "localAudioServerUpdateRequired": "Pirms ierakstīšanas atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.",
+    "liveTranslation": "Tulkojums reāllaikā",
+    "liveTranslationFailed": "Tulkojums pašlaik nav pieejams. Pārbaudiet tulkošanas pakalpojuma sniedzēju savā Mac datorā.",
+    "liveTranslationHelp": "Tulkojiet reāllaika transkripciju savā Mac datorā. Oriģināls tiek saglabāts, un tulkojums parādās zem katras rindas. Vispirms vietējās bibliotēkas iestatījumos pievienojiet tulkošanas pakalpojuma sniedzēju.",
+    "liveTranslationTargetLanguage": "Tulkot uz",
+    "liveTranslationUnconfigured": "Jūsu Mac datorā nav konfigurēts tulkošanas pakalpojuma sniedzējs. Pievienojiet to vietējās bibliotēkas iestatījumos."
 }

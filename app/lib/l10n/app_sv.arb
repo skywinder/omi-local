@@ -3255,5 +3255,18 @@
     "providerMisconfigured": "Kontrollera leverantörsinställningar",
     "speakersCount": "{count} talare",
     "diarizationNotPerformed": "Talarindelning inte utförd",
-    "diarizationFailed": "Talarindelning misslyckades"
+    "diarizationFailed": "Talarindelning misslyckades",
+    "localProcessingHelp": "Talaretiketter i realtid kommer från Live-leverantören. Diariseringen nedan bearbetar färdiga inspelningar.",
+    "localProcessingApplyHelp": "Stoppa inspelningen innan du byter. De valda servrarna tar emot ditt ljud.",
+    "localProcessingKeyHelp": "Ett tomt fält behåller den sparade nyckeln. En annan server kräver sin egen nyckel.",
+    "localProcessingUnsupported": "Uppdatera den parkopplade servern för att ändra dessa inställningar.",
+    "localProcessingFinished": "Färdiga inspelningar",
+    "localProcessingProbe": "Testa anslutning",
+    "localProcessingPending": "Sparade ändringar är inte aktiva. Tryck på Bekräfta för att tillämpa dem.",
+    "localAudioServerUpdateRequired": "Uppdatera servern före inspelning. Ljud som sparats på telefonen behålls.",
+    "liveTranslation": "Direktöversättning",
+    "liveTranslationFailed": "Översättning är inte tillgänglig just nu. Kontrollera översättningstjänsten på din Mac.",
+    "liveTranslationHelp": "Översätt transkriberingen i realtid på din Mac. Originalet behålls och översättningen visas under varje rad. Lägg först till en översättningstjänst i inställningarna för det lokala biblioteket.",
+    "liveTranslationTargetLanguage": "Översätt till",
+    "liveTranslationUnconfigured": "Ingen översättningstjänst är konfigurerad på din Mac. Lägg till en i inställningarna för det lokala biblioteket."
 }

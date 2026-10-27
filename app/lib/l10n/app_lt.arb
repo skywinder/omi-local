@@ -3255,5 +3255,18 @@
     "providerMisconfigured": "Patikrinkite tiekėjo nustatymus",
     "speakersCount": "Kalbėtojų: {count}",
     "diarizationNotPerformed": "Kalbėtojų atskyrimas neatliktas",
-    "diarizationFailed": "Kalbėtojų atskyrimas nepavyko"
+    "diarizationFailed": "Kalbėtojų atskyrimas nepavyko",
+    "localProcessingHelp": "Tiesiogines kalbėtojų žymas pateikia Live teikėjas. Toliau esantis kalbėtojų atskyrimas apdoroja baigtus įrašus.",
+    "localProcessingApplyHelp": "Prieš perjungdami sustabdykite įrašymą. Pasirinkti serveriai gauna jūsų garsą.",
+    "localProcessingKeyHelp": "Tuščias laukas išsaugo įrašytą raktą. Kitam serveriui reikia atskiro rakto.",
+    "localProcessingUnsupported": "Norėdami keisti šiuos nustatymus, atnaujinkite susietą serverį.",
+    "localProcessingFinished": "Baigti įrašai",
+    "localProcessingProbe": "Tikrinti ryšį",
+    "localProcessingPending": "Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.",
+    "localAudioServerUpdateRequired": "Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.",
+    "liveTranslation": "Vertimas realiuoju laiku",
+    "liveTranslationFailed": "Vertimas šiuo metu nepasiekiamas. Patikrinkite vertimo paslaugos teikėją savo „Mac“.",
+    "liveTranslationHelp": "Verskite tiesioginę transkripciją savo „Mac“. Originalas išsaugomas, o vertimas rodomas po kiekviena eilute. Pirmiausia vietinės bibliotekos nustatymuose pridėkite vertimo paslaugos teikėją.",
+    "liveTranslationTargetLanguage": "Versti į",
+    "liveTranslationUnconfigured": "Jūsų „Mac“ nesukonfigūruotas vertimo paslaugos teikėjas. Pridėkite jį vietinės bibliotekos nustatymuose."
 }

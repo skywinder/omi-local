@@ -3273,5 +3273,18 @@
     "providerMisconfigured": "Tjek udbyderindstillinger",
     "speakersCount": "{count} talere",
     "diarizationNotPerformed": "Diarisering ikke udført",
-    "diarizationFailed": "Diarisering mislykkedes"
+    "diarizationFailed": "Diarisering mislykkedes",
+    "localProcessingHelp": "Talermærker i realtid kommer fra Live-udbyderen. Diariseringen nedenfor behandler færdige optagelser.",
+    "localProcessingApplyHelp": "Stop optagelsen før du skifter. De valgte servere modtager din lyd.",
+    "localProcessingKeyHelp": "Et tomt felt beholder den gemte nøgle. En anden server kræver sin egen nøgle.",
+    "localProcessingUnsupported": "Opdater den parrede server for at redigere disse indstillinger.",
+    "localProcessingFinished": "Færdige optagelser",
+    "localProcessingProbe": "Test forbindelse",
+    "localProcessingPending": "Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.",
+    "localAudioServerUpdateRequired": "Opdater serveren før optagelse. Lyd gemt på telefonen bevares.",
+    "liveTranslation": "Oversættelse i realtid",
+    "liveTranslationFailed": "Oversættelse er ikke tilgængelig lige nu. Tjek oversættelsesudbyderen på din Mac.",
+    "liveTranslationHelp": "Oversæt den løbende transskription på din Mac. Originalen bevares, og oversættelsen vises under hver linje. Tilføj først en oversættelsesudbyder i indstillingerne for det lokale bibliotek.",
+    "liveTranslationTargetLanguage": "Oversæt til",
+    "liveTranslationUnconfigured": "Der er ikke konfigureret en oversættelsesudbyder på din Mac. Tilføj en i indstillingerne for det lokale bibliotek."
 }

@@ -28,6 +28,12 @@ Stop fences pending phone startup and reconnect; native Start waits for native S
 Phone actions and failure feedback must follow the selected input and capture state.
 Phone-microphone PCM16 must include `source=phone` on the initial listen socket
 as well as reconnects; the local capture sink uses that source to select WAV capture.
+Paired audio is journaled before live send and retained until an exact durable
+part receipt. Socket send is not proof of server storage. Verify server delivery
+capability before the preview-only protocol; old pairings refresh automatically.
+Keep pending parts bound to the original authenticated pairing, including key
+identity. Connection and storage failures must remain visible without deleting
+unacknowledged audio. See `../docs/RECORDING_DURABILITY.md`.
 Local Mac saves named servers in Keychain and keeps form edits in a separate draft.
 Migrate the legacy pairing/draft once without authenticating; an empty saved list
 must not restore deleted entries. Selecting, editing or deleting a saved server
@@ -39,8 +45,18 @@ keeps the form open with its values and an inline result, then refreshes runtime
 status even for unchanged credentials. Edits clear previous form results.
 Personal Team ATS permits HTTP only for the Tailscale CIDR in addition to existing
 local networking; never add a global arbitrary-load exception. IP/CIDR ATS exceptions
-require iOS 17 or newer. The optional iOS launch handoff passes only the local URL/app key through the existing
-environment channel into Keychain. Never embed `.env` or the ngrok authtoken in the app.
+require iOS 17 or newer. Optional private `.env.servers` presets pass a validated, one-shot catalog through the
+existing environment channel into Keychain only at final launch, after artifact verification. Build tools must
+receive no preset payload. Imports preserve manual edits/deletions and never connect automatically.
+Never embed env files, app keys or the ngrok authtoken in the app. Verify a new server before stopping capture;
+switch conversation cache namespaces by authenticated origin/key while preserving older caches.
+Processing settings in Local Mac use authenticated `/v1/local/processing` on the paired
+origin. Saved provider drafts are separate from activation; Live, finished STT and finished
+diarization select independently. Live speaker labels belong to the selected Live provider.
+The phone may edit only profiles marked `can_edit`; prepared native paths stay on the server.
+Blank API-key edits preserve the saved key; changed server identity requires a new key.
+Never retry a settings write automatically. After an uncertain result, refresh before another
+write; discard pending responses and close the editor when the authenticated pairing changes.
 Local runtime status uses authenticated `/v1/local/status`, not the public health probe.
 Keep Mac reachability, received-audio counters and live-ASR readiness distinct; errors
 must clear stale successful status. Poll only on the visible foreground screen.

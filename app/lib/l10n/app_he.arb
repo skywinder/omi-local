@@ -10821,5 +10821,18 @@
     "providerMisconfigured": "בדוק את הגדרות הספק",
     "speakersCount": "{count} דוברים",
     "diarizationNotPerformed": "זיהוי דוברים לא בוצע",
-    "diarizationFailed": "זיהוי דוברים נכשל"
+    "diarizationFailed": "זיהוי דוברים נכשל",
+    "localProcessingHelp": "תוויות דוברים בזמן אמת מגיעות מספק Live. הפרדת הדוברים למטה מעבדת הקלטות שהסתיימו.",
+    "localProcessingApplyHelp": "יש לעצור את ההקלטה לפני ההחלפה. השרתים שנבחרו מקבלים את השמע שלך.",
+    "localProcessingKeyHelp": "שדה ריק שומר על המפתח השמור. שרת אחר דורש מפתח משלו.",
+    "localProcessingUnsupported": "יש לעדכן את השרת המותאם כדי לערוך הגדרות אלה.",
+    "localProcessingFinished": "הקלטות שהסתיימו",
+    "localProcessingProbe": "בדיקת חיבור",
+    "localProcessingPending": "השינויים השמורים עדיין אינם פעילים. הקש על אישור כדי להחיל אותם.",
+    "localAudioServerUpdateRequired": "יש לעדכן את השרת לפני ההקלטה. השמע שנשמר בטלפון יישמר.",
+    "liveTranslation": "תרגום בזמן אמת",
+    "liveTranslationFailed": "התרגום אינו זמין כרגע. יש לבדוק את ספק התרגום ב-Mac שלך.",
+    "liveTranslationHelp": "ניתן לתרגם את התמלול החי ב-Mac שלך. הטקסט המקורי נשמר והתרגום מופיע מתחת לכל שורה. תחילה יש להוסיף ספק תרגום בהגדרות הספרייה המקומית.",
+    "liveTranslationTargetLanguage": "תרגום לשפה",
+    "liveTranslationUnconfigured": "לא הוגדר ספק תרגום ב-Mac שלך. יש להוסיף אחד בהגדרות הספרייה המקומית."
 }

@@ -3256,5 +3256,18 @@
     "providerMisconfigured": "प्रदाता सेटिंग जांचें",
     "speakersCount": "{count} वक्ता",
     "diarizationNotPerformed": "वक्ता पहचान नहीं की गई",
-    "diarizationFailed": "वक्ता पहचान विफल"
+    "diarizationFailed": "वक्ता पहचान विफल",
+    "localProcessingHelp": "लाइव वक्ता लेबल Live प्रदाता से आते हैं। नीचे का वक्ता विभाजन पूरी हुई रिकॉर्डिंग को प्रोसेस करता है।",
+    "localProcessingApplyHelp": "बदलने से पहले रिकॉर्डिंग रोकें। चुने गए सर्वर आपका ऑडियो प्राप्त करते हैं।",
+    "localProcessingKeyHelp": "खाली छोड़ने पर सहेजी गई कुंजी बनी रहती है। दूसरे सर्वर के लिए उसकी अपनी कुंजी चाहिए।",
+    "localProcessingUnsupported": "इन सेटिंग्स को बदलने के लिए जुड़े सर्वर को अपडेट करें।",
+    "localProcessingFinished": "पूरी हुई रिकॉर्डिंग",
+    "localProcessingProbe": "कनेक्शन जाँचें",
+    "localProcessingPending": "सहेजे गए बदलाव सक्रिय नहीं हैं। लागू करने के लिए पुष्टि करें पर टैप करें।",
+    "localAudioServerUpdateRequired": "रिकॉर्डिंग से पहले सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।",
+    "liveTranslation": "रीयल-टाइम अनुवाद",
+    "liveTranslationFailed": "अभी अनुवाद उपलब्ध नहीं है। अपने Mac पर अनुवाद सेवा प्रदाता की जाँच करें।",
+    "liveTranslationHelp": "अपने Mac पर लाइव ट्रांसक्रिप्ट का अनुवाद करें। मूल पाठ सुरक्षित रहता है और अनुवाद हर पंक्ति के नीचे दिखाई देता है। पहले स्थानीय लाइब्रेरी की सेटिंग में अनुवाद सेवा प्रदाता जोड़ें।",
+    "liveTranslationTargetLanguage": "इस भाषा में अनुवाद करें",
+    "liveTranslationUnconfigured": "आपके Mac पर अनुवाद सेवा प्रदाता सेट नहीं किया गया है। स्थानीय लाइब्रेरी की सेटिंग में एक जोड़ें।"
 }

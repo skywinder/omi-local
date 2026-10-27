@@ -10821,5 +10821,18 @@
     "providerMisconfigured": "Proverite podešavanja provajdera",
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
-    "diarizationFailed": "Dijarizacija nije uspela"
+    "diarizationFailed": "Dijarizacija nije uspela",
+    "localProcessingHelp": "Ознаке говорника уживо долазе од Live добављача. Дијаризација испод обрађује завршене снимке.",
+    "localProcessingApplyHelp": "Зауставите снимање пре пребацивања. Изабрани сервери примају ваш звук.",
+    "localProcessingKeyHelp": "Празно поље задржава сачувани кључ. Други сервер захтева свој кључ.",
+    "localProcessingUnsupported": "Ажурирајте упарени сервер да измените ова подешавања.",
+    "localProcessingFinished": "Завршени снимци",
+    "localProcessingProbe": "Провери везу",
+    "localProcessingPending": "Сачуване промене нису активне. Додирните Потврди да их примените.",
+    "localAudioServerUpdateRequired": "Ажурирајте сервер пре снимања. Звук сачуван на телефону остаје сачуван.",
+    "liveTranslation": "Превод уживо",
+    "liveTranslationFailed": "Превод тренутно није доступан. Проверите добављача превода на свом Mac рачунару.",
+    "liveTranslationHelp": "Преводите транскрипт уживо на свом Mac рачунару. Оригинал се чува, а превод се приказује испод сваког реда. Прво додајте добављача превода у подешавањима локалне библиотеке.",
+    "liveTranslationTargetLanguage": "Преведи на",
+    "liveTranslationUnconfigured": "Добављач превода није подешен на вашем Mac рачунару. Додајте га у подешавањима локалне библиотеке."
 }

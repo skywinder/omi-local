@@ -3260,5 +3260,18 @@
     "providerMisconfigured": "Kiểm tra cài đặt nhà cung cấp",
     "speakersCount": "{count} người nói",
     "diarizationNotPerformed": "Chưa phân tách người nói",
-    "diarizationFailed": "Phân tách người nói thất bại"
+    "diarizationFailed": "Phân tách người nói thất bại",
+    "localProcessingHelp": "Nhãn người nói trực tiếp đến từ nhà cung cấp Live. Tính năng phân tách người nói bên dưới xử lý bản ghi đã hoàn tất.",
+    "localProcessingApplyHelp": "Dừng ghi âm trước khi chuyển. Các máy chủ đã chọn sẽ nhận âm thanh của bạn.",
+    "localProcessingKeyHelp": "Để trống để giữ khóa đã lưu. Máy chủ khác cần khóa riêng.",
+    "localProcessingUnsupported": "Cập nhật máy chủ đã ghép nối để sửa các cài đặt này.",
+    "localProcessingFinished": "Bản ghi đã hoàn tất",
+    "localProcessingProbe": "Kiểm tra kết nối",
+    "localProcessingPending": "Các thay đổi đã lưu chưa có hiệu lực. Nhấn Xác nhận để áp dụng.",
+    "localAudioServerUpdateRequired": "Cập nhật máy chủ trước khi ghi âm. Âm thanh đã lưu trên điện thoại được giữ lại.",
+    "liveTranslation": "Dịch trực tiếp",
+    "liveTranslationFailed": "Hiện chưa thể dịch. Hãy kiểm tra nhà cung cấp dịch thuật trên Mac của bạn.",
+    "liveTranslationHelp": "Dịch bản chép lời trực tiếp trên Mac của bạn. Văn bản gốc được giữ lại; bản dịch xuất hiện bên dưới từng dòng. Trước tiên, hãy thêm nhà cung cấp dịch thuật trong phần cài đặt thư viện cục bộ.",
+    "liveTranslationTargetLanguage": "Dịch sang",
+    "liveTranslationUnconfigured": "Chưa cấu hình nhà cung cấp dịch thuật trên Mac của bạn. Hãy thêm một nhà cung cấp trong phần cài đặt thư viện cục bộ."
 }

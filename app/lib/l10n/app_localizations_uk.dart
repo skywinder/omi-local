@@ -9978,22 +9978,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get localMacServers => 'Збережені сервери';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Переклад наживо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Перекладати на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Перекладайте поточну транскрипцію на своєму Mac. Оригінал зберігається, а переклад з’являється під кожним рядком. Спочатку додайте провайдера перекладу в налаштуваннях локальної бібліотеки.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Провайдера перекладу не налаштовано на вашому Mac. Додайте його в налаштуваннях локальної бібліотеки.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Переклад зараз недоступний. Перевірте провайдера перекладу на своєму Mac.';
 
   @override
   String get diarization => 'Діаризація';
@@ -10014,4 +10013,29 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Помилка діаризації';
+
+  @override
+  String get localProcessingHelp =>
+      'Мітки мовців у реальному часі надходять від Live-провайдера. Діаризація нижче обробляє завершені записи.';
+
+  @override
+  String get localProcessingApplyHelp => 'Перед перемиканням зупиніть запис. Вибрані сервери отримують ваше аудіо.';
+
+  @override
+  String get localProcessingKeyHelp => 'Порожнє поле зберігає ключ. Іншому серверу потрібен власний ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Оновіть підключений сервер, щоб змінювати ці налаштування.';
+
+  @override
+  String get localProcessingFinished => 'Завершені записи';
+
+  @override
+  String get localProcessingProbe => 'Перевірити з’єднання';
+
+  @override
+  String get localProcessingPending => 'Збережені зміни ще не діють. Натисніть «Підтвердити», щоб застосувати.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Оновіть сервер перед записом. Збережене на телефоні аудіо залишиться.';
 }

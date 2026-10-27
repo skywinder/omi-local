@@ -9898,22 +9898,21 @@ class AppLocalizationsAr extends AppLocalizations {
   String get localMacServers => 'الخوادم المحفوظة';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'الترجمة الفورية';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'الترجمة إلى';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'ترجم النص المباشر على جهاز Mac الخاص بك. يبقى النص الأصلي، وتظهر الترجمة أسفل كل سطر. أضف أولًا مزوّد ترجمة في إعدادات المكتبة المحلية.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'لم يتم إعداد مزوّد ترجمة على جهاز Mac الخاص بك. أضف واحدًا في إعدادات المكتبة المحلية.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'الترجمة غير متاحة حاليًا. تحقّق من مزوّد الترجمة على جهاز Mac الخاص بك.';
 
   @override
   String get diarization => 'فصل المتحدثين';
@@ -9934,4 +9933,30 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'فشل فصل المتحدثين';
+
+  @override
+  String get localProcessingHelp =>
+      'تأتي تسميات المتحدثين المباشرة من مزوّد البث المباشر. يعالج فصل المتحدثين أدناه التسجيلات المكتملة.';
+
+  @override
+  String get localProcessingApplyHelp => 'أوقف التسجيل قبل التبديل. تتلقى الخوادم المحددة صوتك.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'اترك الحقل فارغًا للاحتفاظ بالمفتاح المحفوظ. يحتاج الخادم الآخر إلى مفتاحه الخاص.';
+
+  @override
+  String get localProcessingUnsupported => 'حدّث الخادم المقترن لتعديل هذه الإعدادات.';
+
+  @override
+  String get localProcessingFinished => 'التسجيلات المكتملة';
+
+  @override
+  String get localProcessingProbe => 'اختبار الاتصال';
+
+  @override
+  String get localProcessingPending => 'التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'حدّث الخادم قبل التسجيل. يُحتفظ بالصوت المحفوظ على الهاتف.';
 }

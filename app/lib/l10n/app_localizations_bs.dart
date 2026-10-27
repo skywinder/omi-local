@@ -9980,22 +9980,22 @@ class AppLocalizationsBs extends AppLocalizations {
   String get localMacServers => 'Sačuvani serveri';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Prevođenje uživo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Prevedi na';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Prevodite transkript uživo na svom Macu. Izvorni tekst ostaje, a prijevod se prikazuje ispod svakog reda. Najprije dodajte pružaoca usluge prevođenja u postavkama lokalne biblioteke.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Pružalac usluge prevođenja nije podešen na vašem Macu. Dodajte ga u postavkama lokalne biblioteke.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Prijevod trenutno nije dostupan. Provjerite pružaoca usluge prevođenja na svom Macu.';
 
   @override
   String get diarization => 'Dijarizacija';
@@ -10016,4 +10016,30 @@ class AppLocalizationsBs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Dijarizacija nije uspjela';
+
+  @override
+  String get localProcessingHelp =>
+      'Oznake govornika uživo dolaze od Live pružaoca usluge. Dijarizacija ispod obrađuje završene snimke.';
+
+  @override
+  String get localProcessingApplyHelp => 'Zaustavite snimanje prije prebacivanja. Odabrani serveri primaju vaš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prazno polje zadržava sačuvani ključ. Drugi server zahtijeva svoj ključ.';
+
+  @override
+  String get localProcessingUnsupported => 'Ažurirajte upareni server da uredite ove postavke.';
+
+  @override
+  String get localProcessingFinished => 'Završeni snimci';
+
+  @override
+  String get localProcessingProbe => 'Provjeri vezu';
+
+  @override
+  String get localProcessingPending => 'Sačuvane promjene nisu aktivne. Dodirnite Potvrdi da ih primijenite.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ažurirajte server prije snimanja. Zvuk sačuvan na telefonu ostaje sačuvan.';
 }

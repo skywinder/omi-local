@@ -10021,22 +10021,22 @@ class AppLocalizationsTa extends AppLocalizations {
   String get localMacServers => 'சேமித்த சேவையகங்கள்';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'நேரலை மொழிபெயர்ப்பு';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'இந்த மொழிக்கு மொழிபெயர்';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'உங்கள் Mac-இல் நேரலை உரைப்பதிவை மொழிபெயர்க்கவும். அசல் உரை தக்கவைக்கப்படும்; ஒவ்வொரு வரிக்கும் கீழே மொழிபெயர்ப்பு தோன்றும். முதலில் உள்ளூர் நூலக அமைப்புகளில் மொழிபெயர்ப்பு சேவை வழங்குநரைச் சேர்க்கவும்.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'உங்கள் Mac-இல் மொழிபெயர்ப்பு சேவை வழங்குநர் அமைக்கப்படவில்லை. உள்ளூர் நூலக அமைப்புகளில் ஒன்றைச் சேர்க்கவும்.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'இப்போது மொழிபெயர்ப்பு கிடைக்கவில்லை. உங்கள் Mac-இல் உள்ள மொழிபெயர்ப்பு சேவை வழங்குநரைச் சரிபார்க்கவும்.';
 
   @override
   String get diarization => 'பேச்சாளர் பிரிப்பு';
@@ -10057,4 +10057,32 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'பேச்சாளர் பிரிப்பு தோல்வி';
+
+  @override
+  String get localProcessingHelp =>
+      'நேரலைப் பேச்சாளர் அடையாளங்கள் Live வழங்குநரிடமிருந்து வருகின்றன. கீழே உள்ள பேச்சாளர் பிரிப்பு முடிந்த பதிவுகளைச் செயலாக்குகிறது.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'மாற்றுவதற்கு முன் பதிவை நிறுத்தவும். தேர்ந்தெடுத்த சேவையகங்கள் உங்கள் ஒலியைப் பெறுகின்றன.';
+
+  @override
+  String get localProcessingKeyHelp => 'காலியாக விட்டால் சேமித்த விசை இருக்கும். வேறு சேவையகத்திற்குத் தனி விசை தேவை.';
+
+  @override
+  String get localProcessingUnsupported => 'இந்த அமைப்புகளை மாற்ற இணைக்கப்பட்ட சேவையகத்தைப் புதுப்பிக்கவும்.';
+
+  @override
+  String get localProcessingFinished => 'முடிந்த பதிவுகள்';
+
+  @override
+  String get localProcessingProbe => 'இணைப்பைச் சோதிக்கவும்';
+
+  @override
+  String get localProcessingPending =>
+      'சேமித்த மாற்றங்கள் இன்னும் செயலில் இல்லை. பயன்படுத்த உறுதிப்படுத்து என்பதைத் தட்டவும்.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'பதிவுசெய்யும் முன் சேவையகத்தைப் புதுப்பிக்கவும். தொலைபேசியில் சேமித்த ஆடியோ பாதுகாக்கப்படும்.';
 }

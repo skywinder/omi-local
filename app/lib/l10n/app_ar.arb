@@ -3231,5 +3231,18 @@
     "providerMisconfigured": "تحقق من إعدادات المزوّد",
     "speakersCount": "{count} متحدثين",
     "diarizationNotPerformed": "لم يتم فصل المتحدثين",
-    "diarizationFailed": "فشل فصل المتحدثين"
+    "diarizationFailed": "فشل فصل المتحدثين",
+    "localProcessingHelp": "تأتي تسميات المتحدثين المباشرة من مزوّد البث المباشر. يعالج فصل المتحدثين أدناه التسجيلات المكتملة.",
+    "localProcessingApplyHelp": "أوقف التسجيل قبل التبديل. تتلقى الخوادم المحددة صوتك.",
+    "localProcessingKeyHelp": "اترك الحقل فارغًا للاحتفاظ بالمفتاح المحفوظ. يحتاج الخادم الآخر إلى مفتاحه الخاص.",
+    "localProcessingUnsupported": "حدّث الخادم المقترن لتعديل هذه الإعدادات.",
+    "localProcessingFinished": "التسجيلات المكتملة",
+    "localProcessingProbe": "اختبار الاتصال",
+    "localProcessingPending": "التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.",
+    "localAudioServerUpdateRequired": "حدّث الخادم قبل التسجيل. يُحتفظ بالصوت المحفوظ على الهاتف.",
+    "liveTranslation": "الترجمة الفورية",
+    "liveTranslationFailed": "الترجمة غير متاحة حاليًا. تحقّق من مزوّد الترجمة على جهاز Mac الخاص بك.",
+    "liveTranslationHelp": "ترجم النص المباشر على جهاز Mac الخاص بك. يبقى النص الأصلي، وتظهر الترجمة أسفل كل سطر. أضف أولًا مزوّد ترجمة في إعدادات المكتبة المحلية.",
+    "liveTranslationTargetLanguage": "الترجمة إلى",
+    "liveTranslationUnconfigured": "لم يتم إعداد مزوّد ترجمة على جهاز Mac الخاص بك. أضف واحدًا في إعدادات المكتبة المحلية."
 }

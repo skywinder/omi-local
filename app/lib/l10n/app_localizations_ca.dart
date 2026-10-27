@@ -10008,22 +10008,22 @@ class AppLocalizationsCa extends AppLocalizations {
   String get localMacServers => 'Servidors desats';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traducció en directe';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tradueix a';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Tradueix la transcripció en directe al teu Mac. Es conserva l’original i la traducció apareix sota cada línia. Afegeix primer un proveïdor de traducció a la configuració de la biblioteca local.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'No hi ha cap proveïdor de traducció configurat al teu Mac. Afegeix-ne un a la configuració de la biblioteca local.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'La traducció no està disponible ara mateix. Comprova el proveïdor de traducció al teu Mac.';
 
   @override
   String get diarization => 'Diarització';
@@ -10044,4 +10044,32 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Error de diarització';
+
+  @override
+  String get localProcessingHelp =>
+      'Les etiquetes de parlants en directe provenen del proveïdor Live. La diarització següent processa gravacions acabades.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Atura la gravació abans de canviar. Els servidors seleccionats reben el teu àudio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Deixa-ho en blanc per conservar la clau desada. Un altre servidor necessita la seva pròpia clau.';
+
+  @override
+  String get localProcessingUnsupported => 'Actualitza el servidor vinculat per editar aquests ajustos.';
+
+  @override
+  String get localProcessingFinished => 'Gravacions acabades';
+
+  @override
+  String get localProcessingProbe => 'Prova la connexió';
+
+  @override
+  String get localProcessingPending => 'Els canvis desats no estan actius. Toca Confirma per aplicar-los.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Actualitzeu el servidor abans de gravar. Es conserva l’àudio desat al telèfon.';
 }

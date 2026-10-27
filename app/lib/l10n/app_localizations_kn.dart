@@ -9978,22 +9978,22 @@ class AppLocalizationsKn extends AppLocalizations {
   String get localMacServers => 'ಉಳಿಸಿದ ಸರ್ವರ್‌ಗಳು';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ನೈಜ ಸಮಯದ ಅನುವಾದ';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ಅನುವಾದಿಸಬೇಕಾದ ಭಾಷೆ';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'ನಿಮ್ಮ Mac‌ನಲ್ಲಿ ನೇರ ಪ್ರತಿಲಿಪಿಯನ್ನು ಅನುವಾದಿಸಿ. ಮೂಲ ಪಠ್ಯ ಹಾಗೆಯೇ ಉಳಿಯುತ್ತದೆ; ಪ್ರತಿ ಸಾಲಿನ ಕೆಳಗೆ ಅನುವಾದ ಕಾಣಿಸುತ್ತದೆ. ಮೊದಲು ಸ್ಥಳೀಯ ಗ್ರಂಥಾಲಯದ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಿ.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'ನಿಮ್ಮ Mac‌ನಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ. ಸ್ಥಳೀಯ ಗ್ರಂಥಾಲಯದ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಿ.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'ಸದ್ಯಕ್ಕೆ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. ನಿಮ್ಮ Mac‌ನಲ್ಲಿರುವ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಪರಿಶೀಲಿಸಿ.';
 
   @override
   String get diarization => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ';
@@ -10014,4 +10014,30 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ';
+
+  @override
+  String get localProcessingHelp =>
+      'ನೇರ ವಕ್ತೃ ಲೇಬಲ್‌ಗಳು Live ಪೂರೈಕೆದಾರರಿಂದ ಬರುತ್ತವೆ. ಕೆಳಗಿನ ವಕ್ತೃ ಪ್ರತ್ಯೇಕಿಸುವಿಕೆ ಪೂರ್ಣಗೊಂಡ ರೆಕಾರ್ಡಿಂಗ್‌ಗಳನ್ನು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸುತ್ತದೆ.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'ಬದಲಾಯಿಸುವ ಮೊದಲು ರೆಕಾರ್ಡಿಂಗ್ ನಿಲ್ಲಿಸಿ. ಆಯ್ಕೆ ಮಾಡಿದ ಸರ್ವರ್‌ಗಳು ನಿಮ್ಮ ಆಡಿಯೊ ಪಡೆಯುತ್ತವೆ.';
+
+  @override
+  String get localProcessingKeyHelp => 'ಖಾಲಿ ಬಿಟ್ಟರೆ ಉಳಿಸಿದ ಕೀ ಉಳಿಯುತ್ತದೆ. ಬೇರೆ ಸರ್ವರ್‌ಗೆ ಅದರದೇ ಕೀ ಅಗತ್ಯ.';
+
+  @override
+  String get localProcessingUnsupported => 'ಈ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಬದಲಾಯಿಸಲು ಜೋಡಿಸಿದ ಸರ್ವರ್ ನವೀಕರಿಸಿ.';
+
+  @override
+  String get localProcessingFinished => 'ಪೂರ್ಣಗೊಂಡ ರೆಕಾರ್ಡಿಂಗ್‌ಗಳು';
+
+  @override
+  String get localProcessingProbe => 'ಸಂಪರ್ಕ ಪರೀಕ್ಷಿಸಿ';
+
+  @override
+  String get localProcessingPending => 'ಉಳಿಸಿದ ಬದಲಾವಣೆಗಳು ಸಕ್ರಿಯವಾಗಿಲ್ಲ. ಅನ್ವಯಿಸಲು ದೃಢೀಕರಿಸಿ ಒತ್ತಿರಿ.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'ರೆಕಾರ್ಡಿಂಗ್ ಮೊದಲು ಸರ್ವರ್ ನವೀಕರಿಸಿ. ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ಆಡಿಯೊ ಉಳಿಯುತ್ತದೆ.';
 }

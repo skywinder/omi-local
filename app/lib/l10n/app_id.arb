@@ -3297,5 +3297,18 @@
     "providerMisconfigured": "Periksa pengaturan penyedia",
     "speakersCount": "{count} pembicara",
     "diarizationNotPerformed": "Pemisahan pembicara tidak dilakukan",
-    "diarizationFailed": "Pemisahan pembicara gagal"
+    "diarizationFailed": "Pemisahan pembicara gagal",
+    "localProcessingHelp": "Label pembicara langsung berasal dari penyedia Live. Diarisasi di bawah memproses rekaman yang selesai.",
+    "localProcessingApplyHelp": "Hentikan perekaman sebelum beralih. Server yang dipilih menerima audio Anda.",
+    "localProcessingKeyHelp": "Kosongkan untuk mempertahankan kunci tersimpan. Server lain memerlukan kuncinya sendiri.",
+    "localProcessingUnsupported": "Perbarui server yang dipasangkan untuk mengedit pengaturan ini.",
+    "localProcessingFinished": "Rekaman selesai",
+    "localProcessingProbe": "Uji koneksi",
+    "localProcessingPending": "Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.",
+    "localAudioServerUpdateRequired": "Perbarui server sebelum merekam. Audio yang tersimpan di ponsel tetap disimpan.",
+    "liveTranslation": "Terjemahan langsung",
+    "liveTranslationFailed": "Terjemahan sedang tidak tersedia. Periksa penyedia terjemahan di Mac Anda.",
+    "liveTranslationHelp": "Terjemahkan transkrip langsung di Mac Anda. Teks asli tetap tersimpan dan terjemahan muncul di bawah setiap baris. Tambahkan penyedia terjemahan di pengaturan pustaka lokal terlebih dahulu.",
+    "liveTranslationTargetLanguage": "Terjemahkan ke",
+    "liveTranslationUnconfigured": "Penyedia terjemahan belum dikonfigurasi di Mac Anda. Tambahkan penyedia di pengaturan pustaka lokal."
 }

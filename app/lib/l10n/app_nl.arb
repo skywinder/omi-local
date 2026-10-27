@@ -3255,5 +3255,18 @@
     "providerMisconfigured": "Controleer providerinstellingen",
     "speakersCount": "{count} sprekers",
     "diarizationNotPerformed": "Sprekerherkenning niet uitgevoerd",
-    "diarizationFailed": "Sprekerherkenning mislukt"
+    "diarizationFailed": "Sprekerherkenning mislukt",
+    "localProcessingHelp": "Live-sprekerlabels komen van de Live-provider. De diarizatie hieronder verwerkt voltooide opnamen.",
+    "localProcessingApplyHelp": "Stop de opname voordat je wisselt. De geselecteerde servers ontvangen je audio.",
+    "localProcessingKeyHelp": "Laat leeg om de opgeslagen sleutel te behouden. Een andere server heeft een eigen sleutel nodig.",
+    "localProcessingUnsupported": "Werk de gekoppelde server bij om deze instellingen te wijzigen.",
+    "localProcessingFinished": "Voltooide opnamen",
+    "localProcessingProbe": "Verbinding testen",
+    "localProcessingPending": "Opgeslagen wijzigingen zijn nog niet actief. Tik op Bevestigen om ze toe te passen.",
+    "localAudioServerUpdateRequired": "Werk de server bij voordat je opneemt. Audio die op de telefoon is opgeslagen blijft bewaard.",
+    "liveTranslation": "Livevertaling",
+    "liveTranslationFailed": "Vertaling is momenteel niet beschikbaar. Controleer de vertaaldienst op je Mac.",
+    "liveTranslationHelp": "Vertaal het live transcript op je Mac. Het origineel blijft bewaard; de vertaling verschijnt onder elke regel. Voeg eerst een vertaaldienst toe in de instellingen van de lokale bibliotheek.",
+    "liveTranslationTargetLanguage": "Vertalen naar",
+    "liveTranslationUnconfigured": "Er is geen vertaaldienst ingesteld op je Mac. Voeg er een toe in de instellingen van de lokale bibliotheek."
 }

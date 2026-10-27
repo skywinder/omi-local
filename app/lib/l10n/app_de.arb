@@ -3232,5 +3232,18 @@
     "providerMisconfigured": "Anbietereinstellungen prüfen",
     "speakersCount": "{count} Sprecher",
     "diarizationNotPerformed": "Sprechertrennung nicht durchgeführt",
-    "diarizationFailed": "Sprechertrennung fehlgeschlagen"
+    "diarizationFailed": "Sprechertrennung fehlgeschlagen",
+    "localProcessingHelp": "Live-Sprechermarkierungen stammen vom Live-Anbieter. Die Diarisierung unten verarbeitet abgeschlossene Aufnahmen.",
+    "localProcessingApplyHelp": "Stoppe die Aufnahme vor dem Wechsel. Die gewählten Server erhalten dein Audio.",
+    "localProcessingKeyHelp": "Ein leeres Feld behält den gespeicherten Schlüssel. Ein anderer Server benötigt einen eigenen Schlüssel.",
+    "localProcessingUnsupported": "Aktualisiere den gekoppelten Server, um diese Einstellungen zu bearbeiten.",
+    "localProcessingFinished": "Abgeschlossene Aufnahmen",
+    "localProcessingProbe": "Verbindung testen",
+    "localProcessingPending": "Gespeicherte Änderungen sind noch nicht aktiv. Tippe auf Bestätigen, um sie anzuwenden.",
+    "localAudioServerUpdateRequired": "Aktualisiere den Server vor der Aufnahme. Auf dem Telefon gespeicherte Audiodaten bleiben erhalten.",
+    "liveTranslation": "Live-Übersetzung",
+    "liveTranslationFailed": "Die Übersetzung ist derzeit nicht verfügbar. Prüfe den Übersetzungsanbieter auf deinem Mac.",
+    "liveTranslationHelp": "Übersetze das Live-Transkript auf deinem Mac. Das Original bleibt erhalten; die Übersetzung erscheint unter jeder Zeile. Füge zuerst einen Übersetzungsanbieter in den Einstellungen der lokalen Bibliothek hinzu.",
+    "liveTranslationTargetLanguage": "Übersetzen in",
+    "liveTranslationUnconfigured": "Auf deinem Mac ist kein Übersetzungsanbieter eingerichtet. Füge einen in den Einstellungen der lokalen Bibliothek hinzu."
 }

@@ -9776,22 +9776,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get localMacServers => '저장된 서버';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => '실시간 번역';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => '번역 대상 언어';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Mac에서 실시간 받아쓰기를 번역합니다. 원문은 유지되며 각 줄 아래에 번역이 표시됩니다. 먼저 로컬 라이브러리 설정에서 번역 제공업체를 추가하세요.';
 
   @override
-  String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+  String get liveTranslationUnconfigured => 'Mac에 번역 제공업체가 설정되어 있지 않습니다. 로컬 라이브러리 설정에서 추가하세요.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => '현재 번역을 사용할 수 없습니다. Mac의 번역 제공업체를 확인하세요.';
 
   @override
   String get diarization => '화자 분리';
@@ -9812,4 +9810,28 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get diarizationFailed => '화자 분리 실패';
+
+  @override
+  String get localProcessingHelp => '실시간 화자 라벨은 Live 제공업체에서 받습니다. 아래 화자 분리는 완료된 녹음을 처리합니다.';
+
+  @override
+  String get localProcessingApplyHelp => '전환하기 전에 녹음을 중지하세요. 선택한 서버로 오디오가 전송됩니다.';
+
+  @override
+  String get localProcessingKeyHelp => '비워 두면 저장된 키가 유지됩니다. 다른 서버에는 해당 서버의 키가 필요합니다.';
+
+  @override
+  String get localProcessingUnsupported => '이 설정을 수정하려면 연결된 서버를 업데이트하세요.';
+
+  @override
+  String get localProcessingFinished => '완료된 녹음';
+
+  @override
+  String get localProcessingProbe => '연결 테스트';
+
+  @override
+  String get localProcessingPending => '저장된 변경 사항이 아직 적용되지 않았습니다. 확인을 눌러 적용하세요.';
+
+  @override
+  String get localAudioServerUpdateRequired => '녹음하기 전에 서버를 업데이트하세요. 휴대폰에 저장된 오디오는 유지됩니다.';
 }

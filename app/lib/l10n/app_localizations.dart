@@ -18608,6 +18608,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Diarization failed'**
   String get diarizationFailed;
+
+  /// No description provided for @localProcessingHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Live speaker labels come from the Live provider. Diarization below processes finished recordings.'**
+  String get localProcessingHelp;
+
+  /// No description provided for @localProcessingApplyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop recording before switching. Selected servers receive your audio.'**
+  String get localProcessingApplyHelp;
+
+  /// No description provided for @localProcessingKeyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Blank keeps the saved key. A different server requires its own key.'**
+  String get localProcessingKeyHelp;
+
+  /// No description provided for @localProcessingUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the paired server to edit these settings.'**
+  String get localProcessingUnsupported;
+
+  /// No description provided for @localProcessingFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished recordings'**
+  String get localProcessingFinished;
+
+  /// No description provided for @localProcessingProbe.
+  ///
+  /// In en, this message translates to:
+  /// **'Test connection'**
+  String get localProcessingProbe;
+
+  /// No description provided for @localProcessingPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved changes are not active. Tap Confirm to apply.'**
+  String get localProcessingPending;
+
+  /// No description provided for @localAudioServerUpdateRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the server before recording. Audio saved on the phone is kept.'**
+  String get localAudioServerUpdateRequired;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

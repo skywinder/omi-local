@@ -3291,5 +3291,18 @@
     "providerMisconfigured": "Verifique as configurações do provedor",
     "speakersCount": "{count} falantes",
     "diarizationNotPerformed": "Diarização não realizada",
-    "diarizationFailed": "Falha na diarização"
+    "diarizationFailed": "Falha na diarização",
+    "localProcessingHelp": "As etiquetas dos falantes ao vivo vêm do provedor Live. A diarização abaixo processa gravações concluídas.",
+    "localProcessingApplyHelp": "Pare a gravação antes de trocar. Os servidores selecionados recebem seu áudio.",
+    "localProcessingKeyHelp": "Deixe em branco para manter a chave salva. Outro servidor exige sua própria chave.",
+    "localProcessingUnsupported": "Atualize o servidor emparelhado para editar estas configurações.",
+    "localProcessingFinished": "Gravações concluídas",
+    "localProcessingProbe": "Testar conexão",
+    "localProcessingPending": "As alterações salvas ainda não estão ativas. Toque em Confirmar para aplicá-las.",
+    "localAudioServerUpdateRequired": "Atualize o servidor antes de gravar. O áudio salvo no telefone é mantido.",
+    "liveTranslation": "Tradução ao vivo",
+    "liveTranslationFailed": "A tradução não está disponível no momento. Verifique o provedor de tradução no seu Mac.",
+    "liveTranslationHelp": "Traduza a transcrição ao vivo no seu Mac. O original é mantido; a tradução aparece abaixo de cada linha. Primeiro, adicione um provedor de Tradução nas configurações da biblioteca local.",
+    "liveTranslationTargetLanguage": "Traduzir para",
+    "liveTranslationUnconfigured": "O provedor de tradução não está configurado no seu Mac. Adicione um nas configurações da biblioteca local."
 }

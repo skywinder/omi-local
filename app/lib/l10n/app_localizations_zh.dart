@@ -9754,22 +9754,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get localMacServers => '已保存的服务器';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => '实时翻译';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => '翻译为';
 
   @override
-  String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+  String get liveTranslationHelp => '在 Mac 上翻译实时转写。原文会保留，译文显示在每行下方。请先在本地资料库设置中添加翻译服务提供商。';
 
   @override
-  String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+  String get liveTranslationUnconfigured => '尚未在 Mac 上配置翻译服务提供商。请在本地资料库设置中添加。';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => '目前无法翻译。请检查 Mac 上的翻译服务提供商。';
 
   @override
   String get diarization => '说话人分离';
@@ -9790,4 +9787,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get diarizationFailed => '说话人分离失败';
+
+  @override
+  String get localProcessingHelp => '实时说话人标签来自 Live 提供商。下方的说话人分离处理已完成的录音。';
+
+  @override
+  String get localProcessingApplyHelp => '切换前请停止录音。所选服务器将接收您的音频。';
+
+  @override
+  String get localProcessingKeyHelp => '留空可保留已保存的密钥。其他服务器需要自己的密钥。';
+
+  @override
+  String get localProcessingUnsupported => '请更新已配对的服务器以编辑这些设置。';
+
+  @override
+  String get localProcessingFinished => '已完成的录音';
+
+  @override
+  String get localProcessingProbe => '测试连接';
+
+  @override
+  String get localProcessingPending => '已保存的更改尚未生效。点击“确认”以应用。';
+
+  @override
+  String get localAudioServerUpdateRequired => '录音前请更新服务器。手机上保存的音频会保留。';
 }

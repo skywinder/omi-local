@@ -9945,22 +9945,21 @@ class AppLocalizationsEt extends AppLocalizations {
   String get localMacServers => 'Salvestatud serverid';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Reaalajas tõlge';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tõlke sihtkeel';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Tõlgi oma Macis reaalajas transkriptsiooni. Algtekst säilib ja tõlge kuvatakse iga rea all. Lisa esmalt kohaliku teegi seadetes tõlketeenuse pakkuja.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Sinu Macis pole tõlketeenuse pakkujat seadistatud. Lisa see kohaliku teegi seadetes.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Tõlge pole praegu saadaval. Kontrolli oma Macis tõlketeenuse pakkujat.';
 
   @override
   String get diarization => 'Kõnelejate eristamine';
@@ -9981,4 +9980,30 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
+
+  @override
+  String get localProcessingHelp =>
+      'Kõnelejate reaalajas sildid tulevad Live-teenusepakkujalt. Allolev diariseerimine töötleb lõpetatud salvestisi.';
+
+  @override
+  String get localProcessingApplyHelp => 'Peata salvestamine enne vahetamist. Valitud serverid saavad sinu heli.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tühi väli säilitab salvestatud võtme. Teine server vajab oma võtit.';
+
+  @override
+  String get localProcessingUnsupported => 'Nende seadete muutmiseks uuenda seotud serverit.';
+
+  @override
+  String get localProcessingFinished => 'Lõpetatud salvestised';
+
+  @override
+  String get localProcessingProbe => 'Kontrolli ühendust';
+
+  @override
+  String get localProcessingPending => 'Salvestatud muudatused pole aktiivsed. Rakendamiseks puuduta Kinnita.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Uuenda serverit enne salvestamist. Telefonis salvestatud heli säilitatakse.';
 }

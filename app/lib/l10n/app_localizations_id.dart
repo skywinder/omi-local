@@ -9959,22 +9959,21 @@ class AppLocalizationsId extends AppLocalizations {
   String get localMacServers => 'Server tersimpan';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Terjemahkan ke';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Terjemahkan transkrip langsung di Mac Anda. Teks asli tetap tersimpan dan terjemahan muncul di bawah setiap baris. Tambahkan penyedia terjemahan di pengaturan pustaka lokal terlebih dahulu.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Penyedia terjemahan belum dikonfigurasi di Mac Anda. Tambahkan penyedia di pengaturan pustaka lokal.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Terjemahan sedang tidak tersedia. Periksa penyedia terjemahan di Mac Anda.';
 
   @override
   String get diarization => 'Pemisahan pembicara';
@@ -9995,4 +9994,31 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan pembicara gagal';
+
+  @override
+  String get localProcessingHelp =>
+      'Label pembicara langsung berasal dari penyedia Live. Diarisasi di bawah memproses rekaman yang selesai.';
+
+  @override
+  String get localProcessingApplyHelp => 'Hentikan perekaman sebelum beralih. Server yang dipilih menerima audio Anda.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Kosongkan untuk mempertahankan kunci tersimpan. Server lain memerlukan kuncinya sendiri.';
+
+  @override
+  String get localProcessingUnsupported => 'Perbarui server yang dipasangkan untuk mengedit pengaturan ini.';
+
+  @override
+  String get localProcessingFinished => 'Rekaman selesai';
+
+  @override
+  String get localProcessingProbe => 'Uji koneksi';
+
+  @override
+  String get localProcessingPending => 'Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Perbarui server sebelum merekam. Audio yang tersimpan di ponsel tetap disimpan.';
 }

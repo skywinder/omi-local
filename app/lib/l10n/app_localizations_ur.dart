@@ -9958,22 +9958,21 @@ class AppLocalizationsUr extends AppLocalizations {
   String get localMacServers => 'محفوظ کردہ سرورز';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'براہ راست ترجمہ';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'اس زبان میں ترجمہ کریں';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'اپنے Mac پر براہ راست نقلِ تحریر کا ترجمہ کریں۔ اصل متن برقرار رہتا ہے اور ترجمہ ہر سطر کے نیچے نظر آتا ہے۔ پہلے مقامی لائبریری کی ترتیبات میں ترجمہ فراہم کنندہ شامل کریں۔';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'آپ کے Mac پر ترجمہ فراہم کنندہ ترتیب نہیں دیا گیا۔ مقامی لائبریری کی ترتیبات میں ایک فراہم کنندہ شامل کریں۔';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'ترجمہ اس وقت دستیاب نہیں ہے۔ اپنے Mac پر ترجمہ فراہم کنندہ کی جانچ کریں۔';
 
   @override
   String get diarization => 'مقررین کی شناخت';
@@ -9994,4 +9993,30 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'مقررین کی شناخت ناکام';
+
+  @override
+  String get localProcessingHelp =>
+      'لائیو بولنے والوں کے لیبل Live فراہم کنندہ سے آتے ہیں۔ نیچے بولنے والوں کی علیحدگی مکمل ریکارڈنگز پر کارروائی کرتی ہے۔';
+
+  @override
+  String get localProcessingApplyHelp => 'تبدیل کرنے سے پہلے ریکارڈنگ روکیں۔ منتخب سرورز آپ کی آڈیو وصول کرتے ہیں۔';
+
+  @override
+  String get localProcessingKeyHelp => 'خالی چھوڑنے سے محفوظ کلید برقرار رہتی ہے۔ دوسرے سرور کو اپنی کلید درکار ہے۔';
+
+  @override
+  String get localProcessingUnsupported => 'ان ترتیبات میں ترمیم کرنے کے لیے منسلک سرور اپ ڈیٹ کریں۔';
+
+  @override
+  String get localProcessingFinished => 'مکمل ریکارڈنگز';
+
+  @override
+  String get localProcessingProbe => 'کنکشن جانچیں';
+
+  @override
+  String get localProcessingPending =>
+      'محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔';
+
+  @override
+  String get localAudioServerUpdateRequired => 'ریکارڈنگ سے پہلے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
 }

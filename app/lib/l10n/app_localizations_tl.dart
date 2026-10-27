@@ -10042,22 +10042,22 @@ class AppLocalizationsTl extends AppLocalizations {
   String get localMacServers => 'Mga naka-save na server';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Pagsasalin nang live';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Isalin sa';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Isalin ang live na transcript sa iyong Mac. Mananatili ang orihinal; lalabas ang salin sa ilalim ng bawat linya. Magdagdag muna ng tagapagbigay ng pagsasalin sa mga setting ng lokal na aklatan.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Walang naka-configure na tagapagbigay ng pagsasalin sa iyong Mac. Magdagdag nito sa mga setting ng lokal na aklatan.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Hindi available ang pagsasalin sa ngayon. Suriin ang tagapagbigay ng pagsasalin sa iyong Mac.';
 
   @override
   String get diarization => 'Pagkilala ng nagsasalita';
@@ -10078,4 +10078,33 @@ class AppLocalizationsTl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Nabigo ang pagkilala ng nagsasalita';
+
+  @override
+  String get localProcessingHelp =>
+      'Galing sa Live provider ang mga live na label ng nagsasalita. Pinoproseso ng diarization sa ibaba ang mga tapos nang recording.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Ihinto ang pag-record bago lumipat. Matatanggap ng mga napiling server ang iyong audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Iwanang blangko para panatilihin ang naka-save na key. Kailangan ng ibang server ang sarili nitong key.';
+
+  @override
+  String get localProcessingUnsupported => 'I-update ang nakapares na server para baguhin ang mga setting na ito.';
+
+  @override
+  String get localProcessingFinished => 'Mga tapos na recording';
+
+  @override
+  String get localProcessingProbe => 'Subukan ang koneksyon';
+
+  @override
+  String get localProcessingPending =>
+      'Hindi pa aktibo ang mga na-save na pagbabago. I-tap ang Kumpirmahin para ilapat.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'I-update ang server bago mag-record. Mananatili ang audio na naka-save sa telepono.';
 }

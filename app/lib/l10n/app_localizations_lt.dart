@@ -9976,22 +9976,22 @@ class AppLocalizationsLt extends AppLocalizations {
   String get localMacServers => 'Išsaugoti serveriai';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Vertimas realiuoju laiku';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Versti į';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Verskite tiesioginę transkripciją savo „Mac“. Originalas išsaugomas, o vertimas rodomas po kiekviena eilute. Pirmiausia vietinės bibliotekos nustatymuose pridėkite vertimo paslaugos teikėją.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Jūsų „Mac“ nesukonfigūruotas vertimo paslaugos teikėjas. Pridėkite jį vietinės bibliotekos nustatymuose.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Vertimas šiuo metu nepasiekiamas. Patikrinkite vertimo paslaugos teikėją savo „Mac“.';
 
   @override
   String get diarization => 'Kalbėtojų atskyrimas';
@@ -10012,4 +10012,32 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kalbėtojų atskyrimas nepavyko';
+
+  @override
+  String get localProcessingHelp =>
+      'Tiesiogines kalbėtojų žymas pateikia Live teikėjas. Toliau esantis kalbėtojų atskyrimas apdoroja baigtus įrašus.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Prieš perjungdami sustabdykite įrašymą. Pasirinkti serveriai gauna jūsų garsą.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tuščias laukas išsaugo įrašytą raktą. Kitam serveriui reikia atskiro rakto.';
+
+  @override
+  String get localProcessingUnsupported => 'Norėdami keisti šiuos nustatymus, atnaujinkite susietą serverį.';
+
+  @override
+  String get localProcessingFinished => 'Baigti įrašai';
+
+  @override
+  String get localProcessingProbe => 'Tikrinti ryšį';
+
+  @override
+  String get localProcessingPending =>
+      'Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Prieš įrašydami atnaujinkite serverį. Telefone išsaugotas garsas išlieka.';
 }

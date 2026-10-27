@@ -10821,5 +10821,18 @@
     "providerMisconfigured": "فراہم کنندہ کی ترتیبات چیک کریں",
     "speakersCount": "{count} مقررین",
     "diarizationNotPerformed": "مقررین کی شناخت نہیں ہوئی",
-    "diarizationFailed": "مقررین کی شناخت ناکام"
+    "diarizationFailed": "مقررین کی شناخت ناکام",
+    "localProcessingHelp": "لائیو بولنے والوں کے لیبل Live فراہم کنندہ سے آتے ہیں۔ نیچے بولنے والوں کی علیحدگی مکمل ریکارڈنگز پر کارروائی کرتی ہے۔",
+    "localProcessingApplyHelp": "تبدیل کرنے سے پہلے ریکارڈنگ روکیں۔ منتخب سرورز آپ کی آڈیو وصول کرتے ہیں۔",
+    "localProcessingKeyHelp": "خالی چھوڑنے سے محفوظ کلید برقرار رہتی ہے۔ دوسرے سرور کو اپنی کلید درکار ہے۔",
+    "localProcessingUnsupported": "ان ترتیبات میں ترمیم کرنے کے لیے منسلک سرور اپ ڈیٹ کریں۔",
+    "localProcessingFinished": "مکمل ریکارڈنگز",
+    "localProcessingProbe": "کنکشن جانچیں",
+    "localProcessingPending": "محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔",
+    "localAudioServerUpdateRequired": "ریکارڈنگ سے پہلے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔",
+    "liveTranslation": "براہ راست ترجمہ",
+    "liveTranslationFailed": "ترجمہ اس وقت دستیاب نہیں ہے۔ اپنے Mac پر ترجمہ فراہم کنندہ کی جانچ کریں۔",
+    "liveTranslationHelp": "اپنے Mac پر براہ راست نقلِ تحریر کا ترجمہ کریں۔ اصل متن برقرار رہتا ہے اور ترجمہ ہر سطر کے نیچے نظر آتا ہے۔ پہلے مقامی لائبریری کی ترتیبات میں ترجمہ فراہم کنندہ شامل کریں۔",
+    "liveTranslationTargetLanguage": "اس زبان میں ترجمہ کریں",
+    "liveTranslationUnconfigured": "آپ کے Mac پر ترجمہ فراہم کنندہ ترتیب نہیں دیا گیا۔ مقامی لائبریری کی ترتیبات میں ایک فراہم کنندہ شامل کریں۔"
 }

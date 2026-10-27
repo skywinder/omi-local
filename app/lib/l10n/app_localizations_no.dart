@@ -9954,22 +9954,22 @@ class AppLocalizationsNo extends AppLocalizations {
   String get localMacServers => 'Lagrede servere';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Direkteoversettelse';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Oversett til';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Oversett den løpende transkripsjonen på Macen din. Originalen beholdes; oversettelsen vises under hver linje. Legg først til en oversettelsesleverandør i innstillingene for det lokale biblioteket.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Ingen oversettelsesleverandør er konfigurert på Macen din. Legg til en i innstillingene for det lokale biblioteket.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Oversettelse er ikke tilgjengelig akkurat nå. Sjekk oversettelsesleverandøren på Macen din.';
 
   @override
   String get diarization => 'Talerinndeling';
@@ -9990,4 +9990,30 @@ class AppLocalizationsNo extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Talerinndeling mislyktes';
+
+  @override
+  String get localProcessingHelp =>
+      'Talermarkeringer i sanntid kommer fra Live-leverandøren. Diariseringen nedenfor behandler ferdige opptak.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stopp opptaket før du bytter. De valgte serverne mottar lyden din.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Et tomt felt beholder den lagrede nøkkelen. En annen server krever sin egen nøkkel.';
+
+  @override
+  String get localProcessingUnsupported => 'Oppdater den sammenkoblede serveren for å endre disse innstillingene.';
+
+  @override
+  String get localProcessingFinished => 'Ferdige opptak';
+
+  @override
+  String get localProcessingProbe => 'Test tilkobling';
+
+  @override
+  String get localProcessingPending => 'Lagrede endringer er ikke aktive. Trykk på Bekreft for å bruke dem.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Oppdater serveren før opptak. Lyd som er lagret på telefonen beholdes.';
 }

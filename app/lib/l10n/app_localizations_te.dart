@@ -9995,22 +9995,21 @@ class AppLocalizationsTe extends AppLocalizations {
   String get localMacServers => 'సేవ్ చేసిన సర్వర్లు';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ప్రత్యక్ష అనువాదం';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ఈ భాషలోకి అనువదించు';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'మీ Macలో ప్రత్యక్ష లిప్యంతరీకరణను అనువదించండి. అసలు పాఠ్యం అలాగే ఉంటుంది; ప్రతి పంక్తి కింద అనువాదం కనిపిస్తుంది. ముందుగా స్థానిక లైబ్రరీ సెట్టింగ్‌లలో అనువాద సేవా ప్రదాతను జోడించండి.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'మీ Macలో అనువాద సేవా ప్రదాత కాన్ఫిగర్ చేయబడలేదు. స్థానిక లైబ్రరీ సెట్టింగ్‌లలో ఒకరిని జోడించండి.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'ప్రస్తుతం అనువాదం అందుబాటులో లేదు. మీ Macలో అనువాద సేవా ప్రదాతను తనిఖీ చేయండి.';
 
   @override
   String get diarization => 'వక్తల విభజన';
@@ -10031,4 +10030,31 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'వక్తల విభజన విఫలమైంది';
+
+  @override
+  String get localProcessingHelp =>
+      'ప్రత్యక్ష వక్త లేబుల్‌లు Live ప్రొవైడర్ నుంచి వస్తాయి. దిగువ వక్త విభజన పూర్తయిన రికార్డింగ్‌లను ప్రాసెస్ చేస్తుంది.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'మార్చే ముందు రికార్డింగ్ ఆపండి. ఎంచుకున్న సర్వర్‌లు మీ ఆడియోను స్వీకరిస్తాయి.';
+
+  @override
+  String get localProcessingKeyHelp => 'ఖాళీగా ఉంచితే సేవ్ చేసిన కీ అలాగే ఉంటుంది. వేరే సర్వర్‌కు దాని స్వంత కీ అవసరం.';
+
+  @override
+  String get localProcessingUnsupported => 'ఈ సెట్టింగ్‌లను మార్చడానికి జత చేసిన సర్వర్‌ను అప్‌డేట్ చేయండి.';
+
+  @override
+  String get localProcessingFinished => 'పూర్తయిన రికార్డింగ్‌లు';
+
+  @override
+  String get localProcessingProbe => 'కనెక్షన్‌ను పరీక్షించండి';
+
+  @override
+  String get localProcessingPending => 'సేవ్ చేసిన మార్పులు ఇంకా అమలులో లేవు. వర్తింపజేయడానికి నిర్ధారించు నొక్కండి.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'రికార్డింగ్‌కు ముందు సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
 }

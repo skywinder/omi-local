@@ -9974,22 +9974,22 @@ class AppLocalizationsMs extends AppLocalizations {
   String get localMacServers => 'Pelayan tersimpan';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Terjemahkan ke';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Terjemahkan transkrip langsung pada Mac anda. Teks asal dikekalkan; terjemahan muncul di bawah setiap baris. Tambahkan penyedia Terjemahan dalam tetapan pustaka setempat terlebih dahulu.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Penyedia terjemahan belum dikonfigurasikan pada Mac anda. Tambahkan penyedia dalam tetapan pustaka setempat.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Terjemahan tidak tersedia buat masa ini. Semak penyedia terjemahan pada Mac anda.';
 
   @override
   String get diarization => 'Pemisahan penutur';
@@ -10010,4 +10010,31 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan penutur gagal';
+
+  @override
+  String get localProcessingHelp =>
+      'Label penutur langsung datang daripada penyedia Live. Diarisasi di bawah memproses rakaman yang telah selesai.';
+
+  @override
+  String get localProcessingApplyHelp => 'Hentikan rakaman sebelum bertukar. Pelayan yang dipilih menerima audio anda.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Biarkan kosong untuk mengekalkan kunci tersimpan. Pelayan lain memerlukan kuncinya sendiri.';
+
+  @override
+  String get localProcessingUnsupported => 'Kemas kini pelayan berpasangan untuk menyunting tetapan ini.';
+
+  @override
+  String get localProcessingFinished => 'Rakaman selesai';
+
+  @override
+  String get localProcessingProbe => 'Uji sambungan';
+
+  @override
+  String get localProcessingPending => 'Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Kemas kini pelayan sebelum merakam. Audio yang disimpan pada telefon dikekalkan.';
 }

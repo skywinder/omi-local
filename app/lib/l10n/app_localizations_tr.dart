@@ -9963,22 +9963,21 @@ class AppLocalizationsTr extends AppLocalizations {
   String get localMacServers => 'Kayıtlı sunucular';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Canlı çeviri';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Şu dile çevir';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Canlı dökümü Mac\'inizde çevirin. Özgün metin korunur; çeviri her satırın altında görünür. Önce yerel kitaplık ayarlarından bir Çeviri sağlayıcısı ekleyin.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Mac\'inizde çeviri sağlayıcısı yapılandırılmamış. Yerel kitaplık ayarlarından bir sağlayıcı ekleyin.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Çeviri şu anda kullanılamıyor. Mac\'inizdeki çeviri sağlayıcısını kontrol edin.';
 
   @override
   String get diarization => 'Konuşmacı ayrımı';
@@ -9999,4 +9998,30 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Konuşmacı ayrımı başarısız';
+
+  @override
+  String get localProcessingHelp =>
+      'Canlı konuşmacı etiketleri Live sağlayıcısından gelir. Aşağıdaki konuşmacı ayrımı tamamlanmış kayıtları işler.';
+
+  @override
+  String get localProcessingApplyHelp => 'Değiştirmeden önce kaydı durdurun. Seçilen sunucular sesinizi alır.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Boş bırakmak kayıtlı anahtarı korur. Farklı bir sunucu kendi anahtarını gerektirir.';
+
+  @override
+  String get localProcessingUnsupported => 'Bu ayarları düzenlemek için eşleştirilmiş sunucuyu güncelleyin.';
+
+  @override
+  String get localProcessingFinished => 'Tamamlanan kayıtlar';
+
+  @override
+  String get localProcessingProbe => 'Bağlantıyı test et';
+
+  @override
+  String get localProcessingPending => 'Kaydedilen değişiklikler henüz etkin değil. Uygulamak için Onayla’ya dokunun.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Kayıttan önce sunucuyu güncelleyin. Telefona kaydedilen ses korunur.';
 }

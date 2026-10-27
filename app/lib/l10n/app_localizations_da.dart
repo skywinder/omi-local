@@ -9945,22 +9945,22 @@ class AppLocalizationsDa extends AppLocalizations {
   String get localMacServers => 'Gemte servere';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Oversættelse i realtid';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Oversæt til';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Oversæt den løbende transskription på din Mac. Originalen bevares, og oversættelsen vises under hver linje. Tilføj først en oversættelsesudbyder i indstillingerne for det lokale bibliotek.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Der er ikke konfigureret en oversættelsesudbyder på din Mac. Tilføj en i indstillingerne for det lokale bibliotek.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Oversættelse er ikke tilgængelig lige nu. Tjek oversættelsesudbyderen på din Mac.';
 
   @override
   String get diarization => 'Talerdiarisering';
@@ -9981,4 +9981,29 @@ class AppLocalizationsDa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarisering mislykkedes';
+
+  @override
+  String get localProcessingHelp =>
+      'Talermærker i realtid kommer fra Live-udbyderen. Diariseringen nedenfor behandler færdige optagelser.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stop optagelsen før du skifter. De valgte servere modtager din lyd.';
+
+  @override
+  String get localProcessingKeyHelp => 'Et tomt felt beholder den gemte nøgle. En anden server kræver sin egen nøgle.';
+
+  @override
+  String get localProcessingUnsupported => 'Opdater den parrede server for at redigere disse indstillinger.';
+
+  @override
+  String get localProcessingFinished => 'Færdige optagelser';
+
+  @override
+  String get localProcessingProbe => 'Test forbindelse';
+
+  @override
+  String get localProcessingPending => 'Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'Opdater serveren før optagelse. Lyd gemt på telefonen bevares.';
 }

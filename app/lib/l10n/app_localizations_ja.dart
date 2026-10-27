@@ -9773,22 +9773,19 @@ class AppLocalizationsJa extends AppLocalizations {
   String get localMacServers => '保存済みサーバー';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'リアルタイム翻訳';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => '翻訳先の言語';
 
   @override
-  String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+  String get liveTranslationHelp => 'Macでリアルタイムの文字起こしを翻訳します。原文は保持され、各行の下に翻訳が表示されます。まず、ローカルライブラリの設定で翻訳プロバイダーを追加してください。';
 
   @override
-  String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+  String get liveTranslationUnconfigured => 'Macに翻訳プロバイダーが設定されていません。ローカルライブラリの設定で追加してください。';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => '現在、翻訳を利用できません。Macの翻訳プロバイダーを確認してください。';
 
   @override
   String get diarization => '話者分離';
@@ -9809,4 +9806,28 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get diarizationFailed => '話者分離に失敗しました';
+
+  @override
+  String get localProcessingHelp => 'リアルタイムの話者ラベルはLiveプロバイダーから取得します。下の話者分離は完了した録音を処理します。';
+
+  @override
+  String get localProcessingApplyHelp => '切り替える前に録音を停止してください。選択したサーバーに音声が送信されます。';
+
+  @override
+  String get localProcessingKeyHelp => '空欄にすると保存済みのキーを保持します。別のサーバーには専用のキーが必要です。';
+
+  @override
+  String get localProcessingUnsupported => 'これらの設定を編集するには、ペアリング済みサーバーを更新してください。';
+
+  @override
+  String get localProcessingFinished => '完了した録音';
+
+  @override
+  String get localProcessingProbe => '接続テスト';
+
+  @override
+  String get localProcessingPending => '保存した変更はまだ有効ではありません。「確認」をタップして適用してください。';
+
+  @override
+  String get localAudioServerUpdateRequired => '録音前にサーバーを更新してください。電話に保存された音声は保持されます。';
 }

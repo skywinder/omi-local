@@ -9983,22 +9983,21 @@ class AppLocalizationsNl extends AppLocalizations {
   String get localMacServers => 'Opgeslagen servers';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Livevertaling';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Vertalen naar';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Vertaal het live transcript op je Mac. Het origineel blijft bewaard; de vertaling verschijnt onder elke regel. Voeg eerst een vertaaldienst toe in de instellingen van de lokale bibliotheek.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Er is geen vertaaldienst ingesteld op je Mac. Voeg er een toe in de instellingen van de lokale bibliotheek.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Vertaling is momenteel niet beschikbaar. Controleer de vertaaldienst op je Mac.';
 
   @override
   String get diarization => 'Sprekerherkenning';
@@ -10019,4 +10018,33 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprekerherkenning mislukt';
+
+  @override
+  String get localProcessingHelp =>
+      'Live-sprekerlabels komen van de Live-provider. De diarizatie hieronder verwerkt voltooide opnamen.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Stop de opname voordat je wisselt. De geselecteerde servers ontvangen je audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Laat leeg om de opgeslagen sleutel te behouden. Een andere server heeft een eigen sleutel nodig.';
+
+  @override
+  String get localProcessingUnsupported => 'Werk de gekoppelde server bij om deze instellingen te wijzigen.';
+
+  @override
+  String get localProcessingFinished => 'Voltooide opnamen';
+
+  @override
+  String get localProcessingProbe => 'Verbinding testen';
+
+  @override
+  String get localProcessingPending =>
+      'Opgeslagen wijzigingen zijn nog niet actief. Tik op Bevestigen om ze toe te passen.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Werk de server bij voordat je opneemt. Audio die op de telefoon is opgeslagen blijft bewaard.';
 }

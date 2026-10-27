@@ -9991,22 +9991,21 @@ class AppLocalizationsPl extends AppLocalizations {
   String get localMacServers => 'Zapisane serwery';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Tłumaczenie na żywo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tłumacz na';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Tłumacz transkrypcję na żywo na Macu. Oryginał zostaje zachowany, a tłumaczenie pojawia się pod każdym wierszem. Najpierw dodaj dostawcę tłumaczenia w ustawieniach lokalnej biblioteki.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Dostawca tłumaczenia nie jest skonfigurowany na Macu. Dodaj go w ustawieniach lokalnej biblioteki.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'Tłumaczenie jest teraz niedostępne. Sprawdź dostawcę tłumaczenia na Macu.';
 
   @override
   String get diarization => 'Diaryzacja';
@@ -10027,4 +10026,30 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diaryzacja nie powiodła się';
+
+  @override
+  String get localProcessingHelp =>
+      'Etykiety mówców na żywo pochodzą od dostawcy Live. Diaryzacja poniżej przetwarza zakończone nagrania.';
+
+  @override
+  String get localProcessingApplyHelp => 'Zatrzymaj nagrywanie przed zmianą. Wybrane serwery otrzymują Twój dźwięk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Puste pole zachowuje zapisany klucz. Inny serwer wymaga własnego klucza.';
+
+  @override
+  String get localProcessingUnsupported => 'Zaktualizuj sparowany serwer, aby zmienić te ustawienia.';
+
+  @override
+  String get localProcessingFinished => 'Zakończone nagrania';
+
+  @override
+  String get localProcessingProbe => 'Sprawdź połączenie';
+
+  @override
+  String get localProcessingPending => 'Zapisane zmiany nie są jeszcze aktywne. Stuknij Potwierdź, aby je zastosować.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Zaktualizuj serwer przed nagrywaniem. Dźwięk zapisany w telefonie zostanie zachowany.';
 }

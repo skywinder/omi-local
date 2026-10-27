@@ -3233,5 +3233,18 @@
     "providerMisconfigured": "Zkontrolujte nastavení poskytovatele",
     "speakersCount": "Mluvčích: {count}",
     "diarizationNotPerformed": "Diarizace nebyla provedena",
-    "diarizationFailed": "Diarizace selhala"
+    "diarizationFailed": "Diarizace selhala",
+    "localProcessingHelp": "Živé štítky mluvčích pocházejí od poskytovatele Live. Diarizace níže zpracovává dokončené nahrávky.",
+    "localProcessingApplyHelp": "Před přepnutím zastavte nahrávání. Vybrané servery přijímají váš zvuk.",
+    "localProcessingKeyHelp": "Prázdné pole zachová uložený klíč. Jiný server vyžaduje vlastní klíč.",
+    "localProcessingUnsupported": "Chcete-li upravit tato nastavení, aktualizujte spárovaný server.",
+    "localProcessingFinished": "Dokončené nahrávky",
+    "localProcessingProbe": "Otestovat připojení",
+    "localProcessingPending": "Uložené změny nejsou aktivní. Klepnutím na Potvrdit je použijete.",
+    "localAudioServerUpdateRequired": "Před nahráváním aktualizujte server. Zvuk uložený v telefonu zůstane zachován.",
+    "liveTranslation": "Překlad v reálném čase",
+    "liveTranslationFailed": "Překlad teď není dostupný. Zkontrolujte poskytovatele překladu na svém Macu.",
+    "liveTranslationHelp": "Překládejte živý přepis na svém Macu. Originál zůstane zachován a překlad se zobrazí pod každým řádkem. Nejprve přidejte poskytovatele překladu v nastavení místní knihovny.",
+    "liveTranslationTargetLanguage": "Přeložit do",
+    "liveTranslationUnconfigured": "Na vašem Macu není nastaven poskytovatel překladu. Přidejte ho v nastavení místní knihovny."
 }

@@ -3256,5 +3256,18 @@
     "providerMisconfigured": "Revisa la configuración del proveedor",
     "speakersCount": "{count} hablantes",
     "diarizationNotPerformed": "Diarización no realizada",
-    "diarizationFailed": "Error de diarización"
+    "diarizationFailed": "Error de diarización",
+    "localProcessingHelp": "Las etiquetas de hablantes en directo provienen del proveedor Live. La diarización de abajo procesa grabaciones terminadas.",
+    "localProcessingApplyHelp": "Detén la grabación antes de cambiar. Los servidores seleccionados reciben tu audio.",
+    "localProcessingKeyHelp": "Déjalo en blanco para conservar la clave guardada. Otro servidor necesita su propia clave.",
+    "localProcessingUnsupported": "Actualiza el servidor vinculado para editar estos ajustes.",
+    "localProcessingFinished": "Grabaciones terminadas",
+    "localProcessingProbe": "Probar conexión",
+    "localProcessingPending": "Los cambios guardados aún no están activos. Toca Confirmar para aplicarlos.",
+    "localAudioServerUpdateRequired": "Actualiza el servidor antes de grabar. Se conserva el audio guardado en el teléfono.",
+    "liveTranslation": "Traducción en directo",
+    "liveTranslationFailed": "La traducción no está disponible en este momento. Comprueba el proveedor de traducción en tu Mac.",
+    "liveTranslationHelp": "Traduce la transcripción en directo en tu Mac. Se conserva el original y la traducción aparece debajo de cada línea. Primero añade un proveedor de traducción en los ajustes de la biblioteca local.",
+    "liveTranslationTargetLanguage": "Traducir a",
+    "liveTranslationUnconfigured": "No hay ningún proveedor de traducción configurado en tu Mac. Añade uno en los ajustes de la biblioteca local."
 }
