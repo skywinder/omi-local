@@ -10010,22 +10010,22 @@ class AppLocalizationsTe extends AppLocalizations {
   String get localMacServers => 'సేవ్ చేసిన సర్వర్లు';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ప్రత్యక్ష అనువాదం';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ఈ భాషలోకి అనువదించండి';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'అనుసంధానించిన సర్వర్ అసలు వచనం కింద అనువాదాన్ని చూపిస్తుంది. సర్వర్ లైబ్రరీలో వేరే మోడల్ ఎంచుకోకపోతే సారాంశ మోడల్ స్వయంచాలకంగా ఉపయోగించబడుతుంది: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'అనుసంధానించిన సర్వర్‌లో అనువాద మోడల్ అమర్చలేదు. దాని లైబ్రరీ తెరవండి: Settings → Summarization లేదా Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'అనుసంధానించిన సర్వర్‌లో అనువాదం అందుబాటులో లేదు. దాని లైబ్రరీ చూడండి: Settings → Translation.';
 
   @override
   String get diarization => 'వక్తల విభజన';

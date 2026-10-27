@@ -10031,22 +10031,22 @@ class AppLocalizationsTa extends AppLocalizations {
   String get localMacServers => 'சேமித்த சேவையகங்கள்';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'நேரடி மொழிபெயர்ப்பு';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'இந்த மொழிக்கு மொழிபெயர்';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'இணைக்கப்பட்ட சேவையகம் மூல உரையின் கீழே மொழிபெயர்ப்பைக் காட்டும். சேவையக நூலகத்தில் வேறு மாதிரியைத் தேர்ந்தெடுக்காவிட்டால் சுருக்க மாதிரி தானாகப் பயன்படும்: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு மாதிரி அமைக்கப்படவில்லை. அதன் நூலகத்தைத் திறக்கவும்: Settings → Summarization அல்லது Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு கிடைக்கவில்லை. அதன் நூலகத்தைச் சரிபார்க்கவும்: Settings → Translation.';
 
   @override
   String get diarization => 'பேச்சாளர் பிரிப்பு';

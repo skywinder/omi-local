@@ -9966,22 +9966,22 @@ class AppLocalizationsBn extends AppLocalizations {
   String get localMacServers => 'সংরক্ষিত সার্ভার';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'সরাসরি অনুবাদ';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'যে ভাষায় অনুবাদ করবেন';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'সংযুক্ত সার্ভারে অনুবাদ হয় এবং মূল লেখার নিচে দেখা যায়। সার্ভারের লাইব্রেরিতে Settings → Translation থেকে অন্য মডেল না বাছলে সারসংক্ষেপের মডেল স্বয়ংক্রিয়ভাবে ব্যবহৃত হয়।';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'সংযুক্ত সার্ভারে অনুবাদের মডেল সেট করা নেই। তার লাইব্রেরি খুলুন: Settings → Summarization অথবা Translation → Save → Use।';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'সংযুক্ত সার্ভারে অনুবাদ পাওয়া যাচ্ছে না। তার লাইব্রেরিতে দেখুন: Settings → Translation।';
 
   @override
   String get diarization => 'বক্তা শনাক্তকরণ';

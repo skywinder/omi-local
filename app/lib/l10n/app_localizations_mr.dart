@@ -9970,22 +9970,22 @@ class AppLocalizationsMr extends AppLocalizations {
   String get localMacServers => 'जतन केलेले सर्व्हर';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'थेट भाषांतर';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'या भाषेत भाषांतर करा';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'जोडलेला सर्व्हर मूळ मजकुराखाली भाषांतर दाखवतो. सर्व्हरच्या लायब्ररीत दुसरे मॉडेल निवडले नसल्यास सारांश मॉडेल आपोआप वापरले जाते: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'जोडलेल्या सर्व्हरवर भाषांतराचे मॉडेल सेट केलेले नाही. त्याची लायब्ररी उघडा: Settings → Summarization किंवा Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'जोडलेल्या सर्व्हरवर भाषांतर उपलब्ध नाही. त्याची लायब्ररी तपासा: Settings → Translation.';
 
   @override
   String get diarization => 'वक्ता ओळख';

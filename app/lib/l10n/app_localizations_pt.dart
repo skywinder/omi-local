@@ -9970,22 +9970,22 @@ class AppLocalizationsPt extends AppLocalizations {
   String get localMacServers => 'Servidores salvos';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Tradução ao vivo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Traduzir para';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'O servidor conectado mostra a tradução abaixo do original. O modelo de resumo é usado automaticamente, a menos que você escolha outro na biblioteca do servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Nenhum modelo de tradução está configurado no servidor conectado. Abra a biblioteca: Settings → Summarization ou Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'A tradução não está disponível no servidor conectado. Verifique a biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarização';

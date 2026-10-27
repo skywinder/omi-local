@@ -3231,5 +3231,10 @@
     "providerMisconfigured": "プロバイダー設定を確認してください",
     "speakersCount": "話者 {count} 人",
     "diarizationNotPerformed": "話者分離は実行されていません",
-    "diarizationFailed": "話者分離に失敗しました"
+    "diarizationFailed": "話者分離に失敗しました",
+    "liveTranslation": "リアルタイム翻訳",
+    "liveTranslationTargetLanguage": "翻訳先",
+    "liveTranslationHelp": "接続中のサーバーで翻訳し、原文の下に表示します。サーバーのライブラリの Settings → Translation で別のモデルを選ばない限り、要約モデルが自動的に使われます。",
+    "liveTranslationUnconfigured": "接続中のサーバーに翻訳モデルが設定されていません。ライブラリの Settings → Summarization または Translation → Save → Use から設定してください。",
+    "liveTranslationFailed": "接続中のサーバーで翻訳を利用できません。ライブラリの Settings → Translation を確認してください。"
 }

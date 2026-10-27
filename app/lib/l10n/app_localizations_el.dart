@@ -10031,22 +10031,22 @@ class AppLocalizationsEl extends AppLocalizations {
   String get localMacServers => 'Αποθηκευμένοι διακομιστές';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Ζωντανή μετάφραση';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Μετάφραση σε';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Ο συνδεδεμένος διακομιστής εμφανίζει τη μετάφραση κάτω από το πρωτότυπο. Χρησιμοποιείται αυτόματα το μοντέλο σύνοψης, εκτός αν επιλέξετε άλλο στη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Δεν έχει ρυθμιστεί μοντέλο μετάφρασης στον συνδεδεμένο διακομιστή. Ανοίξτε τη βιβλιοθήκη του: Settings → Summarization ή Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Η μετάφραση δεν είναι διαθέσιμη στον συνδεδεμένο διακομιστή. Ελέγξτε τη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get diarization => 'Διαχωρισμός ομιλητών';

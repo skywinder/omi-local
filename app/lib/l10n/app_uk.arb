@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Перевірте налаштування провайдера",
     "speakersCount": "Мовців: {count}",
     "diarizationNotPerformed": "Діаризацію не виконано",
-    "diarizationFailed": "Помилка діаризації"
+    "diarizationFailed": "Помилка діаризації",
+    "liveTranslation": "Переклад наживо",
+    "liveTranslationTargetLanguage": "Перекладати на",
+    "liveTranslationHelp": "Підключений сервер показує переклад під оригіналом. Автоматично використовується модель підсумовування, якщо іншу не вибрано в бібліотеці сервера: Settings → Translation.",
+    "liveTranslationUnconfigured": "На підключеному сервері не налаштовано модель перекладу. Відкрийте його бібліотеку: Settings → Summarization або Translation → Save → Use.",
+    "liveTranslationFailed": "Переклад недоступний на підключеному сервері. Перевірте його бібліотеку: Settings → Translation."
 }

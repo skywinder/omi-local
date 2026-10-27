@@ -3233,5 +3233,10 @@
     "providerMisconfigured": "Revisa la configuració del proveïdor",
     "speakersCount": "{count} parlants",
     "diarizationNotPerformed": "Diarització no realitzada",
-    "diarizationFailed": "Error de diarització"
+    "diarizationFailed": "Error de diarització",
+    "liveTranslation": "Traducció en directe",
+    "liveTranslationTargetLanguage": "Tradueix a",
+    "liveTranslationHelp": "El servidor connectat mostra la traducció sota l'original. S'utilitza automàticament el model de resum, tret que en triïs un altre a la biblioteca del servidor: Settings → Translation.",
+    "liveTranslationUnconfigured": "No hi ha cap model de traducció configurat al servidor connectat. Obre'n la biblioteca: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationFailed": "La traducció no està disponible al servidor connectat. Comprova'n la biblioteca: Settings → Translation."
 }

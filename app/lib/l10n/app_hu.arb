@@ -3351,5 +3351,10 @@
     "providerMisconfigured": "Ellenőrizze a szolgáltató beállításait",
     "speakersCount": "{count} beszélő",
     "diarizationNotPerformed": "Beszélőfelismerés nem történt",
-    "diarizationFailed": "Beszélőfelismerés sikertelen"
+    "diarizationFailed": "Beszélőfelismerés sikertelen",
+    "liveTranslation": "Élő fordítás",
+    "liveTranslationTargetLanguage": "Fordítás erre",
+    "liveTranslationHelp": "A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.",
+    "liveTranslationUnconfigured": "Nincs fordítási modell beállítva a csatlakoztatott szerveren. Nyissa meg a könyvtárát: Settings → Summarization vagy Translation → Save → Use.",
+    "liveTranslationFailed": "A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation."
 }

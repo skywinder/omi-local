@@ -9983,22 +9983,22 @@ class AppLocalizationsUk extends AppLocalizations {
   String get localMacServers => 'Збережені сервери';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Переклад наживо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Перекладати на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Підключений сервер показує переклад під оригіналом. Автоматично використовується модель підсумовування, якщо іншу не вибрано в бібліотеці сервера: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'На підключеному сервері не налаштовано модель перекладу. Відкрийте його бібліотеку: Settings → Summarization або Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Переклад недоступний на підключеному сервері. Перевірте його бібліотеку: Settings → Translation.';
 
   @override
   String get diarization => 'Діаризація';

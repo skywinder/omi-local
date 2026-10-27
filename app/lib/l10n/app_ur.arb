@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "فراہم کنندہ کی ترتیبات چیک کریں",
     "speakersCount": "{count} مقررین",
     "diarizationNotPerformed": "مقررین کی شناخت نہیں ہوئی",
-    "diarizationFailed": "مقررین کی شناخت ناکام"
+    "diarizationFailed": "مقررین کی شناخت ناکام",
+    "liveTranslation": "براہ راست ترجمہ",
+    "liveTranslationTargetLanguage": "اس زبان میں ترجمہ کریں",
+    "liveTranslationHelp": "منسلک سرور اصل متن کے نیچے ترجمہ دکھاتا ہے۔ خلاصے کا ماڈل خود بخود استعمال ہوتا ہے، جب تک آپ سرور کی لائبریری میں دوسرا ماڈل نہ چنیں: Settings → Translation۔",
+    "liveTranslationUnconfigured": "منسلک سرور پر ترجمے کا ماڈل ترتیب نہیں دیا گیا۔ اس کی لائبریری کھولیں: Settings → Summarization یا Translation → Save → Use۔",
+    "liveTranslationFailed": "منسلک سرور پر ترجمہ دستیاب نہیں۔ اس کی لائبریری دیکھیں: Settings → Translation۔"
 }

@@ -9993,22 +9993,22 @@ class AppLocalizationsKn extends AppLocalizations {
   String get localMacServers => 'ಉಳಿಸಿದ ಸರ್ವರ್‌ಗಳು';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ನೇರ ಅನುವಾದ';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ಈ ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್ ಮೂಲ ಪಠ್ಯದ ಕೆಳಗೆ ಅನುವಾದವನ್ನು ತೋರಿಸುತ್ತದೆ. ಸರ್ವರ್ ಗ್ರಂಥಾಲಯದ Settings → Translation ನಲ್ಲಿ ಬೇರೆ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆ ಮಾಡದಿದ್ದರೆ ಸಾರಾಂಶ ಮಾದರಿಯೇ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬಳಕೆಯಾಗುತ್ತದೆ.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಮಾದರಿಯನ್ನು ಹೊಂದಿಸಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ತೆರೆಯಿರಿ: Settings → Summarization ಅಥವಾ Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ಪರಿಶೀಲಿಸಿ: Settings → Translation.';
 
   @override
   String get diarization => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ';

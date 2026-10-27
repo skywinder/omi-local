@@ -9988,22 +9988,22 @@ class AppLocalizationsNl extends AppLocalizations {
   String get localMacServers => 'Opgeslagen servers';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Livevertaling';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Vertalen naar';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'De verbonden server toont de vertaling onder het origineel. Het samenvattingsmodel wordt automatisch gebruikt, tenzij je een ander model kiest in de serverbibliotheek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Er is geen vertaalmodel ingesteld op de verbonden server. Open de bibliotheek: Settings → Summarization of Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Vertalen is niet beschikbaar op de verbonden server. Controleer de bibliotheek: Settings → Translation.';
 
   @override
   String get diarization => 'Sprekerherkenning';

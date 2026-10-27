@@ -10018,22 +10018,22 @@ class AppLocalizationsCa extends AppLocalizations {
   String get localMacServers => 'Servidors desats';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traducció en directe';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tradueix a';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'El servidor connectat mostra la traducció sota l\'original. S\'utilitza automàticament el model de resum, tret que en triïs un altre a la biblioteca del servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'No hi ha cap model de traducció configurat al servidor connectat. Obre\'n la biblioteca: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'La traducció no està disponible al servidor connectat. Comprova\'n la biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarització';

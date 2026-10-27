@@ -9977,22 +9977,22 @@ class AppLocalizationsSr extends AppLocalizations {
   String get localMacServers => 'Сачувани сервери';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Превод уживо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Преведи на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Повезани сервер приказује превод испод оригинала. Аутоматски се користи модел за сажимање, осим ако изаберете други у библиотеци сервера: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'На повезаном серверу није подешен модел за превод. Отворите његову библиотеку: Settings → Summarization или Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Превод није доступан на повезаном серверу. Проверите његову библиотеку: Settings → Translation.';
 
   @override
   String get diarization => 'Dijarizacija';

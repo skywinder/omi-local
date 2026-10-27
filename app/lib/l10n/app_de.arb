@@ -3232,5 +3232,10 @@
     "providerMisconfigured": "Anbietereinstellungen prüfen",
     "speakersCount": "{count} Sprecher",
     "diarizationNotPerformed": "Sprechertrennung nicht durchgeführt",
-    "diarizationFailed": "Sprechertrennung fehlgeschlagen"
+    "diarizationFailed": "Sprechertrennung fehlgeschlagen",
+    "liveTranslation": "Live-Übersetzung",
+    "liveTranslationTargetLanguage": "Übersetzen nach",
+    "liveTranslationHelp": "Der verbundene Server zeigt die Übersetzung unter dem Original. Automatisch wird das Zusammenfassungsmodell verwendet, sofern du in der Serverbibliothek kein anderes auswählst: Settings → Translation.",
+    "liveTranslationUnconfigured": "Auf dem verbundenen Server ist kein Übersetzungsmodell eingerichtet. Öffne seine Bibliothek: Settings → Summarization oder Translation → Save → Use.",
+    "liveTranslationFailed": "Die Übersetzung ist auf dem verbundenen Server nicht verfügbar. Prüfe seine Bibliothek: Settings → Translation."
 }

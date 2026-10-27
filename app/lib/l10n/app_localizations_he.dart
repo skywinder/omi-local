@@ -9882,22 +9882,21 @@ class AppLocalizationsHe extends AppLocalizations {
   String get localMacServers => 'שרתים שמורים';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'תרגום בזמן אמת';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'תרגום לשפה';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'השרת המחובר מציג את התרגום מתחת למקור. מודל הסיכום משמש אוטומטית, אלא אם נבחר מודל אחר בספריית השרת: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'לא הוגדר מודל תרגום בשרת המחובר. יש לפתוח את הספרייה שלו: Settings → Summarization או Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+  String get liveTranslationFailed => 'התרגום אינו זמין בשרת המחובר. יש לבדוק את הספרייה שלו: Settings → Translation.';
 
   @override
   String get diarization => 'זיהוי דוברים';

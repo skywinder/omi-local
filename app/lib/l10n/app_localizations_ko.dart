@@ -9794,22 +9794,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get localMacServers => '저장된 서버';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => '실시간 번역';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => '번역할 언어';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      '연결된 서버에서 번역하여 원문 아래에 표시합니다. 서버 라이브러리의 Settings → Translation에서 다른 모델을 선택하지 않으면 요약 모델이 자동으로 사용됩니다.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      '연결된 서버에 번역 모델이 설정되지 않았습니다. 서버 라이브러리에서 Settings → Summarization 또는 Translation → Save → Use를 여세요.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+  String get liveTranslationFailed => '연결된 서버에서 번역을 사용할 수 없습니다. 서버 라이브러리의 Settings → Translation을 확인하세요.';
 
   @override
   String get diarization => '화자 분리';

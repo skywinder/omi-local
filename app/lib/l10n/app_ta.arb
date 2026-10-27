@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "வழங்குநர் அமைப்புகளைச் சரிபார்க்கவும்",
     "speakersCount": "{count} பேச்சாளர்கள்",
     "diarizationNotPerformed": "பேச்சாளர் பிரிப்பு செய்யப்படவில்லை",
-    "diarizationFailed": "பேச்சாளர் பிரிப்பு தோல்வி"
+    "diarizationFailed": "பேச்சாளர் பிரிப்பு தோல்வி",
+    "liveTranslation": "நேரடி மொழிபெயர்ப்பு",
+    "liveTranslationTargetLanguage": "இந்த மொழிக்கு மொழிபெயர்",
+    "liveTranslationHelp": "இணைக்கப்பட்ட சேவையகம் மூல உரையின் கீழே மொழிபெயர்ப்பைக் காட்டும். சேவையக நூலகத்தில் வேறு மாதிரியைத் தேர்ந்தெடுக்காவிட்டால் சுருக்க மாதிரி தானாகப் பயன்படும்: Settings → Translation.",
+    "liveTranslationUnconfigured": "இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு மாதிரி அமைக்கப்படவில்லை. அதன் நூலகத்தைத் திறக்கவும்: Settings → Summarization அல்லது Translation → Save → Use.",
+    "liveTranslationFailed": "இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு கிடைக்கவில்லை. அதன் நூலகத்தைச் சரிபார்க்கவும்: Settings → Translation."
 }

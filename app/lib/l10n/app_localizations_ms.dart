@@ -9987,22 +9987,22 @@ class AppLocalizationsMs extends AppLocalizations {
   String get localMacServers => 'Pelayan tersimpan';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Terjemah ke';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Tiada model terjemahan dikonfigurasi pada pelayan yang disambungkan. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation.';
 
   @override
   String get diarization => 'Pemisahan penutur';

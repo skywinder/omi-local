@@ -9959,22 +9959,22 @@ class AppLocalizationsNo extends AppLocalizations {
   String get localMacServers => 'Lagrede servere';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Direkteoversettelse';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Oversett til';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Den tilkoblede serveren viser oversettelsen under originalen. Oppsummeringsmodellen brukes automatisk med mindre du velger en annen i serverens bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Ingen oversettelsesmodell er konfigurert på den tilkoblede serveren. Åpne biblioteket: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Oversettelse er ikke tilgjengelig på den tilkoblede serveren. Sjekk biblioteket: Settings → Translation.';
 
   @override
   String get diarization => 'Talerinndeling';

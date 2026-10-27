@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Tarkista palveluntarjoajan asetukset",
     "speakersCount": "{count} puhujaa",
     "diarizationNotPerformed": "Puhujien erottelua ei tehty",
-    "diarizationFailed": "Puhujien erottelu epäonnistui"
+    "diarizationFailed": "Puhujien erottelu epäonnistui",
+    "liveTranslation": "Reaaliaikainen käännös",
+    "liveTranslationTargetLanguage": "Käännä kielelle",
+    "liveTranslationHelp": "Yhdistetty palvelin näyttää käännöksen alkuperäisen alla. Yhteenvetomallia käytetään automaattisesti, ellet valitse muuta mallia palvelimen kirjastosta: Settings → Translation.",
+    "liveTranslationUnconfigured": "Yhdistetylle palvelimelle ei ole määritetty käännösmallia. Avaa sen kirjasto: Settings → Summarization tai Translation → Save → Use.",
+    "liveTranslationFailed": "Käännös ei ole käytettävissä yhdistetyllä palvelimella. Tarkista sen kirjasto: Settings → Translation."
 }

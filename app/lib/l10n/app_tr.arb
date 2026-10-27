@@ -3290,5 +3290,10 @@
     "providerMisconfigured": "Sağlayıcı ayarlarını kontrol edin",
     "speakersCount": "{count} konuşmacı",
     "diarizationNotPerformed": "Konuşmacı ayrımı yapılmadı",
-    "diarizationFailed": "Konuşmacı ayrımı başarısız"
+    "diarizationFailed": "Konuşmacı ayrımı başarısız",
+    "liveTranslation": "Canlı çeviri",
+    "liveTranslationTargetLanguage": "Şu dile çevir",
+    "liveTranslationHelp": "Bağlı sunucu çeviriyi özgün metnin altında gösterir. Sunucu kitaplığında başka bir model seçmediğiniz sürece özetleme modeli otomatik kullanılır: Settings → Translation.",
+    "liveTranslationUnconfigured": "Bağlı sunucuda çeviri modeli yapılandırılmamış. Kitaplığını açın: Settings → Summarization veya Translation → Save → Use.",
+    "liveTranslationFailed": "Bağlı sunucuda çeviri kullanılamıyor. Kitaplığını kontrol edin: Settings → Translation."
 }

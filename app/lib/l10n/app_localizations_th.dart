@@ -9904,22 +9904,22 @@ class AppLocalizationsTh extends AppLocalizations {
   String get localMacServers => 'เซิร์ฟเวอร์ที่บันทึกไว้';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'การแปลสด';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'แปลเป็น';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'เซิร์ฟเวอร์ที่เชื่อมต่อจะแสดงคำแปลใต้ข้อความต้นฉบับ โดยใช้โมเดลสรุปโดยอัตโนมัติ เว้นแต่จะเลือกโมเดลอื่นในคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'ยังไม่ได้ตั้งค่าโมเดลแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อ เปิดคลังของเซิร์ฟเวอร์: Settings → Summarization หรือ Translation → Save → Use';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'ไม่สามารถแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อได้ ตรวจสอบคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get diarization => 'การแยกผู้พูด';

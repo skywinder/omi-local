@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Ελέγξτε τις ρυθμίσεις του παρόχου",
     "speakersCount": "{count} ομιλητές",
     "diarizationNotPerformed": "Ο διαχωρισμός ομιλητών δεν εκτελέστηκε",
-    "diarizationFailed": "Ο διαχωρισμός ομιλητών απέτυχε"
+    "diarizationFailed": "Ο διαχωρισμός ομιλητών απέτυχε",
+    "liveTranslation": "Ζωντανή μετάφραση",
+    "liveTranslationTargetLanguage": "Μετάφραση σε",
+    "liveTranslationHelp": "Ο συνδεδεμένος διακομιστής εμφανίζει τη μετάφραση κάτω από το πρωτότυπο. Χρησιμοποιείται αυτόματα το μοντέλο σύνοψης, εκτός αν επιλέξετε άλλο στη βιβλιοθήκη του: Settings → Translation.",
+    "liveTranslationUnconfigured": "Δεν έχει ρυθμιστεί μοντέλο μετάφρασης στον συνδεδεμένο διακομιστή. Ανοίξτε τη βιβλιοθήκη του: Settings → Summarization ή Translation → Save → Use.",
+    "liveTranslationFailed": "Η μετάφραση δεν είναι διαθέσιμη στον συνδεδεμένο διακομιστή. Ελέγξτε τη βιβλιοθήκη του: Settings → Translation."
 }

@@ -9940,22 +9940,22 @@ class AppLocalizationsHi extends AppLocalizations {
   String get localMacServers => 'सहेजे गए सर्वर';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'लाइव अनुवाद';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'इस भाषा में अनुवाद करें';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'जुड़ा हुआ सर्वर अनुवाद को मूल पाठ के नीचे दिखाता है। सारांश मॉडल अपने आप इस्तेमाल होता है, जब तक आप सर्वर की लाइब्रेरी में दूसरा मॉडल न चुनें: Settings → Translation।';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'जुड़े हुए सर्वर पर अनुवाद मॉडल सेट नहीं है। उसकी लाइब्रेरी खोलें: Settings → Summarization या Translation → Save → Use।';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'जुड़े हुए सर्वर पर अनुवाद उपलब्ध नहीं है। उसकी लाइब्रेरी देखें: Settings → Translation।';
 
   @override
   String get diarization => 'वक्ता पहचान';

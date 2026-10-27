@@ -3233,5 +3233,10 @@
     "providerMisconfigured": "Проверете настройките на доставчика",
     "speakersCount": "{count} говорещи",
     "diarizationNotPerformed": "Диаризацията не е изпълнена",
-    "diarizationFailed": "Грешка при диаризация"
+    "diarizationFailed": "Грешка при диаризация",
+    "liveTranslation": "Превод на живо",
+    "liveTranslationTargetLanguage": "Превод на",
+    "liveTranslationHelp": "Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.",
+    "liveTranslationUnconfigured": "Няма настроен модел за превод на свързания сървър. Отворете библиотеката му: Settings → Summarization или Translation → Save → Use.",
+    "liveTranslationFailed": "Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation."
 }

@@ -9961,22 +9961,22 @@ class AppLocalizationsFa extends AppLocalizations {
   String get localMacServers => 'سرورهای ذخیره‌شده';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ترجمهٔ زنده';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ترجمه به';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'سرور متصل ترجمه را زیر متن اصلی نشان می‌دهد. مدل خلاصه‌سازی خودکار استفاده می‌شود، مگر اینکه در کتابخانهٔ سرور مدل دیگری انتخاب کنید: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'مدل ترجمه‌ای روی سرور متصل تنظیم نشده است. کتابخانهٔ آن را باز کنید: Settings → Summarization یا Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'ترجمه روی سرور متصل در دسترس نیست. کتابخانهٔ آن را بررسی کنید: Settings → Translation.';
 
   @override
   String get diarization => 'تفکیک گوینده';

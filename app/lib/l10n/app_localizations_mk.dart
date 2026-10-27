@@ -10014,22 +10014,22 @@ class AppLocalizationsMk extends AppLocalizations {
   String get localMacServers => 'Зачувани сервери';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Превод во живо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Преведи на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Поврзаниот сервер го прикажува преводот под оригиналот. Автоматски се користи моделот за резиме, освен ако изберете друг во библиотеката на серверот: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'На поврзаниот сервер не е поставен модел за превод. Отворете ја неговата библиотека: Settings → Summarization или Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Преводот не е достапен на поврзаниот сервер. Проверете ја неговата библиотека: Settings → Translation.';
 
   @override
   String get diarization => 'Дијаризација';

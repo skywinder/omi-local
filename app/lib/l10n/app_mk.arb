@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Проверете ги поставките на провајдерот",
     "speakersCount": "{count} говорници",
     "diarizationNotPerformed": "Дијаризацијата не е извршена",
-    "diarizationFailed": "Дијаризацијата не успеа"
+    "diarizationFailed": "Дијаризацијата не успеа",
+    "liveTranslation": "Превод во живо",
+    "liveTranslationTargetLanguage": "Преведи на",
+    "liveTranslationHelp": "Поврзаниот сервер го прикажува преводот под оригиналот. Автоматски се користи моделот за резиме, освен ако изберете друг во библиотеката на серверот: Settings → Translation.",
+    "liveTranslationUnconfigured": "На поврзаниот сервер не е поставен модел за превод. Отворете ја неговата библиотека: Settings → Summarization или Translation → Save → Use.",
+    "liveTranslationFailed": "Преводот не е достапен на поврзаниот сервер. Проверете ја неговата библиотека: Settings → Translation."
 }

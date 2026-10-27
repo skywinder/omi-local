@@ -3231,5 +3231,10 @@
     "providerMisconfigured": "تحقق من إعدادات المزوّد",
     "speakersCount": "{count} متحدثين",
     "diarizationNotPerformed": "لم يتم فصل المتحدثين",
-    "diarizationFailed": "فشل فصل المتحدثين"
+    "diarizationFailed": "فشل فصل المتحدثين",
+    "liveTranslation": "الترجمة المباشرة",
+    "liveTranslationTargetLanguage": "الترجمة إلى",
+    "liveTranslationHelp": "يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.",
+    "liveTranslationUnconfigured": "لم يُضبط نموذج ترجمة على الخادم المتصل. افتح مكتبته: Settings → Summarization أو Translation → Save → Use.",
+    "liveTranslationFailed": "الترجمة غير متاحة على الخادم المتصل. راجع مكتبته: Settings → Translation."
 }

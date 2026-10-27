@@ -10052,22 +10052,22 @@ class AppLocalizationsTl extends AppLocalizations {
   String get localMacServers => 'Mga naka-save na server';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Live na pagsasalin';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Isalin sa';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Walang nakatakdang modelo ng pagsasalin sa nakakonektang server. Buksan ang library nito: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation.';
 
   @override
   String get diarization => 'Pagkilala ng nagsasalita';

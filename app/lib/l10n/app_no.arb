@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Sjekk leverandørinnstillinger",
     "speakersCount": "{count} talere",
     "diarizationNotPerformed": "Talerinndeling ikke utført",
-    "diarizationFailed": "Talerinndeling mislyktes"
+    "diarizationFailed": "Talerinndeling mislyktes",
+    "liveTranslation": "Direkteoversettelse",
+    "liveTranslationTargetLanguage": "Oversett til",
+    "liveTranslationHelp": "Den tilkoblede serveren viser oversettelsen under originalen. Oppsummeringsmodellen brukes automatisk med mindre du velger en annen i serverens bibliotek: Settings → Translation.",
+    "liveTranslationUnconfigured": "Ingen oversettelsesmodell er konfigurert på den tilkoblede serveren. Åpne biblioteket: Settings → Summarization eller Translation → Save → Use.",
+    "liveTranslationFailed": "Oversettelse er ikke tilgjengelig på den tilkoblede serveren. Sjekk biblioteket: Settings → Translation."
 }

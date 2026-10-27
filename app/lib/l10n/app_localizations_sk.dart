@@ -9954,22 +9954,22 @@ class AppLocalizationsSk extends AppLocalizations {
   String get localMacServers => 'Uložené servery';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Živý preklad';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Preložiť do';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Pripojený server zobrazuje preklad pod originálom. Automaticky sa používa model na zhrnutie, ak v knižnici servera nevyberiete iný: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Na pripojenom serveri nie je nastavený model na preklad. Otvorte jeho knižnicu: Settings → Summarization alebo Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Preklad na pripojenom serveri nie je dostupný. Skontrolujte jeho knižnicu: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizácia';

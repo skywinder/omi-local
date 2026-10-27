@@ -3260,5 +3260,10 @@
     "providerMisconfigured": "Kiểm tra cài đặt nhà cung cấp",
     "speakersCount": "{count} người nói",
     "diarizationNotPerformed": "Chưa phân tách người nói",
-    "diarizationFailed": "Phân tách người nói thất bại"
+    "diarizationFailed": "Phân tách người nói thất bại",
+    "liveTranslation": "Dịch trực tiếp",
+    "liveTranslationTargetLanguage": "Dịch sang",
+    "liveTranslationHelp": "Máy chủ đã kết nối hiển thị bản dịch dưới bản gốc. Mô hình tóm tắt được dùng tự động trừ khi bạn chọn mô hình khác trong thư viện máy chủ: Settings → Translation.",
+    "liveTranslationUnconfigured": "Chưa cấu hình mô hình dịch trên máy chủ đã kết nối. Mở thư viện của máy chủ: Settings → Summarization hoặc Translation → Save → Use.",
+    "liveTranslationFailed": "Không thể dịch trên máy chủ đã kết nối. Kiểm tra thư viện của máy chủ: Settings → Translation."
 }

@@ -9791,22 +9791,21 @@ class AppLocalizationsJa extends AppLocalizations {
   String get localMacServers => '保存済みサーバー';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'リアルタイム翻訳';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => '翻訳先';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      '接続中のサーバーで翻訳し、原文の下に表示します。サーバーのライブラリの Settings → Translation で別のモデルを選ばない限り、要約モデルが自動的に使われます。';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      '接続中のサーバーに翻訳モデルが設定されていません。ライブラリの Settings → Summarization または Translation → Save → Use から設定してください。';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+  String get liveTranslationFailed => '接続中のサーバーで翻訳を利用できません。ライブラリの Settings → Translation を確認してください。';
 
   @override
   String get diarization => '話者分離';

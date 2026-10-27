@@ -3297,5 +3297,10 @@
     "providerMisconfigured": "Periksa pengaturan penyedia",
     "speakersCount": "{count} pembicara",
     "diarizationNotPerformed": "Pemisahan pembicara tidak dilakukan",
-    "diarizationFailed": "Pemisahan pembicara gagal"
+    "diarizationFailed": "Pemisahan pembicara gagal",
+    "liveTranslation": "Terjemahan langsung",
+    "liveTranslationTargetLanguage": "Terjemahkan ke",
+    "liveTranslationHelp": "Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.",
+    "liveTranslationUnconfigured": "Belum ada model terjemahan di server yang terhubung. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.",
+    "liveTranslationFailed": "Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation."
 }

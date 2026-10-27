@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Preverite nastavitve ponudnika",
     "speakersCount": "{count} govorcev",
     "diarizationNotPerformed": "Diarizacija ni bila izvedena",
-    "diarizationFailed": "Diarizacija ni uspela"
+    "diarizationFailed": "Diarizacija ni uspela",
+    "liveTranslation": "Prevajanje v živo",
+    "liveTranslationTargetLanguage": "Prevedi v",
+    "liveTranslationHelp": "Povezani strežnik prikaže prevod pod izvirnikom. Samodejno se uporabi model za povzemanje, razen če v knjižnici strežnika izberete drugega: Settings → Translation.",
+    "liveTranslationUnconfigured": "Na povezanem strežniku ni nastavljen prevajalski model. Odprite njegovo knjižnico: Settings → Summarization ali Translation → Save → Use.",
+    "liveTranslationFailed": "Prevajanje na povezanem strežniku ni na voljo. Preverite njegovo knjižnico: Settings → Translation."
 }

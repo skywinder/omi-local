@@ -9998,22 +9998,22 @@ class AppLocalizationsBg extends AppLocalizations {
   String get localMacServers => 'Запазени сървъри';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Превод на живо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Превод на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Няма настроен модел за превод на свързания сървър. Отворете библиотеката му: Settings → Summarization или Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation.';
 
   @override
   String get diarization => 'Диаризация';

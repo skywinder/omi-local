@@ -9985,22 +9985,22 @@ class AppLocalizationsLv extends AppLocalizations {
   String get localMacServers => 'Saglabātie serveri';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Tulkošana reāllaikā';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tulkot uz';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Pievienotais serveris rāda tulkojumu zem oriģināla. Automātiski tiek izmantots kopsavilkumu modelis, ja servera bibliotēkā neizvēlaties citu: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Pievienotajā serverī nav iestatīts tulkošanas modelis. Atveriet tā bibliotēku: Settings → Summarization vai Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Pievienotajā serverī tulkošana nav pieejama. Pārbaudiet tā bibliotēku: Settings → Translation.';
 
   @override
   String get diarization => 'Runātāju atdalīšana';

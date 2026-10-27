@@ -9955,22 +9955,22 @@ class AppLocalizationsEt extends AppLocalizations {
   String get localMacServers => 'Salvestatud serverid';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Reaalajas tõlge';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tõlgi keelde';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Ühendatud server kuvab tõlke algteksti all. Automaatselt kasutatakse kokkuvõttemudelit, kui sa ei vali serveri teegis teist mudelit: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Ühendatud serveris pole tõlkemudelit seadistatud. Ava selle teek: Settings → Summarization või Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Tõlge pole ühendatud serveris saadaval. Kontrolli selle teeki: Settings → Translation.';
 
   @override
   String get diarization => 'Kõnelejate eristamine';

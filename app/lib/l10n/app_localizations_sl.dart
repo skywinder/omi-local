@@ -9992,22 +9992,22 @@ class AppLocalizationsSl extends AppLocalizations {
   String get localMacServers => 'Shranjeni strežniki';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Prevajanje v živo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Prevedi v';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Povezani strežnik prikaže prevod pod izvirnikom. Samodejno se uporabi model za povzemanje, razen če v knjižnici strežnika izberete drugega: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Na povezanem strežniku ni nastavljen prevajalski model. Odprite njegovo knjižnico: Settings → Summarization ali Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Prevajanje na povezanem strežniku ni na voljo. Preverite njegovo knjižnico: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizacija';

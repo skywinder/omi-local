@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Suriin ang mga setting ng provider",
     "speakersCount": "{count} nagsasalita",
     "diarizationNotPerformed": "Hindi isinagawa ang pagkilala ng nagsasalita",
-    "diarizationFailed": "Nabigo ang pagkilala ng nagsasalita"
+    "diarizationFailed": "Nabigo ang pagkilala ng nagsasalita",
+    "liveTranslation": "Live na pagsasalin",
+    "liveTranslationTargetLanguage": "Isalin sa",
+    "liveTranslationHelp": "Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.",
+    "liveTranslationUnconfigured": "Walang nakatakdang modelo ng pagsasalin sa nakakonektang server. Buksan ang library nito: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationFailed": "Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation."
 }

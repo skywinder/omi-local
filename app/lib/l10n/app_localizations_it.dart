@@ -10018,22 +10018,22 @@ class AppLocalizationsIt extends AppLocalizations {
   String get localMacServers => 'Server salvati';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traduzione in diretta';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Traduci in';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Il server collegato mostra la traduzione sotto l’originale. Viene usato automaticamente il modello di riepilogo, salvo che ne scegli un altro nella libreria del server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Nessun modello di traduzione è configurato sul server collegato. Apri la sua libreria: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'La traduzione non è disponibile sul server collegato. Controlla la sua libreria: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizzazione';

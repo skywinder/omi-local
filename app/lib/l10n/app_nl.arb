@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Controleer providerinstellingen",
     "speakersCount": "{count} sprekers",
     "diarizationNotPerformed": "Sprekerherkenning niet uitgevoerd",
-    "diarizationFailed": "Sprekerherkenning mislukt"
+    "diarizationFailed": "Sprekerherkenning mislukt",
+    "liveTranslation": "Livevertaling",
+    "liveTranslationTargetLanguage": "Vertalen naar",
+    "liveTranslationHelp": "De verbonden server toont de vertaling onder het origineel. Het samenvattingsmodel wordt automatisch gebruikt, tenzij je een ander model kiest in de serverbibliotheek: Settings → Translation.",
+    "liveTranslationUnconfigured": "Er is geen vertaalmodel ingesteld op de verbonden server. Open de bibliotheek: Settings → Summarization of Translation → Save → Use.",
+    "liveTranslationFailed": "Vertalen is niet beschikbaar op de verbonden server. Controleer de bibliotheek: Settings → Translation."
 }

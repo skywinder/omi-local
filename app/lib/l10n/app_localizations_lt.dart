@@ -9981,22 +9981,22 @@ class AppLocalizationsLt extends AppLocalizations {
   String get localMacServers => 'Išsaugoti serveriai';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Tiesioginis vertimas';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Versti į';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Prijungtas serveris rodo vertimą po originalu. Automatiškai naudojamas santraukų modelis, nebent serverio bibliotekoje pasirinksite kitą: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Prijungtame serveryje nenustatytas vertimo modelis. Atverkite jo biblioteką: Settings → Summarization arba Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation.';
 
   @override
   String get diarization => 'Kalbėtojų atskyrimas';

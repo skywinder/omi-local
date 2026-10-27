@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "בדוק את הגדרות הספק",
     "speakersCount": "{count} דוברים",
     "diarizationNotPerformed": "זיהוי דוברים לא בוצע",
-    "diarizationFailed": "זיהוי דוברים נכשל"
+    "diarizationFailed": "זיהוי דוברים נכשל",
+    "liveTranslation": "תרגום בזמן אמת",
+    "liveTranslationTargetLanguage": "תרגום לשפה",
+    "liveTranslationHelp": "השרת המחובר מציג את התרגום מתחת למקור. מודל הסיכום משמש אוטומטית, אלא אם נבחר מודל אחר בספריית השרת: Settings → Translation.",
+    "liveTranslationUnconfigured": "לא הוגדר מודל תרגום בשרת המחובר. יש לפתוח את הספרייה שלו: Settings → Summarization או Translation → Save → Use.",
+    "liveTranslationFailed": "התרגום אינו זמין בשרת המחובר. יש לבדוק את הספרייה שלו: Settings → Translation."
 }

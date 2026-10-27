@@ -9945,22 +9945,22 @@ class AppLocalizationsDa extends AppLocalizations {
   String get localMacServers => 'Gemte servere';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Liveoversættelse';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Oversæt til';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Den tilsluttede server viser oversættelsen under originalen. Opsummeringsmodellen bruges automatisk, medmindre du vælger en anden i serverens bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Der er ikke konfigureret en oversættelsesmodel på den tilsluttede server. Åbn dens bibliotek: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Oversættelse er ikke tilgængelig på den tilsluttede server. Kontrollér dens bibliotek: Settings → Translation.';
 
   @override
   String get diarization => 'Talerdiarisering';

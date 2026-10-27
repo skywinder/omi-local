@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "ప్రొవైడర్ సెట్టింగ్‌లను తనిఖీ చేయండి",
     "speakersCount": "{count} వక్తలు",
     "diarizationNotPerformed": "వక్తల విభజన జరగలేదు",
-    "diarizationFailed": "వక్తల విభజన విఫలమైంది"
+    "diarizationFailed": "వక్తల విభజన విఫలమైంది",
+    "liveTranslation": "ప్రత్యక్ష అనువాదం",
+    "liveTranslationTargetLanguage": "ఈ భాషలోకి అనువదించండి",
+    "liveTranslationHelp": "అనుసంధానించిన సర్వర్ అసలు వచనం కింద అనువాదాన్ని చూపిస్తుంది. సర్వర్ లైబ్రరీలో వేరే మోడల్ ఎంచుకోకపోతే సారాంశ మోడల్ స్వయంచాలకంగా ఉపయోగించబడుతుంది: Settings → Translation.",
+    "liveTranslationUnconfigured": "అనుసంధానించిన సర్వర్‌లో అనువాద మోడల్ అమర్చలేదు. దాని లైబ్రరీ తెరవండి: Settings → Summarization లేదా Translation → Save → Use.",
+    "liveTranslationFailed": "అనుసంధానించిన సర్వర్‌లో అనువాదం అందుబాటులో లేదు. దాని లైబ్రరీ చూడండి: Settings → Translation."
 }

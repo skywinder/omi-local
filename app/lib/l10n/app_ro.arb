@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Verificați setările furnizorului",
     "speakersCount": "{count} vorbitori",
     "diarizationNotPerformed": "Diarizarea nu a fost efectuată",
-    "diarizationFailed": "Diarizarea a eșuat"
+    "diarizationFailed": "Diarizarea a eșuat",
+    "liveTranslation": "Traducere în direct",
+    "liveTranslationTargetLanguage": "Tradu în",
+    "liveTranslationHelp": "Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.",
+    "liveTranslationUnconfigured": "Niciun model de traducere nu este configurat pe serverul conectat. Deschide biblioteca: Settings → Summarization sau Translation → Save → Use.",
+    "liveTranslationFailed": "Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation."
 }

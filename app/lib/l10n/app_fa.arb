@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "تنظیمات ارائه‌دهنده را بررسی کنید",
     "speakersCount": "{count} گوینده",
     "diarizationNotPerformed": "تفکیک گوینده انجام نشد",
-    "diarizationFailed": "تفکیک گوینده ناموفق بود"
+    "diarizationFailed": "تفکیک گوینده ناموفق بود",
+    "liveTranslation": "ترجمهٔ زنده",
+    "liveTranslationTargetLanguage": "ترجمه به",
+    "liveTranslationHelp": "سرور متصل ترجمه را زیر متن اصلی نشان می‌دهد. مدل خلاصه‌سازی خودکار استفاده می‌شود، مگر اینکه در کتابخانهٔ سرور مدل دیگری انتخاب کنید: Settings → Translation.",
+    "liveTranslationUnconfigured": "مدل ترجمه‌ای روی سرور متصل تنظیم نشده است. کتابخانهٔ آن را باز کنید: Settings → Summarization یا Translation → Save → Use.",
+    "liveTranslationFailed": "ترجمه روی سرور متصل در دسترس نیست. کتابخانهٔ آن را بررسی کنید: Settings → Translation."
 }

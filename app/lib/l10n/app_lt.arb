@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Patikrinkite tiekėjo nustatymus",
     "speakersCount": "Kalbėtojų: {count}",
     "diarizationNotPerformed": "Kalbėtojų atskyrimas neatliktas",
-    "diarizationFailed": "Kalbėtojų atskyrimas nepavyko"
+    "diarizationFailed": "Kalbėtojų atskyrimas nepavyko",
+    "liveTranslation": "Tiesioginis vertimas",
+    "liveTranslationTargetLanguage": "Versti į",
+    "liveTranslationHelp": "Prijungtas serveris rodo vertimą po originalu. Automatiškai naudojamas santraukų modelis, nebent serverio bibliotekoje pasirinksite kitą: Settings → Translation.",
+    "liveTranslationUnconfigured": "Prijungtame serveryje nenustatytas vertimo modelis. Atverkite jo biblioteką: Settings → Summarization arba Translation → Save → Use.",
+    "liveTranslationFailed": "Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation."
 }

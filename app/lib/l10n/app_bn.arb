@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "প্রদানকারীর সেটিংস পরীক্ষা করুন",
     "speakersCount": "{count} জন বক্তা",
     "diarizationNotPerformed": "বক্তা শনাক্তকরণ করা হয়নি",
-    "diarizationFailed": "বক্তা শনাক্তকরণ ব্যর্থ"
+    "diarizationFailed": "বক্তা শনাক্তকরণ ব্যর্থ",
+    "liveTranslation": "সরাসরি অনুবাদ",
+    "liveTranslationTargetLanguage": "যে ভাষায় অনুবাদ করবেন",
+    "liveTranslationHelp": "সংযুক্ত সার্ভারে অনুবাদ হয় এবং মূল লেখার নিচে দেখা যায়। সার্ভারের লাইব্রেরিতে Settings → Translation থেকে অন্য মডেল না বাছলে সারসংক্ষেপের মডেল স্বয়ংক্রিয়ভাবে ব্যবহৃত হয়।",
+    "liveTranslationUnconfigured": "সংযুক্ত সার্ভারে অনুবাদের মডেল সেট করা নেই। তার লাইব্রেরি খুলুন: Settings → Summarization অথবা Translation → Save → Use।",
+    "liveTranslationFailed": "সংযুক্ত সার্ভারে অনুবাদ পাওয়া যাচ্ছে না। তার লাইব্রেরিতে দেখুন: Settings → Translation।"
 }

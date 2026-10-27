@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Proverite podešavanja provajdera",
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
-    "diarizationFailed": "Dijarizacija nije uspela"
+    "diarizationFailed": "Dijarizacija nije uspela",
+    "liveTranslation": "Превод уживо",
+    "liveTranslationTargetLanguage": "Преведи на",
+    "liveTranslationHelp": "Повезани сервер приказује превод испод оригинала. Аутоматски се користи модел за сажимање, осим ако изаберете други у библиотеци сервера: Settings → Translation.",
+    "liveTranslationUnconfigured": "На повезаном серверу није подешен модел за превод. Отворите његову библиотеку: Settings → Summarization или Translation → Save → Use.",
+    "liveTranslationFailed": "Превод није доступан на повезаном серверу. Проверите његову библиотеку: Settings → Translation."
 }

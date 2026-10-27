@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Provjerite postavke pružaoca",
     "speakersCount": "{count} govornika",
     "diarizationNotPerformed": "Dijarizacija nije izvršena",
-    "diarizationFailed": "Dijarizacija nije uspjela"
+    "diarizationFailed": "Dijarizacija nije uspjela",
+    "liveTranslation": "Prevođenje uživo",
+    "liveTranslationTargetLanguage": "Prevedi na",
+    "liveTranslationHelp": "Povezani server prikazuje prijevod ispod originala. Automatski se koristi model za sažimanje, osim ako odaberete drugi u biblioteci servera: Settings → Translation.",
+    "liveTranslationUnconfigured": "Na povezanom serveru nije podešen model za prevođenje. Otvorite njegovu biblioteku: Settings → Summarization ili Translation → Save → Use.",
+    "liveTranslationFailed": "Prevođenje nije dostupno na povezanom serveru. Provjerite njegovu biblioteku: Settings → Translation."
 }

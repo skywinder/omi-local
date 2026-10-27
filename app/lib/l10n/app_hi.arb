@@ -3256,5 +3256,10 @@
     "providerMisconfigured": "प्रदाता सेटिंग जांचें",
     "speakersCount": "{count} वक्ता",
     "diarizationNotPerformed": "वक्ता पहचान नहीं की गई",
-    "diarizationFailed": "वक्ता पहचान विफल"
+    "diarizationFailed": "वक्ता पहचान विफल",
+    "liveTranslation": "लाइव अनुवाद",
+    "liveTranslationTargetLanguage": "इस भाषा में अनुवाद करें",
+    "liveTranslationHelp": "जुड़ा हुआ सर्वर अनुवाद को मूल पाठ के नीचे दिखाता है। सारांश मॉडल अपने आप इस्तेमाल होता है, जब तक आप सर्वर की लाइब्रेरी में दूसरा मॉडल न चुनें: Settings → Translation।",
+    "liveTranslationUnconfigured": "जुड़े हुए सर्वर पर अनुवाद मॉडल सेट नहीं है। उसकी लाइब्रेरी खोलें: Settings → Summarization या Translation → Save → Use।",
+    "liveTranslationFailed": "जुड़े हुए सर्वर पर अनुवाद उपलब्ध नहीं है। उसकी लाइब्रेरी देखें: Settings → Translation।"
 }

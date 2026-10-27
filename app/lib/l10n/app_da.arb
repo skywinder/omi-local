@@ -3273,5 +3273,10 @@
     "providerMisconfigured": "Tjek udbyderindstillinger",
     "speakersCount": "{count} talere",
     "diarizationNotPerformed": "Diarisering ikke udført",
-    "diarizationFailed": "Diarisering mislykkedes"
+    "diarizationFailed": "Diarisering mislykkedes",
+    "liveTranslation": "Liveoversættelse",
+    "liveTranslationTargetLanguage": "Oversæt til",
+    "liveTranslationHelp": "Den tilsluttede server viser oversættelsen under originalen. Opsummeringsmodellen bruges automatisk, medmindre du vælger en anden i serverens bibliotek: Settings → Translation.",
+    "liveTranslationUnconfigured": "Der er ikke konfigureret en oversættelsesmodel på den tilsluttede server. Åbn dens bibliotek: Settings → Summarization eller Translation → Save → Use.",
+    "liveTranslationFailed": "Oversættelse er ikke tilgængelig på den tilsluttede server. Kontrollér dens bibliotek: Settings → Translation."
 }

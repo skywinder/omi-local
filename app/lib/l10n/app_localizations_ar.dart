@@ -9903,22 +9903,21 @@ class AppLocalizationsAr extends AppLocalizations {
   String get localMacServers => 'الخوادم المحفوظة';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'الترجمة المباشرة';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'الترجمة إلى';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'لم يُضبط نموذج ترجمة على الخادم المتصل. افتح مكتبته: Settings → Summarization أو Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+  String get liveTranslationFailed => 'الترجمة غير متاحة على الخادم المتصل. راجع مكتبته: Settings → Translation.';
 
   @override
   String get diarization => 'فصل المتحدثين';

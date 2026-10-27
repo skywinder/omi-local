@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "Праверце налады правайдара",
     "speakersCount": "Прамоўцаў: {count}",
     "diarizationNotPerformed": "Дыярызацыя не выконвалася",
-    "diarizationFailed": "Памылка дыярызацыі"
+    "diarizationFailed": "Памылка дыярызацыі",
+    "liveTranslation": "Пераклад ужывую",
+    "liveTranslationTargetLanguage": "Перакладаць на",
+    "liveTranslationHelp": "Пераклад на падключаным серверы з'яўляецца пад арыгіналам. Аўтаматычна выкарыстоўваецца мадэль падсумавання, калі іншая не выбрана ў бібліятэцы сервера: Settings → Translation.",
+    "liveTranslationUnconfigured": "На падключаным серверы не наладжана мадэль перакладу. Адкрыйце яго бібліятэку: Settings → Summarization або Translation → Save → Use.",
+    "liveTranslationFailed": "Пераклад недаступны на падключаным серверы. Праверце яго бібліятэку: Settings → Translation."
 }

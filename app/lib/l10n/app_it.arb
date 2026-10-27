@@ -3255,5 +3255,10 @@
     "providerMisconfigured": "Controlla le impostazioni del provider",
     "speakersCount": "{count} parlanti",
     "diarizationNotPerformed": "Diarizzazione non eseguita",
-    "diarizationFailed": "Diarizzazione non riuscita"
+    "diarizationFailed": "Diarizzazione non riuscita",
+    "liveTranslation": "Traduzione in diretta",
+    "liveTranslationTargetLanguage": "Traduci in",
+    "liveTranslationHelp": "Il server collegato mostra la traduzione sotto l’originale. Viene usato automaticamente il modello di riepilogo, salvo che ne scegli un altro nella libreria del server: Settings → Translation.",
+    "liveTranslationUnconfigured": "Nessun modello di traduzione è configurato sul server collegato. Apri la sua libreria: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationFailed": "La traduzione non è disponibile sul server collegato. Controlla la sua libreria: Settings → Translation."
 }

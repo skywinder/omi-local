@@ -9962,22 +9962,22 @@ class AppLocalizationsFi extends AppLocalizations {
   String get localMacServers => 'Tallennetut palvelimet';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Reaaliaikainen käännös';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Käännä kielelle';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Yhdistetty palvelin näyttää käännöksen alkuperäisen alla. Yhteenvetomallia käytetään automaattisesti, ellet valitse muuta mallia palvelimen kirjastosta: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Yhdistetylle palvelimelle ei ole määritetty käännösmallia. Avaa sen kirjasto: Settings → Summarization tai Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Käännös ei ole käytettävissä yhdistetyllä palvelimella. Tarkista sen kirjasto: Settings → Translation.';
 
   @override
   String get diarization => 'Puhujien erottelu';

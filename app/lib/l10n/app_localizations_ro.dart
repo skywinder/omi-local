@@ -10008,22 +10008,22 @@ class AppLocalizationsRo extends AppLocalizations {
   String get localMacServers => 'Servere salvate';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traducere în direct';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tradu în';
 
   @override
   String get liveTranslationHelp =>
-      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
+      'Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
+      'Niciun model de traducere nu este configurat pe serverul conectat. Deschide biblioteca: Settings → Summarization sau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
+      'Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizare';

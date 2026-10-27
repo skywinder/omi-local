@@ -10821,5 +10821,10 @@
     "providerMisconfigured": "ಪೂರೈಕೆದಾರರ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ",
     "speakersCount": "{count} ಮಾತನಾಡುವವರು",
     "diarizationNotPerformed": "ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ನಡೆದಿಲ್ಲ",
-    "diarizationFailed": "ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ"
+    "diarizationFailed": "ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ ವಿಫಲವಾಗಿದೆ",
+    "liveTranslation": "ನೇರ ಅನುವಾದ",
+    "liveTranslationTargetLanguage": "ಈ ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ",
+    "liveTranslationHelp": "ಸಂಪರ್ಕಿತ ಸರ್ವರ್ ಮೂಲ ಪಠ್ಯದ ಕೆಳಗೆ ಅನುವಾದವನ್ನು ತೋರಿಸುತ್ತದೆ. ಸರ್ವರ್ ಗ್ರಂಥಾಲಯದ Settings → Translation ನಲ್ಲಿ ಬೇರೆ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆ ಮಾಡದಿದ್ದರೆ ಸಾರಾಂಶ ಮಾದರಿಯೇ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬಳಕೆಯಾಗುತ್ತದೆ.",
+    "liveTranslationUnconfigured": "ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಮಾದರಿಯನ್ನು ಹೊಂದಿಸಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ತೆರೆಯಿರಿ: Settings → Summarization ಅಥವಾ Translation → Save → Use.",
+    "liveTranslationFailed": "ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ಪರಿಶೀಲಿಸಿ: Settings → Translation."
 }

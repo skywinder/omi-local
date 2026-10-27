@@ -3290,5 +3290,10 @@
     "providerMisconfigured": "Sprawdź ustawienia dostawcy",
     "speakersCount": "Mówców: {count}",
     "diarizationNotPerformed": "Diaryzacja nie została wykonana",
-    "diarizationFailed": "Diaryzacja nie powiodła się"
+    "diarizationFailed": "Diaryzacja nie powiodła się",
+    "liveTranslation": "Tłumaczenie na żywo",
+    "liveTranslationTargetLanguage": "Tłumacz na",
+    "liveTranslationHelp": "Połączony serwer pokazuje tłumaczenie pod oryginałem. Automatycznie używany jest model podsumowań, chyba że wybierzesz inny w bibliotece serwera: Settings → Translation.",
+    "liveTranslationUnconfigured": "Na połączonym serwerze nie skonfigurowano modelu tłumaczenia. Otwórz jego bibliotekę: Settings → Summarization lub Translation → Save → Use.",
+    "liveTranslationFailed": "Tłumaczenie jest niedostępne na połączonym serwerze. Sprawdź jego bibliotekę: Settings → Translation."
 }
