@@ -237,6 +237,7 @@ class _AudioPacketSocket extends _TrackingSocket {
   final packets = <List<int>>[];
   final controlFrames = <Map<String, dynamic>>[];
   bool stopped = false;
+  bool failAudioSend = false;
 
   @override
   PureSocketStatus get status => stopped ? PureSocketStatus.disconnected : PureSocketStatus.connected;
@@ -248,6 +249,7 @@ class _AudioPacketSocket extends _TrackingSocket {
       controlFrames.add(jsonDecode(message) as Map<String, dynamic>);
       return;
     }
+    if (failAudioSend) throw StateError('Synthetic socket write failure');
     packets.add(List<int>.from(message as List<int>));
   }
 
@@ -1181,6 +1183,38 @@ void main() {
       expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 5)]);
       provider.dispose();
       legacy.dispose();
+    });
+
+    test('asynchronous socket write failures stay contained after local persistence', () async {
+      final mic = _FakeLiveMicRecorder();
+      final provider = _BufferedStartProvider(
+        localMacSession: session,
+        audioListenerLoader: (_, __) async => null,
+        microphonePermissionRequester: () async => true,
+        phoneMicRecorder: mic,
+      );
+      await provider.streamRecording();
+      await pumpEventQueue();
+      final socket = provider.connect(0, codec: BleAudioCodec.pcm16);
+      await pumpEventQueue();
+      socket.failAudioSend = true;
+      final escaped = <Object>[];
+      await runZonedGuarded(() async {
+        mic.receive!(Uint8List.fromList(List.filled(320, 8)));
+        await outbox.flushPendingWrites();
+        await pumpEventQueue();
+      }, (error, _) => escaped.add(error));
+      expect(provider.recordingState, RecordingState.record);
+      expect(socket.stopped, isTrue);
+      expect(mic.starts, 1);
+      expect(provider.keepAliveScheduledForTesting, isTrue);
+      mic.receive!(Uint8List.fromList(List.filled(320, 9)));
+      await provider.stopStreamRecording();
+      await outbox.drain();
+      provider.dispose();
+      expect(escaped, isEmpty, reason: 'The async send Future must not escape its best-effort preview owner');
+      expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 8), List.filled(320, 9)]);
+      expect(outbox.captureIssue, isNull, reason: 'A socket error cannot be reported as a journal write failure');
     });
 
     test('missing local outbox fails before starting native microphone or batch fallback', () async {

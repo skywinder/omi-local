@@ -2361,10 +2361,20 @@ class CaptureController extends ChangeNotifier
             afterPersisted: () {
               // Preview is best-effort; persisted immutable delivery is independent.
               if (identical(_localDurableRecording, recording) && _socket?.state == SocketServiceState.connected) {
+                final socket = _socket!;
                 try {
-                  _socket?.send(payload);
+                  unawaited(
+                    socket
+                        .send(payload)
+                        .then<void>(
+                          (_) {},
+                          onError: (Object _, StackTrace __) {
+                            return _closeFailedLocalPreview(recording, socket);
+                          },
+                        ),
+                  );
                 } catch (_) {
-                  // Losing preview does not invalidate locally persisted canonical audio.
+                  unawaited(_closeFailedLocalPreview(recording, socket));
                 }
               }
             },
@@ -2383,6 +2393,26 @@ class CaptureController extends ChangeNotifier
             );
           }),
     );
+  }
+
+  Future<void> _closeFailedLocalPreview(LocalAudioRecording recording, TranscriptSegmentSocketService socket) async {
+    if (!identical(recording, _localDurableRecording) ||
+        !identical(socket, _socket) ||
+        socket.state != SocketServiceState.connected) {
+      return;
+    }
+    _transcriptServiceReady = false;
+    try {
+      // send() returns a Future: a synchronous try/catch alone cannot contain
+      // its error. Retire this transport, keeping canonical journal/input alive.
+      await socket.stop(reason: 'local preview send failed');
+    } catch (_) {
+      // Closing a broken preview is best-effort too; retain its phone audio.
+    }
+    if (identical(recording, _localDurableRecording) && identical(socket, _socket)) {
+      _startKeepAliveServices();
+      notifyListeners();
+    }
   }
 
   Future<void> _finishLocalDurableAudio() async {

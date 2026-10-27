@@ -37,6 +37,8 @@ successful route changes and foreground return checkpoint active parts for deliv
 ordinary health polls do not rotate parts. Keep previous live-draft words within
 the same recording across sockets, with recording-relative timestamps and
 draft-scoped corrections; clear them when starting a new recording.
+Contain the Future returned by preview send; an async socket-write error retires
+only that socket and schedules recovery, never a storage error or input restart.
 Keep pending parts bound to the original authenticated pairing, including key
 identity. Connection and storage failures must remain visible without deleting
 unacknowledged audio. See `../docs/RECORDING_DURABILITY.md`.
