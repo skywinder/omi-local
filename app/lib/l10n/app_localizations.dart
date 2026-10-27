@@ -18558,19 +18558,19 @@ abstract class AppLocalizations {
   /// No description provided for @liveTranslationHelp.
   ///
   /// In en, this message translates to:
-  /// **'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.'**
+  /// **'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.'**
   String get liveTranslationHelp;
 
   /// No description provided for @liveTranslationUnconfigured.
   ///
   /// In en, this message translates to:
-  /// **'Translation provider is not configured on your Mac. Add one in the local library settings.'**
+  /// **'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.'**
   String get liveTranslationUnconfigured;
 
   /// No description provided for @liveTranslationFailed.
   ///
   /// In en, this message translates to:
-  /// **'Translation is unavailable right now. Check the translation provider on your Mac.'**
+  /// **'Translation is unavailable on the connected server. Check its web library → Settings → Translation.'**
   String get liveTranslationFailed;
 
   /// No description provided for @diarization.
@@ -18656,6 +18656,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update the server to sync audio. Audio saved on the phone is kept.'**
   String get localAudioServerUpdateRequired;
+
+  /// No description provided for @liveTranslationBidirectional.
+  ///
+  /// In en, this message translates to:
+  /// **'Two-way translation'**
+  String get liveTranslationBidirectional;
+
+  /// No description provided for @liveTranslationPairHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect the language of each phrase and translate into the other selected language.'**
+  String get liveTranslationPairHelp;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

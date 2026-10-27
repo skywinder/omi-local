@@ -9997,22 +9997,22 @@ class AppLocalizationsHu extends AppLocalizations {
   String get localMacServers => 'Mentett szerverek';
 
   @override
-  String get liveTranslation => 'Valós idejű fordítás';
+  String get liveTranslation => 'Élő fordítás';
 
   @override
-  String get liveTranslationTargetLanguage => 'Fordítás erre a nyelvre';
+  String get liveTranslationTargetLanguage => 'Fordítás erre';
 
   @override
   String get liveTranslationHelp =>
-      'Fordítsd le az élő átiratot a Maceden. Az eredeti szöveg megmarad, a fordítás pedig minden sor alatt megjelenik. Először adj hozzá egy fordítási szolgáltatót a helyi könyvtár beállításaiban.';
+      'A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'A Maceden nincs beállítva fordítási szolgáltató. Adj hozzá egyet a helyi könyvtár beállításaiban.';
+      'Nincs fordítási modell beállítva a csatlakoztatott szerveren. Nyissa meg a könyvtárát: Settings → Summarization vagy Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'A fordítás jelenleg nem érhető el. Ellenőrizd a fordítási szolgáltatót a Maceden.';
+      'A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation.';
 
   @override
   String get diarization => 'Beszélőfelismerés';
@@ -10062,4 +10062,11 @@ class AppLocalizationsHu extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'A hang szinkronizálásához frissítsd a szervert. A telefonon mentett hang megmarad.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kétirányú fordítás';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre.';
 }

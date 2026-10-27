@@ -80,6 +80,8 @@ an update-required message and receives neither protocol. Pairing and pending
 audio remain on the phone until a compatible server can acknowledge them.
 Network socket loss changes transcription readiness, not microphone capture;
 reconnecting does not stop or restart the recording input.
+This also applies to a failed live-translation control message. The phone retains
+its audio and resends the saved translation language pair on the next preview.
 Older apps continue to use the original server-side WAV capture path.
 
 New protected recordings use journal protocol version 2 and require authenticated

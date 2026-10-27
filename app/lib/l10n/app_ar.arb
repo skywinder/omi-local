@@ -3240,9 +3240,11 @@
     "localProcessingProbe": "اختبار الاتصال",
     "localProcessingPending": "التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.",
     "localAudioServerUpdateRequired": "حدّث الخادم لمزامنة الصوت. يبقى الصوت المحفوظ على الهاتف محفوظًا.",
-    "liveTranslation": "الترجمة الفورية",
-    "liveTranslationFailed": "الترجمة غير متاحة حاليًا. تحقّق من مزوّد الترجمة على جهاز Mac الخاص بك.",
-    "liveTranslationHelp": "ترجم النص المباشر على جهاز Mac الخاص بك. يبقى النص الأصلي، وتظهر الترجمة أسفل كل سطر. أضف أولًا مزوّد ترجمة في إعدادات المكتبة المحلية.",
+    "liveTranslation": "الترجمة المباشرة",
+    "liveTranslationFailed": "الترجمة غير متاحة على الخادم المتصل. راجع مكتبته: Settings → Translation.",
+    "liveTranslationHelp": "يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.",
     "liveTranslationTargetLanguage": "الترجمة إلى",
-    "liveTranslationUnconfigured": "لم يتم إعداد مزوّد ترجمة على جهاز Mac الخاص بك. أضف واحدًا في إعدادات المكتبة المحلية."
+    "liveTranslationUnconfigured": "لم يُضبط نموذج ترجمة على الخادم المتصل. افتح مكتبته: Settings → Summarization أو Translation → Save → Use.",
+    "liveTranslationBidirectional": "ترجمة ثنائية الاتجاه",
+    "liveTranslationPairHelp": "تحديد لغة كل عبارة وترجمتها إلى اللغة الأخرى المحددة."
 }

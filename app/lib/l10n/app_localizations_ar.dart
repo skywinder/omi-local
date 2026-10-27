@@ -9898,21 +9898,21 @@ class AppLocalizationsAr extends AppLocalizations {
   String get localMacServers => 'الخوادم المحفوظة';
 
   @override
-  String get liveTranslation => 'الترجمة الفورية';
+  String get liveTranslation => 'الترجمة المباشرة';
 
   @override
   String get liveTranslationTargetLanguage => 'الترجمة إلى';
 
   @override
   String get liveTranslationHelp =>
-      'ترجم النص المباشر على جهاز Mac الخاص بك. يبقى النص الأصلي، وتظهر الترجمة أسفل كل سطر. أضف أولًا مزوّد ترجمة في إعدادات المكتبة المحلية.';
+      'يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'لم يتم إعداد مزوّد ترجمة على جهاز Mac الخاص بك. أضف واحدًا في إعدادات المكتبة المحلية.';
+      'لم يُضبط نموذج ترجمة على الخادم المتصل. افتح مكتبته: Settings → Summarization أو Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'الترجمة غير متاحة حاليًا. تحقّق من مزوّد الترجمة على جهاز Mac الخاص بك.';
+  String get liveTranslationFailed => 'الترجمة غير متاحة على الخادم المتصل. راجع مكتبته: Settings → Translation.';
 
   @override
   String get diarization => 'فصل المتحدثين';
@@ -9959,4 +9959,10 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => 'حدّث الخادم لمزامنة الصوت. يبقى الصوت المحفوظ على الهاتف محفوظًا.';
+
+  @override
+  String get liveTranslationBidirectional => 'ترجمة ثنائية الاتجاه';
+
+  @override
+  String get liveTranslationPairHelp => 'تحديد لغة كل عبارة وترجمتها إلى اللغة الأخرى المحددة.';
 }

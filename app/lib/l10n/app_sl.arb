@@ -10831,8 +10831,10 @@
     "localProcessingPending": "Shranjene spremembe še niso aktivne. Tapnite Potrdi, da jih uveljavite.",
     "localAudioServerUpdateRequired": "Posodobite strežnik za sinhronizacijo zvoka. Zvok, shranjen v telefonu, se ohrani.",
     "liveTranslation": "Prevajanje v živo",
-    "liveTranslationFailed": "Prevod trenutno ni na voljo. Preverite ponudnika prevajanja v svojem Macu.",
-    "liveTranslationHelp": "Prevajajte prepis v živo v svojem Macu. Izvirnik se ohrani, prevod pa se prikaže pod vsako vrstico. Najprej dodajte ponudnika prevajanja v nastavitvah lokalne knjižnice.",
+    "liveTranslationFailed": "Prevajanje na povezanem strežniku ni na voljo. Preverite njegovo knjižnico: Settings → Translation.",
+    "liveTranslationHelp": "Povezani strežnik prikaže prevod pod izvirnikom. Samodejno se uporabi model za povzemanje, razen če v knjižnici strežnika izberete drugega: Settings → Translation.",
     "liveTranslationTargetLanguage": "Prevedi v",
-    "liveTranslationUnconfigured": "Ponudnik prevajanja v vašem Macu ni nastavljen. Dodajte ga v nastavitvah lokalne knjižnice."
+    "liveTranslationUnconfigured": "Na povezanem strežniku ni nastavljen prevajalski model. Odprite njegovo knjižnico: Settings → Summarization ali Translation → Save → Use.",
+    "liveTranslationBidirectional": "Dvosmerno prevajanje",
+    "liveTranslationPairHelp": "Prepoznaj jezik vsake fraze in jo prevedi v drugi izbrani jezik."
 }

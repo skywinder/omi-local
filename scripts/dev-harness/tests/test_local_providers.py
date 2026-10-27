@@ -31,6 +31,46 @@ def summary(name='Synthetic LLM', base='https://llm.example/v1'):
             'settings': {'base_url': base, 'model': 'synthetic-model'}}
 
 
+def test_translation_defaults_to_applied_summary_and_keeps_credentials_pinned(cfg):
+    registry = Registry(cfg)
+    # Legacy users with only STT have no text model; never send text to ASR.
+    assert registry.snapshot('translation') is None
+    saved = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'summary-key'})
+    card = saved['profiles'][-1]
+    assert registry.snapshot('translation') is None  # A saved draft is not active.
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': card['id']},
+                      prepare=lambda _, publish: publish())
+    inherited = registry.snapshot('translation')
+    assert inherited['inherited_from'] == 'summary'
+    assert inherited['stage'] == 'translation'
+    assert registry.key(inherited) == 'summary-key'
+    assert registry.read()['active']['translation'] is None
+    assert registry.read()['effective']['translation']['settings'] == card['settings']
+    edited = {**card, 'settings': {**card['settings'], 'model': 'draft-only'}}
+    registry.save({'revision': 2, 'profile': edited, 'api_key': 'new-key'})
+    assert registry.snapshot('translation') == inherited
+    assert registry.key(inherited) == 'summary-key'
+    assert 'translation' not in registry.pipeline()
+    registry.activate({'revision': 3, 'stage': 'summary', 'id': None},
+                      prepare=lambda _, publish: publish())
+    assert registry.snapshot('translation') is None
+
+
+def test_explicit_translator_overrides_default_until_returning_to_automatic(cfg):
+    registry = Registry(cfg)
+    for stage in ('summary', 'translation'):
+        saved = registry.save({'revision': registry.read()['revision'],
+                               'profile': {**summary(), 'stage': stage}, 'api_key': stage + '-key'})
+        registry.activate({'revision': saved['revision'], 'stage': stage, 'id': saved['profiles'][-1]['id']},
+                          prepare=lambda _, publish: publish())
+    selected = registry.snapshot('translation')
+    assert 'inherited_from' not in selected
+    assert registry.key(selected) == 'translation-key'
+    registry.activate({'revision': registry.read()['revision'], 'stage': 'translation', 'id': None},
+                      prepare=lambda _, publish: publish())
+    assert registry.key(registry.snapshot('translation')) == 'summary-key'
+
+
 def test_drafts_are_separate_and_secrets_keep_pinned_versions(cfg):
     registry = Registry(cfg)
     original = (registry.root / 'stt-engine.json').read_bytes()

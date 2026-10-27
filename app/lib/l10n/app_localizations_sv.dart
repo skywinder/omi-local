@@ -9967,15 +9967,15 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Översätt transkriberingen i realtid på din Mac. Originalet behålls och översättningen visas under varje rad. Lägg först till en översättningstjänst i inställningarna för det lokala biblioteket.';
+      'Den anslutna servern visar översättningen under originalet. Sammanfattningsmodellen används automatiskt om du inte väljer en annan i serverns bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Ingen översättningstjänst är konfigurerad på din Mac. Lägg till en i inställningarna för det lokala biblioteket.';
+      'Ingen översättningsmodell har konfigurerats på den anslutna servern. Öppna biblioteket: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Översättning är inte tillgänglig just nu. Kontrollera översättningstjänsten på din Mac.';
+      'Översättning är inte tillgänglig på den anslutna servern. Kontrollera biblioteket: Settings → Translation.';
 
   @override
   String get diarization => 'Talarindelning';
@@ -10023,4 +10023,10 @@ class AppLocalizationsSv extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Uppdatera servern för att synkronisera ljud. Ljud som sparats på telefonen behålls.';
+
+  @override
+  String get liveTranslationBidirectional => 'Översättning åt båda hållen';
+
+  @override
+  String get liveTranslationPairHelp => 'Identifiera språket i varje mening och översätt till det andra valda språket.';
 }

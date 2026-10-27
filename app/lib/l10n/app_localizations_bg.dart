@@ -9993,21 +9993,22 @@ class AppLocalizationsBg extends AppLocalizations {
   String get localMacServers => 'Запазени сървъри';
 
   @override
-  String get liveTranslation => 'Превод в реално време';
+  String get liveTranslation => 'Превод на живо';
 
   @override
   String get liveTranslationTargetLanguage => 'Превод на';
 
   @override
   String get liveTranslationHelp =>
-      'Превеждайте транскрипцията на живо на вашия Mac. Оригиналът се запазва, а преводът се показва под всеки ред. Първо добавете доставчик на превод в настройките на локалната библиотека.';
+      'Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'На вашия Mac не е настроен доставчик на превод. Добавете такъв в настройките на локалната библиотека.';
+      'Няма настроен модел за превод на свързания сървър. Отворете библиотеката му: Settings → Summarization или Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Преводът в момента не е достъпен. Проверете доставчика на превод на вашия Mac.';
+  String get liveTranslationFailed =>
+      'Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation.';
 
   @override
   String get diarization => 'Диаризация';
@@ -10055,4 +10056,10 @@ class AppLocalizationsBg extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Обновете сървъра, за да синхронизирате аудиото. Запазеното аудио на телефона се съхранява.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двупосочен превод';
+
+  @override
+  String get liveTranslationPairHelp => 'Разпознаване на езика на всяка фраза и превод на другия избран език.';
 }

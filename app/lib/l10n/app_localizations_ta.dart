@@ -10021,22 +10021,22 @@ class AppLocalizationsTa extends AppLocalizations {
   String get localMacServers => 'சேமித்த சேவையகங்கள்';
 
   @override
-  String get liveTranslation => 'நேரலை மொழிபெயர்ப்பு';
+  String get liveTranslation => 'நேரடி மொழிபெயர்ப்பு';
 
   @override
   String get liveTranslationTargetLanguage => 'இந்த மொழிக்கு மொழிபெயர்';
 
   @override
   String get liveTranslationHelp =>
-      'உங்கள் Mac-இல் நேரலை உரைப்பதிவை மொழிபெயர்க்கவும். அசல் உரை தக்கவைக்கப்படும்; ஒவ்வொரு வரிக்கும் கீழே மொழிபெயர்ப்பு தோன்றும். முதலில் உள்ளூர் நூலக அமைப்புகளில் மொழிபெயர்ப்பு சேவை வழங்குநரைச் சேர்க்கவும்.';
+      'இணைக்கப்பட்ட சேவையகம் மூல உரையின் கீழே மொழிபெயர்ப்பைக் காட்டும். சேவையக நூலகத்தில் வேறு மாதிரியைத் தேர்ந்தெடுக்காவிட்டால் சுருக்க மாதிரி தானாகப் பயன்படும்: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'உங்கள் Mac-இல் மொழிபெயர்ப்பு சேவை வழங்குநர் அமைக்கப்படவில்லை. உள்ளூர் நூலக அமைப்புகளில் ஒன்றைச் சேர்க்கவும்.';
+      'இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு மாதிரி அமைக்கப்படவில்லை. அதன் நூலகத்தைத் திறக்கவும்: Settings → Summarization அல்லது Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'இப்போது மொழிபெயர்ப்பு கிடைக்கவில்லை. உங்கள் Mac-இல் உள்ள மொழிபெயர்ப்பு சேவை வழங்குநரைச் சரிபார்க்கவும்.';
+      'இணைக்கப்பட்ட சேவையகத்தில் மொழிபெயர்ப்பு கிடைக்கவில்லை. அதன் நூலகத்தைச் சரிபார்க்கவும்: Settings → Translation.';
 
   @override
   String get diarization => 'பேச்சாளர் பிரிப்பு';
@@ -10085,4 +10085,11 @@ class AppLocalizationsTa extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'ஒலியை ஒத்திசைக்க சேவையகத்தைப் புதுப்பிக்கவும். தொலைபேசியில் சேமித்த ஆடியோ பாதுகாக்கப்படும்.';
+
+  @override
+  String get liveTranslationBidirectional => 'இருவழி மொழிபெயர்ப்பு';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'ஒவ்வொரு சொற்றொடரின் மொழியையும் கண்டறிந்து, தேர்ந்தெடுத்த மற்றொரு மொழிக்கு மொழிபெயர்க்கவும்.';
 }

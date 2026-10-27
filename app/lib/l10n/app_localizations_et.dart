@@ -9948,18 +9948,19 @@ class AppLocalizationsEt extends AppLocalizations {
   String get liveTranslation => 'Reaalajas tõlge';
 
   @override
-  String get liveTranslationTargetLanguage => 'Tõlke sihtkeel';
+  String get liveTranslationTargetLanguage => 'Tõlgi keelde';
 
   @override
   String get liveTranslationHelp =>
-      'Tõlgi oma Macis reaalajas transkriptsiooni. Algtekst säilib ja tõlge kuvatakse iga rea all. Lisa esmalt kohaliku teegi seadetes tõlketeenuse pakkuja.';
+      'Ühendatud server kuvab tõlke algteksti all. Automaatselt kasutatakse kokkuvõttemudelit, kui sa ei vali serveri teegis teist mudelit: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Sinu Macis pole tõlketeenuse pakkujat seadistatud. Lisa see kohaliku teegi seadetes.';
+      'Ühendatud serveris pole tõlkemudelit seadistatud. Ava selle teek: Settings → Summarization või Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Tõlge pole praegu saadaval. Kontrolli oma Macis tõlketeenuse pakkujat.';
+  String get liveTranslationFailed =>
+      'Tõlge pole ühendatud serveris saadaval. Kontrolli selle teeki: Settings → Translation.';
 
   @override
   String get diarization => 'Kõnelejate eristamine';
@@ -10006,4 +10007,10 @@ class AppLocalizationsEt extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Heli sünkroonimiseks uuenda serverit. Telefonis salvestatud heli säilitatakse.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kahesuunaline tõlge';
+
+  @override
+  String get liveTranslationPairHelp => 'Tuvasta iga fraasi keel ja tõlgi teise valitud keelde.';
 }

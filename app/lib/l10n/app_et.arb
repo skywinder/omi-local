@@ -3265,8 +3265,10 @@
     "localProcessingPending": "Salvestatud muudatused pole aktiivsed. Rakendamiseks puuduta Kinnita.",
     "localAudioServerUpdateRequired": "Heli sünkroonimiseks uuenda serverit. Telefonis salvestatud heli säilitatakse.",
     "liveTranslation": "Reaalajas tõlge",
-    "liveTranslationFailed": "Tõlge pole praegu saadaval. Kontrolli oma Macis tõlketeenuse pakkujat.",
-    "liveTranslationHelp": "Tõlgi oma Macis reaalajas transkriptsiooni. Algtekst säilib ja tõlge kuvatakse iga rea all. Lisa esmalt kohaliku teegi seadetes tõlketeenuse pakkuja.",
-    "liveTranslationTargetLanguage": "Tõlke sihtkeel",
-    "liveTranslationUnconfigured": "Sinu Macis pole tõlketeenuse pakkujat seadistatud. Lisa see kohaliku teegi seadetes."
+    "liveTranslationFailed": "Tõlge pole ühendatud serveris saadaval. Kontrolli selle teeki: Settings → Translation.",
+    "liveTranslationHelp": "Ühendatud server kuvab tõlke algteksti all. Automaatselt kasutatakse kokkuvõttemudelit, kui sa ei vali serveri teegis teist mudelit: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Tõlgi keelde",
+    "liveTranslationUnconfigured": "Ühendatud serveris pole tõlkemudelit seadistatud. Ava selle teek: Settings → Summarization või Translation → Save → Use.",
+    "liveTranslationBidirectional": "Kahesuunaline tõlge",
+    "liveTranslationPairHelp": "Tuvasta iga fraasi keel ja tõlgi teise valitud keelde."
 }

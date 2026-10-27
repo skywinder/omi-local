@@ -9776,16 +9776,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get liveTranslation => 'リアルタイム翻訳';
 
   @override
-  String get liveTranslationTargetLanguage => '翻訳先の言語';
+  String get liveTranslationTargetLanguage => '翻訳先';
 
   @override
-  String get liveTranslationHelp => 'Macでリアルタイムの文字起こしを翻訳します。原文は保持され、各行の下に翻訳が表示されます。まず、ローカルライブラリの設定で翻訳プロバイダーを追加してください。';
+  String get liveTranslationHelp =>
+      '接続中のサーバーで翻訳し、原文の下に表示します。サーバーのライブラリの Settings → Translation で別のモデルを選ばない限り、要約モデルが自動的に使われます。';
 
   @override
-  String get liveTranslationUnconfigured => 'Macに翻訳プロバイダーが設定されていません。ローカルライブラリの設定で追加してください。';
+  String get liveTranslationUnconfigured =>
+      '接続中のサーバーに翻訳モデルが設定されていません。ライブラリの Settings → Summarization または Translation → Save → Use から設定してください。';
 
   @override
-  String get liveTranslationFailed => '現在、翻訳を利用できません。Macの翻訳プロバイダーを確認してください。';
+  String get liveTranslationFailed => '接続中のサーバーで翻訳を利用できません。ライブラリの Settings → Translation を確認してください。';
 
   @override
   String get diarization => '話者分離';
@@ -9830,4 +9832,10 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => '音声を同期するにはサーバーを更新してください。電話に保存された音声は保持されます。';
+
+  @override
+  String get liveTranslationBidirectional => '双方向翻訳';
+
+  @override
+  String get liveTranslationPairHelp => '各フレーズの言語を判別し、選択したもう一方の言語に翻訳します。';
 }

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from utils import local_live_preview
+from utils import local_live_preview, offline_audio_capture
 from utils.stt import speaker_identity
 
 
@@ -32,6 +32,7 @@ def listen_modules():
     """
     real_helpers = {
         'utils.local_live_preview': local_live_preview,
+        'utils.offline_audio_capture': offline_audio_capture,
         'utils.stt.speaker_identity': speaker_identity,
     }
 
@@ -76,6 +77,7 @@ async def test_translation_frame_is_dispatched_to_host_and_never_enqueued(listen
     languages = []
     websocket = _FramesWebSocket([
         {'text': json.dumps({'type': 'translation', 'language': 'en'})},
+        {'text': json.dumps({'type': 'translation', 'language': 'es', 'other_language': 'ru'})},
         {'text': json.dumps({'type': 'translation'})},
         {'type': 'websocket.disconnect', 'code': 1000},
     ])
@@ -89,10 +91,10 @@ async def test_translation_frame_is_dispatched_to_host_and_never_enqueued(listen
         use_custom_stt=True,
         audio_bytes_send=None,
         transcripts=SimpleNamespace(enqueue=received_segments.extend),
-        set_live_translation=languages.append,
+        set_live_translation=lambda language, other: languages.append((language, other)),
     )
     await receiver.ListenReceiver(host, [], {}).receive_data()
-    assert languages == ['en', None]
+    assert languages == [('en', None), ('es', 'ru'), (None, None)]
     assert received_segments == []
     assert host.state.close_code == 1000
     assert host.state.first_audio_byte_timestamp is None
@@ -103,11 +105,40 @@ def test_runtime_normalizes_language_and_updates_an_existing_preview(listen_modu
     calls = []
     runtime = module.ListenSessionRuntime.__new__(module.ListenSessionRuntime)
     runtime.live_translation_language = None
+    runtime.live_translation_other_language = None
     runtime.local_preview = None
     runtime.set_live_translation(' DE ')
     assert runtime.live_translation_language == 'de'
-    runtime.local_preview = SimpleNamespace(set_translation=calls.append)
+    runtime.set_live_translation(' ES ', 'RU')
+    assert (runtime.live_translation_language, runtime.live_translation_other_language) == ('es', 'ru')
+    runtime.local_preview = SimpleNamespace(set_translation=lambda language, other: calls.append((language, other)))
     runtime.set_live_translation('en-US')
     runtime.set_live_translation('fr')
-    assert runtime.live_translation_language == 'fr'
-    assert calls == [None, 'fr']
+    runtime.set_live_translation('es', 'ru')
+    runtime.set_live_translation('es', 'es')
+    assert runtime.live_translation_language is None
+    assert runtime.live_translation_other_language is None
+    assert calls == [(None, None), ('fr', None), ('es', 'ru'), (None, None)]
+
+
+def test_live_preview_runtime_preserves_original_pcm_capture(tmp_path, listen_modules):
+    import wave
+
+    _, module = listen_modules
+    from utils.offline_audio_capture import OfflineAudioCapture
+
+    capture = OfflineAudioCapture(session_id='00000000-0000-0000-0000-000000000001',
+                                  input_codec='pcm16', source='phone', root=tmp_path)
+    received = []
+    runtime = module.ListenSessionRuntime.__new__(module.ListenSessionRuntime)
+    runtime.capture_sink = capture
+    runtime.local_preview = SimpleNamespace(feed=received.append)
+    frames = [b'\x01\x00' * 320, b'\x02\x00' * 320]
+    for pcm in frames:
+        runtime.capture_decoded_audio(encoded_bytes=len(pcm), pcm=pcm)
+    assert runtime.capture_sink is capture
+    assert received == frames
+    metadata = capture.finalize()
+    with wave.open(str(capture.wav_path), 'rb') as wav:
+        assert wav.readframes(wav.getnframes()) == b''.join(frames)
+    assert metadata['frames_received'] == 2

@@ -9886,21 +9886,22 @@ class AppLocalizationsTh extends AppLocalizations {
   String get localMacServers => 'เซิร์ฟเวอร์ที่บันทึกไว้';
 
   @override
-  String get liveTranslation => 'การแปลแบบเรียลไทม์';
+  String get liveTranslation => 'การแปลสด';
 
   @override
   String get liveTranslationTargetLanguage => 'แปลเป็น';
 
   @override
   String get liveTranslationHelp =>
-      'แปลข้อความถอดเสียงแบบเรียลไทม์บน Mac ของคุณ ต้นฉบับจะยังคงอยู่และคำแปลจะปรากฏใต้แต่ละบรรทัด โปรดเพิ่มผู้ให้บริการแปลภาษาในการตั้งค่าคลังข้อมูลภายในเครื่องก่อน';
+      'เซิร์ฟเวอร์ที่เชื่อมต่อจะแสดงคำแปลใต้ข้อความต้นฉบับ โดยใช้โมเดลสรุปโดยอัตโนมัติ เว้นแต่จะเลือกโมเดลอื่นในคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get liveTranslationUnconfigured =>
-      'ยังไม่ได้ตั้งค่าผู้ให้บริการแปลภาษาบน Mac ของคุณ โปรดเพิ่มผู้ให้บริการในการตั้งค่าคลังข้อมูลภายในเครื่อง';
+      'ยังไม่ได้ตั้งค่าโมเดลแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อ เปิดคลังของเซิร์ฟเวอร์: Settings → Summarization หรือ Translation → Save → Use';
 
   @override
-  String get liveTranslationFailed => 'ขณะนี้ไม่สามารถแปลได้ โปรดตรวจสอบผู้ให้บริการแปลภาษาบน Mac ของคุณ';
+  String get liveTranslationFailed =>
+      'ไม่สามารถแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อได้ ตรวจสอบคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get diarization => 'การแยกผู้พูด';
@@ -9947,4 +9948,10 @@ class AppLocalizationsTh extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'อัปเดตเซิร์ฟเวอร์เพื่อซิงค์เสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่';
+
+  @override
+  String get liveTranslationBidirectional => 'การแปลสองทาง';
+
+  @override
+  String get liveTranslationPairHelp => 'ตรวจจับภาษาของแต่ละวลีและแปลเป็นอีกภาษาที่เลือกไว้';
 }

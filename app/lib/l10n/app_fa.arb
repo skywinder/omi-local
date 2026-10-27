@@ -10830,9 +10830,11 @@
     "localProcessingProbe": "آزمایش اتصال",
     "localProcessingPending": "تغییرات ذخیره‌شده فعال نیستند. برای اعمال، روی تأیید بزنید.",
     "localAudioServerUpdateRequired": "برای همگام‌سازی صدا، سرور را به‌روزرسانی کنید. صدای ذخیره‌شده در تلفن حفظ می‌شود.",
-    "liveTranslation": "ترجمهٔ هم‌زمان",
-    "liveTranslationFailed": "ترجمه در حال حاضر در دسترس نیست. ارائه‌دهندهٔ ترجمه را در Mac خود بررسی کنید.",
-    "liveTranslationHelp": "متن پیاده‌شدهٔ زنده را در Mac خود ترجمه کنید. متن اصلی حفظ می‌شود و ترجمه زیر هر خط نمایش داده می‌شود. ابتدا یک ارائه‌دهندهٔ ترجمه در تنظیمات کتابخانهٔ محلی اضافه کنید.",
+    "liveTranslation": "ترجمهٔ زنده",
+    "liveTranslationFailed": "ترجمه روی سرور متصل در دسترس نیست. کتابخانهٔ آن را بررسی کنید: Settings → Translation.",
+    "liveTranslationHelp": "سرور متصل ترجمه را زیر متن اصلی نشان می‌دهد. مدل خلاصه‌سازی خودکار استفاده می‌شود، مگر اینکه در کتابخانهٔ سرور مدل دیگری انتخاب کنید: Settings → Translation.",
     "liveTranslationTargetLanguage": "ترجمه به",
-    "liveTranslationUnconfigured": "ارائه‌دهندهٔ ترجمه در Mac شما تنظیم نشده است. یکی را در تنظیمات کتابخانهٔ محلی اضافه کنید."
+    "liveTranslationUnconfigured": "مدل ترجمه‌ای روی سرور متصل تنظیم نشده است. کتابخانهٔ آن را باز کنید: Settings → Summarization یا Translation → Save → Use.",
+    "liveTranslationBidirectional": "ترجمهٔ دوطرفه",
+    "liveTranslationPairHelp": "زبان هر عبارت را تشخیص دهید و آن را به زبان انتخابی دیگر ترجمه کنید."
 }

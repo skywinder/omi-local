@@ -3264,9 +3264,11 @@
     "localProcessingProbe": "Pārbaudīt savienojumu",
     "localProcessingPending": "Saglabātās izmaiņas vēl nav aktīvas. Pieskarieties Apstiprināt, lai tās lietotu.",
     "localAudioServerUpdateRequired": "Lai sinhronizētu audio, atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.",
-    "liveTranslation": "Tulkojums reāllaikā",
-    "liveTranslationFailed": "Tulkojums pašlaik nav pieejams. Pārbaudiet tulkošanas pakalpojuma sniedzēju savā Mac datorā.",
-    "liveTranslationHelp": "Tulkojiet reāllaika transkripciju savā Mac datorā. Oriģināls tiek saglabāts, un tulkojums parādās zem katras rindas. Vispirms vietējās bibliotēkas iestatījumos pievienojiet tulkošanas pakalpojuma sniedzēju.",
+    "liveTranslation": "Tulkošana reāllaikā",
+    "liveTranslationFailed": "Pievienotajā serverī tulkošana nav pieejama. Pārbaudiet tā bibliotēku: Settings → Translation.",
+    "liveTranslationHelp": "Pievienotais serveris rāda tulkojumu zem oriģināla. Automātiski tiek izmantots kopsavilkumu modelis, ja servera bibliotēkā neizvēlaties citu: Settings → Translation.",
     "liveTranslationTargetLanguage": "Tulkot uz",
-    "liveTranslationUnconfigured": "Jūsu Mac datorā nav konfigurēts tulkošanas pakalpojuma sniedzējs. Pievienojiet to vietējās bibliotēkas iestatījumos."
+    "liveTranslationUnconfigured": "Pievienotajā serverī nav iestatīts tulkošanas modelis. Atveriet tā bibliotēku: Settings → Summarization vai Translation → Save → Use.",
+    "liveTranslationBidirectional": "Divvirzienu tulkošana",
+    "liveTranslationPairHelp": "Noteikt katras frāzes valodu un tulkot otrā izvēlētajā valodā."
 }

@@ -9957,21 +9957,22 @@ class AppLocalizationsCs extends AppLocalizations {
   String get localMacServers => 'Uložené servery';
 
   @override
-  String get liveTranslation => 'Překlad v reálném čase';
+  String get liveTranslation => 'Živý překlad';
 
   @override
   String get liveTranslationTargetLanguage => 'Přeložit do';
 
   @override
   String get liveTranslationHelp =>
-      'Překládejte živý přepis na svém Macu. Originál zůstane zachován a překlad se zobrazí pod každým řádkem. Nejprve přidejte poskytovatele překladu v nastavení místní knihovny.';
+      'Připojený server zobrazuje překlad pod originálem. Automaticky se použije model pro shrnutí, pokud v knihovně serveru nevyberete jiný: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Na vašem Macu není nastaven poskytovatel překladu. Přidejte ho v nastavení místní knihovny.';
+      'Na připojeném serveru není nastaven model pro překlad. Otevřete jeho knihovnu: Settings → Summarization nebo Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Překlad teď není dostupný. Zkontrolujte poskytovatele překladu na svém Macu.';
+  String get liveTranslationFailed =>
+      'Překlad na připojeném serveru není dostupný. Zkontrolujte jeho knihovnu: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizace';
@@ -10018,4 +10019,10 @@ class AppLocalizationsCs extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Pro synchronizaci zvuku aktualizujte server. Zvuk uložený v telefonu zůstane zachován.';
+
+  @override
+  String get liveTranslationBidirectional => 'Obousměrný překlad';
+
+  @override
+  String get liveTranslationPairHelp => 'Rozpoznat jazyk každé fráze a přeložit ji do druhého vybraného jazyka.';
 }

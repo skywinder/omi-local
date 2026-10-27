@@ -67,9 +67,9 @@ def make_translator(*args, **kwargs):
 async def settle(translator):
     # Event-loop yields do not guarantee that an OS worker thread has finished.
     # Observe the next empty-queue wait instead, without replacing to_thread.
+    await asyncio.gather(*translator.status_tasks)
     if translator.worker is not None:
         await asyncio.wait_for(translator.wake.idle.wait(), 5)
-    await asyncio.gather(*translator.status_tasks)
 
 
 def run(coroutine):
@@ -84,6 +84,47 @@ def test_passthrough_when_language_is_off():
         assert translator.annotate(message) == message
         await settle(translator)
         assert backend.calls == [] and sink.messages == []
+        await translator.close()
+    run(scenario())
+
+
+def test_enabling_and_changing_language_translates_existing_text_without_more_speech():
+    async def scenario():
+        backend, sink = Backend(), Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
+        original = snapshot('Привет мир.')
+        translator.annotate(original)
+        for language in ('es', 'en', 'es'):
+            translator.set_language(language)
+            await settle(translator)
+            assert sink.messages[-1]['lines'][0]['translations'] == [
+                {'lang': language, 'text': f'{language}:Привет мир.'}]
+        assert len(backend.calls) == 2  # Switching back uses the cached result.
+        translator.set_language(None)
+        await settle(translator)
+        assert sink.messages[-1] == original
+        await translator.close()
+    run(scenario())
+
+
+def test_repeated_snapshots_do_not_postpone_stable_text_translation():
+    async def scenario():
+        backend, sink = Backend(), Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=backend)
+        translator.set_language('es')
+        translator.annotate(snapshot('stable text'))
+        timer = translator.settle_handle
+        translator.annotate(snapshot('stable text', buffer='changed draft'))
+        assert translator.settle_handle is timer and not timer.cancelled()
+        translator.annotate(snapshot('changed text'))
+        assert timer.cancelled()
+        timer = translator.settle_handle
+        # Drive the real deadline callback without wall-clock sleeps.
+        timer.cancel()
+        translator._settled('changed text')
+        await settle(translator)
+        assert backend.calls == [('k', 'es', ['changed text'])]
+        assert sink.messages[-1]['lines'][0]['translations'][0]['text'] == 'es:changed text'
         await translator.close()
     run(scenario())
 
@@ -181,7 +222,7 @@ def test_invalid_provider_answer_counts_as_failure():
     async def scenario():
         sink = Sink()
         translator = make_translator(profile(), 'k', send=sink,
-                                     request=lambda *_: ['only one'])
+                                                request=lambda *_: ['only one'])
         translator.set_language('en')
         translator.annotate(snapshot('One.', 'Two.'))
         await settle(translator)
@@ -199,7 +240,8 @@ def test_unconfigured_provider_reports_once_and_never_requests():
         assert message == snapshot('One.')
         translator.set_language('de')
         await settle(translator)
-        assert sink.messages == [{'type': 'translation_status', 'status': 'unconfigured'}]
+        assert [m for m in sink.messages if m.get('type') == 'translation_status'] == [
+            {'type': 'translation_status', 'status': 'unconfigured'}]
         await translator.close()
     run(scenario())
 
@@ -210,18 +252,105 @@ def test_control_language_validation():
     assert translation.normalize_language('yue') == 'yue'
     for value in ('', None, 'e', 'engl', 'en-US', 'e1', 42):
         assert translation.normalize_language(value) is None
+    assert translation.normalize_languages(' ES ', 'RU') == ('es', 'ru')
+    assert translation.normalize_languages('es') == ('es', None)
+    for other in ('es', 'en-US', 42, [], {}):
+        assert translation.normalize_languages('es', other) == (None, None)
 
 
-def test_http_request_shape(monkeypatch):
+def test_bidirectional_translation_keeps_each_original_and_opposite_language():
+    async def scenario():
+        sink = Sink()
+        calls = []
+        def request(settings, key, language, texts, *, other_language):
+            calls.append((language, other_language, texts))
+            return [{'source_lang': 'ru', 'lang': 'es', 'text': ' Hola. '},
+                    {'source_lang': 'es', 'lang': 'ru', 'text': 'Добрый день.'}]
+        translator = make_translator(profile(), 'k', send=sink, request=request)
+        translator.set_language('es', 'ru')
+        original = snapshot('Привет.', 'Buenos días.')
+        translator.annotate(original)
+        await settle(translator)
+        assert calls == [('es', 'ru', ['Привет.', 'Buenos días.'])]
+        lines = sink.messages[-1]['lines']
+        assert [line['text'] for line in lines] == ['Привет.', 'Buenos días.']
+        assert [line['translations'] for line in lines] == [
+            [{'lang': 'es', 'text': 'Hola.'}], [{'lang': 'ru', 'text': 'Добрый день.'}]]
+        translator.annotate(original)
+        await settle(translator)
+        assert len(calls) == 1
+        await translator.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize('answer', [
+    ['Hola.'],
+    [{'source_lang': 'es', 'lang': 'es', 'text': 'Hola.'}],
+    [{'source_lang': 'fr', 'lang': 'es', 'text': 'Hola.'}],
+    [{'source_lang': 'es', 'lang': 'ru', 'text': ''}],
+])
+def test_invalid_pair_answer_is_rejected_without_attaching_a_translation(answer):
+    async def scenario():
+        sink = Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=lambda *args, **kwargs: answer)
+        translator.set_language('es', 'ru')
+        original = snapshot('Hola.')
+        translator.annotate(original)
+        await settle(translator)
+        assert sink.messages == [{'type': 'translation_status', 'status': 'failed'}]
+        assert translator.annotate(original)['lines'][0]['translations'] == []
+        await translator.close()
+    run(scenario())
+
+
+def test_inflight_answer_cannot_replace_new_pair_and_cache_includes_both_languages():
+    async def scenario():
+        import threading
+        sink = Sink()
+        started = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+        calls = []
+        def request(settings, key, language, texts, *, other_language):
+            calls.append(other_language)
+            if len(calls) == 1:
+                loop.call_soon_threadsafe(started.set)
+                assert release.wait(5)
+            return [{'source_lang': 'es', 'lang': other_language, 'text': f'{other_language}:Hola.'}]
+        translator = make_translator(profile(), 'k', send=sink, request=request)
+        translator.set_language('es', 'ru')
+        original = snapshot('Hola.')
+        translator.annotate(original)
+        try:
+            await asyncio.wait_for(started.wait(), 5)
+            translator.set_language('es', 'en')
+        finally:
+            release.set()
+        await settle(translator)
+        emitted = [m['lines'][0]['translations'] for m in sink.messages if 'lines' in m]
+        assert emitted[-1] == [{'lang': 'en', 'text': 'en:Hola.'}]
+        assert all(not row or row[0]['lang'] == 'en' for row in emitted)
+        translator.set_language('es', 'ru')
+        await settle(translator)
+        assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'ru', 'text': 'ru:Hola.'}]
+        assert calls == ['ru', 'en']
+        await translator.close()
+    run(scenario())
+
+
+@pytest.mark.parametrize('other_language', [None, 'es'])
+def test_http_request_shape(monkeypatch, other_language):
     import httpx
     captured = {}
+    answer = ([{'source_lang': 'es', 'lang': 'en', 'text': 'Hello.'},
+               {'source_lang': 'en', 'lang': 'es', 'text': 'Mundo.'}] if other_language else ['Hello.', 'World.'])
 
     def respond(request):
         captured['url'] = str(request.url)
         captured['body'] = json.loads(request.read())
         assert request.headers['Accept-Encoding'] == 'identity'
         return httpx.Response(200, json={'choices': [{'finish_reason': 'stop',
-                                                     'message': {'content': '```json\n["Hello.", "World."]\n```'}}]})
+                                                     'message': {'content': '```json\n' + json.dumps(answer) + '\n```'}}]})
 
     factory = httpx.Client
     def client(**kwargs):
@@ -230,11 +359,15 @@ def test_http_request_shape(monkeypatch):
 
     monkeypatch.setattr(translation.httpx, 'Client', client)
     result = translation.request_translations(profile(reasoning='off')['settings'], 'secret', 'en',
-                                              ['Привет.', 'Мир.'])
-    assert result == ['Hello.', 'World.']
+                                              ['Hola.', 'World.'], other_language=other_language)
+    assert result == answer
     assert captured['url'] == 'https://llm.example/v1/chat/completions'
     assert captured['client']['headers'] == {'Authorization': 'Bearer secret'}
     assert captured['body']['temperature'] == 0 and captured['body']['model'] == 'm'
     assert captured['body']['chat_template_kwargs'] == {'enable_thinking': False}
-    assert json.loads(captured['body']['messages'][1]['content']) == ['Привет.', 'Мир.']
+    assert json.loads(captured['body']['messages'][1]['content']) == ['Hola.', 'World.']
     assert 'en' in captured['body']['messages'][0]['content']
+
+    if other_language:
+        assert 'es' in captured['body']['messages'][0]['content']
+        assert 'source_lang' in captured['body']['messages'][0]['content']

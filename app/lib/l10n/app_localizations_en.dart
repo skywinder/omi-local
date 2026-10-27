@@ -9939,15 +9939,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Translate on the connected server. The original stays; translation appears under each line. The active Summarization model is used automatically unless you select a Translation model in the server library: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'No translation model is configured on the connected server. Open its web library → Settings → Summarization or Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Translation is unavailable on the connected server. Check its web library → Settings → Translation.';
 
   @override
   String get diarization => 'Diarization';
@@ -9993,4 +9993,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => 'Update the server to sync audio. Audio saved on the phone is kept.';
+
+  @override
+  String get liveTranslationBidirectional => 'Two-way translation';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Detect the language of each phrase and translate into the other selected language.';
 }

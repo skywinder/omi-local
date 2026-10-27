@@ -10026,22 +10026,22 @@ class AppLocalizationsEl extends AppLocalizations {
   String get localMacServers => 'Αποθηκευμένοι διακομιστές';
 
   @override
-  String get liveTranslation => 'Μετάφραση σε πραγματικό χρόνο';
+  String get liveTranslation => 'Ζωντανή μετάφραση';
 
   @override
   String get liveTranslationTargetLanguage => 'Μετάφραση σε';
 
   @override
   String get liveTranslationHelp =>
-      'Μεταφράστε τη ζωντανή απομαγνητοφώνηση στο Mac σας. Το πρωτότυπο διατηρείται και η μετάφραση εμφανίζεται κάτω από κάθε γραμμή. Προσθέστε πρώτα έναν πάροχο μετάφρασης στις ρυθμίσεις της τοπικής βιβλιοθήκης.';
+      'Ο συνδεδεμένος διακομιστής εμφανίζει τη μετάφραση κάτω από το πρωτότυπο. Χρησιμοποιείται αυτόματα το μοντέλο σύνοψης, εκτός αν επιλέξετε άλλο στη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Δεν έχει ρυθμιστεί πάροχος μετάφρασης στο Mac σας. Προσθέστε έναν στις ρυθμίσεις της τοπικής βιβλιοθήκης.';
+      'Δεν έχει ρυθμιστεί μοντέλο μετάφρασης στον συνδεδεμένο διακομιστή. Ανοίξτε τη βιβλιοθήκη του: Settings → Summarization ή Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Η μετάφραση δεν είναι διαθέσιμη αυτή τη στιγμή. Ελέγξτε τον πάροχο μετάφρασης στο Mac σας.';
+      'Η μετάφραση δεν είναι διαθέσιμη στον συνδεδεμένο διακομιστή. Ελέγξτε τη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get diarization => 'Διαχωρισμός ομιλητών';
@@ -10090,4 +10090,10 @@ class AppLocalizationsEl extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Ενημερώστε τον διακομιστή για συγχρονισμό ήχου. Ο ήχος που έχει αποθηκευτεί στο τηλέφωνο διατηρείται.';
+
+  @override
+  String get liveTranslationBidirectional => 'Αμφίδρομη μετάφραση';
+
+  @override
+  String get liveTranslationPairHelp => 'Αναγνώριση της γλώσσας κάθε φράσης και μετάφραση στην άλλη επιλεγμένη γλώσσα.';
 }

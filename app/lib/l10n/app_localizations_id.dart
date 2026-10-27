@@ -9966,14 +9966,15 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Terjemahkan transkrip langsung di Mac Anda. Teks asli tetap tersimpan dan terjemahan muncul di bawah setiap baris. Tambahkan penyedia terjemahan di pengaturan pustaka lokal terlebih dahulu.';
+      'Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Penyedia terjemahan belum dikonfigurasi di Mac Anda. Tambahkan penyedia di pengaturan pustaka lokal.';
+      'Belum ada model terjemahan di server yang terhubung. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Terjemahan sedang tidak tersedia. Periksa penyedia terjemahan di Mac Anda.';
+  String get liveTranslationFailed =>
+      'Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation.';
 
   @override
   String get diarization => 'Pemisahan pembicara';
@@ -10021,4 +10022,10 @@ class AppLocalizationsId extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Perbarui server untuk menyinkronkan audio. Audio yang tersimpan di ponsel tetap disimpan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua arah';
+
+  @override
+  String get liveTranslationPairHelp => 'Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

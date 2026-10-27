@@ -3360,9 +3360,11 @@
     "localProcessingProbe": "Kapcsolat tesztelése",
     "localProcessingPending": "A mentett módosítások még nem aktívak. Az alkalmazásukhoz koppintson a Megerősítés gombra.",
     "localAudioServerUpdateRequired": "A hang szinkronizálásához frissítsd a szervert. A telefonon mentett hang megmarad.",
-    "liveTranslation": "Valós idejű fordítás",
-    "liveTranslationFailed": "A fordítás jelenleg nem érhető el. Ellenőrizd a fordítási szolgáltatót a Maceden.",
-    "liveTranslationHelp": "Fordítsd le az élő átiratot a Maceden. Az eredeti szöveg megmarad, a fordítás pedig minden sor alatt megjelenik. Először adj hozzá egy fordítási szolgáltatót a helyi könyvtár beállításaiban.",
-    "liveTranslationTargetLanguage": "Fordítás erre a nyelvre",
-    "liveTranslationUnconfigured": "A Maceden nincs beállítva fordítási szolgáltató. Adj hozzá egyet a helyi könyvtár beállításaiban."
+    "liveTranslation": "Élő fordítás",
+    "liveTranslationFailed": "A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation.",
+    "liveTranslationHelp": "A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Fordítás erre",
+    "liveTranslationUnconfigured": "Nincs fordítási modell beállítva a csatlakoztatott szerveren. Nyissa meg a könyvtárát: Settings → Summarization vagy Translation → Save → Use.",
+    "liveTranslationBidirectional": "Kétirányú fordítás",
+    "liveTranslationPairHelp": "Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre."
 }

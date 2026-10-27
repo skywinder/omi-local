@@ -9976,22 +9976,22 @@ class AppLocalizationsLt extends AppLocalizations {
   String get localMacServers => 'Išsaugoti serveriai';
 
   @override
-  String get liveTranslation => 'Vertimas realiuoju laiku';
+  String get liveTranslation => 'Tiesioginis vertimas';
 
   @override
   String get liveTranslationTargetLanguage => 'Versti į';
 
   @override
   String get liveTranslationHelp =>
-      'Verskite tiesioginę transkripciją savo „Mac“. Originalas išsaugomas, o vertimas rodomas po kiekviena eilute. Pirmiausia vietinės bibliotekos nustatymuose pridėkite vertimo paslaugos teikėją.';
+      'Prijungtas serveris rodo vertimą po originalu. Automatiškai naudojamas santraukų modelis, nebent serverio bibliotekoje pasirinksite kitą: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Jūsų „Mac“ nesukonfigūruotas vertimo paslaugos teikėjas. Pridėkite jį vietinės bibliotekos nustatymuose.';
+      'Prijungtame serveryje nenustatytas vertimo modelis. Atverkite jo biblioteką: Settings → Summarization arba Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Vertimas šiuo metu nepasiekiamas. Patikrinkite vertimo paslaugos teikėją savo „Mac“.';
+      'Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation.';
 
   @override
   String get diarization => 'Kalbėtojų atskyrimas';
@@ -10040,4 +10040,10 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Norėdami sinchronizuoti garsą, atnaujinkite serverį. Telefone išsaugotas garsas išlieka.';
+
+  @override
+  String get liveTranslationBidirectional => 'Dvikryptis vertimas';
+
+  @override
+  String get liveTranslationPairHelp => 'Atpažinti kiekvienos frazės kalbą ir išversti į kitą pasirinktą kalbą.';
 }

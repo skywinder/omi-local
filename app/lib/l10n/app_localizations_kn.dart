@@ -9978,22 +9978,22 @@ class AppLocalizationsKn extends AppLocalizations {
   String get localMacServers => 'ಉಳಿಸಿದ ಸರ್ವರ್‌ಗಳು';
 
   @override
-  String get liveTranslation => 'ನೈಜ ಸಮಯದ ಅನುವಾದ';
+  String get liveTranslation => 'ನೇರ ಅನುವಾದ';
 
   @override
-  String get liveTranslationTargetLanguage => 'ಅನುವಾದಿಸಬೇಕಾದ ಭಾಷೆ';
+  String get liveTranslationTargetLanguage => 'ಈ ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ';
 
   @override
   String get liveTranslationHelp =>
-      'ನಿಮ್ಮ Mac‌ನಲ್ಲಿ ನೇರ ಪ್ರತಿಲಿಪಿಯನ್ನು ಅನುವಾದಿಸಿ. ಮೂಲ ಪಠ್ಯ ಹಾಗೆಯೇ ಉಳಿಯುತ್ತದೆ; ಪ್ರತಿ ಸಾಲಿನ ಕೆಳಗೆ ಅನುವಾದ ಕಾಣಿಸುತ್ತದೆ. ಮೊದಲು ಸ್ಥಳೀಯ ಗ್ರಂಥಾಲಯದ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಿ.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್ ಮೂಲ ಪಠ್ಯದ ಕೆಳಗೆ ಅನುವಾದವನ್ನು ತೋರಿಸುತ್ತದೆ. ಸರ್ವರ್ ಗ್ರಂಥಾಲಯದ Settings → Translation ನಲ್ಲಿ ಬೇರೆ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆ ಮಾಡದಿದ್ದರೆ ಸಾರಾಂಶ ಮಾದರಿಯೇ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬಳಕೆಯಾಗುತ್ತದೆ.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'ನಿಮ್ಮ Mac‌ನಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ. ಸ್ಥಳೀಯ ಗ್ರಂಥಾಲಯದ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಿ.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಮಾದರಿಯನ್ನು ಹೊಂದಿಸಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ತೆರೆಯಿರಿ: Settings → Summarization ಅಥವಾ Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'ಸದ್ಯಕ್ಕೆ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. ನಿಮ್ಮ Mac‌ನಲ್ಲಿರುವ ಅನುವಾದ ಸೇವಾ ಪೂರೈಕೆದಾರರನ್ನು ಪರಿಶೀಲಿಸಿ.';
+      'ಸಂಪರ್ಕಿತ ಸರ್ವರ್‌ನಲ್ಲಿ ಅನುವಾದ ಲಭ್ಯವಿಲ್ಲ. ಅದರ ಗ್ರಂಥಾಲಯ ಪರಿಶೀಲಿಸಿ: Settings → Translation.';
 
   @override
   String get diarization => 'ಮಾತನಾಡುವವರ ಗುರುತಿಸುವಿಕೆ';
@@ -10041,4 +10041,10 @@ class AppLocalizationsKn extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'ಆಡಿಯೊ ಸಿಂಕ್ ಮಾಡಲು ಸರ್ವರ್ ನವೀಕರಿಸಿ. ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಿದ ಆಡಿಯೊ ಸುರಕ್ಷಿತವಾಗಿರುತ್ತದೆ.';
+
+  @override
+  String get liveTranslationBidirectional => 'ದ್ವಿಮುಖ ಅನುವಾದ';
+
+  @override
+  String get liveTranslationPairHelp => 'ಪ್ರತಿ ವಾಕ್ಯದ ಭಾಷೆಯನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ಆಯ್ಕೆಮಾಡಿದ ಇನ್ನೊಂದು ಭಾಷೆಗೆ ಅನುವಾದಿಸಿ.';
 }

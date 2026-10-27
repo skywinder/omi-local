@@ -652,6 +652,21 @@ class SharedPreferencesUtil {
 
   set localLiveTranslationLanguage(String value) => saveString('localLiveTranslationLanguage', value);
 
+  bool get localLiveTranslationBidirectional => getBool('localLiveTranslationBidirectional');
+
+  set localLiveTranslationBidirectional(bool value) => saveBool('localLiveTranslationBidirectional', value);
+
+  String get localLiveTranslationOtherLanguage {
+    final saved = getString('localLiveTranslationOtherLanguage');
+    final primary = userPrimaryLanguage.toLowerCase().split(RegExp('[-_]')).first;
+    for (final code in [saved, primary, 'en', 'es']) {
+      if (RegExp(r'^[a-z]{2,3}$').hasMatch(code) && code != localLiveTranslationLanguage) return code;
+    }
+    return 'en';
+  }
+
+  set localLiveTranslationOtherLanguage(String value) => saveString('localLiveTranslationOtherLanguage', value);
+
   int get currentStorageBytes => getInt('currentStorageBytes');
 
   set currentStorageBytes(int value) => saveInt('currentStorageBytes', value);
@@ -923,6 +938,8 @@ class SharedPreferencesUtil {
     hasSetPrimaryLanguage = false;
     localLiveTranslationEnabled = false;
     localLiveTranslationLanguage = 'en';
+    localLiveTranslationBidirectional = false;
+    localLiveTranslationOtherLanguage = '';
     hasSpeakerProfile = false;
     selectedChatAppId = 'no_selected';
     lastUsedSummarizationAppId = '';

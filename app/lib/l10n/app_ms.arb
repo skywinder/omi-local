@@ -3265,8 +3265,10 @@
     "localProcessingPending": "Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.",
     "localAudioServerUpdateRequired": "Kemas kini pelayan untuk menyegerakkan audio. Audio yang disimpan pada telefon dikekalkan.",
     "liveTranslation": "Terjemahan langsung",
-    "liveTranslationFailed": "Terjemahan tidak tersedia buat masa ini. Semak penyedia terjemahan pada Mac anda.",
-    "liveTranslationHelp": "Terjemahkan transkrip langsung pada Mac anda. Teks asal dikekalkan; terjemahan muncul di bawah setiap baris. Tambahkan penyedia Terjemahan dalam tetapan pustaka setempat terlebih dahulu.",
-    "liveTranslationTargetLanguage": "Terjemahkan ke",
-    "liveTranslationUnconfigured": "Penyedia terjemahan belum dikonfigurasikan pada Mac anda. Tambahkan penyedia dalam tetapan pustaka setempat."
+    "liveTranslationFailed": "Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation.",
+    "liveTranslationHelp": "Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Terjemah ke",
+    "liveTranslationUnconfigured": "Tiada model terjemahan dikonfigurasi pada pelayan yang disambungkan. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.",
+    "liveTranslationBidirectional": "Terjemahan dua hala",
+    "liveTranslationPairHelp": "Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih."
 }

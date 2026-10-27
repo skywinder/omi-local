@@ -9874,13 +9874,14 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'ניתן לתרגם את התמלול החי ב-Mac שלך. הטקסט המקורי נשמר והתרגום מופיע מתחת לכל שורה. תחילה יש להוסיף ספק תרגום בהגדרות הספרייה המקומית.';
+      'השרת המחובר מציג את התרגום מתחת למקור. מודל הסיכום משמש אוטומטית, אלא אם נבחר מודל אחר בספריית השרת: Settings → Translation.';
 
   @override
-  String get liveTranslationUnconfigured => 'לא הוגדר ספק תרגום ב-Mac שלך. יש להוסיף אחד בהגדרות הספרייה המקומית.';
+  String get liveTranslationUnconfigured =>
+      'לא הוגדר מודל תרגום בשרת המחובר. יש לפתוח את הספרייה שלו: Settings → Summarization או Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'התרגום אינו זמין כרגע. יש לבדוק את ספק התרגום ב-Mac שלך.';
+  String get liveTranslationFailed => 'התרגום אינו זמין בשרת המחובר. יש לבדוק את הספרייה שלו: Settings → Translation.';
 
   @override
   String get diarization => 'זיהוי דוברים';
@@ -9926,4 +9927,10 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => 'יש לעדכן את השרת כדי לסנכרן שמע. השמע שנשמר בטלפון יישמר.';
+
+  @override
+  String get liveTranslationBidirectional => 'תרגום דו־כיווני';
+
+  @override
+  String get liveTranslationPairHelp => 'זיהוי השפה של כל משפט ותרגומו לשפה האחרת שנבחרה.';
 }

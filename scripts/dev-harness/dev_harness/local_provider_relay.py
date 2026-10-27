@@ -110,7 +110,7 @@ def control_frame(raw):
         raise RelayError('Live input must be bounded PCM16 binary frames') from None
     if not isinstance(value, dict) or value.get('type') != 'translation':
         raise RelayError('Live input must be bounded PCM16 binary frames')
-    return value.get('language')
+    return value.get('language'), value.get('other_language')
 
 
 async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False, connector=connect,
@@ -145,7 +145,7 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                             disconnected = True
                             break
                         if isinstance(event.get('text'), str):
-                            translator.set_language(control_frame(event['text']))
+                            translator.set_language(*control_frame(event['text']))
                             continue
                         pcm = event.get('bytes')
                         if not isinstance(pcm, bytes) or len(pcm) % 2 or len(pcm) > MAX_MESSAGE_BYTES:
@@ -174,7 +174,9 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     # Corrections, retractions, pending buffers, diarization state
                     # and final snapshots all keep their original WLK shape; only
                     # committed lines gain relay-side translations.
-                    await send(json.dumps(translator.annotate(decoded)) if translator.active else message)
+                    # Remember text while translation is off so enabling it can
+                    # translate the visible snapshot without waiting for speech.
+                    await send(json.dumps(translator.annotate(decoded)))
                 raise RelayError('Live provider closed without end acknowledgement')
 
             feeder = asyncio.create_task(feed(), name='provider-relay-feed')

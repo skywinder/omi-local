@@ -9994,15 +9994,15 @@ class AppLocalizationsHr extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Prevodite transkript uživo na svom Macu. Izvorni tekst ostaje sačuvan, a prijevod se prikazuje ispod svakog retka. Najprije dodajte pružatelja usluge prevođenja u postavkama lokalne biblioteke.';
+      'Povezani poslužitelj prikazuje prijevod ispod izvornika. Automatski se koristi model za sažimanje, osim ako odaberete drugi u njegovoj biblioteci: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Na vašem Macu nije postavljen pružatelj usluge prevođenja. Dodajte ga u postavkama lokalne biblioteke.';
+      'Na povezanom poslužitelju nije postavljen model za prijevod. Otvorite njegovu biblioteku: Settings → Summarization ili Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Prijevod trenutačno nije dostupan. Provjerite pružatelja usluge prevođenja na svom Macu.';
+      'Prijevod nije dostupan na povezanom poslužitelju. Provjerite njegovu biblioteku: Settings → Translation.';
 
   @override
   String get diarization => 'Dijarizacija';
@@ -10051,4 +10051,10 @@ class AppLocalizationsHr extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Ažurirajte poslužitelj za sinkronizaciju zvuka. Zvuk spremljen na telefonu ostaje sačuvan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Dvosmjerni prijevod';
+
+  @override
+  String get liveTranslationPairHelp => 'Prepoznaj jezik svake rečenice i prevedi je na drugi odabrani jezik.';
 }

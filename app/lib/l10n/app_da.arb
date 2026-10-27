@@ -3282,9 +3282,11 @@
     "localProcessingProbe": "Test forbindelse",
     "localProcessingPending": "Gemte ændringer er ikke aktive. Tryk på Bekræft for at anvende dem.",
     "localAudioServerUpdateRequired": "Opdater serveren for at synkronisere lyd. Lyd gemt på telefonen bevares.",
-    "liveTranslation": "Oversættelse i realtid",
-    "liveTranslationFailed": "Oversættelse er ikke tilgængelig lige nu. Tjek oversættelsesudbyderen på din Mac.",
-    "liveTranslationHelp": "Oversæt den løbende transskription på din Mac. Originalen bevares, og oversættelsen vises under hver linje. Tilføj først en oversættelsesudbyder i indstillingerne for det lokale bibliotek.",
+    "liveTranslation": "Liveoversættelse",
+    "liveTranslationFailed": "Oversættelse er ikke tilgængelig på den tilsluttede server. Kontrollér dens bibliotek: Settings → Translation.",
+    "liveTranslationHelp": "Den tilsluttede server viser oversættelsen under originalen. Opsummeringsmodellen bruges automatisk, medmindre du vælger en anden i serverens bibliotek: Settings → Translation.",
     "liveTranslationTargetLanguage": "Oversæt til",
-    "liveTranslationUnconfigured": "Der er ikke konfigureret en oversættelsesudbyder på din Mac. Tilføj en i indstillingerne for det lokale bibliotek."
+    "liveTranslationUnconfigured": "Der er ikke konfigureret en oversættelsesmodel på den tilsluttede server. Åbn dens bibliotek: Settings → Summarization eller Translation → Save → Use.",
+    "liveTranslationBidirectional": "Tovejsoversættelse",
+    "liveTranslationPairHelp": "Registrer sproget i hver sætning, og oversæt til det andet valgte sprog."
 }

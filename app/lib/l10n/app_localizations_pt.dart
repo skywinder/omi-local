@@ -9972,15 +9972,15 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Traduza a transcrição ao vivo no seu Mac. O original é mantido; a tradução aparece abaixo de cada linha. Primeiro, adicione um provedor de Tradução nas configurações da biblioteca local.';
+      'O servidor conectado mostra a tradução abaixo do original. O modelo de resumo é usado automaticamente, a menos que você escolha outro na biblioteca do servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'O provedor de tradução não está configurado no seu Mac. Adicione um nas configurações da biblioteca local.';
+      'Nenhum modelo de tradução está configurado no servidor conectado. Abra a biblioteca: Settings → Summarization ou Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'A tradução não está disponível no momento. Verifique o provedor de tradução no seu Mac.';
+      'A tradução não está disponível no servidor conectado. Verifique a biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarização';
@@ -10030,4 +10030,10 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Atualize o servidor para sincronizar o áudio. O áudio salvo no telefone é mantido.';
+
+  @override
+  String get liveTranslationBidirectional => 'Tradução bidirecional';
+
+  @override
+  String get liveTranslationPairHelp => 'Detectar o idioma de cada frase e traduzir para o outro idioma selecionado.';
 }

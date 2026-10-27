@@ -9940,21 +9940,22 @@ class AppLocalizationsHi extends AppLocalizations {
   String get localMacServers => 'सहेजे गए सर्वर';
 
   @override
-  String get liveTranslation => 'रीयल-टाइम अनुवाद';
+  String get liveTranslation => 'लाइव अनुवाद';
 
   @override
   String get liveTranslationTargetLanguage => 'इस भाषा में अनुवाद करें';
 
   @override
   String get liveTranslationHelp =>
-      'अपने Mac पर लाइव ट्रांसक्रिप्ट का अनुवाद करें। मूल पाठ सुरक्षित रहता है और अनुवाद हर पंक्ति के नीचे दिखाई देता है। पहले स्थानीय लाइब्रेरी की सेटिंग में अनुवाद सेवा प्रदाता जोड़ें।';
+      'जुड़ा हुआ सर्वर अनुवाद को मूल पाठ के नीचे दिखाता है। सारांश मॉडल अपने आप इस्तेमाल होता है, जब तक आप सर्वर की लाइब्रेरी में दूसरा मॉडल न चुनें: Settings → Translation।';
 
   @override
   String get liveTranslationUnconfigured =>
-      'आपके Mac पर अनुवाद सेवा प्रदाता सेट नहीं किया गया है। स्थानीय लाइब्रेरी की सेटिंग में एक जोड़ें।';
+      'जुड़े हुए सर्वर पर अनुवाद मॉडल सेट नहीं है। उसकी लाइब्रेरी खोलें: Settings → Summarization या Translation → Save → Use।';
 
   @override
-  String get liveTranslationFailed => 'अभी अनुवाद उपलब्ध नहीं है। अपने Mac पर अनुवाद सेवा प्रदाता की जाँच करें।';
+  String get liveTranslationFailed =>
+      'जुड़े हुए सर्वर पर अनुवाद उपलब्ध नहीं है। उसकी लाइब्रेरी देखें: Settings → Translation।';
 
   @override
   String get diarization => 'वक्ता पहचान';
@@ -10002,4 +10003,10 @@ class AppLocalizationsHi extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'ऑडियो सिंक करने के लिए सर्वर अपडेट करें। फ़ोन पर सहेजा गया ऑडियो सुरक्षित रहता है।';
+
+  @override
+  String get liveTranslationBidirectional => 'दोतरफ़ा अनुवाद';
+
+  @override
+  String get liveTranslationPairHelp => 'हर वाक्य की भाषा पहचानें और दूसरी चुनी हुई भाषा में अनुवाद करें।';
 }

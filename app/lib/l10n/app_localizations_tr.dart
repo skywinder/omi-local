@@ -9970,14 +9970,15 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Canlı dökümü Mac\'inizde çevirin. Özgün metin korunur; çeviri her satırın altında görünür. Önce yerel kitaplık ayarlarından bir Çeviri sağlayıcısı ekleyin.';
+      'Bağlı sunucu çeviriyi özgün metnin altında gösterir. Sunucu kitaplığında başka bir model seçmediğiniz sürece özetleme modeli otomatik kullanılır: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Mac\'inizde çeviri sağlayıcısı yapılandırılmamış. Yerel kitaplık ayarlarından bir sağlayıcı ekleyin.';
+      'Bağlı sunucuda çeviri modeli yapılandırılmamış. Kitaplığını açın: Settings → Summarization veya Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Çeviri şu anda kullanılamıyor. Mac\'inizdeki çeviri sağlayıcısını kontrol edin.';
+  String get liveTranslationFailed =>
+      'Bağlı sunucuda çeviri kullanılamıyor. Kitaplığını kontrol edin: Settings → Translation.';
 
   @override
   String get diarization => 'Konuşmacı ayrımı';
@@ -10025,4 +10026,10 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Sesi eşitlemek için sunucuyu güncelleyin. Telefona kaydedilen ses korunur.';
+
+  @override
+  String get liveTranslationBidirectional => 'Çift yönlü çeviri';
+
+  @override
+  String get liveTranslationPairHelp => 'Her ifadenin dilini algıla ve seçilen diğer dile çevir.';
 }

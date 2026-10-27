@@ -118,17 +118,26 @@ def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
         assert registry.lookups == ['synthetic-key-ref', 'synthetic-key-ref', 'changed-ref']
 
 
-def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch):
+@pytest.mark.parametrize('enable_after_text', [False, True])
+@pytest.mark.parametrize('other_language', [None, 'ru'])
+def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch, enable_after_text,
+                                                                     other_language):
     from dev_harness import local_live_translation as translation
     requests = []
-    def fake_request(settings, key, language, texts):
-        requests.append((settings['model'], key, language, list(texts)))
+    def fake_request(settings, key, language, texts, *, other_language=None):
+        requests.append((settings['model'], key, language, list(texts), other_language))
+        if other_language:
+            return [{'source_lang': language, 'lang': other_language, 'text': f'{other_language}:{text}'}
+                    for text in texts]
         return [f'{language}:{text}' for text in texts]
     monkeypatch.setattr(translation, 'request_translations', fake_request)
     card = {'id': 'synthetic-translation', 'name': 'LLM', 'stage': 'translation', 'kind': 'openai-compatible',
             'settings': {'base_url': 'https://llm.example/v1', 'model': 'qwen3'}, 'credential_ref': 'translation-ref'}
     registry = Registry(profile(), card)
     providers = []
+    control = {'type': 'translation', 'language': 'en'}
+    if other_language:
+        control['other_language'] = other_language
     def connect(endpoint, *, key):
         provider = Provider()
         providers.append(provider)
@@ -136,20 +145,27 @@ def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monk
     with TestClient(relay.create_app(cfg, registry=registry, connector=connect), client=('127.0.0.1', 1234)) as client:
         with client.websocket_connect('/asr') as socket:
             socket.receive_json()
-            socket.send_text(json.dumps({'type': 'translation', 'language': 'en'}))
+            if not enable_after_text:
+                socket.send_text(json.dumps(control))
             socket.send_bytes(b'\x01\x00' * 100)
             first = socket.receive_json()
+            if enable_after_text:
+                assert first['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
+                socket.send_text(json.dumps(control))
+                first = socket.receive_json()  # No further audio/snapshot required.
             assert first['lines'][0]['text'] == 'initial' and first['lines'][0]['translations'] == []
             assert socket.receive_json() == {'type': 'translation_status', 'status': 'ready'}
             translated = socket.receive_json()
-            assert translated['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:initial'}]
+            destination = other_language or 'en'
+            assert translated['lines'][0]['translations'] == [{'lang': destination, 'text': f'{destination}:initial'}]
             assert translated['buffer_transcription'] == 'draft'
             socket.send_text(json.dumps({'type': 'translation', 'language': ''}))
+            assert socket.receive_json()['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
             socket.send_bytes(b'')
             assert socket.receive_json()['buffer_transcription'] == 'corrected'
             assert socket.receive_json() == {'type': 'ready_to_stop'}
     assert providers[0].sent == [b'\x01\x00' * 100, b'']
-    assert requests == [('qwen3', 'synthetic-translation-key', 'en', ['initial'])]
+    assert requests == [('qwen3', 'synthetic-translation-key', 'en', ['initial'], other_language)]
     assert registry.lookups == ['synthetic-key-ref', 'translation-ref']
 
 

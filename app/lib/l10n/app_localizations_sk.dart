@@ -9949,22 +9949,22 @@ class AppLocalizationsSk extends AppLocalizations {
   String get localMacServers => 'Uložené servery';
 
   @override
-  String get liveTranslation => 'Preklad naživo';
+  String get liveTranslation => 'Živý preklad';
 
   @override
   String get liveTranslationTargetLanguage => 'Preložiť do';
 
   @override
   String get liveTranslationHelp =>
-      'Prekladajte živý prepis na svojom Macu. Originál zostane zachovaný a preklad sa zobrazí pod každým riadkom. Najskôr pridajte poskytovateľa prekladu v nastaveniach miestnej knižnice.';
+      'Pripojený server zobrazuje preklad pod originálom. Automaticky sa používa model na zhrnutie, ak v knižnici servera nevyberiete iný: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Poskytovateľ prekladu nie je nakonfigurovaný na vašom Macu. Pridajte ho v nastaveniach miestnej knižnice.';
+      'Na pripojenom serveri nie je nastavený model na preklad. Otvorte jeho knižnicu: Settings → Summarization alebo Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Preklad momentálne nie je dostupný. Skontrolujte poskytovateľa prekladu na svojom Macu.';
+      'Preklad na pripojenom serveri nie je dostupný. Skontrolujte jeho knižnicu: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizácia';
@@ -10011,4 +10011,10 @@ class AppLocalizationsSk extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Ak chcete synchronizovať zvuk, aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
+
+  @override
+  String get liveTranslationBidirectional => 'Obojsmerný preklad';
+
+  @override
+  String get liveTranslationPairHelp => 'Rozpoznať jazyk každej frázy a preložiť ju do druhého vybraného jazyka.';
 }

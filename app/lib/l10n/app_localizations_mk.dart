@@ -10011,15 +10011,15 @@ class AppLocalizationsMk extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Преведувајте ја транскрипцијата во живо на вашиот Mac. Оригиналот се зачувува, а преводот се прикажува под секој ред. Прво додајте давател на превод во поставките на локалната библиотека.';
+      'Поврзаниот сервер го прикажува преводот под оригиналот. Автоматски се користи моделот за резиме, освен ако изберете друг во библиотеката на серверот: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Давателот на превод не е конфигуриран на вашиот Mac. Додајте го во поставките на локалната библиотека.';
+      'На поврзаниот сервер не е поставен модел за превод. Отворете ја неговата библиотека: Settings → Summarization или Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Преводот моментално не е достапен. Проверете го давателот на превод на вашиот Mac.';
+      'Преводот не е достапен на поврзаниот сервер. Проверете ја неговата библиотека: Settings → Translation.';
 
   @override
   String get diarization => 'Дијаризација';
@@ -10067,4 +10067,10 @@ class AppLocalizationsMk extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Ажурирајте го серверот за синхронизација на аудио. Аудиото зачувано на телефонот се задржува.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двонасочен превод';
+
+  @override
+  String get liveTranslationPairHelp => 'Препознај го јазикот на секоја фраза и преведи ја на другиот избран јазик.';
 }

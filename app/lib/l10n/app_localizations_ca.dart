@@ -10015,15 +10015,15 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Tradueix la transcripció en directe al teu Mac. Es conserva l’original i la traducció apareix sota cada línia. Afegeix primer un proveïdor de traducció a la configuració de la biblioteca local.';
+      'El servidor connectat mostra la traducció sota l\'original. S\'utilitza automàticament el model de resum, tret que en triïs un altre a la biblioteca del servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'No hi ha cap proveïdor de traducció configurat al teu Mac. Afegeix-ne un a la configuració de la biblioteca local.';
+      'No hi ha cap model de traducció configurat al servidor connectat. Obre\'n la biblioteca: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'La traducció no està disponible ara mateix. Comprova el proveïdor de traducció al teu Mac.';
+      'La traducció no està disponible al servidor connectat. Comprova\'n la biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarització';
@@ -10072,4 +10072,11 @@ class AppLocalizationsCa extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Actualitzeu el servidor per sincronitzar l’àudio. Es conserva l’àudio desat al telèfon.';
+
+  @override
+  String get liveTranslationBidirectional => 'Traducció bidireccional';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Detecta la llengua de cada frase i tradueix-la a l’altra llengua seleccionada.';
 }

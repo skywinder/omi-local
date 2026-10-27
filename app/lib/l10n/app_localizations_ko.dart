@@ -9779,17 +9779,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get liveTranslation => '실시간 번역';
 
   @override
-  String get liveTranslationTargetLanguage => '번역 대상 언어';
+  String get liveTranslationTargetLanguage => '번역할 언어';
 
   @override
   String get liveTranslationHelp =>
-      'Mac에서 실시간 받아쓰기를 번역합니다. 원문은 유지되며 각 줄 아래에 번역이 표시됩니다. 먼저 로컬 라이브러리 설정에서 번역 제공업체를 추가하세요.';
+      '연결된 서버에서 번역하여 원문 아래에 표시합니다. 서버 라이브러리의 Settings → Translation에서 다른 모델을 선택하지 않으면 요약 모델이 자동으로 사용됩니다.';
 
   @override
-  String get liveTranslationUnconfigured => 'Mac에 번역 제공업체가 설정되어 있지 않습니다. 로컬 라이브러리 설정에서 추가하세요.';
+  String get liveTranslationUnconfigured =>
+      '연결된 서버에 번역 모델이 설정되지 않았습니다. 서버 라이브러리에서 Settings → Summarization 또는 Translation → Save → Use를 여세요.';
 
   @override
-  String get liveTranslationFailed => '현재 번역을 사용할 수 없습니다. Mac의 번역 제공업체를 확인하세요.';
+  String get liveTranslationFailed => '연결된 서버에서 번역을 사용할 수 없습니다. 서버 라이브러리의 Settings → Translation을 확인하세요.';
 
   @override
   String get diarization => '화자 분리';
@@ -9834,4 +9835,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => '오디오를 동기화하려면 서버를 업데이트하세요. 휴대전화에 저장된 오디오는 유지됩니다.';
+
+  @override
+  String get liveTranslationBidirectional => '양방향 번역';
+
+  @override
+  String get liveTranslationPairHelp => '각 문장의 언어를 감지하여 선택한 다른 언어로 번역합니다.';
 }

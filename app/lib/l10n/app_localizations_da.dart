@@ -9945,22 +9945,22 @@ class AppLocalizationsDa extends AppLocalizations {
   String get localMacServers => 'Gemte servere';
 
   @override
-  String get liveTranslation => 'Oversættelse i realtid';
+  String get liveTranslation => 'Liveoversættelse';
 
   @override
   String get liveTranslationTargetLanguage => 'Oversæt til';
 
   @override
   String get liveTranslationHelp =>
-      'Oversæt den løbende transskription på din Mac. Originalen bevares, og oversættelsen vises under hver linje. Tilføj først en oversættelsesudbyder i indstillingerne for det lokale bibliotek.';
+      'Den tilsluttede server viser oversættelsen under originalen. Opsummeringsmodellen bruges automatisk, medmindre du vælger en anden i serverens bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Der er ikke konfigureret en oversættelsesudbyder på din Mac. Tilføj en i indstillingerne for det lokale bibliotek.';
+      'Der er ikke konfigureret en oversættelsesmodel på den tilsluttede server. Åbn dens bibliotek: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Oversættelse er ikke tilgængelig lige nu. Tjek oversættelsesudbyderen på din Mac.';
+      'Oversættelse er ikke tilgængelig på den tilsluttede server. Kontrollér dens bibliotek: Settings → Translation.';
 
   @override
   String get diarization => 'Talerdiarisering';
@@ -10007,4 +10007,10 @@ class AppLocalizationsDa extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Opdater serveren for at synkronisere lyd. Lyd gemt på telefonen bevares.';
+
+  @override
+  String get liveTranslationBidirectional => 'Tovejsoversættelse';
+
+  @override
+  String get liveTranslationPairHelp => 'Registrer sproget i hver sætning, og oversæt til det andet valgte sprog.';
 }

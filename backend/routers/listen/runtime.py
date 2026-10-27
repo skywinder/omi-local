@@ -71,7 +71,7 @@ from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
 from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture, rotate_offline_audio_capture
 from utils.local_audio_delivery import initialize_local_capture
-from utils.local_live_preview import LocalLivePreview, normalize_translation_language
+from utils.local_live_preview import LocalLivePreview, normalize_translation_languages
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
 from .contracts import ListenLimits, ListenRequest, ListenSessionState
@@ -162,12 +162,14 @@ class ListenSessionRuntime:
         self.capture_sink: OfflineAudioCapture | None = None
         self.local_preview: LocalLivePreview | None = None
         self.live_translation_language: Optional[str] = None
+        self.live_translation_other_language: Optional[str] = None
 
-    def set_live_translation(self, language: Any) -> None:
+    def set_live_translation(self, language: Any, other_language: Any = None) -> None:
         """Phone-controlled live translation target for the local preview relay."""
-        self.live_translation_language = normalize_translation_language(language)
+        self.live_translation_language, self.live_translation_other_language = normalize_translation_languages(
+            language, other_language)
         if self.local_preview is not None:
-            self.local_preview.set_translation(self.live_translation_language)
+            self.local_preview.set_translation(self.live_translation_language, self.live_translation_other_language)
 
     def _build_components(self) -> None:
         channels = build_channel_config(self.request.source or 'phone_call') if self.is_multi_channel else []
@@ -762,7 +764,8 @@ class ListenSessionRuntime:
                 # Capture admits only PCM16 mono 16 kHz sources. Preview never
                 # enters TranscriptProcessor or persisted conversation state.
                 self.local_preview = LocalLivePreview.from_environment(
-                    self.request.websocket.send_json, translation_language=self.live_translation_language
+                    self.request.websocket.send_json, translation_language=self.live_translation_language,
+                    translation_other_language=self.live_translation_other_language
                 )
             await self.asend_event(
                 MessageServiceStatusEvent(status='stt_initiating', status_text='STT Service Starting')

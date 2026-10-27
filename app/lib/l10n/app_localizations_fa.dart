@@ -9946,21 +9946,22 @@ class AppLocalizationsFa extends AppLocalizations {
   String get localMacServers => 'سرورهای ذخیره‌شده';
 
   @override
-  String get liveTranslation => 'ترجمهٔ هم‌زمان';
+  String get liveTranslation => 'ترجمهٔ زنده';
 
   @override
   String get liveTranslationTargetLanguage => 'ترجمه به';
 
   @override
   String get liveTranslationHelp =>
-      'متن پیاده‌شدهٔ زنده را در Mac خود ترجمه کنید. متن اصلی حفظ می‌شود و ترجمه زیر هر خط نمایش داده می‌شود. ابتدا یک ارائه‌دهندهٔ ترجمه در تنظیمات کتابخانهٔ محلی اضافه کنید.';
+      'سرور متصل ترجمه را زیر متن اصلی نشان می‌دهد. مدل خلاصه‌سازی خودکار استفاده می‌شود، مگر اینکه در کتابخانهٔ سرور مدل دیگری انتخاب کنید: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'ارائه‌دهندهٔ ترجمه در Mac شما تنظیم نشده است. یکی را در تنظیمات کتابخانهٔ محلی اضافه کنید.';
+      'مدل ترجمه‌ای روی سرور متصل تنظیم نشده است. کتابخانهٔ آن را باز کنید: Settings → Summarization یا Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'ترجمه در حال حاضر در دسترس نیست. ارائه‌دهندهٔ ترجمه را در Mac خود بررسی کنید.';
+  String get liveTranslationFailed =>
+      'ترجمه روی سرور متصل در دسترس نیست. کتابخانهٔ آن را بررسی کنید: Settings → Translation.';
 
   @override
   String get diarization => 'تفکیک گوینده';
@@ -10008,4 +10009,10 @@ class AppLocalizationsFa extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'برای همگام‌سازی صدا، سرور را به‌روزرسانی کنید. صدای ذخیره‌شده در تلفن حفظ می‌شود.';
+
+  @override
+  String get liveTranslationBidirectional => 'ترجمهٔ دوطرفه';
+
+  @override
+  String get liveTranslationPairHelp => 'زبان هر عبارت را تشخیص دهید و آن را به زبان انتخابی دیگر ترجمه کنید.';
 }

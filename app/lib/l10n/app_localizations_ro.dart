@@ -10003,22 +10003,22 @@ class AppLocalizationsRo extends AppLocalizations {
   String get localMacServers => 'Servere salvate';
 
   @override
-  String get liveTranslation => 'Traducere în timp real';
+  String get liveTranslation => 'Traducere în direct';
 
   @override
-  String get liveTranslationTargetLanguage => 'Traduceți în';
+  String get liveTranslationTargetLanguage => 'Tradu în';
 
   @override
   String get liveTranslationHelp =>
-      'Traduceți transcrierea în timp real pe Mac. Originalul este păstrat, iar traducerea apare sub fiecare rând. Adăugați mai întâi un furnizor de traducere în setările bibliotecii locale.';
+      'Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Furnizorul de traducere nu este configurat pe Mac. Adăugați unul în setările bibliotecii locale.';
+      'Niciun model de traducere nu este configurat pe serverul conectat. Deschide biblioteca: Settings → Summarization sau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Traducerea nu este disponibilă momentan. Verificați furnizorul de traducere de pe Mac.';
+      'Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizare';
@@ -10066,4 +10066,10 @@ class AppLocalizationsRo extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Actualizați serverul pentru a sincroniza sunetul. Sunetul salvat pe telefon este păstrat.';
+
+  @override
+  String get liveTranslationBidirectional => 'Traducere bidirecțională';
+
+  @override
+  String get liveTranslationPairHelp => 'Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată.';
 }

@@ -9951,22 +9951,22 @@ class AppLocalizationsBn extends AppLocalizations {
   String get localMacServers => 'সংরক্ষিত সার্ভার';
 
   @override
-  String get liveTranslation => 'তাৎক্ষণিক অনুবাদ';
+  String get liveTranslation => 'সরাসরি অনুবাদ';
 
   @override
   String get liveTranslationTargetLanguage => 'যে ভাষায় অনুবাদ করবেন';
 
   @override
   String get liveTranslationHelp =>
-      'আপনার Mac-এ চলমান প্রতিলিপি অনুবাদ করুন। মূল লেখা অক্ষত থাকবে; প্রতিটি লাইনের নিচে অনুবাদ দেখা যাবে। প্রথমে স্থানীয় লাইব্রেরির সেটিংসে একটি অনুবাদ পরিষেবা প্রদানকারী যোগ করুন।';
+      'সংযুক্ত সার্ভারে অনুবাদ হয় এবং মূল লেখার নিচে দেখা যায়। সার্ভারের লাইব্রেরিতে Settings → Translation থেকে অন্য মডেল না বাছলে সারসংক্ষেপের মডেল স্বয়ংক্রিয়ভাবে ব্যবহৃত হয়।';
 
   @override
   String get liveTranslationUnconfigured =>
-      'আপনার Mac-এ কোনো অনুবাদ পরিষেবা প্রদানকারী সেট আপ করা নেই। স্থানীয় লাইব্রেরির সেটিংসে একটি যোগ করুন।';
+      'সংযুক্ত সার্ভারে অনুবাদের মডেল সেট করা নেই। তার লাইব্রেরি খুলুন: Settings → Summarization অথবা Translation → Save → Use।';
 
   @override
   String get liveTranslationFailed =>
-      'এই মুহূর্তে অনুবাদ উপলব্ধ নয়। আপনার Mac-এ অনুবাদ পরিষেবা প্রদানকারী পরীক্ষা করুন।';
+      'সংযুক্ত সার্ভারে অনুবাদ পাওয়া যাচ্ছে না। তার লাইব্রেরিতে দেখুন: Settings → Translation।';
 
   @override
   String get diarization => 'বক্তা শনাক্তকরণ';
@@ -10012,4 +10012,10 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => 'অডিও সিঙ্ক করতে সার্ভার আপডেট করুন। ফোনে সংরক্ষিত অডিও রাখা হয়।';
+
+  @override
+  String get liveTranslationBidirectional => 'দ্বিমুখী অনুবাদ';
+
+  @override
+  String get liveTranslationPairHelp => 'প্রতিটি বাক্যের ভাষা শনাক্ত করে অন্য নির্বাচিত ভাষায় অনুবাদ করুন।';
 }

@@ -3300,8 +3300,10 @@
     "localProcessingPending": "Kaydedilen değişiklikler henüz etkin değil. Uygulamak için Onayla’ya dokunun.",
     "localAudioServerUpdateRequired": "Sesi eşitlemek için sunucuyu güncelleyin. Telefona kaydedilen ses korunur.",
     "liveTranslation": "Canlı çeviri",
-    "liveTranslationFailed": "Çeviri şu anda kullanılamıyor. Mac'inizdeki çeviri sağlayıcısını kontrol edin.",
-    "liveTranslationHelp": "Canlı dökümü Mac'inizde çevirin. Özgün metin korunur; çeviri her satırın altında görünür. Önce yerel kitaplık ayarlarından bir Çeviri sağlayıcısı ekleyin.",
+    "liveTranslationFailed": "Bağlı sunucuda çeviri kullanılamıyor. Kitaplığını kontrol edin: Settings → Translation.",
+    "liveTranslationHelp": "Bağlı sunucu çeviriyi özgün metnin altında gösterir. Sunucu kitaplığında başka bir model seçmediğiniz sürece özetleme modeli otomatik kullanılır: Settings → Translation.",
     "liveTranslationTargetLanguage": "Şu dile çevir",
-    "liveTranslationUnconfigured": "Mac'inizde çeviri sağlayıcısı yapılandırılmamış. Yerel kitaplık ayarlarından bir sağlayıcı ekleyin."
+    "liveTranslationUnconfigured": "Bağlı sunucuda çeviri modeli yapılandırılmamış. Kitaplığını açın: Settings → Summarization veya Translation → Save → Use.",
+    "liveTranslationBidirectional": "Çift yönlü çeviri",
+    "liveTranslationPairHelp": "Her ifadenin dilini algıla ve seçilen diğer dile çevir."
 }

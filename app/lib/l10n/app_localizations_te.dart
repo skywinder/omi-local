@@ -9998,18 +9998,19 @@ class AppLocalizationsTe extends AppLocalizations {
   String get liveTranslation => 'ప్రత్యక్ష అనువాదం';
 
   @override
-  String get liveTranslationTargetLanguage => 'ఈ భాషలోకి అనువదించు';
+  String get liveTranslationTargetLanguage => 'ఈ భాషలోకి అనువదించండి';
 
   @override
   String get liveTranslationHelp =>
-      'మీ Macలో ప్రత్యక్ష లిప్యంతరీకరణను అనువదించండి. అసలు పాఠ్యం అలాగే ఉంటుంది; ప్రతి పంక్తి కింద అనువాదం కనిపిస్తుంది. ముందుగా స్థానిక లైబ్రరీ సెట్టింగ్‌లలో అనువాద సేవా ప్రదాతను జోడించండి.';
+      'అనుసంధానించిన సర్వర్ అసలు వచనం కింద అనువాదాన్ని చూపిస్తుంది. సర్వర్ లైబ్రరీలో వేరే మోడల్ ఎంచుకోకపోతే సారాంశ మోడల్ స్వయంచాలకంగా ఉపయోగించబడుతుంది: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'మీ Macలో అనువాద సేవా ప్రదాత కాన్ఫిగర్ చేయబడలేదు. స్థానిక లైబ్రరీ సెట్టింగ్‌లలో ఒకరిని జోడించండి.';
+      'అనుసంధానించిన సర్వర్‌లో అనువాద మోడల్ అమర్చలేదు. దాని లైబ్రరీ తెరవండి: Settings → Summarization లేదా Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'ప్రస్తుతం అనువాదం అందుబాటులో లేదు. మీ Macలో అనువాద సేవా ప్రదాతను తనిఖీ చేయండి.';
+  String get liveTranslationFailed =>
+      'అనుసంధానించిన సర్వర్‌లో అనువాదం అందుబాటులో లేదు. దాని లైబ్రరీ చూడండి: Settings → Translation.';
 
   @override
   String get diarization => 'వక్తల విభజన';
@@ -10057,4 +10058,10 @@ class AppLocalizationsTe extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'ఆడియోను సమకాలీకరించడానికి సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
+
+  @override
+  String get liveTranslationBidirectional => 'రెండు దిశల్లో అనువాదం';
+
+  @override
+  String get liveTranslationPairHelp => 'ప్రతి వాక్యం భాషను గుర్తించి, ఎంచుకున్న మరో భాషలోకి అనువదించండి.';
 }

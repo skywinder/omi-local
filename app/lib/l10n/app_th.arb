@@ -3264,9 +3264,11 @@
     "localProcessingProbe": "ทดสอบการเชื่อมต่อ",
     "localProcessingPending": "การเปลี่ยนแปลงที่บันทึกไว้ยังไม่ทำงาน แตะยืนยันเพื่อนำไปใช้",
     "localAudioServerUpdateRequired": "อัปเดตเซิร์ฟเวอร์เพื่อซิงค์เสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่",
-    "liveTranslation": "การแปลแบบเรียลไทม์",
-    "liveTranslationFailed": "ขณะนี้ไม่สามารถแปลได้ โปรดตรวจสอบผู้ให้บริการแปลภาษาบน Mac ของคุณ",
-    "liveTranslationHelp": "แปลข้อความถอดเสียงแบบเรียลไทม์บน Mac ของคุณ ต้นฉบับจะยังคงอยู่และคำแปลจะปรากฏใต้แต่ละบรรทัด โปรดเพิ่มผู้ให้บริการแปลภาษาในการตั้งค่าคลังข้อมูลภายในเครื่องก่อน",
+    "liveTranslation": "การแปลสด",
+    "liveTranslationFailed": "ไม่สามารถแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อได้ ตรวจสอบคลังของเซิร์ฟเวอร์: Settings → Translation",
+    "liveTranslationHelp": "เซิร์ฟเวอร์ที่เชื่อมต่อจะแสดงคำแปลใต้ข้อความต้นฉบับ โดยใช้โมเดลสรุปโดยอัตโนมัติ เว้นแต่จะเลือกโมเดลอื่นในคลังของเซิร์ฟเวอร์: Settings → Translation",
     "liveTranslationTargetLanguage": "แปลเป็น",
-    "liveTranslationUnconfigured": "ยังไม่ได้ตั้งค่าผู้ให้บริการแปลภาษาบน Mac ของคุณ โปรดเพิ่มผู้ให้บริการในการตั้งค่าคลังข้อมูลภายในเครื่อง"
+    "liveTranslationUnconfigured": "ยังไม่ได้ตั้งค่าโมเดลแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อ เปิดคลังของเซิร์ฟเวอร์: Settings → Summarization หรือ Translation → Save → Use",
+    "liveTranslationBidirectional": "การแปลสองทาง",
+    "liveTranslationPairHelp": "ตรวจจับภาษาของแต่ละวลีและแปลเป็นอีกภาษาที่เลือกไว้"
 }

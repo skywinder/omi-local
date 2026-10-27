@@ -3265,8 +3265,10 @@
     "localProcessingPending": "Sparade ändringar är inte aktiva. Tryck på Bekräfta för att tillämpa dem.",
     "localAudioServerUpdateRequired": "Uppdatera servern för att synkronisera ljud. Ljud som sparats på telefonen behålls.",
     "liveTranslation": "Direktöversättning",
-    "liveTranslationFailed": "Översättning är inte tillgänglig just nu. Kontrollera översättningstjänsten på din Mac.",
-    "liveTranslationHelp": "Översätt transkriberingen i realtid på din Mac. Originalet behålls och översättningen visas under varje rad. Lägg först till en översättningstjänst i inställningarna för det lokala biblioteket.",
+    "liveTranslationFailed": "Översättning är inte tillgänglig på den anslutna servern. Kontrollera biblioteket: Settings → Translation.",
+    "liveTranslationHelp": "Den anslutna servern visar översättningen under originalet. Sammanfattningsmodellen används automatiskt om du inte väljer en annan i serverns bibliotek: Settings → Translation.",
     "liveTranslationTargetLanguage": "Översätt till",
-    "liveTranslationUnconfigured": "Ingen översättningstjänst är konfigurerad på din Mac. Lägg till en i inställningarna för det lokala biblioteket."
+    "liveTranslationUnconfigured": "Ingen översättningsmodell har konfigurerats på den anslutna servern. Öppna biblioteket: Settings → Summarization eller Translation → Save → Use.",
+    "liveTranslationBidirectional": "Översättning åt båda hållen",
+    "liveTranslationPairHelp": "Identifiera språket i varje mening och översätt till det andra valda språket."
 }

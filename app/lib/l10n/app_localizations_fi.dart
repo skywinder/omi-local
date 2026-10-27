@@ -9964,15 +9964,15 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Käännä reaaliaikainen litterointi Macillasi. Alkuperäinen teksti säilyy, ja käännös näkyy jokaisen rivin alla. Lisää ensin käännöspalvelun tarjoaja paikallisen kirjaston asetuksissa.';
+      'Yhdistetty palvelin näyttää käännöksen alkuperäisen alla. Yhteenvetomallia käytetään automaattisesti, ellet valitse muuta mallia palvelimen kirjastosta: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Macillasi ei ole määritetty käännöspalvelun tarjoajaa. Lisää sellainen paikallisen kirjaston asetuksissa.';
+      'Yhdistetylle palvelimelle ei ole määritetty käännösmallia. Avaa sen kirjasto: Settings → Summarization tai Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Käännös ei ole juuri nyt saatavilla. Tarkista käännöspalvelun tarjoaja Macillasi.';
+      'Käännös ei ole käytettävissä yhdistetyllä palvelimella. Tarkista sen kirjasto: Settings → Translation.';
 
   @override
   String get diarization => 'Puhujien erottelu';
@@ -10022,4 +10022,10 @@ class AppLocalizationsFi extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Päivitä palvelin äänen synkronointia varten. Puhelimeen tallennettu ääni säilytetään.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kaksisuuntainen käännös';
+
+  @override
+  String get liveTranslationPairHelp => 'Tunnista kunkin lauseen kieli ja käännä se toiselle valitulle kielelle.';
 }

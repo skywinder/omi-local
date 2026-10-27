@@ -238,6 +238,7 @@ class _AudioPacketSocket extends _TrackingSocket {
   final controlFrames = <Map<String, dynamic>>[];
   bool stopped = false;
   bool failAudioSend = false;
+  bool failControlSend = false;
 
   @override
   PureSocketStatus get status => stopped ? PureSocketStatus.disconnected : PureSocketStatus.connected;
@@ -246,6 +247,7 @@ class _AudioPacketSocket extends _TrackingSocket {
   void send(dynamic message) {
     expect(stopped, isFalse, reason: 'Audio must drain before the socket closes');
     if (message is String) {
+      if (failControlSend) throw StateError('Synthetic translation control failure');
       controlFrames.add(jsonDecode(message) as Map<String, dynamic>);
       return;
     }
@@ -857,6 +859,11 @@ void main() {
 
     setUp(() async {
       Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
+      SharedPreferencesUtil().localLiveTranslationEnabled = false;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'en';
+      SharedPreferencesUtil().localLiveTranslationOtherLanguage = '';
+      SharedPreferencesUtil().localLiveTranslationBidirectional = false;
+      SharedPreferencesUtil().userPrimaryLanguage = '';
       SharedPreferencesUtil().batchModeEnabled = false;
       SharedPreferencesUtil().unlimitedLocalStorageEnabled = false;
       audio = StreamController<List<int>>.broadcast(sync: true);
@@ -907,6 +914,43 @@ void main() {
       await provider.stopStreamDeviceRecording();
     });
 
+    test('saved pair reaches the socket and changes atomically without reconnecting', () async {
+      SharedPreferencesUtil().localLiveTranslationEnabled = true;
+      SharedPreferencesUtil().localLiveTranslationLanguage = 'es';
+      SharedPreferencesUtil().localLiveTranslationOtherLanguage = 'ru';
+      SharedPreferencesUtil().localLiveTranslationBidirectional = true;
+      final socket = await connectSocket();
+      expect(socket.controlFrames.single, {'type': 'translation', 'language': 'es', 'other_language': 'ru'});
+      await expectLater(provider.setLiveTranslation(language: 'ru'), throwsArgumentError);
+      expect(provider.liveTranslationLanguage, 'es');
+      expect(socket.controlFrames, hasLength(1));
+      await provider.setLiveTranslation(language: 'ru', otherLanguage: 'es');
+      await provider.setLiveTranslation(enabled: false);
+      await provider.setLiveTranslation(enabled: true);
+      await provider.setLiveTranslation(bidirectional: false);
+      expect(socket.controlFrames.skip(1), [
+        {'type': 'translation', 'language': 'ru', 'other_language': 'es'},
+        {'type': 'translation', 'language': ''},
+        {'type': 'translation', 'language': 'ru', 'other_language': 'es'},
+        {'type': 'translation', 'language': 'ru'},
+      ]);
+      expect(provider.gates, hasLength(1));
+      expect(socket.stopped, isFalse);
+      await provider.stopStreamDeviceRecording();
+    });
+
+    test('existing settings keep one-way mode and derive a distinct second language', () {
+      final prefs = SharedPreferencesUtil();
+      prefs.localLiveTranslationLanguage = 'es';
+      prefs.userPrimaryLanguage = 'ru-RU';
+      expect(prefs.localLiveTranslationBidirectional, isFalse);
+      expect(prefs.localLiveTranslationOtherLanguage, 'ru');
+      prefs.localLiveTranslationOtherLanguage = 'es';
+      expect(prefs.localLiveTranslationOtherLanguage, 'ru');
+      prefs.userPrimaryLanguage = 'es';
+      expect(prefs.localLiveTranslationOtherLanguage, 'en');
+    });
+
     test('stays silent on connect while translation is off', () async {
       SharedPreferencesUtil().localLiveTranslationEnabled = false;
       final socket = await connectSocket();
@@ -953,6 +997,8 @@ void main() {
       Env.setRuntimeModeForTesting(OmiRuntimeMode.offline);
       FlutterSecureStorage.setMockInitialValues({});
       SharedPreferencesUtil().batchModeEnabled = false;
+      SharedPreferencesUtil().localLiveTranslationEnabled = false;
+      SharedPreferencesUtil().localLiveTranslationBidirectional = false;
       session = LocalMacSession(probe: (_, __) async => {'uid': 'alice', 'local_audio_delivery_version': 2});
       await session.connect('https://synthetic.example/', List.filled(43, 's').join());
       directory = await Directory.systemTemp.createTemp('capture-local-outbox-');
@@ -1308,6 +1354,45 @@ void main() {
       expect(escaped, isEmpty, reason: 'The async send Future must not escape its best-effort preview owner');
       expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 8), List.filled(320, 9)]);
       expect(outbox.captureIssue, isNull, reason: 'A socket error cannot be reported as a journal write failure');
+    });
+
+    test('translation control failure preserves phone audio and restores the language pair on recovery', () async {
+      final mic = _FakeLiveMicRecorder();
+      final provider = _BufferedStartProvider(
+        localMacSession: session,
+        audioListenerLoader: (_, __) async => null,
+        microphonePermissionRequester: () async => true,
+        phoneMicRecorder: mic,
+      );
+      await provider.streamRecording();
+      await pumpEventQueue();
+      final socket = provider.connect(0, codec: BleAudioCodec.pcm16);
+      await pumpEventQueue();
+      mic.receive!(Uint8List.fromList(List.filled(320, 3)));
+      await outbox.flushPendingWrites();
+      final recording = provider.activeCaptureSessionId;
+      socket.failControlSend = true;
+      final escaped = <Object>[];
+      await runZonedGuarded(() async {
+        await provider.setLiveTranslation(enabled: true, language: 'es', otherLanguage: 'ru', bidirectional: true);
+        await pumpEventQueue();
+      }, (error, _) => escaped.add(error));
+      expect(provider.recordingState, RecordingState.record);
+      mic.receive!(Uint8List.fromList(List.filled(320, 4)));
+      provider.onConnectionStateChanged(true);
+      await pumpEventQueue();
+      final recovered = provider.connect(1, codec: BleAudioCodec.pcm16);
+      await pumpEventQueue();
+      expect(recovered.controlFrames.single, {'type': 'translation', 'language': 'es', 'other_language': 'ru'});
+      expect(provider.activeCaptureSessionId, recording);
+      expect(mic.starts, 1);
+      expect(socket.stopped, isTrue);
+      await provider.stopLocalCapture();
+      await outbox.drain();
+      provider.dispose();
+      expect(escaped, isEmpty, reason: 'Translation control uses the same best-effort transport as preview audio');
+      expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 3), List.filled(320, 4)]);
+      expect(outbox.captureIssue, isNull);
     });
 
     test('missing local outbox fails before starting native microphone or batch fallback', () async {

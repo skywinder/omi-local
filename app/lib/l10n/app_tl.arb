@@ -10830,9 +10830,11 @@
     "localProcessingProbe": "Subukan ang koneksyon",
     "localProcessingPending": "Hindi pa aktibo ang mga na-save na pagbabago. I-tap ang Kumpirmahin para ilapat.",
     "localAudioServerUpdateRequired": "I-update ang server para i-sync ang audio. Mananatili ang audio na naka-save sa telepono.",
-    "liveTranslation": "Pagsasalin nang live",
-    "liveTranslationFailed": "Hindi available ang pagsasalin sa ngayon. Suriin ang tagapagbigay ng pagsasalin sa iyong Mac.",
-    "liveTranslationHelp": "Isalin ang live na transcript sa iyong Mac. Mananatili ang orihinal; lalabas ang salin sa ilalim ng bawat linya. Magdagdag muna ng tagapagbigay ng pagsasalin sa mga setting ng lokal na aklatan.",
+    "liveTranslation": "Live na pagsasalin",
+    "liveTranslationFailed": "Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation.",
+    "liveTranslationHelp": "Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.",
     "liveTranslationTargetLanguage": "Isalin sa",
-    "liveTranslationUnconfigured": "Walang naka-configure na tagapagbigay ng pagsasalin sa iyong Mac. Magdagdag nito sa mga setting ng lokal na aklatan."
+    "liveTranslationUnconfigured": "Walang nakatakdang modelo ng pagsasalin sa nakakonektang server. Buksan ang library nito: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationBidirectional": "Pagsasalin sa dalawang direksiyon",
+    "liveTranslationPairHelp": "Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika."
 }

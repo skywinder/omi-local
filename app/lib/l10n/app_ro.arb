@@ -3264,9 +3264,11 @@
     "localProcessingProbe": "Testează conexiunea",
     "localProcessingPending": "Modificările salvate nu sunt active. Atinge Confirmă pentru a le aplica.",
     "localAudioServerUpdateRequired": "Actualizați serverul pentru a sincroniza sunetul. Sunetul salvat pe telefon este păstrat.",
-    "liveTranslation": "Traducere în timp real",
-    "liveTranslationFailed": "Traducerea nu este disponibilă momentan. Verificați furnizorul de traducere de pe Mac.",
-    "liveTranslationHelp": "Traduceți transcrierea în timp real pe Mac. Originalul este păstrat, iar traducerea apare sub fiecare rând. Adăugați mai întâi un furnizor de traducere în setările bibliotecii locale.",
-    "liveTranslationTargetLanguage": "Traduceți în",
-    "liveTranslationUnconfigured": "Furnizorul de traducere nu este configurat pe Mac. Adăugați unul în setările bibliotecii locale."
+    "liveTranslation": "Traducere în direct",
+    "liveTranslationFailed": "Traducerea nu este disponibilă pe serverul conectat. Verifică biblioteca: Settings → Translation.",
+    "liveTranslationHelp": "Serverul conectat afișează traducerea sub original. Modelul de rezumare este folosit automat, dacă nu alegi altul în biblioteca serverului: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Tradu în",
+    "liveTranslationUnconfigured": "Niciun model de traducere nu este configurat pe serverul conectat. Deschide biblioteca: Settings → Summarization sau Translation → Save → Use.",
+    "liveTranslationBidirectional": "Traducere bidirecțională",
+    "liveTranslationPairHelp": "Detectează limba fiecărei fraze și traduce în cealaltă limbă selectată."
 }

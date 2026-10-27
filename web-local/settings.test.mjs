@@ -107,6 +107,19 @@ function serverState() {
     effective: {live: null, stt: null, diarization: null, summary: structuredClone(profile)}};
 }
 
+test('translation settings explain the server model used automatically', async t => {
+  const ui = dom(t), state = serverState();
+  state.active.translation = null;
+  state.effective.translation = {...state.effective.summary, stage: 'translation', inherited_from: 'summary'};
+  const settings = mountSettings(ui.root, {request: async () => structuredClone(state)});
+  await settings.show();
+  ui.click('Перевод');
+  assert.match(ui.root.textContent, /Автоматически: используется модель суммаризации этого сервера/);
+  assert.match(ui.root.textContent, /Действует: Local model/);
+  const automatic = ui.root.querySelectorAll('button').find(b => b.textContent === 'Использовать модель суммаризации');
+  assert.equal(automatic.disabled, true);
+});
+
 test('finished-recording speaker selection stays independent of the live server', async t => {
   const ui = dom(t), calls = [], state = serverState();
   const live = {...providerDefaults('live', 'external'), id: 'live-1', name: 'Live server'};

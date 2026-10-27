@@ -3264,9 +3264,11 @@
     "localProcessingProbe": "Tikrinti ryšį",
     "localProcessingPending": "Išsaugoti pakeitimai dar neaktyvūs. Palieskite Patvirtinti, kad juos pritaikytumėte.",
     "localAudioServerUpdateRequired": "Norėdami sinchronizuoti garsą, atnaujinkite serverį. Telefone išsaugotas garsas išlieka.",
-    "liveTranslation": "Vertimas realiuoju laiku",
-    "liveTranslationFailed": "Vertimas šiuo metu nepasiekiamas. Patikrinkite vertimo paslaugos teikėją savo „Mac“.",
-    "liveTranslationHelp": "Verskite tiesioginę transkripciją savo „Mac“. Originalas išsaugomas, o vertimas rodomas po kiekviena eilute. Pirmiausia vietinės bibliotekos nustatymuose pridėkite vertimo paslaugos teikėją.",
+    "liveTranslation": "Tiesioginis vertimas",
+    "liveTranslationFailed": "Prijungtame serveryje vertimas nepasiekiamas. Patikrinkite jo biblioteką: Settings → Translation.",
+    "liveTranslationHelp": "Prijungtas serveris rodo vertimą po originalu. Automatiškai naudojamas santraukų modelis, nebent serverio bibliotekoje pasirinksite kitą: Settings → Translation.",
     "liveTranslationTargetLanguage": "Versti į",
-    "liveTranslationUnconfigured": "Jūsų „Mac“ nesukonfigūruotas vertimo paslaugos teikėjas. Pridėkite jį vietinės bibliotekos nustatymuose."
+    "liveTranslationUnconfigured": "Prijungtame serveryje nenustatytas vertimo modelis. Atverkite jo biblioteką: Settings → Summarization arba Translation → Save → Use.",
+    "liveTranslationBidirectional": "Dvikryptis vertimas",
+    "liveTranslationPairHelp": "Atpažinti kiekvienos frazės kalbą ir išversti į kitą pasirinktą kalbą."
 }

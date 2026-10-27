@@ -9965,14 +9965,14 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'اپنے Mac پر براہ راست نقلِ تحریر کا ترجمہ کریں۔ اصل متن برقرار رہتا ہے اور ترجمہ ہر سطر کے نیچے نظر آتا ہے۔ پہلے مقامی لائبریری کی ترتیبات میں ترجمہ فراہم کنندہ شامل کریں۔';
+      'منسلک سرور اصل متن کے نیچے ترجمہ دکھاتا ہے۔ خلاصے کا ماڈل خود بخود استعمال ہوتا ہے، جب تک آپ سرور کی لائبریری میں دوسرا ماڈل نہ چنیں: Settings → Translation۔';
 
   @override
   String get liveTranslationUnconfigured =>
-      'آپ کے Mac پر ترجمہ فراہم کنندہ ترتیب نہیں دیا گیا۔ مقامی لائبریری کی ترتیبات میں ایک فراہم کنندہ شامل کریں۔';
+      'منسلک سرور پر ترجمے کا ماڈل ترتیب نہیں دیا گیا۔ اس کی لائبریری کھولیں: Settings → Summarization یا Translation → Save → Use۔';
 
   @override
-  String get liveTranslationFailed => 'ترجمہ اس وقت دستیاب نہیں ہے۔ اپنے Mac پر ترجمہ فراہم کنندہ کی جانچ کریں۔';
+  String get liveTranslationFailed => 'منسلک سرور پر ترجمہ دستیاب نہیں۔ اس کی لائبریری دیکھیں: Settings → Translation۔';
 
   @override
   String get diarization => 'مقررین کی شناخت';
@@ -10020,4 +10020,10 @@ class AppLocalizationsUr extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'آڈیو سنک کرنے کے لیے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
+
+  @override
+  String get liveTranslationBidirectional => 'دو طرفہ ترجمہ';
+
+  @override
+  String get liveTranslationPairHelp => 'ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔';
 }

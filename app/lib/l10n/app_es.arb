@@ -3266,8 +3266,10 @@
     "localProcessingPending": "Los cambios guardados aún no están activos. Toca Confirmar para aplicarlos.",
     "localAudioServerUpdateRequired": "Actualiza el servidor para sincronizar el audio. El audio guardado en el teléfono se conserva.",
     "liveTranslation": "Traducción en directo",
-    "liveTranslationFailed": "La traducción no está disponible en este momento. Comprueba el proveedor de traducción en tu Mac.",
-    "liveTranslationHelp": "Traduce la transcripción en directo en tu Mac. Se conserva el original y la traducción aparece debajo de cada línea. Primero añade un proveedor de traducción en los ajustes de la biblioteca local.",
-    "liveTranslationTargetLanguage": "Traducir a",
-    "liveTranslationUnconfigured": "No hay ningún proveedor de traducción configurado en tu Mac. Añade uno en los ajustes de la biblioteca local."
+    "liveTranslationFailed": "La traducción no está disponible en el servidor conectado. Revisa su biblioteca: Settings → Translation.",
+    "liveTranslationHelp": "El servidor conectado muestra la traducción debajo del original. Se usa automáticamente el modelo de resumen, salvo que elijas otro en la biblioteca del servidor: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Traducir al",
+    "liveTranslationUnconfigured": "No hay ningún modelo de traducción configurado en el servidor conectado. Abre su biblioteca: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationBidirectional": "Traducción bidireccional",
+    "liveTranslationPairHelp": "Detectar el idioma de cada frase y traducirla al otro idioma seleccionado."
 }

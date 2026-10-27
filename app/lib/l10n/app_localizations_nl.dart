@@ -9990,14 +9990,15 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Vertaal het live transcript op je Mac. Het origineel blijft bewaard; de vertaling verschijnt onder elke regel. Voeg eerst een vertaaldienst toe in de instellingen van de lokale bibliotheek.';
+      'De verbonden server toont de vertaling onder het origineel. Het samenvattingsmodel wordt automatisch gebruikt, tenzij je een ander model kiest in de serverbibliotheek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Er is geen vertaaldienst ingesteld op je Mac. Voeg er een toe in de instellingen van de lokale bibliotheek.';
+      'Er is geen vertaalmodel ingesteld op de verbonden server. Open de bibliotheek: Settings → Summarization of Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Vertaling is momenteel niet beschikbaar. Controleer de vertaaldienst op je Mac.';
+  String get liveTranslationFailed =>
+      'Vertalen is niet beschikbaar op de verbonden server. Controleer de bibliotheek: Settings → Translation.';
 
   @override
   String get diarization => 'Sprekerherkenning';
@@ -10047,4 +10048,10 @@ class AppLocalizationsNl extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Werk de server bij om audio te synchroniseren. Audio die op de telefoon is opgeslagen blijft bewaard.';
+
+  @override
+  String get liveTranslationBidirectional => 'Vertaling in beide richtingen';
+
+  @override
+  String get liveTranslationPairHelp => 'Herken de taal van elke zin en vertaal naar de andere geselecteerde taal.';
 }

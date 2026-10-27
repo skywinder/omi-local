@@ -10008,22 +10008,22 @@ class AppLocalizationsIt extends AppLocalizations {
   String get localMacServers => 'Server salvati';
 
   @override
-  String get liveTranslation => 'Traduzione in tempo reale';
+  String get liveTranslation => 'Traduzione in diretta';
 
   @override
   String get liveTranslationTargetLanguage => 'Traduci in';
 
   @override
   String get liveTranslationHelp =>
-      'Traduci la trascrizione in tempo reale sul tuo Mac. Il testo originale viene conservato e la traduzione appare sotto ogni riga. Aggiungi prima un fornitore di traduzione nelle impostazioni della libreria locale.';
+      'Il server collegato mostra la traduzione sotto l’originale. Viene usato automaticamente il modello di riepilogo, salvo che ne scegli un altro nella libreria del server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Nessun fornitore di traduzione è configurato sul tuo Mac. Aggiungine uno nelle impostazioni della libreria locale.';
+      'Nessun modello di traduzione è configurato sul server collegato. Apri la sua libreria: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'La traduzione non è disponibile al momento. Controlla il fornitore di traduzione sul tuo Mac.';
+      'La traduzione non è disponibile sul server collegato. Controlla la sua libreria: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizzazione';
@@ -10072,4 +10072,10 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Aggiorna il server per sincronizzare l’audio. L’audio salvato sul telefono viene conservato.';
+
+  @override
+  String get liveTranslationBidirectional => 'Traduzione bidirezionale';
+
+  @override
+  String get liveTranslationPairHelp => 'Rileva la lingua di ogni frase e traducila nell’altra lingua selezionata.';
 }

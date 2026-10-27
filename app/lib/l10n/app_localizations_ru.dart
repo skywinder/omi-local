@@ -10005,14 +10005,15 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Перевод live-транскрипта на вашем Mac. Оригинал сохраняется, перевод появляется под каждой строкой. Сначала добавьте провайдер «Перевод» в настройках локальной библиотеки.';
+      'Перевод выполняется на подключённом сервере и появляется под оригиналом. По умолчанию используется активная модель суммаризации. Другую модель можно выбрать в веб-библиотеке сервера: Настройки → Перевод.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Провайдер перевода не настроен на вашем Mac. Добавьте его в настройках локальной библиотеки.';
+      'На подключённом сервере не настроена модель перевода. Откройте его веб-библиотеку → Настройки → Суммаризация или Перевод → Сохранить → Использовать.';
 
   @override
-  String get liveTranslationFailed => 'Перевод сейчас недоступен. Проверьте провайдер перевода на Mac.';
+  String get liveTranslationFailed =>
+      'Перевод на подключённом сервере недоступен. Проверьте его веб-библиотеку → Настройки → Перевод.';
 
   @override
   String get diarization => 'Диаризация';
@@ -10060,4 +10061,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => 'Обновите сервер для отправки аудио. Запись сохраняется на телефоне.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двусторонний перевод';
+
+  @override
+  String get liveTranslationPairHelp => 'Определять язык каждой фразы и переводить на другой выбранный язык.';
 }

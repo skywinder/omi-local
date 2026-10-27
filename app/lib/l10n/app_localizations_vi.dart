@@ -9950,14 +9950,15 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Dịch bản chép lời trực tiếp trên Mac của bạn. Văn bản gốc được giữ lại; bản dịch xuất hiện bên dưới từng dòng. Trước tiên, hãy thêm nhà cung cấp dịch thuật trong phần cài đặt thư viện cục bộ.';
+      'Máy chủ đã kết nối hiển thị bản dịch dưới bản gốc. Mô hình tóm tắt được dùng tự động trừ khi bạn chọn mô hình khác trong thư viện máy chủ: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Chưa cấu hình nhà cung cấp dịch thuật trên Mac của bạn. Hãy thêm một nhà cung cấp trong phần cài đặt thư viện cục bộ.';
+      'Chưa cấu hình mô hình dịch trên máy chủ đã kết nối. Mở thư viện của máy chủ: Settings → Summarization hoặc Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Hiện chưa thể dịch. Hãy kiểm tra nhà cung cấp dịch thuật trên Mac của bạn.';
+  String get liveTranslationFailed =>
+      'Không thể dịch trên máy chủ đã kết nối. Kiểm tra thư viện của máy chủ: Settings → Translation.';
 
   @override
   String get diarization => 'Phân tách người nói';
@@ -10004,4 +10005,10 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Cập nhật máy chủ để đồng bộ âm thanh. Âm thanh đã lưu trên điện thoại được giữ lại.';
+
+  @override
+  String get liveTranslationBidirectional => 'Dịch hai chiều';
+
+  @override
+  String get liveTranslationPairHelp => 'Nhận diện ngôn ngữ của từng câu và dịch sang ngôn ngữ còn lại đã chọn.';
 }

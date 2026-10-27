@@ -10042,22 +10042,22 @@ class AppLocalizationsTl extends AppLocalizations {
   String get localMacServers => 'Mga naka-save na server';
 
   @override
-  String get liveTranslation => 'Pagsasalin nang live';
+  String get liveTranslation => 'Live na pagsasalin';
 
   @override
   String get liveTranslationTargetLanguage => 'Isalin sa';
 
   @override
   String get liveTranslationHelp =>
-      'Isalin ang live na transcript sa iyong Mac. Mananatili ang orihinal; lalabas ang salin sa ilalim ng bawat linya. Magdagdag muna ng tagapagbigay ng pagsasalin sa mga setting ng lokal na aklatan.';
+      'Ipinapakita ng nakakonektang server ang salin sa ilalim ng orihinal. Awtomatikong ginagamit ang modelo ng pagbubuod maliban kung pumili ka ng iba sa library ng server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Walang naka-configure na tagapagbigay ng pagsasalin sa iyong Mac. Magdagdag nito sa mga setting ng lokal na aklatan.';
+      'Walang nakatakdang modelo ng pagsasalin sa nakakonektang server. Buksan ang library nito: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Hindi available ang pagsasalin sa ngayon. Suriin ang tagapagbigay ng pagsasalin sa iyong Mac.';
+      'Hindi available ang pagsasalin sa nakakonektang server. Tingnan ang library nito: Settings → Translation.';
 
   @override
   String get diarization => 'Pagkilala ng nagsasalita';
@@ -10107,4 +10107,10 @@ class AppLocalizationsTl extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'I-update ang server para i-sync ang audio. Mananatili ang audio na naka-save sa telepono.';
+
+  @override
+  String get liveTranslationBidirectional => 'Pagsasalin sa dalawang direksiyon';
+
+  @override
+  String get liveTranslationPairHelp => 'Tukuyin ang wika ng bawat parirala at isalin sa isa pang napiling wika.';
 }

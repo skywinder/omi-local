@@ -9760,13 +9760,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get liveTranslationTargetLanguage => '翻译为';
 
   @override
-  String get liveTranslationHelp => '在 Mac 上翻译实时转写。原文会保留，译文显示在每行下方。请先在本地资料库设置中添加翻译服务提供商。';
+  String get liveTranslationHelp => '已连接的服务器会在原文下方显示译文。默认自动使用摘要模型，除非您在服务器资料库的 Settings → Translation 中选择其他模型。';
 
   @override
-  String get liveTranslationUnconfigured => '尚未在 Mac 上配置翻译服务提供商。请在本地资料库设置中添加。';
+  String get liveTranslationUnconfigured =>
+      '已连接的服务器尚未配置翻译模型。请打开其资料库：Settings → Summarization 或 Translation → Save → Use。';
 
   @override
-  String get liveTranslationFailed => '目前无法翻译。请检查 Mac 上的翻译服务提供商。';
+  String get liveTranslationFailed => '已连接的服务器暂时无法翻译。请检查其资料库：Settings → Translation。';
 
   @override
   String get diarization => '说话人分离';
@@ -9811,4 +9812,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get localAudioServerUpdateRequired => '请更新服务器以同步音频。手机上保存的音频会保留。';
+
+  @override
+  String get liveTranslationBidirectional => '双向翻译';
+
+  @override
+  String get liveTranslationPairHelp => '识别每句话的语言，并翻译成所选的另一种语言。';
 }

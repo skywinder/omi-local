@@ -9961,15 +9961,15 @@ class AppLocalizationsNo extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'Oversett den løpende transkripsjonen på Macen din. Originalen beholdes; oversettelsen vises under hver linje. Legg først til en oversettelsesleverandør i innstillingene for det lokale biblioteket.';
+      'Den tilkoblede serveren viser oversettelsen under originalen. Oppsummeringsmodellen brukes automatisk med mindre du velger en annen i serverens bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Ingen oversettelsesleverandør er konfigurert på Macen din. Legg til en i innstillingene for det lokale biblioteket.';
+      'Ingen oversettelsesmodell er konfigurert på den tilkoblede serveren. Åpne biblioteket: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Oversettelse er ikke tilgjengelig akkurat nå. Sjekk oversettelsesleverandøren på Macen din.';
+      'Oversettelse er ikke tilgjengelig på den tilkoblede serveren. Sjekk biblioteket: Settings → Translation.';
 
   @override
   String get diarization => 'Talerinndeling';
@@ -10017,4 +10017,10 @@ class AppLocalizationsNo extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Oppdater serveren for å synkronisere lyd. Lyd som er lagret på telefonen beholdes.';
+
+  @override
+  String get liveTranslationBidirectional => 'Toveisoversettelse';
+
+  @override
+  String get liveTranslationPairHelp => 'Gjenkjenn språket i hver setning og oversett til det andre valgte språket.';
 }

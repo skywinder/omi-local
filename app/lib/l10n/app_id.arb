@@ -3307,8 +3307,10 @@
     "localProcessingPending": "Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.",
     "localAudioServerUpdateRequired": "Perbarui server untuk menyinkronkan audio. Audio yang tersimpan di ponsel tetap disimpan.",
     "liveTranslation": "Terjemahan langsung",
-    "liveTranslationFailed": "Terjemahan sedang tidak tersedia. Periksa penyedia terjemahan di Mac Anda.",
-    "liveTranslationHelp": "Terjemahkan transkrip langsung di Mac Anda. Teks asli tetap tersimpan dan terjemahan muncul di bawah setiap baris. Tambahkan penyedia terjemahan di pengaturan pustaka lokal terlebih dahulu.",
+    "liveTranslationFailed": "Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation.",
+    "liveTranslationHelp": "Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.",
     "liveTranslationTargetLanguage": "Terjemahkan ke",
-    "liveTranslationUnconfigured": "Penyedia terjemahan belum dikonfigurasi di Mac Anda. Tambahkan penyedia di pengaturan pustaka lokal."
+    "liveTranslationUnconfigured": "Belum ada model terjemahan di server yang terhubung. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.",
+    "liveTranslationBidirectional": "Terjemahan dua arah",
+    "liveTranslationPairHelp": "Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih."
 }

@@ -39,6 +39,7 @@ subsequent provider switches need no app rebuild.
 | Transcription | Prepared WhisperKit, WhisperX, Parakeet MLX; OpenAI-compatible `/v1/audio/transcriptions` with timestamps |
 | Finished-recording diarization | Prepared Pyannote; Mycelia `POST /diarize` |
 | Summarization | OpenAI-compatible `/chat/completions` relative to the configured base URL, usually ending in `/v1` |
+| Translation | Active summarization model by default, or a separate OpenAI-compatible text model |
 
 **Add → fill in the card → Check connection → Save → Use.**
 **Save** updates the card; **Use** applies it to new jobs.
@@ -154,21 +155,39 @@ default for servers that reject unknown fields.
 
 ## Live translation
 
-The translation card is a second OpenAI-compatible LLM (base URL ending in `/v1`,
-model, the same **Model reasoning** switch as summarization). It is not part of the
-finished-recording pipeline: it translates the live preview only. The relay on the
-Mac sends each batch of newly committed WLK lines (up to 8 lines / 4000 characters)
+Translation uses the connected server's active **Summarization** model by default,
+with the same endpoint, key and reasoning setting. Saved drafts and STT models
+are never selected automatically. To choose another model, open that server's web
+library → **Settings → Translation → Add → Save → Use**. Choose **Use summarization
+model** (currently **Использовать модель суммаризации**) to return to automatic selection.
+The app's translation toggle turns requests on or off. If neither stage has an
+active text model, configure either one with an OpenAI-compatible base URL ending
+in `/v1`, model and optional API key. New selections apply to new recording sessions.
+
+Translation is not part of the finished-recording pipeline: it translates the
+live preview only. The relay on the connected server sends each batch of committed WLK lines (up to 8 lines / 4000 characters)
 as one `chat/completions` request asking for a JSON array in the same order, and
 attaches the result to the lines as `translations: [{"lang": "<code>", "text": ...}]`.
-Translations are cached per line text for the session, so corrections that keep
+Translations are cached per line text and selected language pair for the session, so corrections that keep
 a line's text cost nothing; a rewritten line is translated again. The last,
 still-growing line is translated once it ends a sentence or stays unchanged for
 two seconds. A failed batch is not retried within the session.
+Turning translation on or changing its language also translates the current
+visible transcript, without waiting for more speech. Repeated unchanged snapshots
+do not postpone the two-second settling timer.
 
-The target language and the on/off switch live in the app (Settings → Local Mac →
-Live translation, and the translate button on the live transcript screen). Both
-travel over the already open listen socket, so toggling never restarts a recording.
-Without a translation card, the app shows that the provider is missing; without
+The language settings and the on/off switch live in the app (Settings → Local Mac →
+Live translation, and the language chip on the live transcript screen). Enable
+**Two-way translation** in the language sheet and select two different languages,
+for example Russian and Spanish. The chip then shows `RU ↔ ES`. The text model
+detects each phrase's dominant language and translates into the other selected
+language; the original stays above its translation. For mixed speech the dominant
+language determines direction. Speech outside the pair is translated into language 2.
+The relay validates the returned source and destination codes before displaying a result.
+Existing settings keep one-way translation. Two-way translation requires both the
+updated app and backend/relay. Saved language changes travel over the already open
+listen socket, so switching modes never restarts a recording.
+Without either active text model, the app shows that the provider is missing; without
 the switch the card is never contacted. Transcript text is untrusted input to the
 model: the prompt tells it to translate, not to follow instructions in the lines.
 

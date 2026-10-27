@@ -9980,22 +9980,22 @@ class AppLocalizationsLv extends AppLocalizations {
   String get localMacServers => 'Saglabātie serveri';
 
   @override
-  String get liveTranslation => 'Tulkojums reāllaikā';
+  String get liveTranslation => 'Tulkošana reāllaikā';
 
   @override
   String get liveTranslationTargetLanguage => 'Tulkot uz';
 
   @override
   String get liveTranslationHelp =>
-      'Tulkojiet reāllaika transkripciju savā Mac datorā. Oriģināls tiek saglabāts, un tulkojums parādās zem katras rindas. Vispirms vietējās bibliotēkas iestatījumos pievienojiet tulkošanas pakalpojuma sniedzēju.';
+      'Pievienotais serveris rāda tulkojumu zem oriģināla. Automātiski tiek izmantots kopsavilkumu modelis, ja servera bibliotēkā neizvēlaties citu: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Jūsu Mac datorā nav konfigurēts tulkošanas pakalpojuma sniedzējs. Pievienojiet to vietējās bibliotēkas iestatījumos.';
+      'Pievienotajā serverī nav iestatīts tulkošanas modelis. Atveriet tā bibliotēku: Settings → Summarization vai Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Tulkojums pašlaik nav pieejams. Pārbaudiet tulkošanas pakalpojuma sniedzēju savā Mac datorā.';
+      'Pievienotajā serverī tulkošana nav pieejama. Pārbaudiet tā bibliotēku: Settings → Translation.';
 
   @override
   String get diarization => 'Runātāju atdalīšana';
@@ -10044,4 +10044,10 @@ class AppLocalizationsLv extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Lai sinhronizētu audio, atjauniniet serveri. Tālrunī saglabātais audio tiek paturēts.';
+
+  @override
+  String get liveTranslationBidirectional => 'Divvirzienu tulkošana';
+
+  @override
+  String get liveTranslationPairHelp => 'Noteikt katras frāzes valodu un tulkot otrā izvēlētajā valodā.';
 }

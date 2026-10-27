@@ -3269,9 +3269,11 @@
     "localProcessingProbe": "Otestovať pripojenie",
     "localProcessingPending": "Uložené zmeny nie sú aktívne. Klepnutím na Potvrdiť ich použijete.",
     "localAudioServerUpdateRequired": "Ak chcete synchronizovať zvuk, aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.",
-    "liveTranslation": "Preklad naživo",
-    "liveTranslationFailed": "Preklad momentálne nie je dostupný. Skontrolujte poskytovateľa prekladu na svojom Macu.",
-    "liveTranslationHelp": "Prekladajte živý prepis na svojom Macu. Originál zostane zachovaný a preklad sa zobrazí pod každým riadkom. Najskôr pridajte poskytovateľa prekladu v nastaveniach miestnej knižnice.",
+    "liveTranslation": "Živý preklad",
+    "liveTranslationFailed": "Preklad na pripojenom serveri nie je dostupný. Skontrolujte jeho knižnicu: Settings → Translation.",
+    "liveTranslationHelp": "Pripojený server zobrazuje preklad pod originálom. Automaticky sa používa model na zhrnutie, ak v knižnici servera nevyberiete iný: Settings → Translation.",
     "liveTranslationTargetLanguage": "Preložiť do",
-    "liveTranslationUnconfigured": "Poskytovateľ prekladu nie je nakonfigurovaný na vašom Macu. Pridajte ho v nastaveniach miestnej knižnice."
+    "liveTranslationUnconfigured": "Na pripojenom serveri nie je nastavený model na preklad. Otvorte jeho knižnicu: Settings → Summarization alebo Translation → Save → Use.",
+    "liveTranslationBidirectional": "Obojsmerný preklad",
+    "liveTranslationPairHelp": "Rozpoznať jazyk každej frázy a preložiť ju do druhého vybraného jazyka."
 }

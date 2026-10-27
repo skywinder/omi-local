@@ -218,26 +218,30 @@ class ControlAwareSocket(Socket):
 
 
 @pytest.mark.parametrize('relay_enabled', [True, False])
+@pytest.mark.parametrize('other_language', [None, 'ru'])
 @pytest.mark.anyio
-async def test_translation_language_reaches_only_the_relay_before_audio(monkeypatch, relay_enabled):
+async def test_translation_language_reaches_only_the_relay_before_audio(monkeypatch, relay_enabled, other_language):
     if relay_enabled:
         monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
     else:
         monkeypatch.delenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', raising=False)
     socket = ControlAwareSocket()
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
-    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock(), translation_language='en')
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock(), translation_language='en',
+                               translation_other_language=other_language)
     pcm = b'\x01\x00' * 320
     preview.feed(pcm)
     for _ in range(20):
         await asyncio.sleep(0)
-    preview.set_translation('DE')
+    preview.set_translation('DE', other_language)
     preview.set_translation('not-a-code')
     await preview.finish()
     frames = [json.loads(item) for item in socket.sent if isinstance(item, str)]
     if relay_enabled:
-        assert socket.sent[0] == json.dumps({'type': 'translation', 'language': 'en'})
-        assert frames == [{'type': 'translation', 'language': 'en'}, {'type': 'translation', 'language': 'de'},
+        pair = {'other_language': other_language} if other_language else {}
+        assert json.loads(socket.sent[0]) == {'type': 'translation', 'language': 'en', **pair}
+        assert frames == [{'type': 'translation', 'language': 'en', **pair},
+                          {'type': 'translation', 'language': 'de', **pair},
                           {'type': 'translation', 'language': ''}]
     else:
         assert frames == []

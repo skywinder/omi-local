@@ -9977,19 +9977,19 @@ class AppLocalizationsMs extends AppLocalizations {
   String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Terjemahkan ke';
+  String get liveTranslationTargetLanguage => 'Terjemah ke';
 
   @override
   String get liveTranslationHelp =>
-      'Terjemahkan transkrip langsung pada Mac anda. Teks asal dikekalkan; terjemahan muncul di bawah setiap baris. Tambahkan penyedia Terjemahan dalam tetapan pustaka setempat terlebih dahulu.';
+      'Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Penyedia terjemahan belum dikonfigurasikan pada Mac anda. Tambahkan penyedia dalam tetapan pustaka setempat.';
+      'Tiada model terjemahan dikonfigurasi pada pelayan yang disambungkan. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Terjemahan tidak tersedia buat masa ini. Semak penyedia terjemahan pada Mac anda.';
+      'Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation.';
 
   @override
   String get diarization => 'Pemisahan penutur';
@@ -10037,4 +10037,10 @@ class AppLocalizationsMs extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Kemas kini pelayan untuk menyegerakkan audio. Audio yang disimpan pada telefon dikekalkan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua hala';
+
+  @override
+  String get liveTranslationPairHelp => 'Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

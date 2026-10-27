@@ -9962,14 +9962,15 @@ class AppLocalizationsMr extends AppLocalizations {
 
   @override
   String get liveTranslationHelp =>
-      'तुमच्या Mac वर चालू प्रतिलेखाचे भाषांतर करा. मूळ मजकूर जतन केला जातो; प्रत्येक ओळीखाली भाषांतर दिसते. प्रथम स्थानिक लायब्ररीच्या सेटिंग्जमध्ये भाषांतर सेवा प्रदाता जोडा.';
+      'जोडलेला सर्व्हर मूळ मजकुराखाली भाषांतर दाखवतो. सर्व्हरच्या लायब्ररीत दुसरे मॉडेल निवडले नसल्यास सारांश मॉडेल आपोआप वापरले जाते: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'तुमच्या Mac वर भाषांतर सेवा प्रदाता कॉन्फिगर केलेला नाही. स्थानिक लायब्ररीच्या सेटिंग्जमध्ये तो जोडा.';
+      'जोडलेल्या सर्व्हरवर भाषांतराचे मॉडेल सेट केलेले नाही. त्याची लायब्ररी उघडा: Settings → Summarization किंवा Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'भाषांतर सध्या उपलब्ध नाही. तुमच्या Mac वरील भाषांतर सेवा प्रदाता तपासा.';
+  String get liveTranslationFailed =>
+      'जोडलेल्या सर्व्हरवर भाषांतर उपलब्ध नाही. त्याची लायब्ररी तपासा: Settings → Translation.';
 
   @override
   String get diarization => 'वक्ता ओळख';
@@ -10017,4 +10018,10 @@ class AppLocalizationsMr extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'ऑडिओ सिंक करण्यासाठी सर्व्हर अपडेट करा. फोनवर जतन केलेला ऑडिओ सुरक्षित राहतो.';
+
+  @override
+  String get liveTranslationBidirectional => 'दुतर्फी भाषांतर';
+
+  @override
+  String get liveTranslationPairHelp => 'प्रत्येक वाक्याची भाषा ओळखा आणि निवडलेल्या दुसऱ्या भाषेत भाषांतर करा.';
 }

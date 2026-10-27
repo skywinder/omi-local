@@ -3,7 +3,7 @@ export const stages = {
   stt: {title: 'Распознавание', description: 'Точный транскрипт готовой записи с таймкодами.'},
   diarization: {title: 'Диаризация', description: 'Кто и когда говорит в готовой записи. Спикеры определяются отдельно для каждой записи. Разделение говорящих во время записи задаётся в Live STT.'},
   summary: {title: 'Суммаризация', description: 'Заголовок и краткое содержание на языке разговора.'},
-  translation: {title: 'Перевод', description: 'Перевод live-транскрипта на язык, выбранный в приложении. Включается тумблером в приложении.'},
+  translation: {title: 'Перевод', description: 'По умолчанию используется активная модель суммаризации подключённого сервера. Здесь можно выбрать отдельную модель. Язык и включение перевода — в приложении.'},
 };
 const kinds = {
   live: {'whisperlivekit': 'WhisperLiveKit · на сервере Omi', external: 'Сервер по WebSocket · протокол WLK'},
@@ -332,7 +332,8 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
     const assignment = el('div', 'settings-assignment');
     assignment.append(el('p', '', `Выбран: ${profileLabel(selected)}`), el('p', '', `Действует: ${profileLabel(effective)}`));
     if (selected && !profileMatches(selected, effective)) assignment.append(el('p', 'settings-pending', 'Сохранённые параметры отличаются от действующих. Нажмите «Использовать», чтобы применить их.'));
-    if (state.stage !== 'stt') { const off = button('Выключить этап', () => activate(null)); off.disabled = !selected && !effective; assignment.append(off); }
+    if (effective?.inherited_from === 'summary') assignment.append(el('p', 'settings-note', 'Автоматически: используется модель суммаризации этого сервера.'));
+    if (state.stage !== 'stt') { const off = button(state.stage === 'translation' ? 'Использовать модель суммаризации' : 'Выключить этап', () => activate(null)); off.disabled = state.stage === 'translation' ? !selected : !selected && !effective; assignment.append(off); }
     fragment.append(assignment);
     const list = el('div', 'provider-cards');
     for (const profile of state.data.profiles.filter(item => item.stage === state.stage)) {

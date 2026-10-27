@@ -9983,21 +9983,22 @@ class AppLocalizationsBe extends AppLocalizations {
   String get localMacServers => 'Захаваныя серверы';
 
   @override
-  String get liveTranslation => 'Пераклад у рэальным часе';
+  String get liveTranslation => 'Пераклад ужывую';
 
   @override
   String get liveTranslationTargetLanguage => 'Перакладаць на';
 
   @override
   String get liveTranslationHelp =>
-      'Перакладайце жывую расшыфроўку на вашым Mac. Арыгінал захоўваецца, а пераклад з’яўляецца пад кожным радком. Спачатку дадайце пастаўшчыка перакладу ў наладах лакальнай бібліятэкі.';
+      'Пераклад на падключаным серверы з\'яўляецца пад арыгіналам. Аўтаматычна выкарыстоўваецца мадэль падсумавання, калі іншая не выбрана ў бібліятэцы сервера: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Пастаўшчык перакладу не наладжаны на вашым Mac. Дадайце яго ў наладах лакальнай бібліятэкі.';
+      'На падключаным серверы не наладжана мадэль перакладу. Адкрыйце яго бібліятэку: Settings → Summarization або Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed => 'Пераклад зараз недаступны. Праверце пастаўшчыка перакладу на вашым Mac.';
+  String get liveTranslationFailed =>
+      'Пераклад недаступны на падключаным серверы. Праверце яго бібліятэку: Settings → Translation.';
 
   @override
   String get diarization => 'Дыярызацыя';
@@ -10044,4 +10045,10 @@ class AppLocalizationsBe extends AppLocalizations {
   @override
   String get localAudioServerUpdateRequired =>
       'Абнавіце сервер для перадачы аўдыя. Аўдыя, захаванае на тэлефоне, застаецца.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двухбаковы пераклад';
+
+  @override
+  String get liveTranslationPairHelp => 'Вызначаць мову кожнай фразы і перакладаць на іншую выбраную мову.';
 }
