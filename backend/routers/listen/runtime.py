@@ -70,6 +70,7 @@ from utils.webhooks import get_audio_bytes_webhook_seconds
 from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
 from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture, rotate_offline_audio_capture
+from utils.local_audio_delivery import initialize_local_capture
 from utils.local_live_preview import LocalLivePreview, normalize_translation_language
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
@@ -264,12 +265,30 @@ class ListenSessionRuntime:
         if self.capture_sink is not None:
             self.capture_sink = rotate_offline_audio_capture(self.capture_sink)
             self.capture_sink.record_decoded_frame(encoded_bytes=encoded_bytes, pcm=pcm)
-            if self.local_preview is not None:
-                self.local_preview.feed(pcm)
+        elif getattr(self, 'outbox_preview_only', False):
+            self.outbox_preview_frames += 1
+            self.outbox_preview_pcm_bytes += len(pcm)
+        if self.local_preview is not None:
+            self.local_preview.feed(pcm)
 
     def capture_decode_error(self, *, encoded_bytes: int) -> None:
         if self.capture_sink is not None:
             self.capture_sink.record_decode_error(encoded_bytes=encoded_bytes)
+
+    def _initialize_local_audio_capture(self) -> None:
+        """Only explicit updated clients replace legacy server WAV capture."""
+        codec = getattr(self, 'original_codec', self.request.codec)
+        self.outbox_preview_frames = 0
+        self.outbox_preview_pcm_bytes = 0
+        self.outbox_preview_only, self.capture_sink = initialize_local_capture(
+            offline=getattr(self, 'offline_runtime', False),
+            headers=getattr(self.request.websocket, 'headers', {}),
+            session_id=self.session_id,
+            source=self.request.source,
+            codec=codec,
+            sample_rate=self.request.sample_rate,
+            channels=self.request.channels,
+        )
 
     def capture_outbound_stt(self, audio: bytes) -> None:
         try:
@@ -733,19 +752,13 @@ class ListenSessionRuntime:
         background: List[asyncio.Task[Any]] = []
         try:
             try:
-                self.capture_sink = create_offline_audio_capture(
-                    session_id=self.session_id,
-                    source=self.request.source,
-                    input_codec=getattr(self, 'original_codec', self.request.codec),
-                    sample_rate=self.request.sample_rate,
-                    channels=self.request.channels,
-                )
+                self._initialize_local_audio_capture()
             except Exception as error:
                 logger.error('Offline audio capture initialization failed type=%s', type(error).__name__)
                 await self.request.websocket.close(code=1011, reason='offline_capture_initialization_failed')
                 return
             self.task_supervisor.start_session()
-            if self.capture_sink is not None:
+            if self.capture_sink is not None or self.outbox_preview_only:
                 # Capture admits only PCM16 mono 16 kHz sources. Preview never
                 # enters TranscriptProcessor or persisted conversation state.
                 self.local_preview = LocalLivePreview.from_environment(

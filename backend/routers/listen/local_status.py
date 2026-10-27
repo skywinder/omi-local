@@ -86,6 +86,8 @@ async def snapshot(uid: str) -> dict:
     sinks = [session.capture_sink for session in sessions if session.capture_sink is not None]
     frames = sum(sink.frames_received for sink in sinks)
     pcm_bytes = sum(sink.decoded_pcm_bytes for sink in sinks)
+    frames += sum(getattr(session, 'outbox_preview_frames', 0) for session in sessions)
+    pcm_bytes += sum(getattr(session, 'outbox_preview_pcm_bytes', 0) for session in sessions)
     capture_state = 'waiting_audio' if sessions else 'idle'
     if frames:
         capture_state = 'received'
