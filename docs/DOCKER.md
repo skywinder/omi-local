@@ -31,6 +31,8 @@ The same saved selection is used by `status`, `logs`, `doctor`, `pair`, and
 it fails when the stack is stopped or unavailable. `--inference` additionally
 submits synthetic speech to final STT without importing a recording. These checks
 do not establish iPhone authentication, CV1 audio delivery or live-ASR quality.
+The image includes only the reviewed `speech-check.wav` diagnostic fixture;
+other recordings remain excluded from its build context.
 
 ## `.env.docker`
 

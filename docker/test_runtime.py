@@ -412,6 +412,14 @@ def test_tailscale_compose_render_publishes_only_paired_api_on_host_vpn():
     assert gpu['device_ids'] == ['0'] and 'count' not in gpu
 
 
+def test_static_tripwire_context_allows_only_the_reviewed_speech_fixture():
+    patterns = (ROOT / '.dockerignore').read_text().splitlines()
+    audio_inclusions = [line for line in patterns if line.startswith('!') and line.endswith(('.wav', '.mp3', '.m4a', '.pcm'))]
+    assert audio_inclusions == ['!scripts/dev-harness/fixtures/speech-check.wav']
+    assert patterns.index(audio_inclusions[0]) > patterns.index('**/*.wav')
+    assert all(pattern in patterns for pattern in ('**/*.wav', '**/*.mp3', '**/*.m4a', '**/*.pcm'))
+
+
 def test_runtime_pins_keep_vcs_commit_and_platform_markers():
     result = subprocess.run([sys.executable, str(ROOT / 'docker/export_pins.py'),
                              str(ROOT / 'backend/pylock.runtime.toml')], capture_output=True, text=True, check=True)
