@@ -76,7 +76,10 @@ Keep Mac reachability, received-audio counters and live-ASR readiness distinct; 
 must clear stale successful status. Poll only on the visible foreground screen.
 The status card starts collapsed; keep confirmed values during an in-flight poll,
 but clear them on failure or an authenticated pairing change. Draft notifications
-must not restart polling. Errors replace the collapsed summary; the full text is
+must not restart polling. Label the authenticated server by matching saved origin
+and key; an edited draft cannot rename the active target. Retained phone audio
+during an outage shows recording/pending/offline, not a failed-capture alert.
+Keep authentication/storage errors explicit and the summary unchanged on expansion. The full text is
 available in its tooltip and expanded details.
 Saved server audio uses `external_data.local_recording` processing cards until
 transcript import succeeds. Show every pending card with date, source, duration

@@ -54,6 +54,7 @@ void main() {
   Future<LocalMacSession> paired() async {
     final session = LocalMacSession(probe: (_, __) async => {'uid': 'alice'});
     await session.connect('https://synthetic.ngrok.app', List.filled(43, 's').join());
+    await session.saveServer(name: 'faeon', address: session.address, key: session.accessKey!);
     return session;
   }
 
@@ -116,6 +117,52 @@ void main() {
     expect(status.audioSeconds, 12.8);
     expect(status.framesReceived, 640);
     expect(status.diarizationState, LocalDiarizationState.unknown);
+  });
+
+  testWidgets('offline header reports recording on the phone and keeps its server name when expanded', (tester) async {
+    final session = await paired();
+    final outbox = LocalAudioOutbox(directory: Directory('/synthetic-outbox-status'), upload: (_, __) async => {});
+    final recording = outbox.begin(source: 'phone', codec: 'pcm16', address: session.address, key: session.accessKey!);
+    outbox.pendingParts = 2;
+    outbox.pendingBytes = 2048;
+    outbox.deliveryFailed = true;
+    LocalAudioOutbox.shared = outbox;
+    try {
+      await showCard(tester, session, () async => throw LocalRuntimeStatusUnavailable(), expanded: false);
+      final summary = value(tester, 'summary');
+      expect(summary, 'faeon · Recording · Phone · Offline · Pending: 2');
+      expect(summary, isNot(contains('Error')));
+      expect(summary, isNot(contains('Local Mac')));
+      await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        value(tester, 'summary'),
+        summary,
+        reason: 'Opening details cannot replace the real state with generic Error',
+      );
+      expect(value(tester, 'connection'), 'Not Connected');
+      expect(value(tester, 'outbox'), 'Pending: 2 · 2 KiB');
+      outbox.reportCaptureIssue('storage');
+      await tester.pump();
+      expect(value(tester, 'summary'), contains('Sync failed'));
+      expect(value(tester, 'summary'), contains('Pending: 2'));
+      await tester.pumpWidget(const SizedBox());
+    } finally {
+      await recording.stop();
+      LocalAudioOutbox.shared = null;
+      outbox.dispose();
+    }
+  });
+
+  testWidgets('active header name ignores saved drafts and a different key on the same address', (tester) async {
+    final session = await paired();
+    final otherKey = List.filled(43, 'r').join();
+    final draft = await session.saveServer(name: 'Unconnected draft', address: session.address, key: otherKey);
+    await session.saveSettings(draft.address, draft.key, name: draft.name, serverId: draft.id);
+    await showCard(tester, session, () async => LocalRuntimeStatus.fromJson(payload()), expanded: false);
+    expect(value(tester, 'summary'), 'faeon · Connected');
+    expect(value(tester, 'summary'), isNot(contains('Unconnected draft')));
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('diarization readiness and actual labels are independent of live text', (tester) async {
@@ -263,7 +310,7 @@ void main() {
     expect(value(tester, 'transcript'), 'Transcript received: 2');
     await tester.tap(find.byKey(const ValueKey('local-runtime-refresh')));
     await tester.pumpAndSettle();
-    expect(value(tester, 'connection'), startsWith('Could not connect.'));
+    expect(value(tester, 'connection'), 'Not Connected');
     expect(value(tester, 'audio'), 'Unknown');
     expect(value(tester, 'transcript'), 'Unknown');
     expect(value(tester, 'diarization'), 'Unknown');
@@ -310,7 +357,7 @@ void main() {
       calls++;
       return LocalRuntimeStatus.fromJson(payload());
     }, expanded: false);
-    expect(value(tester, 'summary'), 'Local Mac · Connected');
+    expect(value(tester, 'summary'), 'faeon · Connected');
     expect(find.byKey(const ValueKey('local-runtime-details')), findsNothing);
     expect(tester.getSize(find.byKey(const ValueKey('local-runtime-status'))).height, lessThanOrEqualTo(52));
     await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
@@ -338,7 +385,7 @@ void main() {
     });
     await tester.tap(find.byKey(const ValueKey('local-runtime-refresh')));
     await tester.pumpAndSettle();
-    expect(value(tester, 'summary'), 'Local Mac · Connected');
+    expect(value(tester, 'summary'), 'faeon · Connected');
     expect(value(tester, 'connection'), 'Connected · API Key Auth');
     expect(value(tester, 'audio'), 'Total: 12 seconds');
     expect(value(tester, 'transcript'), 'Transcript received: 2');
@@ -348,13 +395,13 @@ void main() {
     expect(find.byKey(const ValueKey('local-runtime-details')), findsOneWidget);
     refresh.completeError(LocalRuntimeStatusUnavailable());
     await tester.pumpAndSettle();
-    expect(value(tester, 'summary'), 'Local Mac · Error');
+    expect(value(tester, 'summary'), 'faeon · Not Connected');
     expect(value(tester, 'audio'), 'Unknown');
     expect(value(tester, 'transcript'), 'Unknown');
     expect(value(tester, 'diarization'), 'Unknown');
     await tester.tap(find.byKey(const ValueKey('local-runtime-toggle')));
     await tester.pumpAndSettle();
-    expect(value(tester, 'summary'), startsWith('Local Mac · Could not connect.'));
+    expect(value(tester, 'summary'), 'faeon · Not Connected');
     expect(tester.getSize(find.byKey(const Key('local-runtime-status'))).height, lessThanOrEqualTo(52));
     await tester.pumpWidget(const SizedBox());
   });
