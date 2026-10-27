@@ -13,6 +13,7 @@ import 'package:omi/env/env.dart';
 import 'package:omi/pages/capture/widgets/widgets.dart';
 import 'package:omi/pages/conversation_detail/widgets/name_speaker_sheet.dart';
 import 'package:omi/pages/settings/local_runtime_status_card.dart';
+import 'package:omi/pages/conversations/widgets/temporary_recording_controls.dart';
 import 'package:omi/providers/capture_provider.dart';
 import 'package:omi/providers/connectivity_provider.dart';
 import 'package:omi/providers/device_provider.dart';
@@ -388,7 +389,16 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
               ],
             ),
             floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-            floatingActionButton: (provider.segments.isNotEmpty || provider.photos.isNotEmpty)
+            floatingActionButton: Env.isOfflineRuntime
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Material(
+                      color: const Color(0xFF222222),
+                      borderRadius: BorderRadius.circular(24),
+                      child: TemporaryRecordingControls(provider: provider),
+                    ),
+                  )
+                : (provider.segments.isNotEmpty || provider.photos.isNotEmpty)
                 ? Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,

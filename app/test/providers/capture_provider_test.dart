@@ -348,6 +348,25 @@ class _FakeLiveMicRecorder extends _FakeBatchMicRecorder {
   }
 }
 
+class _DeferredRunningMic extends _FakeLiveMicRecorder {
+  Function()? reportRunning;
+  @override
+  Future<void> start({
+    required Function(Uint8List) onByteReceived,
+    Function()? onRecording,
+    Function()? onStop,
+    Function()? onInitializing,
+    Function()? onStalled,
+    Function(bool)? onInterruption,
+  }) async {
+    starts++;
+    receive = onByteReceived;
+    stopped = onStop;
+    reportRunning = onRecording;
+    onInitializing?.call();
+  }
+}
+
 class _FakeBatchMicRecorder implements IMicRecorderService {
   int startBatchCalls = 0;
 
@@ -1184,6 +1203,80 @@ void main() {
       provider.dispose();
       legacy.dispose();
     });
+
+    test('delayed native running event starts preview and interrupted Stop seals the phone owner', () async {
+      final mic = _DeferredRunningMic();
+      final provider = _BufferedStartProvider(
+        localMacSession: session,
+        audioListenerLoader: (_, __) async => null,
+        microphonePermissionRequester: () async => true,
+        phoneMicRecorder: mic,
+      );
+      await provider.streamRecording();
+      expect(provider.recordingState, RecordingState.initialising);
+      expect(provider.gates, isEmpty);
+      mic.receive!(Uint8List.fromList(List.filled(320, 6)));
+      await outbox.flushPendingWrites();
+      expect(provider.localRecordingDuration, const Duration(milliseconds: 10));
+      final recording = provider.activeCaptureSessionId;
+      expect(recording, isNotNull);
+      mic.reportRunning!();
+      await pumpEventQueue();
+      expect(provider.gates, hasLength(1));
+      provider.connect(0, codec: BleAudioCodec.pcm16);
+      await pumpEventQueue();
+      expect(provider.activeCaptureSessionId, recording);
+      provider.updateRecordingState(RecordingState.interrupted);
+      await provider.stopLocalCapture();
+      await outbox.drain();
+      expect(provider.recordingState, RecordingState.stop);
+      expect(provider.localRecordingDuration, isNull);
+      expect(outbox.activeRecordings, 0);
+      expect(directory.listSync().whereType<File>().single.path, endsWith('.ready'));
+      expect(packets(directory.listSync().whereType<File>().single), [List.filled(320, 6)]);
+      provider.dispose();
+    });
+
+    test(
+      'local process action checkpoints audio without clearing the live draft or invoking cloud finalization',
+      () async {
+        final mic = _FakeLiveMicRecorder();
+        final provider = _BufferedStartProvider(
+          localMacSession: session,
+          audioListenerLoader: (_, __) async => null,
+          microphonePermissionRequester: () async => true,
+          phoneMicRecorder: mic,
+        );
+        await provider.streamRecording();
+        await pumpEventQueue();
+        provider.connect(0, codec: BleAudioCodec.pcm16);
+        await pumpEventQueue();
+        mic.receive!(Uint8List.fromList(List.filled(320, 5)));
+        await outbox.flushPendingWrites();
+        provider.onMessageEventReceived(
+          LocalTranscriptSnapshotEvent(
+            previewId: 'local-preview-durable-cut',
+            revision: 1,
+            segments: [_segment('durable-cut-line', 'Public synthetic draft')],
+          ),
+        );
+        final recording = provider.activeCaptureSessionId;
+        await provider.forceProcessingCurrentConversation();
+        await outbox.drain();
+        expect(directory.listSync().whereType<File>().single.path, endsWith('.ready'));
+        expect(provider.segments.single.text, 'Public synthetic draft');
+        expect(provider.recordingState, RecordingState.record);
+        expect(provider.activeCaptureSessionId, recording);
+        expect(mic.starts, 1);
+        mic.receive!(Uint8List.fromList(List.filled(320, 7)));
+        await outbox.flushPendingWrites();
+        expect(provider.localRecordingDuration, const Duration(milliseconds: 20));
+        await provider.stopLocalCapture();
+        await outbox.drain();
+        expect(directory.listSync().whereType<File>().where((f) => f.path.endsWith('.ready')), hasLength(2));
+        provider.dispose();
+      },
+    );
 
     test('asynchronous socket write failures stay contained after local persistence', () async {
       final mic = _FakeLiveMicRecorder();

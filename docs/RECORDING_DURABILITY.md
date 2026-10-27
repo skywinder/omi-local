@@ -43,6 +43,14 @@ phone audio available for another attempt. Refresh retries delivery.
 Parts disappear from the phone outbox only after the server acknowledges the
 same part identity and SHA-256 after saving its WAV and metadata.
 
+The live recording screen provides **Stop** even before any transcript appears
+and while input is interrupted. It closes the selected input and seals its phone
+journal without waiting for the server. Its timer shows flushed audio sample
+time, including offline audio; server reachability and speech recognition do not
+drive that timer. A local **Process Now** action seals the current part for
+delivery while capture can continue; it does not invoke the cloud conversation
+workflow or clear an active live draft.
+
 Delivery retries every fifteen seconds while the application can execute, and
 on pairing changes and application startup. Restored server reachability, a
 successful Wi-Fi/cellular route change, and foreground return seal the current

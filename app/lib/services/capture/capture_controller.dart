@@ -342,6 +342,9 @@ class CaptureController extends ChangeNotifier
       onRecording: () {
         if (generation != _phoneGeneration) return;
         updateRecordingState(RecordingState.record);
+        if (_localDurableRecording != null && _socket?.state != SocketServiceState.connected) {
+          unawaited(_recoverLocalPreview());
+        }
       },
       onStop: () {
         if (generation != _phoneGeneration) return;
@@ -434,7 +437,27 @@ class CaptureController extends ChangeNotifier
   /// Stable identity for the active live-capture session. Unlike a transcript
   /// segment ID, this does not change when the backend revises or deletes
   /// segments during the capture.
-  String? get activeCaptureSessionId => _sessionStartSeconds == 0 ? null : 'live-$_sessionStartSeconds';
+  String? get activeCaptureSessionId =>
+      _localDurableRecording?.recordingId ?? (_sessionStartSeconds == 0 ? null : 'live-$_sessionStartSeconds');
+
+  /// Sample time accepted into the phone journal, independent of server text
+  /// and wall-clock/network changes. The UI polls this only while visible.
+  Duration? get localRecordingDuration => _localDurableRecording == null
+      ? null
+      : Duration(microseconds: (_localDurableRecording!.audioSeconds * 1000000).round());
+
+  Future<void> stopLocalCapture() async {
+    if (!TemporaryCaptureControls.enabled) throw StateError('Local capture controls unavailable');
+    if (_localDurableRecording?.source == 'phone' ||
+        isPhoneMicSelected ||
+        activeRecordingSource == ConversationSource.phone ||
+        _phoneStart != null ||
+        _phoneStop != null) {
+      await stopStreamRecording();
+    } else {
+      await stopStreamDeviceRecording();
+    }
+  }
 
   /// Client-minted UUID shared by capture, `/v4/listen`, and the resulting
   /// conversation so the pipeline can be joined without timing heuristics.
@@ -2113,6 +2136,9 @@ class CaptureController extends ChangeNotifier
           if (generation != _phoneGeneration) return;
           updateRecordingState(RecordingState.record);
           _recordingTelemetry.markStarted();
+          if (_localDurableRecording != null && _socket?.state != SocketServiceState.connected) {
+            unawaited(_recoverLocalPreview());
+          }
         },
         onStop: () {
           if (generation != _phoneGeneration) return;
@@ -2128,7 +2154,9 @@ class CaptureController extends ChangeNotifier
         onStalled: _onMicStalled,
         onInterruption: _onMicInterruption,
       );
-      if (generation == _phoneGeneration && _localDurableRecording != null) {
+      if (generation == _phoneGeneration &&
+          _localDurableRecording != null &&
+          _socket?.state != SocketServiceState.connected) {
         // Native capture owns the recording. Network setup runs alongside it,
         // so a slow upgrade/health request cannot consume the opening words.
         unawaited(_recoverLocalPreview());
@@ -3065,6 +3093,14 @@ class CaptureController extends ChangeNotifier
   }
 
   Future<void> forceProcessingCurrentConversation() async {
+    if (Env.usesLocalTunnel) {
+      // Local recordings are published by durable part receipt, not the cloud
+      // in-progress Conversation API. A cut must not retire an active draft or
+      // clear capture state while its journal is still accepting audio.
+      await _localDurableRecording?.checkpoint();
+      LocalAudioOutbox.shared?.retry();
+      return;
+    }
     final sessionStart = _sessionStartSeconds;
 
     // Force-drain tail buffer before clearing state

@@ -39,6 +39,12 @@ the same recording across sockets, with recording-relative timestamps and
 draft-scoped corrections; clear them when starting a new recording.
 Contain the Future returned by preview send; an async socket-write error retires
 only that socket and schedules recovery, never a storage error or input restart.
+Local live screens always expose Stop, including before text and during input
+interruption. Route it through stopLocalCapture so the owning journal is sealed.
+Show elapsed time from flushed journal samples, independent of Conversation/ASR.
+Paired Process Now checkpoints parts; never clear its active draft or invoke the
+cloud in-progress Conversation API. Native running may follow the start reply;
+start preview on that callback too, without reopening an already connected socket.
 Keep pending parts bound to the original authenticated pairing, including key
 identity. Connection and storage failures must remain visible without deleting
 unacknowledged audio. See `../docs/RECORDING_DURABILITY.md`.
