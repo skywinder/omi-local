@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import errno
 import json
 from pathlib import Path
+import threading
 from types import SimpleNamespace
 
 import pytest
 
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from routers.local_audio import build_local_audio_router
 from utils.local_audio_delivery import MAX_BODY_BYTES
@@ -130,3 +135,90 @@ def test_filesystem_failure_returns_fixed_error_without_ack_or_private_path(tmp_
     assert result.json() == {'detail': 'Insufficient local audio storage' if status == 507 else 'Local audio storage unavailable'}
     assert 'private' not in result.text and 'sha256' not in result.json()
     assert not (tmp_path / 'state/services/storage/listen-captures').exists()
+
+
+@pytest.mark.parametrize('leave', ['cancel', 'timeout'])
+def test_departed_http_callers_hold_body_admission_until_disk_workers_finish(tmp_path: Path, monkeypatch, leave):
+    from routers import local_audio
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        unblock_disk = threading.Event()
+        submitted = asyncio.Event()
+        first_worker_started = asyncio.Event()
+        third_body_read = asyncio.Event()
+        worker_submissions = []
+        body_reads = []
+        deadlines = []
+        original_timeout = asyncio.timeout
+        original_blocking = local_audio.run_blocking
+
+        def controllable_timeout(_seconds):
+            context = original_timeout(None)
+            deadlines.append(context)
+            return context
+
+        def store(body, _root, **_kwargs):
+            if body == b'1':
+                loop.call_soon_threadsafe(first_worker_started.set)
+                if not unblock_disk.wait(3):
+                    raise RuntimeError('Test failed to release its synthetic disk worker')
+            return {'stored': True, 'id': body.decode()}
+
+        async def observed_blocking(executor, function, *args):
+            worker_submissions.append(args[0])
+            if len(worker_submissions) == 2:
+                submitted.set()
+            return await original_blocking(executor, function, *args)
+
+        def request(number):
+            async def receive():
+                body_reads.append(number)
+                if number == 3:
+                    third_body_read.set()
+                return {'type': 'http.request', 'body': str(number).encode(), 'more_body': False}
+
+            return Request({'type': 'http', 'method': 'POST', 'path': '/v1/local/audio/parts', 'headers': []}, receive)
+
+        monkeypatch.setattr(local_audio.asyncio, 'timeout', controllable_timeout)
+        monkeypatch.setattr(local_audio, 'accept_part', store)
+        monkeypatch.setattr(local_audio, 'run_blocking', observed_blocking)
+        monkeypatch.setattr(local_audio, 'local_storage_root_from_env', lambda: tmp_path)
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            monkeypatch.setattr(local_audio, 'storage_executor', workers)
+            handler = build_local_audio_router(lambda: 'alice').routes[0].endpoint
+            first = asyncio.create_task(handler(request(1), uid='alice'))
+            second = asyncio.create_task(handler(request(2), uid='alice'))
+            third = None
+            try:
+                await asyncio.wait_for(submitted.wait(), 2)
+                await asyncio.wait_for(first_worker_started.wait(), 2)
+                if leave == 'cancel':
+                    first.cancel()
+                    second.cancel()
+                else:
+                    for context in deadlines:
+                        context.reschedule(loop.time())
+                results = await asyncio.gather(first, second, return_exceptions=True)
+                if leave == 'cancel':
+                    assert all(isinstance(result, asyncio.CancelledError) for result in results)
+                else:
+                    assert all(isinstance(result, HTTPException) and result.status_code == 408 for result in results)
+                third = asyncio.create_task(handler(request(3), uid='alice'))
+                checkpoint = loop.create_future()
+                loop.call_soon(checkpoint.set_result, None)
+                await checkpoint
+                assert body_reads == [1, 2]
+                assert worker_submissions == [b'1', b'2']
+                assert not third.done()
+                unblock_disk.set()
+                await asyncio.wait_for(third_body_read.wait(), 2)
+                assert await asyncio.wait_for(third, 2) == {'stored': True, 'id': '3'}
+            finally:
+                unblock_disk.set()
+                for task in (first, second, third):
+                    if task is not None and not task.done():
+                        task.cancel()
+                await asyncio.gather(*[task for task in (first, second, third) if task is not None], return_exceptions=True)
+
+    asyncio.run(exercise())

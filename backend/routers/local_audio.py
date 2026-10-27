@@ -37,10 +37,22 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
     # must not spend the same staging allowance. Keep the lock until disk work
     # actually ends, including when the HTTP caller times out.
     publication = threading.Lock()
+    pending_publications: set[asyncio.Task] = set()
 
     def store_part(body: bytes, root: Path) -> dict:
         with publication:
             return accept_part(body, root, check_capacity=require_new_part_capacity)
+
+    async def publish_part(body: bytes, root: Path) -> dict:
+        try:
+            return await run_blocking(storage_executor, store_part, body, root)
+        finally:
+            admission.release()
+
+    def publication_finished(task: asyncio.Task) -> None:
+        pending_publications.discard(task)
+        if not task.cancelled():
+            task.exception()  # Consume failures after the HTTP caller has left, without logging private data.
 
     @router.post('/v1/local/audio/parts', dependencies=[Depends(require_local_status)])
     async def receive_part(request: Request, uid: str = Depends(authenticate)) -> dict:
@@ -48,7 +60,9 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
             raise HTTPException(status_code=403, detail='Local owner required')
         try:
             async with asyncio.timeout(35):
-                async with admission:
+                await admission.acquire()
+                owns_admission = True
+                try:
                     content_length = request.headers.get('content-length')
                     if content_length is not None and (not content_length.isdigit() or int(content_length) > MAX_BODY_BYTES):
                         raise HTTPException(status_code=413, detail='Audio part is too large')
@@ -60,7 +74,17 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
                     root = local_storage_root_from_env()
                     if root is None:
                         raise HTTPException(status_code=503, detail='Local audio storage unavailable')
-                    return await run_blocking(storage_executor, store_part, bytes(body), root)
+                    # The permit follows the actual disk work. HTTP timeout or
+                    # cancellation must not admit more bodies while its worker
+                    # still owns memory or waits for the publication lock.
+                    task = asyncio.create_task(publish_part(bytes(body), root))
+                    pending_publications.add(task)
+                    task.add_done_callback(publication_finished)
+                    owns_admission = False
+                    return await asyncio.shield(task)
+                finally:
+                    if owns_admission:
+                        admission.release()
         except TimeoutError:
             raise HTTPException(status_code=408, detail='Audio part delivery timed out') from None
         except DeliveryConflict:
