@@ -28,6 +28,7 @@ test-transport-unit:
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_live_preview.py tests/unit/test_listen_receiver_translation_control.py tests/unit/test_local_provider_stages.py
 
 test-transport-app:
+	cd app && bash test.sh test/unit/stored_device_decode_test.dart test/unit/preferences_cache_decode_test.dart test/unit/structured_decode_blast_radius_test.dart test/unit/wal_file_manager_torn_write_test.dart test/unit/wal_delete_cascade_test.dart
 	cd app && bash test.sh test/unit/native_ble_transport_resync_test.dart test/services/devices/transports/native_ble_transport_test.dart
 	cd app && bash test.sh test/unit/local_processing_test.dart test/widgets/local_processing_page_test.dart test/unit/local_mac_presets_test.dart test/services/local_audio_outbox_test.dart
 	cd app && bash test.sh test/providers/conversation_provider_processing_reconcile_test.dart test/widgets/processing_conversation_widget_test.dart
