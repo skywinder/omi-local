@@ -1,5 +1,7 @@
 # Development
 
+For selective updates from BasedHardware/omi, see [upstream synchronization](UPSTREAM_SYNC.md).
+
 For containers on Mac CPU or Linux/WSL2 NVIDIA, see [Docker](DOCKER.md).
 
 [Daily startup](START.md) · [iPhone builds](LOCAL_SETUP.md).
