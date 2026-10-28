@@ -139,4 +139,25 @@ void main() {
     final backup = jsonDecode(backupFile.readAsStringSync()) as Map<String, dynamic>;
     expect((backup['wals'] as List).map((w) => w['timer_start']), [1000]);
   });
+
+  for (final invalid in ['[]', '{}', '{"wals":"invalid"}']) {
+    test('a structurally invalid index recovers without overwriting the backup: $invalid', () async {
+      await WalFileManager.saveWals([_wal(1000)]);
+      await WalFileManager.saveWals([_wal(1000), _wal(2000)]);
+      final before = backupFile.readAsStringSync();
+      walFile.writeAsStringSync(invalid);
+
+      final recovered = await WalFileManager.loadWals();
+      expect(recovered.map((wal) => wal.timerStart), [1000]);
+      await WalFileManager.saveWals([...recovered, _wal(3000)]);
+      expect(backupFile.readAsStringSync(), before);
+      expect((await WalFileManager.loadWals()).map((wal) => wal.timerStart), [1000, 3000]);
+    });
+  }
+
+  test('a valid empty index stays empty instead of restoring deleted rows', () async {
+    await WalFileManager.saveWals([_wal(1000)]);
+    await WalFileManager.saveWals([]);
+    expect(await WalFileManager.loadWals(), isEmpty);
+  });
 }

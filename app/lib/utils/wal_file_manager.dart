@@ -49,8 +49,8 @@ class WalFileManager {
       return await _loadFromBackup();
     }
     if (jsonData is! Map<String, dynamic> || jsonData['wals'] is! List) {
-      Logger.debug('Invalid WAL file format, returning empty list');
-      return [];
+      Logger.debug('Invalid WAL file format, trying backup');
+      return await _loadFromBackup();
     }
 
     final walsList = jsonData['wals'] as List;
@@ -91,7 +91,8 @@ class WalFileManager {
       if (_walFile != null && _walFile!.existsSync() && _walBackupFile != null) {
         final content = await _walFile!.readAsString();
         if (content.isEmpty) return;
-        jsonDecode(content);
+        final decoded = jsonDecode(content);
+        if (decoded is! Map<String, dynamic> || decoded['wals'] is! List) return;
         await _walFile!.copy(_walBackupFile!.path);
       }
     } on FileSystemException catch (e) {
