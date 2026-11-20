@@ -86,8 +86,11 @@ the ngrok authtoken; the authtoken stays on the Mac.
 
 ### 3. Record and browse
 
-Connect your CV1 in the iPhone app. Press the CV1 button once to start a recording
-and again to finish it. Muting temporarily pauses audio within the same session.
+Connect your CV1 in the iPhone app to start recording automatically. Recording
+resumes after a Bluetooth reconnect unless you explicitly stopped or muted it.
+The CV1 button and app controls still start/stop recording. The server saves
+five-minute audio parts for transcription while the input continues. Saved parts
+remain visible in Conversations while queued, processing, or failed.
 
 After setup, open the library from any directory in Terminal:
 
@@ -167,6 +170,32 @@ For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 ## Development
 
 ### iPhone launcher
+
+#### Install and launch the existing Profile build on this Mac
+
+The following commands use the current development build and select the paired
+iPhone automatically. A USB connection is preferred when available. A paired
+iPhone reachable on the local network can also be used. This build path is in
+temporary storage and may change after a new build or cleanup. Before installing,
+verify the build's commit, signature, entitlements and executable SHA-256.
+
+```bash
+OMI_IPHONE_ID=$(PYTHONPATH=/private/tmp/omi-live-translation-ux/scripts/dev-harness \
+  /Users/pk/repo/_OMI/omi-local/backend/.venv/bin/python \
+  -c 'from dev_harness.launch_iphone import select_iphone; print(select_iphone(require_unlocked=False)["hardwareProperties"]["udid"])')
+
+xcrun devicectl device install app \
+  --device "$OMI_IPHONE_ID" \
+  /private/tmp/omi-live-translation-ux/app/build/ios/Profile-dev-iphoneos/Runner.app
+
+xcrun devicectl device process launch \
+  --device "$OMI_IPHONE_ID" \
+  com.omi.local.skywindermbp
+```
+
+Run the commands in the same terminal session. Proceed with installation only
+if device selection succeeds. It requires one paired, reachable iPhone. iPhone
+Mirroring can be used to operate the app after launch.
 
 ```bash
 ./iphone.command          # choose Debug, Profile, or status

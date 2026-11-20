@@ -47,15 +47,25 @@ def reconcile(segments, turns):
             output.append({**segment, 'speaker': label,
                            'words': [{**word, 'speaker': label} for word in words]})
             continue
+        labels = [speaker(word) for word in words]
+        for index, (word, label) in enumerate(zip(words, labels)):
+            # Whisper emits zero-length fillers that overlap no turn. They cannot
+            # own a speaker segment, so they stay with the neighbouring words.
+            if label is None and word['start'] == word['end']:
+                labels[index] = (next((l for l in reversed(labels[:index]) if l), None)
+                                 or next((l for l in labels[index + 1:] if l), None) or speaker(segment))
         groups = []
-        for word in words:
-            word = {**word, 'speaker': speaker(word)}
-            if not groups or groups[-1][-1]['speaker'] != word['speaker']:
+        for word, label in zip(words, labels):
+            word = {**word, 'speaker': label}
+            if not groups or groups[-1][-1]['speaker'] != label:
                 groups.append([])
             groups[-1].append(word)
         for group in groups:
             text = ''.join(w['word'] if w['word'].startswith(' ') else ' ' + w['word'] for w in group).strip()
-            output.append({**segment, 'start': group[0]['start'], 'end': max(w['end'] for w in group),
+            start, end = group[0]['start'], max(w['end'] for w in group)
+            if end <= start:  # Only zero-length words: keep the sentence interval.
+                start, end = segment['start'], segment['end']
+            output.append({**segment, 'start': start, 'end': end,
                            'text': text, 'speaker': group[0]['speaker'], 'words': group})
     return output
 

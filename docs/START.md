@@ -39,8 +39,11 @@ For setup without prompts, use a private [`.env`](NGROK.md#noninteractive-setup-
    Then enter the HTTPS address and authtoken from your ngrok dashboard.
    The authtoken input is hidden; press Enter if it is already configured.
    You can also supply both values in a [private `.env`](NGROK.md#supplying-the-address-and-token-through-env).
-3. In the Omi iPhone app, open **Local Mac**, enter the **domain and key shown in
-   the boxed output**, and check the connection.
+3. The Omi iPhone app opens on its sign-in screen. Tap **Local Mac**, enter the
+   **domain and key shown in the boxed output**, and select **Check and connect**.
+   A verified pairing goes straight to the home screen; there is no further
+   onboarding. The phone only asks for microphone, Bluetooth and notification
+   permissions.
 
 The app key is different from the ngrok authtoken and is shown once: save it.
 This applies to the interactive wizard; with `.env`, the key is stored in that file.
