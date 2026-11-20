@@ -9772,7 +9772,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -9788,6 +9788,46 @@ class AppLocalizationsKo extends AppLocalizations {
       'Could not connect. Check the address and that your Mac and tunnel are running.';
 
   @override
-  String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+  String get localMacHelp => 'Tailscale IP(또는 IP:포트)나 ngrok HTTPS 주소와 앱 키를 입력하세요. 연결하면 녹음이 중지됩니다. 오디오는 서버에 저장됩니다.';
+
+  @override
+  String get localMacServers => '저장된 서버';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => '화자 분리';
+
+  @override
+  String get providerUnavailable => '서버를 사용할 수 없음';
+
+  @override
+  String get providerMisconfigured => '제공자 설정을 확인하세요';
+
+  @override
+  String speakersCount(int count) {
+    return '화자 $count명';
+  }
+
+  @override
+  String get diarizationNotPerformed => '화자 분리가 수행되지 않음';
+
+  @override
+  String get diarizationFailed => '화자 분리 실패';
 }

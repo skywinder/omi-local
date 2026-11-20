@@ -132,6 +132,55 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  test('provider stages parse leniently and never fail the status', () {
+    expect(LocalRuntimeStatus.fromJson(payload()).stages, isEmpty);
+    final status = LocalRuntimeStatus.fromJson({
+      ...payload(),
+      'stages': {
+        'checked_at': 5,
+        'stale': true,
+        'stt': {'status': 'ready', 'kind': 'openai-compatible', 'name': 'GPU whisper'},
+        'diarization': {'status': 'unavailable', 'kind': 'mycelia', 'name': 'GPU pyannote'},
+        'live': {'status': 'disabled'},
+        'summary': {'status': 'surprising'},
+        'bogus': {'status': 'ready'},
+      },
+    });
+    expect(status.stages.keys, ['stt', 'diarization', 'live', 'summary']);
+    expect(status.stages['stt'], const LocalStageStatus(state: LocalStageState.ready, name: 'GPU whisper', kind: 'openai-compatible'));
+    expect(status.stages['diarization']!.state, LocalStageState.unavailable);
+    expect(status.stages['live'], const LocalStageStatus(state: LocalStageState.disabled));
+    expect(status.stages['summary']!.state, LocalStageState.unknown);
+    expect(status.stagesStale, isTrue);
+    expect(LocalRuntimeStatus.fromJson({...payload(), 'stages': 'garbage'}).stages, isEmpty);
+  });
+
+  testWidgets('expanded card lists server-side stages with provider names', (tester) async {
+    await showCard(tester, await paired(), () async => LocalRuntimeStatus.fromJson({
+      ...payload(),
+      'stages': {
+        'checked_at': 5,
+        'stale': false,
+        'stt': {'status': 'ready', 'kind': 'openai-compatible', 'name': 'GPU whisper'},
+        'diarization': {'status': 'unavailable', 'kind': 'mycelia', 'name': 'GPU pyannote'},
+        'live': {'status': 'ready', 'kind': 'external', 'name': 'GPU WLK'},
+        'summary': {'status': 'disabled'},
+      },
+    }));
+    expect(value(tester, 'stage-stt'), 'GPU whisper · Model Ready');
+    expect(value(tester, 'stage-diarization'), 'GPU pyannote · Server unavailable');
+    expect(value(tester, 'stage-summary'), 'Off');
+    expect(find.byKey(const ValueKey('local-runtime-stage-live')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('stage rows are absent when the server does not report them', (tester) async {
+    await showCard(tester, await paired(), () async => LocalRuntimeStatus.fromJson(payload()));
+    expect(find.byKey(const ValueKey('local-runtime-stage-stt')), findsNothing);
+    expect(find.byKey(const ValueKey('local-runtime-stage-diarization')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('failed refresh clears all stale healthy and cumulative values', (tester) async {
     var calls = 0;
     await showCard(tester, await paired(), () async {

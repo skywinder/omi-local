@@ -22,6 +22,7 @@ import 'package:omi/services/wals/wal.dart';
 import 'package:omi/widgets/confirmation_dialog.dart';
 import 'package:omi/widgets/conversation_photo_image.dart';
 import 'package:omi/widgets/media_viewer_page.dart';
+import 'package:omi/widgets/live_translation_controls.dart';
 import 'package:omi/widgets/local_capture_feedback.dart';
 import 'package:omi/services/capture/local_capture_phase.dart';
 import 'package:omi/widgets/transcript.dart';
@@ -246,6 +247,13 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                       key: Env.isOfflineRuntime ? const Key('local_capture_page_state') : null,
                     ),
                   ),
+                  if (Env.isOfflineRuntime)
+                    LiveTranslationToggle(
+                      enabled: provider.liveTranslationEnabled,
+                      language: provider.liveTranslationLanguage,
+                      onChanged: ({bool? enabled, String? language}) =>
+                          provider.setLiveTranslation(enabled: enabled, language: language),
+                    ),
                 ],
               ),
             ),
@@ -260,6 +268,11 @@ class _ConversationCapturingPageState extends State<ConversationCapturingPage> w
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: LocalRuntimeStatusCard(source: provider.activeRecordingSource),
+                  ),
+                if (Env.isOfflineRuntime)
+                  LiveTranslationStatusHint(
+                    enabled: provider.liveTranslationEnabled,
+                    status: provider.liveTranslationStatus,
                   ),
                 Expanded(
                   child: Padding(

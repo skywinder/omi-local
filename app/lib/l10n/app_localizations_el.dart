@@ -10008,7 +10008,7 @@ class AppLocalizationsEl extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -10025,5 +10025,46 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'Εισαγάγετε την IP Tailscale (ή IP:θύρα) ή τη διεύθυνση HTTPS ngrok και το κλειδί εφαρμογής. Η σύνδεση σταματά την εγγραφή. Ο ήχος μένει στον διακομιστή σας.';
+
+  @override
+  String get localMacServers => 'Αποθηκευμένοι διακομιστές';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Διαχωρισμός ομιλητών';
+
+  @override
+  String get providerUnavailable => 'Ο διακομιστής δεν είναι διαθέσιμος';
+
+  @override
+  String get providerMisconfigured => 'Ελέγξτε τις ρυθμίσεις του παρόχου';
+
+  @override
+  String speakersCount(int count) {
+    return '$count ομιλητές';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Ο διαχωρισμός ομιλητών δεν εκτελέστηκε';
+
+  @override
+  String get diarizationFailed => 'Ο διαχωρισμός ομιλητών απέτυχε';
 }

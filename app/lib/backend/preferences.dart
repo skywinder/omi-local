@@ -643,6 +643,15 @@ class SharedPreferencesUtil {
 
   set hasSetPrimaryLanguage(bool value) => saveBool('hasSetPrimaryLanguage', value);
 
+  // Relay-side live translation of the local preview (offline runtime only).
+  bool get localLiveTranslationEnabled => getBool('localLiveTranslationEnabled');
+
+  set localLiveTranslationEnabled(bool value) => saveBool('localLiveTranslationEnabled', value);
+
+  String get localLiveTranslationLanguage => getString('localLiveTranslationLanguage', defaultValue: 'en');
+
+  set localLiveTranslationLanguage(String value) => saveString('localLiveTranslationLanguage', value);
+
   int get currentStorageBytes => getInt('currentStorageBytes');
 
   set currentStorageBytes(int value) => saveInt('currentStorageBytes', value);
@@ -892,6 +901,8 @@ class SharedPreferencesUtil {
     cachedTranscriptionVocabulary = <String>[];
     userPrimaryLanguage = '';
     hasSetPrimaryLanguage = false;
+    localLiveTranslationEnabled = false;
+    localLiveTranslationLanguage = 'en';
     hasSpeakerProfile = false;
     selectedChatAppId = 'no_selected';
     lastUsedSummarizationAppId = '';

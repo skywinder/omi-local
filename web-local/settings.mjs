@@ -3,12 +3,14 @@ export const stages = {
   stt: {title: 'Распознавание', description: 'Точный транскрипт готовой записи с таймкодами.'},
   diarization: {title: 'Диаризация', description: 'Кто и когда говорит. Спикеры определяются отдельно для каждой записи.'},
   summary: {title: 'Суммаризация', description: 'Заголовок и краткое содержание на языке разговора.'},
+  translation: {title: 'Перевод', description: 'Перевод live-транскрипта на язык, выбранный в приложении. Включается тумблером в приложении.'},
 };
 const kinds = {
   live: {'whisperlivekit': 'WhisperLiveKit · этот Mac', external: 'Совместимый WebSocket-сервер'},
   stt: {whisperkit: 'WhisperKit · этот Mac', whisperx: 'WhisperX · этот Mac', 'parakeet-mlx': 'Parakeet MLX · этот Mac', 'openai-compatible': 'OpenAI-совместимый сервер'},
   diarization: {pyannote: 'Pyannote · этот Mac', mycelia: 'Сервер диаризации Mycelia'},
   summary: {'openai-compatible': 'OpenAI-совместимая LLM'},
+  translation: {'openai-compatible': 'OpenAI-совместимая LLM'},
 };
 const resultLabels = {ready: 'Готов к подключению', available: 'Сервер отвечает', unavailable: 'Недоступен', misconfigured: 'Проверьте настройки'};
 
@@ -24,7 +26,7 @@ export function providerDefaults(stage, kind = Object.keys(kinds[stage])[0]) {
   if (stage === 'diarization') settings = kind === 'pyannote'
     ? {speaker_model: 'pyannote/speaker-diarization-community-1', speaker_device: 'cpu', speaker_threads: 4, speaker_count: 0}
     : {base_url: ''};
-  if (stage === 'summary') settings = {base_url: '', model: ''};
+  if (stage === 'summary' || stage === 'translation') settings = {base_url: '', model: '', reasoning: 'default'};
   if (stage === 'live') settings = kind === 'external' ? {url: ''}
     : {url: 'ws://127.0.0.1:10302/asr', python: '', model_dir: '', language: 'ru', chunk_seconds: 4};
   return {name: '', stage, kind, settings};
@@ -37,7 +39,8 @@ export function providerFields(profile) {
     ? [field('url', 'WebSocket URL', {required: true, placeholder: 'wss://server.example/asr'})]
     : [field('url', 'Локальный WebSocket URL', {required: true}), field('python', 'Python подготовленного сервера', {required: true}), field('model_dir', 'Папка модели', {required: true}),
       field('language', 'Язык', {options: {ru: 'Русский', en: 'English', auto: 'Автоматически'}}), field('chunk_seconds', 'Длина фрагмента, с', {type: 'number', min: 1, max: 10, step: 0.5})];
-  if (stage === 'summary') return [field('base_url', 'Базовый URL API', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}), field('model', 'Модель', {required: true, models: true})];
+  if (stage === 'summary' || stage === 'translation') return [field('base_url', 'Базовый URL API', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}), field('model', 'Модель', {required: true, models: true}),
+    field('reasoning', 'Рассуждения модели', {options: {default: 'По умолчанию сервера', off: 'Отключить (Qwen3 на llama.cpp/vLLM)'}, hint: 'Отключайте, если модель тратит весь ответ на размышления и результат не приходит.'})];
   if (stage === 'diarization') return kind === 'mycelia'
     ? [field('base_url', 'Базовый URL сервера', {required: true, placeholder: 'https://server.example'}),
       field('min_speakers', 'Минимум говорящих', {type: 'number', min: 1, max: 32, optional: true, placeholder: 'Автоматически'}),

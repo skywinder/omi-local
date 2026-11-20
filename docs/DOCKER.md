@@ -26,11 +26,13 @@ containers to become ready, and exits; services keep running in the background.
 
 Open the **[audio library](http://127.0.0.1:21001/)**. Backend:
 `http://127.0.0.1:21000`. Browsing the interface does not require ngrok;
-for new iPhone recordings, complete [connection setup](#iphone-and-ngrok).
+for new iPhone recordings, use [Tailscale](#iphone-through-tailscale) or the
+optional [ngrok tunnel](#iphone-and-ngrok).
 
 | Action | Command from the project root |
 | --- | --- |
 | Start or rebuild after updating code | `./docker.sh up` |
+| Receive iPhone audio through Tailscale | `./docker.sh tailscale up` |
 | Develop with automatic reload | `./docker.sh dev` |
 | Check container status | `./docker.sh status` |
 | Follow logs | `./docker.sh logs` |
@@ -40,6 +42,91 @@ for new iPhone recordings, complete [connection setup](#iphone-and-ngrok).
 separate from native `start.command`. You do not need Python, Java, Node, or Redis
 installed on the host. iPhone installation still uses Xcode on Mac; containers
 do not build or install the iOS app.
+
+## Using Docker Compose directly
+
+These commands perform the same build, model preparation, and startup steps as
+`docker.sh`. Run them from the repository root. The stack has several services,
+shared networking, and persistent volumes, so use Compose for direct Docker startup.
+
+### CPU on Mac or Linux
+
+```bash
+docker compose -f compose.yaml build app stt download
+docker compose -f compose.yaml run --rm --no-deps download
+docker compose -f compose.yaml up -d --wait
+```
+
+The `download` service prepares the model cache and exits. Do not skip it on a
+fresh installation or after selecting a new model/revision: the STT service
+loads cached files only. Open the [audio library](http://127.0.0.1:21001/).
+
+### NVIDIA GPU on Linux or WSL2
+
+After installing the [GPU prerequisites](#requirements-and-gpu):
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml build app stt download
+docker compose -f compose.yaml -f compose.gpu.yaml run --rm --no-deps download
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --wait
+```
+
+Direct Compose commands select CPU or GPU through the file list;
+`OMI_DOCKER_DEVICE` and automatic GPU detection belong to `docker.sh` only.
+Keep the same file list for later commands. Export custom `STT_MODEL`,
+`STT_REVISION`, or `STT_THREADS` values before running the sequence so they apply
+to every step.
+
+### Hot reload
+
+First build and prepare the model with the CPU or GPU sequence above. If the
+stack is already running, finish recording and processing, then stop it with
+the matching `down` command below. Start Compose Watch in your terminal:
+
+```bash
+# CPU
+docker compose -f compose.yaml -f compose.dev.yaml up --watch
+
+# NVIDIA GPU (alternative to the CPU command)
+docker compose -f compose.yaml -f compose.gpu.yaml -f compose.dev.yaml up --watch
+```
+
+Use one of these commands. `Ctrl+C` ends dev mode. Stop the stack before switching
+between CPU/GPU or development/normal mode; then run the desired startup sequence.
+
+### Status, logs, and shutdown
+
+For the CPU stack:
+
+```bash
+docker compose -f compose.yaml --profile tunnel ps
+docker compose -f compose.yaml logs --tail 80 -f
+docker compose -f compose.yaml --profile tunnel down
+```
+
+For the GPU stack:
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml --profile tunnel ps
+docker compose -f compose.yaml -f compose.gpu.yaml logs --tail 80 -f
+docker compose -f compose.yaml -f compose.gpu.yaml --profile tunnel down
+```
+
+These `down` commands also stop the optional tunnel and preserve data/model
+volumes. For updates, stop the stack, run `git pull --ff-only` from a clean
+checkout of main, and repeat the matching build/download/start sequence.
+Restart the tunnel afterward if configured.
+
+For [iPhone pairing](#iphone-and-ngrok), the direct equivalents are:
+
+```bash
+docker compose -f compose.yaml exec app python docker/runtime.py configure
+# After configuring, stop and start the stack, then start its tunnel:
+docker compose -f compose.yaml --profile tunnel up -d tunnel
+```
+
+On GPU, add `-f compose.gpu.yaml` after `-f compose.yaml` to both commands.
+Run `configure` interactively while `app` is running.
 
 ## Requirements and GPU
 
@@ -106,6 +193,68 @@ The built-in container provides final WAV transcription with one speaker,
 `SPEAKER_00`. Apple engines are unavailable inside Linux; use compatible servers
 for additional stages.
 
+## External STT server instead of the built-in container
+
+When an OpenAI-compatible STT server already runs on the host or in the tailnet
+(for example a GPU faster-whisper behind a proxy), the built-in `stt` container
+is redundant. Select that server first, then restart without it:
+
+1. Start normally (`./docker.sh up` or `./docker.sh tailscale up`) and open the
+   library. Under **Settings → Transcription** add an `openai-compatible` card
+   with the server's `/v1` base URL, model, and key; **Check → Save → Use**.
+   Diarization and summarization servers are selected the same way.
+2. Finish processing, then `./docker.sh down`.
+3. Start with `OMI_DOCKER_STT=external ./docker.sh tailscale up` (or `up`/`dev`).
+
+`external` adds `compose.external.yaml`, which moves `stt` into the
+`builtin-stt` profile; it builds only `app`, skips model download, and ignores
+`OMI_DOCKER_DEVICE`. Keep `OMI_DOCKER_STT=external` for later `down`, `status`,
+and `logs` calls. Startup validates the active STT provider, so an external
+mode start before step 1 fails and retries until the container restarts.
+For direct Compose, add `-f compose.external.yaml` to every command and skip
+`compose.gpu.yaml` and the `download` step. From a container, address host
+services by the host Tailscale IPv4, not `localhost`.
+
+Plain-HTTP provider URLs are accepted only for loopback, LAN, and Tailscale
+addresses; word timestamps in `segments[].words` improve speaker assignment
+when a diarization server is selected.
+
+### Remote library through Tailscale Serve
+
+The library stays loopback-only unless one HTTPS origin is configured. Set in
+the Compose `.env` (or export) before starting:
+
+```dotenv
+OMI_LIBRARY_PUBLIC_ORIGIN=https://<host>.<tailnet>.ts.net:21443
+OMI_LIBRARY_TAILSCALE_LOGIN=<your tailscale login, e.g. name@github>
+# Optional password login in addition to, or instead of, the tailnet identity:
+OMI_LIBRARY_USER=<name>
+OMI_LIBRARY_PASSWORD_HASH=<output of the hash command below>
+```
+
+```bash
+docker compose exec -it app python -m dev_harness.local_library hash-password
+sudo tailscale serve --bg --https=21443 http://127.0.0.1:21001
+```
+
+Requests on that origin are served only with a matching `Tailscale-User-Login`
+header, which Serve sets from the caller's tailnet identity and strips from
+clients, or with valid Basic credentials over that TLS origin. Funnel never adds
+the identity header, so a public exposure still fails closed. The ingress drops
+forwarding headers from Serve; all other Host/Origin values remain rejected and
+loopback access is unchanged. Changing these values requires recreating `app`.
+
+### Live STT with WhisperLiveKit
+
+The built-in stack has no live server. `docker/whisperlivekit/compose.yaml`
+runs a standalone WhisperLiveKit on an NVIDIA host with `--pcm-input`, which the
+omiloc `external` Live provider requires. Copy it with `env.example` to the GPU
+host, clone the pinned WhisperLiveKit tag beside it as described in the file,
+set `WLK_BIND_ADDRESS` to the host Tailscale IPv4, and run
+`docker compose up -d --build`. In the library select **Live STT → external**
+with `ws://<host-tailscale-ip>:8010/asr`. The live server is a separate process
+and model copy; it does not replace the final transcription provider.
+
 ## Development and updates
 
 `./docker.sh dev` runs in an open Terminal:
@@ -138,9 +287,79 @@ git pull --ff-only
 ```
 
 The saved named volumes are attached again; recordings, keys, and models are
-preserved. If ngrok is configured, run `./docker.sh tunnel` after startup.
-Updating the Docker environment alone does not require a new iPhone build.
+preserved. For Tailscale, replace the startup command with `./docker.sh tailscale up`.
+If ngrok is configured, run `./docker.sh tunnel` after startup.
+Updating the Docker environment alone does not require a new iPhone build; the
+phone must already have an app version that supports Tailscale addresses.
 Do not use `down -v`, delete volumes, or perform Docker cleanup for routine updates.
+
+## iPhone through Tailscale
+
+Connect the Docker host and iPhone to the same Tailscale network. Its access rules
+must allow the iPhone to reach TCP port **21000** on the host. Run from a local
+Docker context on that host. With Docker Desktop on Windows, the CLI must inspect
+the Windows host's Tailscale address, not a separate WSL2 guest VPN address;
+that configuration remains unverified.
+
+```bash
+./docker.sh tailscale up
+```
+
+The launcher detects the host's Tailscale IPv4 and verifies that Tailscale is
+connected before building or starting services. No ngrok account, token, domain,
+Tailscale Serve, or extra Python installation on the host is needed. Mac users
+may use the Tailscale app's bundled CLI; elsewhere `tailscale` must be on PATH.
+To use a particular installed CLI, set `OMI_TAILSCALE_CLI` to its executable path.
+For development, use `./docker.sh tailscale dev`.
+
+In the iPhone app's **Local Mac** screen, enter **the host Tailscale IPv4 followed
+by `:21000`** and the Docker app key, then check the connection. The port is required:
+entering only an IP defaults to the native Mac port `20000`. Retrieve the Docker
+key locally in your own Terminal; do not copy it into chat or logs:
+
+```bash
+docker compose exec app cat /data/connection.env
+```
+
+The app uses HTTP/WS inside the encrypted Tailscale network. The library remains
+at [localhost:21001](http://127.0.0.1:21001/); only the authenticated backend ingress
+is additionally published on the Tailscale IPv4. Firebase, Redis, STT, and internal
+backend sockets stay on container loopback. A binding failure stops startup;
+the launcher never substitutes `0.0.0.0` or the LAN address.
+
+You can also choose the transport through exported configuration:
+
+```bash
+export OMI_LOCAL_TRANSPORT=tailscale
+# Optional: set OMI_TAILSCALE_IP to this host's actual Tailscale IPv4.
+# If omitted, the launcher discovers and validates it on each startup.
+./docker.sh up
+```
+
+These are Docker host settings; the native `.env` is not imported into the Docker
+volume. New Tailscale volumes require only a generated app key. Existing keys,
+ngrok configuration, provider settings, and recordings are preserved. To switch
+an existing running stack, finish recording/processing, run `./docker.sh down`,
+then start the selected transport. Stop/status/logs continue to work even when
+Tailscale is disconnected. Tailscale startup also stops this Compose project's
+optional ngrok tunnel if it was left running. Switching back to ngrok is explicit: unset the exported
+transport (or set it to `ngrok`), then follow the ngrok section below.
+
+For direct Compose use, verify that `tailscale status` reports a connected host,
+then set its own IPv4 and include the override in every build/start command:
+
+```bash
+export OMI_TAILSCALE_IP="$(tailscale ip -4)"
+docker compose -f compose.yaml -f compose.tailscale.yaml build app stt download
+docker compose -f compose.yaml -f compose.tailscale.yaml run --rm --no-deps download
+docker compose -f compose.yaml -f compose.tailscale.yaml up -d --wait
+```
+
+Use `docker.sh tailscale up` for automatic address and connection validation.
+The same override combines with `compose.gpu.yaml` and `compose.dev.yaml`.
+This does not connect Omi Bluetooth directly to the host: audio still comes from
+CV1 → iPhone → Tailscale → Docker host. Physical phone/CV1 recording and access
+from another tailnet device still need verification on the target devices.
 
 ## iPhone and ngrok
 
@@ -183,7 +402,9 @@ Keychain data, signing material, and real recordings are not copied into images.
 This preserves ownership checks and Firebase's correct export-on-exit behavior.
 `stt`, `ingress`, and the optional `tunnel` share Nginx's network namespace,
 which survives app and STT reloads. The internal backend, Firebase, Redis, and STT
-listen on 127.0.0.1. Nginx publishes only two ports, bound to host 127.0.0.1.
+listen on 127.0.0.1. Nginx normally publishes two ports on host 127.0.0.1.
+The Tailscale override adds only the backend ingress on the verified host VPN IPv4;
+the unauthenticated library stays loopback-only and ingress rejects local preview.
 The backend's outbound policy is unchanged; remote providers are accessed through
 the harness and its Live relay. This does not establish physical no-egress for the whole system.
 
@@ -201,8 +422,10 @@ make test-docker PYTHON=/path/to/python3.11
 docker compose -f compose.yaml -f compose.gpu.yaml -f compose.dev.yaml config --quiet
 ```
 
-`make test-docker` checks the API, model-error failure behavior, and settings
-preservation without a GPU or model downloads. It runs in the existing
+`make test-docker` checks the API, model-error failure behavior, settings
+preservation, transport switching, and host-address validation without a GPU or
+model downloads. With the Compose CLI installed, it also renders the combined
+Tailscale/GPU/dev configuration and checks all published ports. It runs in the existing
 `transport-unit` CI job. Backend versions come from `pylock.runtime.toml`;
 ARM64 uses native wheels of the same versions, so x86_64 artifact hashes are not
 presented as an ARM64 lock.
@@ -219,3 +442,20 @@ remain unverified. Their configuration is prepared; hardware success is not clai
 
 Native Mac Parakeet Live is not included in the container: live preview is disabled
 by default. Saved settings and explicitly selected Live providers are preserved.
+
+On September 14, 2026, a separate Docker Desktop CPU stack was tested through the
+host's own Tailscale IPv4. Authenticated HTTP and an Opus WebSocket stream produced
+an exact 2-second, mono 16 kHz WAV with zero decode errors; the recording appeared
+in the localhost library and survived an app restart with its pairing key.
+Incorrect keys and external preview requests were rejected, and the library was
+unreachable through the Tailscale address. Graceful shutdown exported Firebase.
+No models were downloaded; STT was disabled for this transport check. This proves
+host binding and the synthetic audio path, not connectivity from a physical iPhone
+or another tailnet peer. Existing running services and data were left unchanged.
+
+### Recording without live text
+
+The default Docker STT service transcribes completed WAVs after Stop. Live STT is
+disabled unless a live provider is configured. Disabled live processing is not a
+recording error. Open the library on port 21001, select a recording, and use the
+player at the bottom; recordings with no detected speech still have playable audio.

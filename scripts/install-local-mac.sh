@@ -72,12 +72,7 @@ for formula in uv node@22 openjdk@21 redis opus ffmpeg jq; do
     run_step brew install "$formula"
   fi
 done
-if ! command -v ngrok >/dev/null 2>&1; then
-  install_stage='установить ngrok'
-  install_remedy='Повтор вручную: brew install --cask ngrok.'
-  echo 'Устанавливаем ngrok…'
-  run_step brew install --cask ngrok
-fi
+
 omi_macos_path
 echo 'Готовим зависимости приложения на Mac…'
 install_stage='подготовить Python'
@@ -92,6 +87,15 @@ if [ ! -f node_modules/.omi-install-inputs ] || [ "$(cat node_modules/.omi-insta
   printf '%s\n' "$npm_inputs" > node_modules/.omi-install-inputs
 fi
 export PYTHON="$PWD/backend/.venv/bin/python"
+transport=$(PYTHONPATH=scripts/dev-harness "$PYTHON" -m dev_harness.local_transport)
+if [[ "$transport" == ngrok ]]; then
+if ! command -v ngrok >/dev/null 2>&1; then
+  install_stage='установить ngrok'
+  install_remedy='Повтор вручную: brew install --cask ngrok.'
+  echo 'Устанавливаем ngrok…'
+  run_step brew install --cask ngrok
+fi
+fi
 install_stage='загрузить эмулятор Firebase'
 PYTHONPATH=scripts/dev-harness run_step "$PYTHON" -m dev_harness.local_mac prepare-emulator
 echo 'Проверяем готовность сервисов Mac…'

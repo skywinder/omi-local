@@ -9938,7 +9938,7 @@ class AppLocalizationsFa extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -9955,5 +9955,46 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'نشانی Tailscale IP (یا IP:پورت) یا ngrok HTTPS و کلید برنامه را وارد کنید. اتصال ضبط را متوقف می‌کند. صدا روی سرور شما می‌ماند.';
+
+  @override
+  String get localMacServers => 'سرورهای ذخیره‌شده';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'تفکیک گوینده';
+
+  @override
+  String get providerUnavailable => 'سرور در دسترس نیست';
+
+  @override
+  String get providerMisconfigured => 'تنظیمات ارائه‌دهنده را بررسی کنید';
+
+  @override
+  String speakersCount(int count) {
+    return '$count گوینده';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'تفکیک گوینده انجام نشد';
+
+  @override
+  String get diarizationFailed => 'تفکیک گوینده ناموفق بود';
 }

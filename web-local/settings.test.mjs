@@ -5,6 +5,10 @@ import {processingRows, renderProcessing} from './recording-processing.mjs';
 
 test('adapters expose supported settings and preserve independent diarization', () => {
   assert.deepEqual(providerFields(providerDefaults('live', 'external')).map(field => field.key), ['url']);
+  assert.deepEqual(providerFields(providerDefaults('summary', 'openai-compatible')).map(field => field.key), ['base_url', 'model', 'reasoning']);
+  assert.equal(providerDefaults('summary', 'openai-compatible').settings.reasoning, 'default');
+  assert.deepEqual(providerFields(providerDefaults('translation')).map(field => field.key), ['base_url', 'model', 'reasoning']);
+  assert.equal(providerDefaults('translation').kind, 'openai-compatible');
   for (const kind of ['whisperkit', 'whisperx', 'parakeet-mlx', 'openai-compatible']) {
     assert.equal(providerDefaults('stt', kind).settings.diarization_model, 'none');
     assert.ok(!providerFields(providerDefaults('stt', kind)).some(field => field.key.startsWith('speaker_')));

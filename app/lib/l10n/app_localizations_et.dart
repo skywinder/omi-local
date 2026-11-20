@@ -9932,7 +9932,7 @@ class AppLocalizationsEt extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -9949,5 +9949,46 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'Sisesta Tailscale’i IP (või IP:port) või ngroki HTTPS-aadress ja rakenduse võti. Ühendamine peatab salvestuse. Heli jääb sinu serverisse.';
+
+  @override
+  String get localMacServers => 'Salvestatud serverid';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Kõnelejate eristamine';
+
+  @override
+  String get providerUnavailable => 'Server pole saadaval';
+
+  @override
+  String get providerMisconfigured => 'Kontrollige teenusepakkuja seadeid';
+
+  @override
+  String speakersCount(int count) {
+    return '$count kõnelejat';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Kõnelejate eristamist ei tehtud';
+
+  @override
+  String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
 }

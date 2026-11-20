@@ -27,15 +27,25 @@ def prepare(cfg, root=ROOT, data=DATA):
     if not private.exists():
         fd = os.open(private, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as stream:
-            stream.write('OMI_NGROK_URL=https://local.invalid\nNGROK_AUTHTOKEN=localplaceholderunused\n'
-                         'OMI_LOCAL_APP_KEY=' + secrets.token_urlsafe(32) + '\n')
+            stream.write(f'OMI_LOCAL_TRANSPORT={cfg.local_transport}\n')
+            if cfg.local_transport == 'ngrok':
+                stream.write('OMI_NGROK_URL=https://local.invalid\nNGROK_AUTHTOKEN=localplaceholderunused\n')
+            stream.write('OMI_LOCAL_APP_KEY=' + secrets.token_urlsafe(32) + '\n')
     values = local_env.read_env(private)
+    # Compose selects the active transport; changing it never replaces volume identity.
+    values['OMI_LOCAL_TRANSPORT'] = cfg.local_transport
+    if cfg.local_transport == 'ngrok':
+        # Local-only browsing also works for a volume first created in Tailscale mode.
+        # The optional tunnel still needs an explicit interactive configure step.
+        values.setdefault('OMI_NGROK_URL', 'https://local.invalid')
+        values.setdefault('NGROK_AUTHTOKEN', 'localplaceholderunused')
     # local_env deliberately rejects symlinks. Keep its existing private-file contract.
     target = root / '.env'
-    target.write_text(private.read_text())
+    target.write_text(''.join(f'{key}={values[key]}\n' for key in local_env.FIELDS if key in values))
     target.chmod(0o600)
     local_env.apply(cfg, values)
-    (data / 'tunnel-url').write_text(values['OMI_NGROK_URL'])
+    if cfg.local_transport == 'ngrok':
+        (data / 'tunnel-url').write_text(values['OMI_NGROK_URL'])
     write_once(cfg.layout.state_root / 'stt-engine.json', {
         'engine': 'openai-compatible', 'provider_url': 'http://127.0.0.1:10301/v1',
         'model': os.environ.get('STT_MODEL', 'Systran/faster-whisper-small'),
@@ -61,12 +71,13 @@ def configure():
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         raise ValueError('Run configure in your own interactive terminal')
     values = local_env.read_env(DATA / 'connection.env')
+    values['OMI_LOCAL_TRANSPORT'] = 'ngrok'
     values['OMI_NGROK_URL'] = local_mac.endpoint(input('Ngrok HTTPS domain: ').strip())
     values['NGROK_AUTHTOKEN'] = getpass.getpass('Ngrok token (hidden): ').strip()
     staged = DATA / 'connection.next.env'
     fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as stream:
-        stream.write(''.join(f'{key}={values[key]}\n' for key in local_env.FIELDS))
+        stream.write(''.join(f'{key}={values[key]}\n' for key in local_env.FIELDS if key in values))
     local_env.read_env(staged)
     staged.replace(DATA / 'connection.env')
     print('Saved. Restart the Docker stack before starting the tunnel.')

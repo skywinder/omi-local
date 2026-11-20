@@ -142,6 +142,32 @@ class CaptureController extends ChangeNotifier
   MessageServiceStatusEvent? _terminalTranscriptionFailure;
   MessageServiceStatusEvent? get terminalTranscriptionFailure => _terminalTranscriptionFailure;
 
+  // Relay-side live translation (offline runtime). The target travels over the
+  // open listen socket as a control frame, so toggling never restarts capture.
+  String? _liveTranslationStatus;
+
+  /// Last `service_status` from the translation relay: ready | unconfigured | failed.
+  String? get liveTranslationStatus => _liveTranslationStatus;
+
+  bool get liveTranslationEnabled => SharedPreferencesUtil().localLiveTranslationEnabled;
+
+  String get liveTranslationLanguage => SharedPreferencesUtil().localLiveTranslationLanguage;
+
+  Future<void> setLiveTranslation({bool? enabled, String? language}) async {
+    if (enabled != null) SharedPreferencesUtil().localLiveTranslationEnabled = enabled;
+    if (language != null && language.isNotEmpty) SharedPreferencesUtil().localLiveTranslationLanguage = language;
+    if (enabled == false) _liveTranslationStatus = null;
+    _sendLiveTranslationControl();
+    notifyListeners();
+  }
+
+  void _sendLiveTranslationControl({bool onlyWhenEnabled = false}) {
+    if (!Env.isOfflineRuntime || _socket?.state != SocketServiceState.connected) return;
+    final target = liveTranslationEnabled ? liveTranslationLanguage : '';
+    if (onlyWhenEnabled && target.isEmpty) return;
+    _socket?.send(jsonEncode({'type': 'translation', 'language': target}));
+  }
+
   // When custom STT is configured, its polling socket keeps
   // buffering audio locally and retrying instead of tearing the transcription
   // socket down on every failure (see PurePollingSocket). Surface that local
@@ -660,6 +686,13 @@ class CaptureController extends ChangeNotifier
       recordingState = RecordingState.stop;
     }
     if (_recordingDevice?.id != device?.id) {
+      if (TemporaryCaptureControls.enabled && !isPhoneMicSelected) {
+        _temporaryRecordingRequested = false;
+        _websocketInitGeneration++;
+        unawaited(_bleBytesStream?.cancel());
+        _bleBytesStream = null;
+        recordingState = RecordingState.stop;
+      }
       _lastOmiButtonEvent = null;
       _localButtonFeedbackTimer?.cancel();
       _localOmiButtonFeedback = null;
@@ -985,6 +1018,11 @@ class CaptureController extends ChangeNotifier
     _socket = socket;
     _socket?.subscribe(this, this);
     _transcriptServiceReady = true;
+    _liveTranslationStatus = null;
+    _sendLiveTranslationControl(onlyWhenEnabled: true);
+    if (recordingState == RecordingState.interrupted && !_micInterrupted && _phoneStop == null) {
+      updateRecordingState(RecordingState.record);
+    }
     if (_sessionStartSeconds == 0) {
       _sessionStartSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     }
@@ -1284,6 +1322,10 @@ class CaptureController extends ChangeNotifier
     _startMetricsTracking();
     final audioGeneration = _localAudioGeneration;
     void receive(List<int> value) {
+      if (TemporaryCaptureControls.enabled &&
+          (audioGeneration != _localAudioGeneration || _recordingDevice?.id != deviceId)) {
+        return;
+      }
       final snapshot = List<int>.from(value);
       if (snapshot.isEmpty || snapshot.length < 3) return;
       if (snapshot.length > 3) _receiveLocalAudioEvidence(audioGeneration);
@@ -2179,6 +2221,12 @@ class CaptureController extends ChangeNotifier
   }
 
   // Temporary explicit session boundary for the local WAV workflow (G12).
+  // A transport disconnect is not a user Stop. Remember that distinction
+  // across BLE reconnects, including a disconnect during startup.
+  bool _localRecordingStoppedByUser = false;
+  bool get shouldAutomaticallyStartDeviceRecording =>
+      TemporaryCaptureControls.enabled && !isPhoneMicSelected && !_isPaused && !_localRecordingStoppedByUser;
+
   bool _temporaryRecordingRequested = false;
   LocalDeviceAudioStart? _localDeviceAudioStart;
   Future<void>? _localDeviceStop;
@@ -2187,10 +2235,12 @@ class CaptureController extends ChangeNotifier
   Future streamDeviceRecording({BtDevice? device, bool userInitiated = false}) async {
     Logger.debug("streamDeviceRecording $device");
     if (userInitiated) {
+      _localRecordingStoppedByUser = false;
       if (isPhoneMicSelected || _phoneStart != null || _phoneStop != null) {
         await stopStreamRecording(reason: 'source_changed');
       }
       _localInputSource = ConversationSource.omi;
+      _localRecordingStoppedByUser = false;
       await _localDeviceStop;
       await _localDeviceAudioStart?.completed.future;
     }
@@ -2288,6 +2338,7 @@ class CaptureController extends ChangeNotifier
   }
 
   Future stopStreamDeviceRecording({bool cleanDevice = false}) async {
+    if (TemporaryCaptureControls.enabled && !cleanDevice) _localRecordingStoppedByUser = true;
     if (isPhoneMicSelected && _localDeviceAudioStart == null && !_temporaryRecordingRequested) {
       if (cleanDevice) _updateRecordingDevice(null);
       return;
@@ -2489,6 +2540,7 @@ class CaptureController extends ChangeNotifier
   @override
   void onConnected() {
     _transcriptServiceReady = true;
+    _sendLiveTranslationControl(onlyWhenEnabled: true);
     // Restart mic on reconnect if interrupted (skip during active call).
     if (recordingState == RecordingState.interrupted && !_micInterrupted) {
       if (_activeSource is PhoneMicSource) {
@@ -2713,6 +2765,14 @@ class CaptureController extends ChangeNotifier
     }
 
     if (event is MessageServiceStatusEvent) {
+      if (event.provider == 'local_live_translation') {
+        // Translation availability is separate from STT health: it must never
+        // clear or raise a terminal transcription failure.
+        _liveTranslationStatus = event.status;
+        notifyListeners();
+        return;
+      }
+
       // Handle freemium threshold event via status field
       if (event.status == 'freemium_threshold_reached') {
         // Parse as FreemiumThresholdReachedEvent for consistent handling

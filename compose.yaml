@@ -14,12 +14,18 @@ services:
     environment:
       PROVIDER_MODE: offline
       OMI_LOCAL_TRANSPORT: ngrok
+      OMI_CONTAINER_RUNTIME: '1'
       OMI_LOCAL_INSTANCE: docker
       OMI_LOCAL_STATE_ROOT: /data/harness
       OMI_HARNESS_PORT_OFFSET: '13000'
       OMI_DEV_BIND_HOST: 127.0.0.1
       OMI_HARNESS_PRIVATE_UMASK: '077'
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      # Optional remote library access through Tailscale Serve; see docs/DOCKER.md.
+      OMI_LIBRARY_PUBLIC_ORIGIN: ${OMI_LIBRARY_PUBLIC_ORIGIN:-}
+      OMI_LIBRARY_TAILSCALE_LOGIN: ${OMI_LIBRARY_TAILSCALE_LOGIN:-}
+      OMI_LIBRARY_USER: ${OMI_LIBRARY_USER:-}
+      OMI_LIBRARY_PASSWORD_HASH: ${OMI_LIBRARY_PASSWORD_HASH:-}
     volumes:
       - state:/data
     healthcheck:

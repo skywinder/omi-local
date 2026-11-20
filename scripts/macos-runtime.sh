@@ -27,6 +27,12 @@ omi_macos_path() {
   else
     export PATH="$PWD/node_modules/.bin:$PATH"
   fi
+  # Resolve from this file: setup.sh calls us after changing into app/.
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  if [[ -x "$repo_root/.local/toolchains/flutter/bin/flutter" ]]; then
+    export PATH="$repo_root/.local/toolchains/flutter/bin:$PATH"
+  fi
 }
 
 # The pinned Firebase CLI requires Java 21; macOS also ships a nonfunctional stub.

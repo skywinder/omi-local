@@ -174,8 +174,10 @@ def cfg(tmp_path):
                            layout=SimpleNamespace(state_root=state, services_dir=state / 'services'))
 
 
-def test_import_retry_reuses_finished_engine_output_and_model_change_is_separate(tmp_path, monkeypatch):
+@pytest.mark.parametrize("transport", ["ngrok", "tailscale"])
+def test_import_retry_reuses_finished_engine_output_and_model_change_is_separate(tmp_path, monkeypatch, transport):
     settings = cfg(tmp_path)
+    settings.local_transport = transport
     audio = audio_file(tmp_path)
     python = tmp_path / 'python'
     python.write_text('fixture')
@@ -450,7 +452,8 @@ def test_apply_live_rechecks_capture_after_model_startup(tmp_path, monkeypatch):
     assert started == [True]
 
 
-def test_managed_live_preserves_virtualenv_interpreter_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize("transport", ["ngrok", "tailscale"])
+def test_managed_live_preserves_virtualenv_interpreter_path(tmp_path, monkeypatch, transport):
     from dev_harness import cli, config, local_stt_services as services
     runtime = tmp_path / 'runtime'
     runtime.write_text('synthetic')
@@ -460,7 +463,7 @@ def test_managed_live_preserves_virtualenv_interpreter_path(tmp_path, monkeypatc
     python.symlink_to(runtime)
     model = tmp_path / 'model'
     model.mkdir()
-    cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
+    cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport=transport,
                           layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
     (tmp_path / 'live-stt.json').write_text(json.dumps({
         'enabled': True, 'provider': 'whisperlivekit', 'url': 'ws://127.0.0.1:18090/asr',
@@ -498,8 +501,11 @@ def test_managed_stt_detects_failed_start_without_waiting_for_model_timeout(tmp_
     from dev_harness import cli, config, local_stt_services as services
     cfg = SimpleNamespace(repo_root=tmp_path, provider_mode='offline', local_transport='ngrok',
                           layout=SimpleNamespace(state_root=tmp_path, services_dir=tmp_path / 'services'))
+    binary = tmp_path / 'argmax'
+    binary.write_text('synthetic executable')
+    binary.chmod(0o700)
     (tmp_path / 'argmax-stt.json').write_text(json.dumps({
-        'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(tmp_path),
+        'enabled': True, 'port': 10301, 'model': 'turbo', 'binary': str(binary),
         'model_dir': str(tmp_path), 'tokenizer_dir': str(tmp_path)}))
     monkeypatch.setattr(config, 'child_env_for', lambda cfg: {})
     monkeypatch.setattr(cli, '_start_process', lambda *a, **kw: None)
@@ -695,6 +701,30 @@ def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, mo
     assert len(seen) == before
 
 
+def test_summary_reasoning_off_disables_thinking_only_when_selected(tmp_path, monkeypatch):
+    """Qwen3-style servers spend the whole token budget thinking unless told not to."""
+    import httpx
+    from dev_harness import local_pipeline, local_provider_http
+    bodies = []
+
+    def respond(request):
+        bodies.append(json.loads(request.read()))
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({
+            'title': 'Synthetic', 'overview': 'Synthetic facts.'})}}]})
+
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(respond), **kwargs))
+    raw = {'segments': [{'start': 0, 'end': 1, 'text': 'Synthetic sentence.'}]}
+    for reasoning, expected in ((None, None), ('default', None), ('off', {'enable_thinking': False})):
+        settings = {'base_url': 'https://summary.example/v1', 'model': 'synthetic', **({'reasoning': reasoning} if reasoning else {})}
+        folder = tmp_path / (reasoning or 'none')
+        folder.mkdir()
+        local_pipeline.summarize({'settings': settings}, '', raw, folder, local_stt.atomic_json)
+        assert bodies[-1].get('chat_template_kwargs') == expected, reasoning
+    assert bodies[-1]['model'] == 'synthetic' and bodies[-1]['max_tokens'] == 1600
+
+
 @pytest.mark.parametrize('response', [
     {'segments': [{'start': -1, 'end': .5, 'speaker': 'one'}]},
     {'segments': [{'start': 0, 'end': 3, 'speaker': 'one'}]},
@@ -797,6 +827,27 @@ def test_independent_speakers_preserve_untimed_word_and_complete_sentence():
     assert (result[0]['start'], result[0]['end'], result[0]['speaker']) == (0, 1, 'SPEAKER_01')
     assert {word['speaker'] for word in result[0]['words']} == {'SPEAKER_01'}
     assert 'start' not in result[0]['words'][1] and words[0]['speaker'] == 'SPEAKER_00'
+
+
+def test_zero_length_words_never_form_their_own_speaker_segment():
+    """faster-whisper emits start == end for some fillers; they cannot own a turn."""
+    from dev_harness.local_diarization import reconcile
+    from dev_harness.local_pipeline import validate_transcript
+    words = [{'word': ' Hello', 'start': 0, 'end': .4}, {'word': ' а', 'start': .5, 'end': .5},
+             {'word': ' reply', 'start': .6, 'end': 1}]
+    segments = [{'text': 'Hello а reply', 'start': 0, 'end': 1, 'words': words}]
+    result = reconcile(segments, [(0, .45, 'SPEAKER_00'), (.55, 1, 'SPEAKER_01')])
+    validate_transcript({'segments': result}, 1)
+    assert [(s['text'], s['speaker'], s['start'], s['end']) for s in result] == [
+        ('Hello а', 'SPEAKER_00', 0, .5), ('reply', 'SPEAKER_01', .6, 1)]
+    # A leading zero-length word joins the following words instead of opening an empty segment.
+    result = reconcile([{'text': 'а reply', 'start': .5, 'end': 1, 'words': words[1:]}], [(.55, 1, 'SPEAKER_01')])
+    validate_transcript({'segments': result}, 1)
+    assert [(s['speaker'], s['start'], s['end']) for s in result] == [('SPEAKER_01', .5, 1)]
+    # Only zero-length words: keep the sentence interval rather than an empty one.
+    result = reconcile([{'text': 'а', 'start': .5, 'end': .7, 'words': [words[1]]}], [(.55, 1, 'SPEAKER_01')])
+    validate_transcript({'segments': result}, 1)
+    assert (result[0]['start'], result[0]['end'], result[0]['speaker']) == (.5, .7, 'SPEAKER_01')
 
 
 def test_selected_manual_stt_model_can_transcribe_when_catalogue_is_unsupported(tmp_path, monkeypatch):

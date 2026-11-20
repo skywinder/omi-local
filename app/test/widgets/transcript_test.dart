@@ -359,6 +359,84 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a drag that starts at the live edge survives snapshots arriving mid-gesture', (tester) async {
+      await pumpTranscript(tester);
+      expect(scrollState.isAtBottom, isTrue);
+      final gesture = await tester.startGesture(tester.getCenter(find.byType(ListView)));
+      // The first pixels of a drag away from the bottom are still "at bottom"
+      // for the follow heuristic; a live snapshot must not snap back here.
+      await gesture.moveBy(const Offset(0, 30)); // consumes the touch slop
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveBy(const Offset(0, 12));
+      await tester.pump(const Duration(milliseconds: 16));
+      final draggedOffset = controller.offset;
+      expect(controller.position.maxScrollExtent - draggedOffset, closeTo(12, 1));
+
+      // WhisperLiveKit replaces the whole hypothesis several times per second.
+      for (var revision = 1; revision <= 6; revision++) {
+        segments = [
+          ...segments.take(29),
+          TranscriptSegment(
+            id: 'live-draft',
+            text: List.filled(10 + revision * 7, 'draft').join(' '),
+            speaker: 'SPEAKER_00',
+            isUser: false,
+            personId: null,
+            start: 29,
+            end: 30,
+            translations: const [],
+          ),
+        ];
+        contentVersion++;
+        await pumpTranscript(tester, settle: false);
+        await tester.pump(const Duration(milliseconds: 16));
+        final before = controller.offset;
+        await gesture.moveBy(const Offset(0, 30));
+        await tester.pump(const Duration(milliseconds: 16));
+        // The finger must still own the list: nothing may cancel the drag.
+        expect(before - controller.offset, closeTo(30, 1), reason: 'drag cancelled at revision $revision');
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(scrollState.isAtBottom, isFalse);
+      expect(find.byKey(const ValueKey('transcript_jump_to_latest')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('transcript_jump_to_latest')));
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(controller.position.maxScrollExtent, 0.5));
+      expect(scrollState.isAtBottom, isTrue);
+    });
+
+    testWidgets('letting go near the live edge resumes following', (tester) async {
+      await pumpTranscript(tester);
+      final gesture = await tester.startGesture(tester.getCenter(find.byType(ListView)));
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveBy(const Offset(0, 12));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(scrollState.isAtBottom, isTrue);
+
+      segments = [
+        ...segments,
+        TranscriptSegment(
+          id: 'live-after-release',
+          text: List.filled(60, 'more live words').join(' '),
+          speaker: 'SPEAKER_00',
+          isUser: false,
+          personId: null,
+          start: 30,
+          end: 31,
+          translations: const [],
+        ),
+      ];
+      contentVersion++;
+      await pumpTranscript(tester);
+      expect(controller.offset, closeTo(controller.position.maxScrollExtent, 0.5));
+      expect(find.byKey(const ValueKey('transcript_jump_to_latest')), findsNothing);
+    });
+
     testWidgets('same-ID transcript growth keeps following the live edge', (tester) async {
       await pumpTranscript(tester);
 

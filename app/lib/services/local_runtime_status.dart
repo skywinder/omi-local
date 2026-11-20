@@ -10,6 +10,42 @@ enum LocalCaptureState { idle, waitingAudio, received, decodeError }
 
 enum LocalLiveTranscriptState { disabled, unavailable, ready, busy, streaming, failed }
 
+enum LocalStageState { ready, unavailable, misconfigured, disabled, unknown }
+
+/// Readiness of one server-side processing stage, as probed by the Mac harness.
+class LocalStageStatus {
+  const LocalStageStatus({required this.state, this.name, this.kind});
+
+  final LocalStageState state;
+  final String? name;
+  final String? kind;
+
+  static const stageOrder = ['stt', 'diarization', 'live', 'summary'];
+
+  static LocalStageStatus? fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) return null;
+    final state = switch (value['status']) {
+      'ready' => LocalStageState.ready,
+      'unavailable' => LocalStageState.unavailable,
+      'misconfigured' => LocalStageState.misconfigured,
+      'disabled' => LocalStageState.disabled,
+      _ => LocalStageState.unknown,
+    };
+    String? text(Object? raw) => raw is String && raw.trim().isNotEmpty ? raw.substring(0, raw.length.clamp(0, 100)) : null;
+    return LocalStageStatus(state: state, name: text(value['name']), kind: text(value['kind']));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is LocalStageStatus && other.state == state && other.name == name && other.kind == kind;
+
+  @override
+  int get hashCode => Object.hash(state, name, kind);
+
+  @override
+  String toString() => 'LocalStageStatus($state, $name, $kind)';
+}
+
 class LocalRuntimeStatusUnavailable implements Exception {}
 
 /// Aggregate evidence from the Mac, never inferred from a phone socket state.
@@ -20,6 +56,8 @@ class LocalRuntimeStatus {
     required this.framesReceived,
     required this.liveTranscriptState,
     required this.transcriptUpdates,
+    this.stages = const {},
+    this.stagesStale = false,
   });
 
   final LocalCaptureState captureState;
@@ -27,6 +65,10 @@ class LocalRuntimeStatus {
   final int framesReceived;
   final LocalLiveTranscriptState liveTranscriptState;
   final int transcriptUpdates;
+
+  /// Server-side stage readiness keyed by stage; empty when the Mac does not report it.
+  final Map<String, LocalStageStatus> stages;
+  final bool stagesStale;
 
   factory LocalRuntimeStatus.fromJson(Object? value) {
     const invalid = FormatException('Invalid local runtime status');
@@ -62,12 +104,22 @@ class LocalRuntimeStatus {
         updates < 0) {
       throw invalid;
     }
+    final stages = <String, LocalStageStatus>{};
+    final rawStages = value['stages'];
+    if (rawStages is Map<String, dynamic>) {
+      for (final stage in LocalStageStatus.stageOrder) {
+        final parsed = LocalStageStatus.fromJson(rawStages[stage]);
+        if (parsed != null) stages[stage] = parsed;
+      }
+    }
     return LocalRuntimeStatus(
       captureState: captureState,
       audioSeconds: seconds.toDouble(),
       framesReceived: frames,
       liveTranscriptState: liveState,
       transcriptUpdates: updates,
+      stages: stages,
+      stagesStale: rawStages is Map<String, dynamic> && rawStages['stale'] == true,
     );
   }
 }

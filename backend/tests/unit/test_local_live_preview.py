@@ -125,6 +125,31 @@ class Socket:
 
 
 @pytest.mark.anyio
+async def test_unconfigured_live_preview_is_disabled_during_capture(monkeypatch):
+    monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+    send = AsyncMock()
+    connect = AsyncMock(side_effect=AssertionError('disabled preview must not connect'))
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', connect)
+    preview = LocalLivePreview.from_environment(send)
+    preview.feed(b'\0\0' * 160)
+    await preview.task
+    session = SimpleNamespace(
+        state=SimpleNamespace(active=True, shutdown_event=asyncio.Event()),
+        capture_sink=SimpleNamespace(frames_received=1, decoded_pcm_bytes=320, decode_errors=0),
+        local_preview=preview,
+    )
+    monkeypatch.setattr(local_status.registry, '_sessions_for', lambda uid: [session])
+    status = await local_status.snapshot('synthetic-user')
+    assert status['capture']['state'] == 'received'
+    assert status['live_transcript']['state'] == 'disabled'
+    assert preview.disabled and not preview.failed
+    send.assert_not_awaited()
+    connect.assert_not_called()
+    await preview.finish()
+    assert preview.pending_bytes == 0
+
+
+@pytest.mark.anyio
 async def test_disabled_relay_handshake_is_not_preview_failure(monkeypatch):
     socket = Socket(config={'enabled': False})
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
@@ -179,6 +204,64 @@ async def test_pcm_preview_stop_drains_eof_and_next_session_is_empty(monkeypatch
     assert preview.task.done() and preview.segment.text == '' and preview.segment.segments == []
     preview.feed(pcm)
     assert preview.pending_bytes == 0
+
+
+class ControlAwareSocket(Socket):
+    """Text control frames are consumed by the relay and never answered with audio snapshots."""
+
+    async def send(self, data):
+        if isinstance(data, str):
+            self.sent.append(data)
+            return
+        await super().send(data)
+
+
+@pytest.mark.parametrize('relay_enabled', [True, False])
+@pytest.mark.anyio
+async def test_translation_language_reaches_only_the_relay_before_audio(monkeypatch, relay_enabled):
+    if relay_enabled:
+        monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
+    else:
+        monkeypatch.delenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', raising=False)
+    socket = ControlAwareSocket()
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', AsyncMock(), translation_language='en')
+    pcm = b'\x01\x00' * 320
+    preview.feed(pcm)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    preview.set_translation('DE')
+    preview.set_translation('not-a-code')
+    await preview.finish()
+    frames = [json.loads(item) for item in socket.sent if isinstance(item, str)]
+    if relay_enabled:
+        assert socket.sent[0] == json.dumps({'type': 'translation', 'language': 'en'})
+        assert frames == [{'type': 'translation', 'language': 'en'}, {'type': 'translation', 'language': 'de'},
+                          {'type': 'translation', 'language': ''}]
+    else:
+        assert frames == []
+    assert [item for item in socket.sent if isinstance(item, bytes)] == [pcm, b'']
+    assert preview.eof_ack and not preview.failed
+
+
+@pytest.mark.anyio
+async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypatch):
+    monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
+    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured'})
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    send = AsyncMock()
+    preview = LocalLivePreview('ws://127.0.0.1:20004/asr', send, translation_language='en')
+    preview.feed(b'\x01\x00' * 320)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    statuses = [call.args[0] for call in send.call_args_list if call.args[0].get('type') == 'service_status']
+    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation'} in statuses
+    socket.incoming.put_nowait(json.dumps({'type': 'translation_status', 'status': 'weird value'}))
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not any(call.args[0].get('status') == 'weird value' for call in send.call_args_list)
+    await preview.finish()
+    assert not preview.failed
 
 
 @pytest.mark.anyio
@@ -240,7 +323,7 @@ async def test_diarization_degradation_retracts_labels_and_keeps_preview_alive(m
 
 @pytest.mark.anyio
 @pytest.mark.parametrize('mode,reason', [
-    ('disabled', 'disabled'), ('invalid', 'invalid_configuration'),
+    ('invalid', 'invalid_configuration'),
     ('refused', 'unavailable'), ('busy', 'busy'), ('protocol', 'protocol_error'),
 ])
 async def test_unavailable_preview_reports_fixed_status_without_stopping_capture(monkeypatch, mode, reason):
@@ -248,9 +331,7 @@ async def test_unavailable_preview_reports_fixed_status_without_stopping_capture
     from websockets.frames import Close
 
     monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
-    if mode == 'disabled':
-        monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL')
-    elif mode == 'invalid':
+    if mode == 'invalid':
         monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'wss://private.example/asr')
 
     class BrokenSocket(Socket):
@@ -362,11 +443,12 @@ def test_live_readiness_observes_model_health_without_following_redirects(monkey
     assert local_transcription_status.live_status()['status'] == status
 
 
-def test_profile_status_is_opt_in_and_rejects_external_live_probe(monkeypatch):
+@pytest.mark.parametrize('transport', ['ngrok', 'tailscale'])
+def test_profile_status_is_opt_in_and_rejects_external_live_probe(monkeypatch, transport):
     monkeypatch.setenv('OMI_ENV_STAGE', 'offline')
     monkeypatch.delenv('OMI_LOCAL_TRANSPORT', raising=False)
     assert local_transcription_status.local_transcription_status() is None
-    monkeypatch.setenv('OMI_LOCAL_TRANSPORT', 'ngrok')
+    monkeypatch.setenv('OMI_LOCAL_TRANSPORT', transport)
     monkeypatch.delenv('OMI_HARNESS_STATE_ROOT', raising=False)
     monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'wss://private.example/asr')
     def forbidden(*args, **kwargs):

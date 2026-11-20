@@ -9969,7 +9969,7 @@ class AppLocalizationsSl extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -9986,5 +9986,46 @@ class AppLocalizationsSl extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'Vnesite Tailscale IP (ali IP:vrata) ali naslov HTTPS ngrok in ključ aplikacije. Povezava ustavi snemanje. Zvok ostane na vašem strežniku.';
+
+  @override
+  String get localMacServers => 'Shranjeni strežniki';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'Diarizacija';
+
+  @override
+  String get providerUnavailable => 'Strežnik ni na voljo';
+
+  @override
+  String get providerMisconfigured => 'Preverite nastavitve ponudnika';
+
+  @override
+  String speakersCount(int count) {
+    return '$count govorcev';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'Diarizacija ni bila izvedena';
+
+  @override
+  String get diarizationFailed => 'Diarizacija ni uspela';
 }

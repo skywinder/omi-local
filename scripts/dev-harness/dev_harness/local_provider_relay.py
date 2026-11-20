@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .local_provider_http import auth_headers, validate_url
+from .local_live_translation import LiveTranslator
 
 
 MAX_MESSAGE_BYTES = 16 * 1024 * 1024
@@ -99,8 +100,20 @@ async def probe(snapshot, cfg, *, key='', connector=connect):
         raise RelayError('Live provider is unavailable or its streaming protocol is unsupported') from None
 
 
-async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False, connector=connect):
-    """Forward authoritative snapshots unchanged and retain upstream until explicit EOF."""
+def control_frame(raw):
+    """Backend-only text frames; never forwarded to the provider."""
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        raise RelayError('Live input must be bounded PCM16 binary frames') from None
+    if not isinstance(value, dict) or value.get('type') != 'translation':
+        raise RelayError('Live input must be bounded PCM16 binary frames')
+    return value.get('language')
+
+
+async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False, connector=connect,
+                        translation=None, translation_key=''):
+    """Forward authoritative snapshots (plus relay-side translations) and retain upstream until explicit EOF."""
     endpoint, authenticated = upstream(snapshot, cfg, raw=raw_upstream)
     sent_eof = asyncio.Event()
     tasks = []
@@ -115,6 +128,7 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
             except Exception:
                 disconnected = True
 
+    translator = LiveTranslator(translation, translation_key, send=send)
     try:
         async with connector(endpoint, key=key if authenticated else '') as provider:
             config = validate_config(await asyncio.wait_for(provider.recv(), 5))
@@ -128,6 +142,9 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                         if event['type'] == 'websocket.disconnect':
                             disconnected = True
                             break
+                        if isinstance(event.get('text'), str):
+                            translator.set_language(control_frame(event['text']))
+                            continue
                         pcm = event.get('bytes')
                         if not isinstance(pcm, bytes) or len(pcm) % 2 or len(pcm) > MAX_MESSAGE_BYTES:
                             raise RelayError('Live input must be bounded PCM16 binary frames')
@@ -153,8 +170,9 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     if decoded.get('type') == 'error' or decoded.get('status') == 'error':
                         raise RelayError('Live provider stream failed')
                     # Corrections, retractions, pending buffers, diarization state
-                    # and final snapshots all keep their original WLK shape.
-                    await send(message)
+                    # and final snapshots all keep their original WLK shape; only
+                    # committed lines gain relay-side translations.
+                    await send(json.dumps(translator.annotate(decoded)) if translator.active else message)
                 raise RelayError('Live provider closed without end acknowledgement')
 
             feeder = asyncio.create_task(feed(), name='provider-relay-feed')
@@ -167,6 +185,7 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
             if not eof_ack:
                 raise RelayError('Live provider final drain failed')
     finally:
+        await translator.close()
         for task in tasks:
             task.cancel()
         if tasks:
@@ -214,7 +233,10 @@ def create_app(cfg, *, registry=None, connector=connect):
                         await socket.close(code=1000)
                         return
                     key = await asyncio.to_thread(registry.key, snapshot)
-                    await relay_session(socket, snapshot, cfg, key=key, raw_upstream=raw, connector=connector)
+                    translation = copy.deepcopy(await asyncio.to_thread(registry.snapshot, 'translation'))
+                    translation_key = await asyncio.to_thread(registry.key, translation) if translation else ''
+                    await relay_session(socket, snapshot, cfg, key=key, raw_upstream=raw, connector=connector,
+                                        translation=translation, translation_key=translation_key)
                 finally:
                     active -= 1
         except Exception:

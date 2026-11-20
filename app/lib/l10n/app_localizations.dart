@@ -18504,7 +18504,7 @@ abstract class AppLocalizations {
   /// No description provided for @localMacAddress.
   ///
   /// In en, this message translates to:
-  /// **'HTTPS address'**
+  /// **'Tailscale IP / HTTPS'**
   String get localMacAddress;
 
   /// No description provided for @localMacAccessKey.
@@ -18534,8 +18534,80 @@ abstract class AppLocalizations {
   /// No description provided for @localMacHelp.
   ///
   /// In en, this message translates to:
-  /// **'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.'**
+  /// **'Enter your Tailscale IP (or IP:port), or ngrok HTTPS address, and app key. Connecting stops recording. Audio stays on your server.'**
   String get localMacHelp;
+
+  /// No description provided for @localMacServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved servers'**
+  String get localMacServers;
+
+  /// No description provided for @liveTranslation.
+  ///
+  /// In en, this message translates to:
+  /// **'Live translation'**
+  String get liveTranslation;
+
+  /// No description provided for @liveTranslationTargetLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate to'**
+  String get liveTranslationTargetLanguage;
+
+  /// No description provided for @liveTranslationHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.'**
+  String get liveTranslationHelp;
+
+  /// No description provided for @liveTranslationUnconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation provider is not configured on your Mac. Add one in the local library settings.'**
+  String get liveTranslationUnconfigured;
+
+  /// No description provided for @liveTranslationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation is unavailable right now. Check the translation provider on your Mac.'**
+  String get liveTranslationFailed;
+
+  /// No description provided for @diarization.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization'**
+  String get diarization;
+
+  /// No description provided for @providerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server unavailable'**
+  String get providerUnavailable;
+
+  /// No description provided for @providerMisconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Check provider settings'**
+  String get providerMisconfigured;
+
+  /// Number of distinct speakers found by diarization
+  ///
+  /// In en, this message translates to:
+  /// **'{count} speakers'**
+  String speakersCount(int count);
+
+  /// No description provided for @diarizationNotPerformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization not performed'**
+  String get diarizationNotPerformed;
+
+  /// No description provided for @diarizationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Diarization failed'**
+  String get diarizationFailed;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

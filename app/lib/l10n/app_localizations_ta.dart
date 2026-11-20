@@ -10008,7 +10008,7 @@ class AppLocalizationsTa extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -10025,5 +10025,46 @@ class AppLocalizationsTa extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'Tailscale IP (அல்லது IP:போர்ட்) அல்லது ngrok HTTPS முகவரி மற்றும் செயலி விசையை உள்ளிடவும். இணைப்பது பதிவை நிறுத்தும். ஒலி உங்கள் சேவையகத்தில் இருக்கும்.';
+
+  @override
+  String get localMacServers => 'சேமித்த சேவையகங்கள்';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'பேச்சாளர் பிரிப்பு';
+
+  @override
+  String get providerUnavailable => 'சேவையகம் கிடைக்கவில்லை';
+
+  @override
+  String get providerMisconfigured => 'வழங்குநர் அமைப்புகளைச் சரிபார்க்கவும்';
+
+  @override
+  String speakersCount(int count) {
+    return '$count பேச்சாளர்கள்';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'பேச்சாளர் பிரிப்பு செய்யப்படவில்லை';
+
+  @override
+  String get diarizationFailed => 'பேச்சாளர் பிரிப்பு தோல்வி';
 }

@@ -9943,7 +9943,7 @@ class AppLocalizationsBn extends AppLocalizations {
   String get localMacTitle => 'Local Mac';
 
   @override
-  String get localMacAddress => 'HTTPS address';
+  String get localMacAddress => 'Tailscale IP / HTTPS';
 
   @override
   String get localMacAccessKey => 'App access key';
@@ -9960,5 +9960,46 @@ class AppLocalizationsBn extends AppLocalizations {
 
   @override
   String get localMacHelp =>
-      'Enter the address and app key from your Mac. Connecting stops the current recording. Audio travels through ngrok and is stored on your Mac.';
+      'Tailscale IP (বা IP:পোর্ট) বা ngrok HTTPS ঠিকানা এবং অ্যাপের কী লিখুন। সংযোগ রেকর্ডিং বন্ধ করে। অডিও আপনার সার্ভারে থাকে।';
+
+  @override
+  String get localMacServers => 'সংরক্ষিত সার্ভার';
+
+  @override
+  String get liveTranslation => 'Live translation';
+
+  @override
+  String get liveTranslationTargetLanguage => 'Translate to';
+
+  @override
+  String get liveTranslationHelp =>
+      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+
+  @override
+  String get liveTranslationUnconfigured =>
+      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+
+  @override
+  String get liveTranslationFailed =>
+      'Translation is unavailable right now. Check the translation provider on your Mac.';
+
+  @override
+  String get diarization => 'বক্তা শনাক্তকরণ';
+
+  @override
+  String get providerUnavailable => 'সার্ভার অনুপলব্ধ';
+
+  @override
+  String get providerMisconfigured => 'প্রদানকারীর সেটিংস পরীক্ষা করুন';
+
+  @override
+  String speakersCount(int count) {
+    return '$count জন বক্তা';
+  }
+
+  @override
+  String get diarizationNotPerformed => 'বক্তা শনাক্তকরণ করা হয়নি';
+
+  @override
+  String get diarizationFailed => 'বক্তা শনাক্তকরণ ব্যর্থ';
 }
