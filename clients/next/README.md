@@ -187,6 +187,19 @@ recording. Follow-up context lasts while the chat page is open.
 The screen reports when the scan reaches its time limit. Search by meaning,
 a persistent index and archive chat history are separate parity items.
 
+## Edit a saved recording
+
+In a finished recording, use the menu to rename it, add it to favorites or
+correct a transcript line. The archive's Favorites filter uses the server's
+paged starred query. Transcript edits preserve segment IDs and timestamps
+so archive search and playback can continue to reference the same line.
+
+The server compares the prior value inside its write transaction and returns
+the saved conversation. When another edit wins, Next keeps the draft on
+screen. Re-importing the same local processing result preserves the edits.
+A different processing result is a separate recording and retains its own
+transcript. Edits require an updated paired server.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the

@@ -22,6 +22,10 @@ def test_offline_detail_contract_does_not_open_other_conversation_actions():
     assert is_offline_http_route_allowed('GET', '/v1/local/conversations/chat')
     assert is_offline_http_route_allowed('POST', '/v1/local/conversations/chat')
     assert not is_offline_http_route_allowed('DELETE', '/v1/local/conversations/chat')
+    recording_edit = '/v1/local/conversations/00000000-0000-4000-8000-000000000001/edit'
+    assert is_offline_http_route_allowed('PATCH', recording_edit)
+    assert not is_offline_http_route_allowed('POST', recording_edit)
+    assert not is_offline_http_route_allowed('PATCH', '/v1/conversations/00000000-0000-4000-8000-000000000001/title')
     assert not is_offline_http_route_allowed('POST', path)
     assert not is_offline_http_route_allowed('GET', path + '/share')
     assert not is_offline_http_route_allowed('GET', '/v1/conversations/count')

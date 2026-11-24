@@ -4,7 +4,7 @@ import re
 from unicodedata import normalize
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, BackgroundTasks
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 from datetime import datetime, timezone
 
 import database.conversations as conversations_db
@@ -296,6 +296,54 @@ class LocalArchiveSearchPage(BaseModel):
 
 
 _LOCAL_ARCHIVE_ID = re.compile(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}')
+
+
+class LocalTitleEdit(BaseModel):
+    field: Literal['title']
+    expected: str = Field(pattern=r'^[a-f0-9]{64}$', description='SHA-256 of the original UTF-8 title')
+    value: str = Field(min_length=1, max_length=300)
+
+
+class LocalStarEdit(BaseModel):
+    field: Literal['starred']
+    expected: bool = Field(strict=True)
+    value: bool = Field(strict=True)
+
+
+class LocalSegmentEdit(BaseModel):
+    field: Literal['segment_text']
+    segment_id: str = Field(min_length=1, max_length=256)
+    expected: str = Field(pattern=r'^[a-f0-9]{64}$', description='SHA-256 of the original UTF-8 segment text')
+    value: str = Field(min_length=1, max_length=10000)
+
+
+LocalRecordingEdit = Annotated[LocalTitleEdit | LocalStarEdit | LocalSegmentEdit, Field(discriminator='field')]
+
+
+@router.patch(
+    '/v1/local/conversations/{conversation_id}/edit', response_model=ConversationMutationResponse, tags=['local'],
+)
+def patch_local_recording(
+    conversation_id: str, edit: LocalRecordingEdit, response: Response, uid: str = Depends(require_paired_owner),
+):
+    if not _LOCAL_ARCHIVE_ID.fullmatch(conversation_id):
+        raise HTTPException(404, 'local_recording_unavailable')
+    value = edit.value
+    if isinstance(value, str):
+        if not value.strip():
+            raise HTTPException(400, 'local_recording_empty_text')
+        if isinstance(edit, LocalTitleEdit):
+            value = value.strip()
+    status, row = conversations_db.patch_local_recording(
+        uid, conversation_id, edit.field, edit.expected, value,
+        edit.segment_id if isinstance(edit, LocalSegmentEdit) else None,
+    )
+    if status == 'not_found':
+        raise HTTPException(404, 'local_recording_unavailable')
+    if status != 'ok':
+        raise HTTPException(409, 'local_recording_edit_conflict')
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': 'Ok', 'conversation': row}
 
 
 @router.post('/v1/local/conversations/search', response_model=LocalArchiveSearchPage, tags=['local'])

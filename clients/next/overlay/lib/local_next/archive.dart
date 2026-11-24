@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/conversation_v3.dart';
@@ -19,16 +21,47 @@ class PairedArchiveProvider extends ChangeNotifier {
   PairedArchiveProvider(this._library);
   final PairedLibrary _library;
   final _rows = <String, ServerConversation>{};
+  final _editsDuringRead = <String, ServerConversation>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
   bool busy = false, more = false, partial = false;
   Object? failure;
   int _offset = 0;
   bool _disposed = false;
   bool _retryAppend = false;
+  bool _starredOnly = false;
+  bool _refreshStarred = false;
 
+  bool get starredOnly => _starredOnly;
   Future<void> refresh() => _load(append: false);
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
+
+  Future<void> filterStarred(bool value) async {
+    if (_disposed || busy || _starredOnly == value) return;
+    _starredOnly = value;
+    _rows.clear();
+    entries = const [];
+    more = false;
+    await refresh();
+  }
+
+  void applyEdit(ServerConversation row) {
+    if (_disposed) return;
+    if (_starredOnly && row.starred != _rows.containsKey(row.id)) {
+      if (busy) {
+        _editsDuringRead[row.id] = row;
+        _refreshStarred = true;
+      } else {
+        unawaited(refresh());
+      }
+      return;
+    }
+    if (!_rows.containsKey(row.id)) return;
+    if (busy) _editsDuringRead[row.id] = row;
+    _rows[row.id] = row;
+    entries = List.unmodifiable(entries.map((entry) => entry.row?.id == row.id ? (day: entry.day, row: row) : entry));
+    notifyListeners();
+  }
 
   Future<void> _load({required bool append}) async {
     if (_disposed || busy || (append && !more)) return;
@@ -39,7 +72,7 @@ class PairedArchiveProvider extends ChangeNotifier {
     try {
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
-      final result = await _library.list(append ? _offset : 0);
+      final result = await _library.list(append ? _offset : 0, starredOnly: _starredOnly);
       if (_disposed) return;
       if (!append) {
         _rows.clear();
@@ -47,7 +80,8 @@ class PairedArchiveProvider extends ChangeNotifier {
         _offset = 0;
       }
       for (final row in result.rows) {
-        _rows[row.id] = row;
+        final fresh = _editsDuringRead[row.id] ?? row;
+        if (!_starredOnly || fresh.starred) _rows[fresh.id] = fresh;
       }
       _offset += result.consumed;
       more = result.more && result.consumed > 0;
@@ -76,9 +110,14 @@ class PairedArchiveProvider extends ChangeNotifier {
         partial = false;
       }
     } finally {
+      _editsDuringRead.clear();
       if (!_disposed) {
         busy = false;
         notifyListeners();
+        if (_refreshStarred) {
+          _refreshStarred = false;
+          unawaited(refresh());
+        }
       }
     }
   }
@@ -87,6 +126,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _rows.clear();
+    _editsDuringRead.clear();
     entries = const [];
     super.dispose();
   }
@@ -198,6 +238,7 @@ class _ArchiveRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (row.starred) Icon(Icons.star, size: 17, semanticLabel: context.l10n.starred),
               ],
             ),
           ),

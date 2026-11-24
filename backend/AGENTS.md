@@ -59,6 +59,10 @@ subcollection. The loopback library owns inference and checks the confirmed
 summary provider binding. The backend validates cited excerpts against the
 submitted context. Trusted-host deletion marks the source unavailable to
 in-flight chat before enumerating the recording's child collections.
+Paired recording edits accept JSON on the local edit route. They compare the
+prior field or transcript digest in the write transaction, preserve segment
+identity and use the existing transcript storage encoder. The trusted-host
+importer preserves edits on replay through create-if-absent.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

@@ -14,8 +14,9 @@ import 'recording_page.dart';
 import 'settings_labels.dart';
 
 class ArchiveSearchPageView extends StatefulWidget {
-  const ArchiveSearchPageView({super.key, required this.library});
+  const ArchiveSearchPageView({super.key, required this.library, this.onEdited});
   final PairedLibrary library;
+  final ValueChanged<ServerConversation>? onEdited;
 
   @override
   State<ArchiveSearchPageView> createState() => _ArchiveSearchPageViewState();
@@ -90,9 +91,14 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
   void _open(ArchiveSearchHit hit, [TranscriptMatchSnippet? snippet]) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => RecordingPage(library: widget.library, id: hit.id, initialMatch: snippet),
+        builder: (_) => RecordingPage(library: widget.library, id: hit.id, initialMatch: snippet, onEdited: _edited),
       ),
     );
+  }
+
+  void _edited(ServerConversation row) {
+    widget.onEdited?.call(row);
+    if (mounted && _query.isNotEmpty) _changed(_query, submit: true);
   }
 
   @override
@@ -123,6 +129,7 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
                         id: id,
                         initialMatch: match,
                         verifyInitialExcerpt: true,
+                        onEdited: _edited,
                       ),
                     ),
                   ),

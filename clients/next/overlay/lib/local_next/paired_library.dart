@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'live_preview.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
+import 'recording_edit.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
@@ -69,6 +70,7 @@ class PairedLibrary {
   final String _key;
   bool audioPlayback = false;
   bool audioDelivery;
+  bool recordingEdits = false;
   final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
@@ -86,6 +88,7 @@ class PairedLibrary {
     verified = false;
     audioDelivery = false;
     audioPlayback = false;
+    recordingEdits = false;
     for (final client in _clients) {
       client.close(force: true);
     }
@@ -418,6 +421,7 @@ class PairedLibrary {
     verified = true;
     audioDelivery = data['local_audio_delivery_version'] == 2;
     audioPlayback = data['local_audio_playback_version'] == 1;
+    recordingEdits = data['local_recording_edits_version'] == 1;
   }
 
   static final _archiveId = RegExp(r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$');
@@ -441,7 +445,9 @@ class PairedLibrary {
     final collection = uri.path == _archivePath;
     final query = uri.queryParameters;
     if (collection) {
-      if (query.length != 4 ||
+      final hasStarred = query['starred'] == 'true';
+      if (query.length != (hasStarred ? 5 : 4) ||
+          (query.containsKey('starred') && !hasStarred) ||
           uri.queryParametersAll.values.any((values) => values.length != 1) ||
           query['limit'] != '$pageSize' ||
           query['include_discarded'] != 'true' ||
@@ -482,7 +488,10 @@ class PairedLibrary {
     _ => LibraryFailure.unavailable,
   };
 
-  Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(int offset) async {
+  Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
+    int offset, {
+    bool starredOnly = false,
+  }) async {
     if (offset < 0) throw LibraryFailure.malformed;
     var storageCount = 0;
     bool? hasMore;
@@ -491,6 +500,7 @@ class PairedLibrary {
       offset: offset,
       statuses: _archiveStatuses,
       includeDiscarded: true,
+      starred: starredOnly ? true : null,
       onStorageCount: (value) => storageCount = value,
       onPageHeaders: (headers) => hasMore = headers.hasMore,
     );
@@ -532,6 +542,36 @@ class PairedLibrary {
       }
     } on TypeError {
       // Domain model normalization also rejects incompatible JSON field types.
+      throw LibraryFailure.malformed;
+    }
+  }
+
+  Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!recordingEdits) throw RecordingEditFailure.unavailable;
+    _conversation(id);
+    try {
+      final row = await _request(
+        '/v1/local/conversations/$id/edit',
+        (response) async {
+          if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
+          if (response.statusCode != HttpStatus.ok) throw RecordingEditFailure.unavailable;
+          final data = await _json(response, 24 << 20) as Map<String, dynamic>;
+          final row = ServerConversation.fromJson(data['conversation'] as Map<String, dynamic>);
+          if (row.id != id) throw LibraryFailure.malformed;
+          return row;
+        },
+        method: 'PATCH',
+        body: Uint8List.fromList(utf8.encode(jsonEncode(edit.wire))),
+        bodyType: ContentType.json,
+        readHttpErrors: true,
+        overallTimeout: _deadline,
+      );
+      if (!isSignedIn) throw LibraryFailure.key;
+      return row;
+    } on TypeError {
+      throw LibraryFailure.malformed;
+    } on FormatException {
       throw LibraryFailure.malformed;
     }
   }

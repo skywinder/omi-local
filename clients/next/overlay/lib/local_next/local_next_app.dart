@@ -147,6 +147,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   Widget build(BuildContext context) {
     final l = context.l10n;
     final library = widget.library;
+    final archive = _archive;
     final serverName = widget.serverName ?? library.origin.authority;
     return Scaffold(
       appBar: AppBar(
@@ -162,9 +163,11 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           IconButton(
             tooltip: l.searchConversations,
             icon: const Icon(Icons.search),
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => ArchiveSearchPageView(library: library))),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ArchiveSearchPageView(library: library, onEdited: archive.applyEdit),
+              ),
+            ),
           ),
           IconButton(
             tooltip: pairedSettingsLabel(context, 'serverStatus'),
@@ -213,13 +216,24 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
       body: Column(
         children: [
           if (library.audioDelivery) LocalNextCapturePanel(key: ValueKey(library.audioOwnerId), library: library),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+              child: FilterChip(
+                label: Text(l.starred),
+                selected: _archive.starredOnly,
+                onSelected: _archive.busy ? null : _archive.filterStarred,
+              ),
+            ),
+          ),
           Expanded(
             child: PairedArchiveFeed(
               archive: _archive,
               errorText: pairingFailureText,
               onOpen: (id) => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => RecordingPage(library: library, id: id),
+                  builder: (_) => RecordingPage(library: library, id: id, onEdited: archive.applyEdit),
                 ),
               ),
             ),

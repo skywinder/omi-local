@@ -65,6 +65,7 @@ profile = main.users.get_user_profile_endpoint(uid='synthetic')
 assert profile['local_transcription']['live']['status'] == 'disabled'
 assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
+assert profile['local_recording_edits_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
@@ -158,6 +159,7 @@ print(json.dumps({
         '/v1/local/conversations/search',
         '/v1/local/conversations/chat',
         '/v1/local/conversations/{conversation_id}/chat',
+        '/v1/local/conversations/{conversation_id}/edit',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

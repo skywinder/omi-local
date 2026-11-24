@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import logging
 import uuid
@@ -1061,6 +1062,71 @@ def update_conversation_title(uid: str, conversation_id: str, title: str):
         return
 
     conversation_ref.update({'structured.title': title, 'user_title': title})
+
+
+@firestore.transactional
+def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
+    ref = db.collection('users').document(uid).collection(conversations_collection).document(conversation_id)
+    snapshot = ref.get(transaction=transaction, timeout=6)
+    raw = snapshot.to_dict()
+    if not raw or raw.get('is_locked') or raw.get('local_chat_deleting'):
+        return 'not_found', None
+    if raw.get('status') not in {None, 'completed'}:
+        return 'not_ready', None
+    row = _prepare_conversation_for_read(raw, uid)
+    if row is None:
+        return 'not_found', None
+    row['id'] = conversation_id
+
+    def matches_original(current):
+        return expected == (hashlib.sha256(current.encode('utf-8')).hexdigest() if isinstance(current, str) else current)
+
+    if field == 'title':
+        structured = row.get('structured')
+        current = structured.get('title') or '' if isinstance(structured, dict) else ''
+        structured = structured if isinstance(structured, dict) else {}
+        structured['title'] = value
+        row['structured'] = structured
+        row['user_title'] = value
+        patch = {'user_title': value}
+        if isinstance(raw.get('structured'), dict):
+            patch['structured.title'] = value
+        else:
+            patch['structured'] = structured
+    elif field == 'starred':
+        current = bool(row.get('starred'))
+        row['starred'] = value
+        patch = {'starred': value}
+    elif field == 'segment_text':
+        segments = row.get('transcript_segments')
+        if not isinstance(segments, list):
+            return 'segment_unavailable', None
+        matches = [segment for segment in segments if isinstance(segment, dict) and segment.get('id') == segment_id]
+        if len(matches) != 1:
+            return 'segment_unavailable', None
+        segment = matches[0]
+        current = segment.get('text')
+        if current == value:
+            return 'ok', row
+        if not matches_original(current):
+            return 'conflict', None
+        segment['text'] = value
+        patch = _prepare_conversation_for_write(
+            {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
+        )
+    else:
+        raise ValueError('Unsupported local recording edit')
+
+    if current != value and not matches_original(current):
+        return 'conflict', None
+    # Repeating a confirmed edit does not change the Firestore revision.
+    if current != value or (field == 'title' and raw.get('user_title') != value):
+        transaction.update(ref, patch)
+    return 'ok', row
+
+
+def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None):
+    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id)
 
 
 def update_conversation_summary(uid: str, conversation_id: str, app_id: Optional[str], content: str) -> str:

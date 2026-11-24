@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/processing.dart';
+import 'package:omi/local_next/recording_edit.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 void main() {
@@ -163,6 +164,59 @@ void main() {
       {'text': 'Hello', 'is_user': false, 'start': 1.5, 'end': 2.0},
     ],
   };
+  test('paired recording edits send bounded JSON and list favorites through the archive API', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    final edits = <Object?>[];
+    server.listen((request) async {
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      final response = request.response;
+      switch (request.uri.path) {
+        case '/v1/users/profile':
+          response.write(jsonEncode({'uid': 'alice', 'local_recording_edits_version': 1}));
+        case '/v1/conversations':
+          expect(request.method, 'GET');
+          expect(request.uri.queryParameters['starred'], 'true');
+          response.write(
+            jsonEncode([
+              {...row, 'starred': true},
+            ]),
+          );
+        case '/v1/local/conversations/$id/edit':
+          expect(request.method, 'PATCH');
+          expect(request.uri.hasQuery, isFalse);
+          edits.add(jsonDecode(await utf8.decoder.bind(request).join()));
+          if (edits.length == 1) {
+            response.statusCode = HttpStatus.conflict;
+          } else {
+            response.write(
+              jsonEncode({
+                'status': 'Ok',
+                'conversation': {...row, 'starred': true},
+              }),
+            );
+          }
+        default:
+          response.statusCode = HttpStatus.notFound;
+      }
+      await response.close();
+    });
+    await library.verify();
+    expect(library.recordingEdits, isTrue);
+    await expectLater(
+      library.editRecording(id, const RecordingEdit.title('Earlier', 'New title')),
+      throwsA(RecordingEditFailure.conflict),
+    );
+    expect((await library.editRecording(id, const RecordingEdit.starred(false, true))).starred, isTrue);
+    expect((await library.list(0, starredOnly: true)).rows.single.starred, isTrue);
+    expect(edits, [
+      {'field': 'title', 'expected': sha256.convert(utf8.encode('Earlier')).toString(), 'value': 'New title'},
+      {'field': 'starred', 'expected': false, 'value': true},
+    ]);
+  });
+
   test('a paired server supplies archive, transcript, audio and the durable upload receipt', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

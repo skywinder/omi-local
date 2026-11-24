@@ -10,6 +10,7 @@ import 'package:omi/pages/conversation_detail/conversation_summary_selection.dar
 import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
 import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart';
 import 'package:omi/ui/components/omi_page_states.dart';
+import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:omi/utils/l10n_extensions.dart';
@@ -17,6 +18,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'paired_library.dart';
 import 'recording_chat_page.dart';
+import 'recording_edit.dart';
 import 'recording_search.dart';
 import 'settings_labels.dart';
 
@@ -44,11 +46,13 @@ class RecordingPage extends StatefulWidget {
     required this.id,
     this.initialMatch,
     this.verifyInitialExcerpt = false,
+    this.onEdited,
   });
   final PairedLibrary library;
   final String id;
   final TranscriptMatchSnippet? initialMatch;
   final bool verifyInitialExcerpt;
+  final ValueChanged<ServerConversation>? onEdited;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
@@ -63,10 +67,85 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Directory? temp;
   Duration? _initialPosition;
   bool opening = false;
+  bool _editing = false;
   bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
       (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
+
+  bool _canEdit(_RecordingDetail loaded) =>
+      widget.library.recordingEdits &&
+      !loaded.pending &&
+      !loaded.row.isLocked &&
+      loaded.row.status == ConversationStatus.completed;
+
+  Future<void> _save(RecordingEdit edit) async {
+    if (opening || _editing) throw RecordingEditFailure.unavailable;
+    setState(() => _editing = true);
+    try {
+      final row = await widget.library.editRecording(widget.id, edit);
+      if (!mounted) return;
+      setState(() {
+        detail = SynchronousFuture(_RecordingDetail(row));
+      });
+      widget.onEdited?.call(row);
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+  }
+
+  Future<void> _editText(_RecordingDetail loaded, {TranscriptSegment? line}) {
+    final l = context.l10n;
+    final initial = line?.text ?? loaded.row.structured.title;
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => RecordingTextEditor(
+        label: line == null ? pairedSettingsLabel(context, 'recordingEditTitle') : l.transcript,
+        initial: initial,
+        maxLength: line == null ? 300 : 10000,
+        multiline: line != null,
+        onSave: (value) =>
+            _save(line == null ? RecordingEdit.title(initial, value) : RecordingEdit.segment(line.id, initial, value)),
+      ),
+    );
+  }
+
+  Future<void> _chooseLine(_RecordingDetail loaded) async {
+    final line = await showModalBottomSheet<TranscriptSegment>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.65,
+        child: SafeArea(
+          child: ListView.builder(
+            itemCount: loaded.sources.length,
+            itemBuilder: (context, index) {
+              final line = loaded.sources[index];
+              return ListTile(
+                title: Text(line.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                subtitle: Text(OmiDuration.offset(line.start)),
+                onTap: () => Navigator.of(context).pop(line),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    if (mounted && line != null) await _editText(loaded, line: line);
+  }
+
+  Future<void> _changeStar(_RecordingDetail loaded) async {
+    final before = loaded.row.starred;
+    try {
+      await _save(RecordingEdit.starred(before, !before));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
 
   Future<_RecordingDetail> _load() async {
     final loaded = _RecordingDetail(await widget.library.detail(widget.id));
@@ -245,10 +324,38 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         final loaded = snapshot.data;
         final row = loaded?.row;
         final canPlay = row != null && _canPlay(row);
+        final canEdit = loaded != null && _canEdit(loaded);
         return Scaffold(
           appBar: AppBar(
             title: Text(row == null ? l.conversations : recordingTitle(context, row)),
             actions: [
+              if (canEdit)
+                PopupMenuButton<_RecordingEditAction>(
+                  enabled: !opening && !_editing,
+                  icon: Icon(loaded.row.starred ? Icons.star : Icons.more_horiz),
+                  onSelected: (action) => switch (action) {
+                    _RecordingEditAction.title => _editText(loaded),
+                    _RecordingEditAction.star => _changeStar(loaded),
+                    _RecordingEditAction.transcript => _chooseLine(loaded),
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _RecordingEditAction.title,
+                      child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
+                    ),
+                    PopupMenuItem(
+                      value: _RecordingEditAction.star,
+                      child: Text(
+                        pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
+                      ),
+                    ),
+                    if (loaded.sources.isNotEmpty)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.transcript,
+                        child: Text(pairedSettingsLabel(context, 'recordingEditTranscript')),
+                      ),
+                  ],
+                ),
               if (loaded != null && loaded.lines.isNotEmpty)
                 IconButton(
                   tooltip: l.askOmi,
@@ -301,7 +408,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     if (canPlay) _playbackControls(),
                     if (_initialExcerptUnavailable)
                       ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
-                    if (opening) const LinearProgressIndicator(),
+                    if (opening || _editing) const LinearProgressIndicator(),
                     Expanded(
                       child: TabBarView(
                         controller: tabs,
@@ -321,6 +428,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                                   isConversationDetail: true,
                                   bottomMargin: OmiSpacing.md,
                                   onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,
+                                  onEditSegmentText: canEdit && !opening && !_editing
+                                      ? (index) {
+                                          final line = loaded.lines[index];
+                                          if (loaded.sources.contains(line)) unawaited(_editText(loaded, line: line));
+                                        }
+                                      : null,
                                   currentSegmentId: focusedLine,
                                   followTargetSegmentId: focusedLine,
                                   playbackFollowRequest: focusRequest,
@@ -336,6 +449,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     );
   }
 }
+
+enum _RecordingEditAction { title, star, transcript }
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {

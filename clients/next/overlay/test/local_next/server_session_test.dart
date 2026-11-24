@@ -19,7 +19,10 @@ class _Pair extends PairedLibrary {
   }
 
   @override
-  Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(int offset) async => (
+  Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
+    int offset, {
+    bool starredOnly = false,
+  }) async => (
     rows: [
       ServerConversation.fromJson({
         'id': '00000000-0000-4000-8000-000000000001',
