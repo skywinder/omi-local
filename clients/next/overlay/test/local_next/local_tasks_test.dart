@@ -6,7 +6,9 @@ import 'package:omi/backend/schema/gen/action_items_folders_wire.g.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/recording_chat.dart';
 import 'package:omi/local_next/recording_edit.dart';
+import 'package:omi/local_next/task_suggestion.dart';
 import 'package:omi/widgets/transcript.dart';
 
 const _recording = '00000000-0000-4000-8000-000000000001';
@@ -16,10 +18,37 @@ class _TaskLibrary extends PairedLibrary {
     verified = true;
     recordingEdits = true;
     tasksAvailable = true;
+    taskSuggestionsAvailable = true;
   }
 
   ActionItemWithMetadata? task;
   final opens = <String>[];
+  int suggestionCalls = 0;
+  String? acceptedDigest;
+
+  @override
+  Future<RecordingChatProvider?> readTaskSuggestionProvider(String id) async =>
+      const RecordingChatProvider(binding: 'fixture-binding', host: 'summary.example', model: 'fixture-model');
+
+  @override
+  Future<TaskSuggestions> suggestTasks(String id, String binding) async {
+    expect(id, _recording);
+    expect(binding, 'fixture-binding');
+    suggestionCalls++;
+    return const TaskSuggestions(
+      rows: [
+        TaskSuggestion(
+          id: 'fixture-request',
+          description: 'Send the budget',
+          segmentId: 'line',
+          segmentSha256: 'fixture-digest',
+          excerpt: 'I’ll send the budget at noon.',
+          startMs: 5000,
+        ),
+      ],
+      contextLimited: true,
+    );
+  }
 
   @override
   Future<ServerConversation> detail(String id) async {
@@ -49,10 +78,12 @@ class _TaskLibrary extends PairedLibrary {
     String description, {
     String? conversationId,
     String? segmentId,
+    String? segmentSha256,
   }) async {
     expect(conversationId, _recording);
     expect(segmentId, 'line');
     expect(description, 'Send the budget');
+    acceptedDigest = segmentSha256;
     return task = ActionItemWithMetadata(
       id: requestId,
       description: description,
@@ -85,6 +116,45 @@ class _TaskLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('task suggestions require model consent and separate acceptance of source evidence', (tester) async {
+    final library = _TaskLibrary();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Budget meeting'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Suggest tasks'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Suggest tasks'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('fixture-model\nsummary.example'), findsOneWidget);
+    expect(library.suggestionCalls, 0);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(library.suggestionCalls, 0);
+    await tester.tap(find.widgetWithText(FilledButton, 'Suggest tasks'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+    expect(library.suggestionCalls, 1);
+    expect(library.task, isNull);
+    expect(find.textContaining('I’ll send the budget at noon.'), findsOneWidget);
+    expect(find.text('The model reviewed only part of this transcript.'), findsOneWidget);
+    await tester.tap(find.text('Add Task'));
+    await tester.pumpAndSettle();
+    expect(library.task?.id, 'fixture-request');
+    expect(library.acceptedDigest, 'fixture-digest');
+    expect(find.byTooltip('Task added'), findsOneWidget);
+    expect(find.text('Add Task'), findsNothing);
+  });
+
   testWidgets('a transcript task can be accepted, edited, completed and reopened at its source', (tester) async {
     final library = _TaskLibrary();
     addTearDown(library.close);

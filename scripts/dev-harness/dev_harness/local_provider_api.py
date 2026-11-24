@@ -6,7 +6,7 @@ import httpx
 
 from .local_providers import Registry, SettingsError
 from .local_provider_probe import probe
-from .local_recording_chat import answer_recording, chat_provider
+from .local_recording_chat import answer_recording, chat_provider, suggest_tasks
 
 
 class Settings:
@@ -107,6 +107,8 @@ class Processing(Settings):
         operation = path.removeprefix('/api/processing/')
         if method == 'POST' and operation in {'recording-chat', 'archive-chat'}:
             return answer_recording(self.registry, body, archive=operation == 'archive-chat')
+        if method == 'POST' and operation == 'task-suggestions':
+            return suggest_tasks(self.registry, body)
         if method == 'POST' and operation == 'live-tuning':
             return self.live_tuning_next_session(body)
         if method == 'POST' and operation in {'save', 'probe', 'models'}:

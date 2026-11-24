@@ -74,7 +74,10 @@ assignment compares each included segment ID and prior assignment in the
 recording transaction. Keep recognition and training outside this route.
 Paired tasks use the canonical action-item collection. A create request's
 UUID is tied to its original inputs, and linked recordings are checked inside
-the create transaction. The paired task path has no hosted task side effects.
+the create transaction. A task suggestion uses bounded transcript excerpts with
+the confirmed summary provider and does not write a task. Accepting a suggestion
+compares its source text digest and uses the original recording revision in the
+create transaction. The paired task path has no hosted task side effects.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

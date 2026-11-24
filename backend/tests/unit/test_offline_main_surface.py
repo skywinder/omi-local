@@ -119,6 +119,34 @@ assert second.json()['next_cursor'] is None
 collection.document.assert_called_once_with(documents[39].id)
 query.start_after.assert_called_once_with({'__name__': collection.document.return_value})
 
+from routers import local_tasks
+
+suggestion_path = '/v1/local/conversations/' + documents[-1].id + '/task-suggestions'
+assert client.get(suggestion_path).status_code == 401
+assert client.post(suggestion_path, json={'provider_binding': 'a' * 64}).status_code == 401
+suggestion_source = {'id': 'fixture-line', 'text': 'I will send the budget.', 'start': 4.25}
+local_tasks.local_recording_chat.recording = MagicMock(return_value=('revision', {
+    'transcript_segments': [suggestion_source, {'text': 'Unaddressable line.'}],
+}))
+local_tasks.local_recording_chat.sources_current = MagicMock(return_value=True)
+local_tasks._library_request = MagicMock(return_value=json.dumps({
+    'suggestions': [{'description': 'Send the budget', 'source': 1}],
+}))
+local_tasks.action_items.create_action_item = MagicMock(side_effect=forbidden)
+prompt = {'provider_binding': 'a' * 64}
+suggestions = client.post(suggestion_path, json=prompt, headers=headers)
+assert suggestions.status_code == 200, suggestions.text
+candidate, = suggestions.json()['suggestions']
+assert candidate['segment_id'] == suggestion_source['id'] and candidate['start_ms'] == 4250
+assert candidate['segment_sha256'] == hashlib.sha256(suggestion_source['text'].encode()).hexdigest()
+assert suggestions.json()['context_limited']
+local_tasks._library_request.assert_called_once_with({
+    'binding': prompt['provider_binding'], 'sources': [suggestion_source['text']],
+}, suggestions=True)
+local_tasks.local_recording_chat.sources_current.return_value = False
+assert client.post(suggestion_path, json=prompt, headers=headers).status_code == 409
+local_tasks.action_items.create_action_item.assert_not_called()
+
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
     'routers.payment', 'routers.stt', 'routers.tts', 'routers.desktop_realtime',
@@ -167,6 +195,7 @@ print(json.dumps({
         '/v1/local/people',
         '/v1/local/action-items',
         '/v1/local/action-items/{task_id}',
+        '/v1/local/conversations/{conversation_id}/task-suggestions',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

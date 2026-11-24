@@ -72,10 +72,12 @@ class ChatPage(BaseModel):
     has_transcript: bool
 
 
-def _library_request(body=None, *, archive=False):
+def _library_request(body=None, *, archive=False, suggestions=False):
     origin = library_origin()
-    path = '/api/processing/archive-chat' if archive else '/api/processing/recording-chat'
+    operation = 'task-suggestions' if suggestions else ('archive-chat' if archive else 'recording-chat')
+    path = '/api/processing/' + operation
     timeout = 5 if body is None else 72
+    size_limit = (64 if suggestions else 24) * 1024
     try:
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout) as client:
             with client.stream(
@@ -90,7 +92,7 @@ def _library_request(body=None, *, archive=False):
                 data = bytearray()
                 for chunk in response.iter_bytes(chunk_size=8192):
                     data.extend(chunk)
-                    if len(data) > 24 * 1024:
+                    if len(data) > size_limit:
                         raise ValueError()
                 return data
     except (httpx.HTTPError, OfflineEgressBlocked, ValueError, OSError):
@@ -104,9 +106,9 @@ def _recording(uid, conversation_id):
         raise HTTPException(404, 'recording_chat_recording_unavailable') from None
 
 
-def _chat_provider(*, archive=False):
+def _chat_provider(*, archive=False, suggestions=False):
     try:
-        data = json.loads(_library_request(archive=archive))
+        data = json.loads(_library_request(archive=archive, suggestions=suggestions))
         if data['provider'] is not None:
             return ChatProvider.model_validate(data['provider'])
     except (HTTPException, ValidationError, ValueError, TypeError, KeyError):

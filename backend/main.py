@@ -301,6 +301,7 @@ if not _OFFLINE_RUNTIME:
         app.include_router(chat_first_e2e.router)
 
 if _OFFLINE_RUNTIME:
+    app.include_router(local_tasks.suggestions_router)
     app.router.routes[:] = [
         route
         for route in app.router.routes

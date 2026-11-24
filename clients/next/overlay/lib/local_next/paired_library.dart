@@ -20,6 +20,7 @@ import 'live_preview.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
 import 'recording_edit.dart';
+import 'task_suggestion.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
@@ -76,6 +77,7 @@ class PairedLibrary {
   bool recordingEdits = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
+  bool taskSuggestionsAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -98,6 +100,7 @@ class PairedLibrary {
     recordingEdits = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
+    taskSuggestionsAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -435,6 +438,7 @@ class PairedLibrary {
     recordingEdits = data['local_recording_edits_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
+    taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -616,6 +620,7 @@ class PairedLibrary {
     String description, {
     String? conversationId,
     String? segmentId,
+    String? segmentSha256,
   }) => _taskRequest(
     method: 'POST',
     data: {
@@ -623,8 +628,40 @@ class PairedLibrary {
       'description': description,
       if (conversationId != null) 'conversation_id': conversationId,
       if (segmentId != null) 'segment_id': segmentId,
+      if (segmentSha256 != null) 'segment_sha256': segmentSha256,
     },
   );
+
+  Future<RecordingChatProvider?> readTaskSuggestionProvider(String id) => _taskSuggestionRequest(id, (data) {
+    final provider = data['provider'];
+    return provider == null ? null : RecordingChatProvider.fromJson(provider as Map<String, dynamic>);
+  });
+
+  Future<TaskSuggestions> suggestTasks(String id, String binding) =>
+      _taskSuggestionRequest(id, TaskSuggestions.fromJson, body: {'provider_binding': binding});
+
+  Future<T> _taskSuggestionRequest<T>(
+    String id,
+    T Function(Map<String, dynamic>) parse, {
+    Map<String, String>? body,
+  }) async {
+    if (!isSignedIn || !taskSuggestionsAvailable) throw LibraryFailure.unavailable;
+    _conversation(id);
+    final result = await _request(
+      '/v1/local/conversations/$id/task-suggestions',
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
+        if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
+        return parse(await _json(response, 128 << 10) as Map<String, dynamic>);
+      },
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+      overallTimeout: body == null ? _deadline : const Duration(seconds: 100),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return result;
+  }
 
   Future<ActionItemWithMetadata> editTask(String id, RecordingEdit edit) =>
       _taskRequest(id: id, method: 'PATCH', data: edit.wire);

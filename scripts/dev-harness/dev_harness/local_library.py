@@ -476,7 +476,9 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if not self.processing_allowed():
                     return self.reject('Настройки доступны только через сопряжённый сервер.')
                 self.send_json(processing.read())
-            elif path in {'/api/processing/recording-chat', '/api/processing/archive-chat'} and processing is not None:
+            elif path in {
+                '/api/processing/recording-chat', '/api/processing/archive-chat', '/api/processing/task-suggestions',
+            } and processing is not None:
                 if not self.allowed(request='processing') or not self.processing_allowed():
                     return self.reject('Доступ только через сопряжённый сервер.')
                 from .local_providers import SettingsError

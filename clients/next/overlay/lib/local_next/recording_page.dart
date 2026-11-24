@@ -25,6 +25,7 @@ import 'recording_search.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
 import 'task_editor.dart';
+import 'task_suggestions_page.dart';
 
 String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
     ? context.l10n.recording
@@ -431,6 +432,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.taskSuggestions => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => TaskSuggestionsPage(id: loaded.row.id, library: widget.library),
+                      ),
+                    ),
                   },
                   itemBuilder: (context) => [
                     if (widget.library.tasksAvailable)
@@ -439,6 +445,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       PopupMenuItem(
                         value: _RecordingEditAction.taskFromLine,
                         child: Text(pairedSettingsLabel(context, 'localTaskFromLine')),
+                      ),
+                    if (widget.library.tasksAvailable &&
+                        widget.library.taskSuggestionsAvailable &&
+                        loaded.sources.isNotEmpty)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.taskSuggestions,
+                        child: Text(pairedSettingsLabel(context, 'localTaskSuggest')),
                       ),
                     if (widget.library.foldersAvailable)
                       PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
@@ -557,7 +570,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 }
 
-enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine }
+enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine, taskSuggestions }
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {

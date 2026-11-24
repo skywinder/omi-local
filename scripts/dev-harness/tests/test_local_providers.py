@@ -340,6 +340,36 @@ def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkey
     ]
 
 
+def test_task_suggestions_use_only_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    assert phone_request(cfg, '/task-suggestions', method='GET') == (200, {'provider': None})
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-task-key'})
+    profile = state['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/task-suggestions', method='GET')
+    assert status == 200 and data['provider']['host'] == 'llm.example'
+    assert http_request(cfg, '/api/processing/task-suggestions', method='GET')[0] == 403
+    sent = []
+    reply = {'suggestions': [{'description': 'Send the budget', 'source': 1}]}
+
+    def respond(client, url, **kwargs):
+        assert url == 'https://llm.example/v1/chat/completions'
+        assert client.headers['Authorization'] == 'Bearer fixture-task-key'
+        sent.append(kwargs['json'])
+        return {'choices': [{'message': {'content': json.dumps(reply)}}]}
+
+    monkeypatch.setattr(local_recording_chat.transport, 'post_json', respond)
+    body = {'binding': '0' * 64, 'sources': ['I will send the budget.']}
+    assert phone_request(cfg, '/task-suggestions', payload=body)[0] == 409
+    assert not sent
+    body['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/task-suggestions', payload=body) == (200, reply)
+    assert json.loads(sent[0]['messages'][-1]['content']) == [{'source': 1, 'text': body['sources'][0]}]
+
+
 def test_phone_remote_profile_roundtrip_reuses_keys_revision_and_activation(cfg, monkeypatch):
     from dev_harness import local_provider_probe
     monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'ready'})

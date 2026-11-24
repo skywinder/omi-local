@@ -3,13 +3,17 @@
 import hashlib
 import json
 import math
+import uuid
+from collections import Counter
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from database import action_items, local_recording_chat
 from models.action_item import ActionItemCreateRequest, ActionItemResponse, EvidenceRef
+from routers.local_recording_chat import ChatProvider, _chat_provider, _library_request
+from utils.conversations.local_chat import select_sources
 from utils.local_transport_auth import require_paired_owner
 
 router = APIRouter(prefix='/v1/local/action-items', tags=['local'])
@@ -22,11 +26,14 @@ class LocalTaskCreate(BaseModel):
     description: str = Field(min_length=1, max_length=4096)
     conversation_id: str | None = Field(default=None, pattern=_UUID)
     segment_id: str | None = Field(default=None, min_length=1, max_length=256)
+    segment_sha256: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
 
     @model_validator(mode='after')
     def validate_source(self):
         if self.segment_id and not self.conversation_id:
             raise ValueError('A segment requires a recording')
+        if self.segment_sha256 and not self.segment_id:
+            raise ValueError('A source digest requires a segment')
         return self
 
 
@@ -68,6 +75,10 @@ def _evidence(uid, body):
         ] if isinstance(segments, list) else []
         if len(matches) != 1:
             raise HTTPException(409, 'local_task_source_changed')
+        if body.segment_sha256 is not None:
+            text = matches[0].get('text')
+            if not isinstance(text, str) or hashlib.sha256(text.encode()).hexdigest() != body.segment_sha256:
+                raise HTTPException(409, 'local_task_source_changed')
         start, end = matches[0].get('start'), matches[0].get('end')
         fields['transcript_segment_ids'] = [body.segment_id]
         if isinstance(start, (int, float)) and math.isfinite(start) and start >= 0:
@@ -80,9 +91,10 @@ def _evidence(uid, body):
 @router.post('', response_model=ActionItemResponse)
 def create_task(body: LocalTaskCreate, response: Response, uid: str = Depends(require_paired_owner)):
     description = _description(body.description)
-    fingerprint = hashlib.sha256(json.dumps(
-        [description, body.conversation_id, body.segment_id], ensure_ascii=False,
-    ).encode()).hexdigest()
+    inputs = [description, body.conversation_id, body.segment_id]
+    if body.segment_sha256 is not None:
+        inputs.append(body.segment_sha256)
+    fingerprint = hashlib.sha256(json.dumps(inputs, ensure_ascii=False).encode()).hexdigest()
     revision, provenance = None, []
     if body.conversation_id is not None:
         # Fast replay does not require a recording that was deleted after the first write.
@@ -124,3 +136,94 @@ def edit_task(
         raise HTTPException(409, 'local_task_conflict')
     response.headers['Cache-Control'] = 'no-store'
     return row
+
+
+class SuggestionRequest(BaseModel):
+    provider_binding: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ProposedTask(BaseModel):
+    description: str = Field(min_length=1, max_length=360)
+    source: int = Field(strict=True, ge=1, le=120)
+
+
+class ProviderSuggestions(BaseModel):
+    suggestions: list[ProposedTask] = Field(max_length=12)
+
+
+class TaskSuggestion(BaseModel):
+    id: str
+    description: str
+    segment_id: str
+    segment_sha256: str
+    excerpt: str
+    start_ms: int | None
+
+
+class TaskSuggestions(BaseModel):
+    suggestions: list[TaskSuggestion]
+    context_limited: bool
+
+
+class SuggestionProvider(BaseModel):
+    provider: ChatProvider | None
+
+
+suggestions_router = APIRouter(tags=['local'])
+RecordingId = Annotated[str, Path(pattern=_UUID)]
+
+
+@suggestions_router.get('/v1/local/conversations/{conversation_id}/task-suggestions', response_model=SuggestionProvider)
+def task_suggestion_provider(conversation_id: RecordingId, response: Response, uid: str = Depends(require_paired_owner)):
+    try:
+        local_recording_chat.recording(uid, conversation_id)
+    except local_recording_chat.RecordingUnavailable:
+        raise HTTPException(404, 'local_task_source_unavailable') from None
+    response.headers['Cache-Control'] = 'no-store'
+    return {'provider': _chat_provider(suggestions=True)}
+
+
+@suggestions_router.post('/v1/local/conversations/{conversation_id}/task-suggestions', response_model=TaskSuggestions)
+def suggest_tasks(
+    conversation_id: RecordingId, body: SuggestionRequest, response: Response, uid: str = Depends(require_paired_owner),
+):
+    try:
+        version, recording = local_recording_chat.recording(uid, conversation_id)
+    except local_recording_chat.RecordingUnavailable:
+        raise HTTPException(404, 'local_task_source_unavailable') from None
+    segments = recording.get('transcript_segments')
+    rows = [row for row in segments if isinstance(row, dict)] if isinstance(segments, list) else []
+    counts = Counter(row['id'] for row in rows if isinstance(row.get('id'), str))
+    unique = {
+        row['id']: row for row in rows
+        if isinstance(row.get('id'), str) and 0 < len(row['id']) <= 256 and counts[row['id']] == 1
+    }
+    sources, limited = select_sources(list(unique.values()), '')
+    response.headers['Cache-Control'] = 'no-store'
+    if not sources:
+        return {'suggestions': [], 'context_limited': bool(rows)}
+    try:
+        result = ProviderSuggestions.model_validate_json(_library_request({
+            'binding': body.provider_binding, 'sources': [source['text'] for source in sources],
+        }, suggestions=True))
+        if any(item.source > len(sources) for item in result.suggestions):
+            raise ValueError()
+    except (ValidationError, ValueError):
+        raise HTTPException(502, 'local_task_invalid_suggestions') from None
+    if not local_recording_chat.sources_current(uid, {conversation_id: version}):
+        raise HTTPException(409, 'local_task_source_changed')
+    suggestions = {}
+    for item in result.suggestions:
+        description = item.description.strip()
+        if not description:
+            continue
+        source = sources[item.source - 1]
+        segment_id = source['segment_id']
+        digest = hashlib.sha256(unique[segment_id]['text'].encode()).hexdigest()
+        seed = json.dumps([uid, conversation_id, segment_id, digest, description], ensure_ascii=False)
+        identifier = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-task:' + seed))
+        suggestions[identifier] = {
+            'id': identifier, 'description': description, 'segment_id': segment_id, 'segment_sha256': digest,
+            'excerpt': source['text'], 'start_ms': source['start_ms'],
+        }
+    return {'suggestions': list(suggestions.values()), 'context_limited': limited or len(unique) != len(rows)}
