@@ -9,9 +9,14 @@ import 'capture_panel.dart';
 import 'paired_library.dart';
 import 'processing_page.dart';
 import 'recording_page.dart';
+import 'server_catalog.dart';
+import 'server_session.dart';
+import 'servers_page.dart';
+import 'settings_labels.dart';
 
 class LocalNextApp extends StatelessWidget {
-  const LocalNextApp({super.key});
+  const LocalNextApp({super.key, this.session});
+  final NextServerSession? session;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -24,151 +29,81 @@ class LocalNextApp extends StatelessWidget {
       OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
       return child!;
     },
-    home: const _Pairing(),
+    home: _Pairing(session: session),
   );
 }
 
-String failureText(BuildContext context, Object? failure) => switch (failure) {
-  LibraryFailure.address => context.l10n.invalidUrlError,
-  LibraryFailure.key => context.l10n.invalidKey,
-  LibraryFailure.storage => context.l10n.failedToSaveCheckConnection,
-  LibraryFailure.malformed || FormatException() => context.l10n.couldNotLoadPage,
-  _ => context.l10n.connectionFailed,
-};
-
 class _Pairing extends StatefulWidget {
-  const _Pairing();
+  const _Pairing({this.session});
+  final NextServerSession? session;
   @override
   State<_Pairing> createState() => _PairingState();
 }
 
 class _PairingState extends State<_Pairing> {
-  final address = TextEditingController();
-  final keyField = TextEditingController();
-  PairedLibrary? library;
-  bool busy = true;
-  Object? failure;
+  late final NextServerSession session;
+  PairedLibrary? _shown;
 
   @override
   void initState() {
     super.initState();
-    _restore();
+    session = widget.session ?? NextServerSession(NextServerCatalog());
+    session.addListener(_changed);
+    session.initialize();
   }
 
-  Future<void> _restore() async {
-    try {
-      final saved = await PairedLibrary.restore();
-      if (saved != null && mounted) {
-        address.text = saved.origin.origin;
-        _activate(saved);
-      }
-    } catch (_) {
-      failure = LibraryFailure.storage;
-    } finally {
-      if (mounted) setState(() => busy = false);
+  void _changed() {
+    if (_shown != session.active) {
+      _shown = session.active;
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
+    setState(() {});
   }
 
-  Future<void> _connect() async {
-    if (busy) return;
-    setState(() {
-      busy = true;
-      failure = null;
-    });
-    try {
-      final candidate = PairedLibrary(address.text, keyField.text);
-      await candidate.verify();
-      try {
-        await candidate.save();
-      } catch (_) {
-        throw LibraryFailure.storage;
-      }
-      if (!mounted) return;
-      _activate(candidate);
-      keyField.clear();
-    } catch (error) {
-      failure = error;
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  void _activate(PairedLibrary current) {
-    library = current;
-    current.onKeyRejected = () {
-      if (mounted && library == current) _endSession(rejected: true);
-    };
-  }
-
-  Future<void> _disconnect() => _endSession();
-
-  Future<void> _endSession({bool rejected = false}) async {
-    if (busy) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    setState(() {
-      library?.close();
-      library = null;
-      busy = true;
-      failure = rejected ? LibraryFailure.key : null;
-    });
-    try {
-      await PairedLibrary.forget();
-    } catch (_) {
-      failure = LibraryFailure.storage;
-    } finally {
-      if (mounted) setState(() => busy = false);
+  Future<void> _disconnect() async {
+    await session.disconnect();
+    if (mounted && session.active != null && session.failure != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairingFailureText(context, session.failure))));
     }
   }
 
   @override
   void dispose() {
-    library?.close();
-    address.dispose();
-    keyField.dispose();
+    session.removeListener(_changed);
+    session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final paired = library;
-    if (paired != null) return LocalNextLibraryPage(key: ObjectKey(paired), library: paired, disconnect: _disconnect);
-    final l = context.l10n;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Omi Local Next')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            TextField(
-              controller: address,
-              enabled: !busy,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: InputDecoration(labelText: l.serverUrl, hintText: '100.64.0.1:20000'),
-            ),
-            TextField(
-              controller: keyField,
-              enabled: !busy,
-              obscureText: true,
-              enableSuggestions: false,
-              autocorrect: false,
-              onSubmitted: (_) => _connect(),
-              decoration: InputDecoration(labelText: l.apiKey),
-            ),
-            if (failure != null)
-              Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(failureText(context, failure))),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: busy ? null : _connect, child: Text(l.connect)),
-            if (busy) const LinearProgressIndicator(),
-          ],
-        ),
-      ),
+    final active = session.active;
+    if (active == null) return NextServersPage(session: session);
+    final named = session.servers.where((entry) => entry.id == session.activeId).firstOrNull;
+    return LocalNextLibraryPage(
+      key: ObjectKey(active),
+      library: active,
+      serverName: named?.name ?? active.origin.authority,
+      disconnect: _disconnect,
+      pairingBusy: session.busy,
+      openServers: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => NextServersPage(session: session, manager: true))),
     );
   }
 }
 
 class LocalNextLibraryPage extends StatefulWidget {
-  const LocalNextLibraryPage({super.key, required this.library, required this.disconnect});
+  const LocalNextLibraryPage({
+    super.key,
+    required this.library,
+    required this.disconnect,
+    this.openServers,
+    this.serverName,
+    this.pairingBusy = false,
+  });
+  final VoidCallback? openServers;
+  final String? serverName;
+  final bool pairingBusy;
   final PairedLibrary library;
   final Future<void> Function() disconnect;
   @override
@@ -212,7 +147,14 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     final library = widget.library;
     return Scaffold(
       appBar: AppBar(
-        title: Text(l.conversations),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.conversations),
+            if (widget.serverName case final name?)
+              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelMedium),
+          ],
+        ),
         actions: [
           if (!library.audioDelivery)
             IconButton(
@@ -236,7 +178,17 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
             onPressed: _archive.busy ? null : _archive.refresh,
             icon: const Icon(Icons.refresh),
           ),
-          IconButton(tooltip: l.disconnect, onPressed: widget.disconnect, icon: const Icon(Icons.link_off)),
+          if (widget.openServers != null)
+            IconButton(
+              tooltip: pairedSettingsLabel(context, 'localMacServers'),
+              icon: const Icon(Icons.dns_outlined),
+              onPressed: widget.pairingBusy ? null : widget.openServers,
+            ),
+          IconButton(
+            tooltip: l.disconnect,
+            onPressed: widget.pairingBusy ? null : widget.disconnect,
+            icon: const Icon(Icons.link_off),
+          ),
         ],
       ),
       body: Column(
@@ -245,7 +197,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           Expanded(
             child: PairedArchiveFeed(
               archive: _archive,
-              errorText: failureText,
+              errorText: pairingFailureText,
               onOpen: (id) => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => RecordingPage(library: library, id: id),

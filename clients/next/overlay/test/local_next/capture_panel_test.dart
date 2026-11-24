@@ -8,6 +8,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/capture.dart';
 import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_transport.dart';
+import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport {
@@ -100,7 +101,9 @@ void main() {
     final journal = _Journal();
     final mic = _Microphone();
     final wire = _Wire();
-    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire);
+    final ownerChange = NextOwnerChangeGate();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire, ownerChange: ownerChange);
+    ownerChange.attachCapture(() => inputs.hasCaptureInProgress);
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -114,6 +117,7 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
+      expect(ownerChange.tryHold(), isFalse);
       await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
       await tester.pumpAndSettle();
       wire.rejectConnection = true;
@@ -135,6 +139,7 @@ void main() {
       await tester.pump();
       expect(mic.recording, isFalse);
       expect(inputs.phone.active, isTrue, reason: 'the previous recording still owns its unsealed data');
+      expect(ownerChange.tryHold(), isFalse);
       expect(wire.subscriptions, isEmpty);
       journal.seal.complete();
       await tester.pumpAndSettle();
@@ -145,6 +150,7 @@ void main() {
       await tester.tap(find.byTooltip('Mute'));
       await tester.pumpAndSettle();
       expect(wire.subscriptions, [true, false]);
+      expect(ownerChange.tryHold(), isFalse, reason: 'mute keeps the current capture owner');
       wire.reconnect();
       await tester.pumpAndSettle();
       expect(find.text('CV1 · Connected · Muted'), findsOneWidget);
@@ -157,6 +163,17 @@ void main() {
       expect(inputs.cv1.active, isFalse);
       expect(wire.subscriptions.last, isFalse);
       expect(find.text('CV1 · Connected'), findsOneWidget);
+
+      expect(ownerChange.tryHold(), isTrue);
+      await tester.pump();
+      expect(tester.widget<OutlinedButton>(phoneButton).onPressed, isNull);
+      expect(tester.widget<OutlinedButton>(cv1Button).onPressed, isNull);
+      await inputs.togglePhone();
+      wire.emit(Cv1RawButton(wire.generation, 1));
+      ownerChange.release();
+      await tester.pumpAndSettle();
+      expect(mic.recording, isFalse);
+      expect(inputs.cv1.active, isFalse, reason: 'a button during the handover cannot start later');
 
       await tester.tap(cv1Button);
       await tester.pumpAndSettle();
@@ -179,6 +196,7 @@ void main() {
       expect(closed, isTrue);
       await closing;
       inputs.dispose();
+      ownerChange.dispose();
       journal.dispose();
     }
   });

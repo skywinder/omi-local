@@ -20,6 +20,7 @@ KEYS = (
     'localProcessingKeyHelp',
     'providerMisconfigured',
     'providerUnavailable',
+    'localMacServers',
 )
 
 # The paired selector reports a registry result even when the phone cannot
@@ -36,6 +37,10 @@ PROCESSING_MESSAGES = {
         'processingProbeReady': 'Connection test passed.',
         'processingNoModels': 'The server listed no models. Enter the model name manually.',
         'processingLanguageCode': 'Enter auto or a two- or three-letter language code.',
+        'serverCaptureBusy': 'Stop the recording before switching or disconnecting.',
+        'serverAudioRetained': 'This phone has recordings waiting for this server. Reconnect and finish delivery before changing its credentials or removing it.',
+        'serverActiveEdit': 'Choose Connect to verify changes to the active server.',
+        'serverKeyHelp': 'Leave the key blank to keep the saved key for this address.',
     },
     'ru': {
         'processingPublished': 'Активный профиль выбран на сервере. Работу распознавания речи можно проверить на экране «Живая расшифровка».',
@@ -48,6 +53,10 @@ PROCESSING_MESSAGES = {
         'processingProbeReady': 'Связь с провайдером проверена.',
         'processingNoModels': 'Сервер не вернул список моделей. Введите название модели вручную.',
         'processingLanguageCode': 'Введите auto или код языка из двух или трёх строчных букв.',
+        'serverCaptureBusy': 'Остановите запись перед сменой или отключением сервера.',
+        'serverAudioRetained': 'На телефоне есть записи для этого сервера. Подключитесь к нему и дождитесь доставки, прежде чем менять ключ или адрес либо удалять сервер.',
+        'serverActiveEdit': 'Нажмите «Подключиться», чтобы проверить новые настройки активного сервера.',
+        'serverKeyHelp': 'Оставьте ключ пустым, чтобы сохранить прежний ключ для этого адреса.',
     },
 }
 

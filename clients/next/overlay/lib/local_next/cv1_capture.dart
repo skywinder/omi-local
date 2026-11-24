@@ -35,16 +35,26 @@ enum Cv1CaptureIntent { stopped, recording, muted }
 enum Cv1CaptureProblem { unsupportedCodec, storage, sourceSwitch }
 
 class NextCv1Capture extends ChangeNotifier {
-  NextCv1Capture(this.journal, this.owner, {required this.canStart, this.onStartRequested, this.preview});
+  NextCv1Capture(
+    this.journal,
+    this.owner, {
+    required this.canStart,
+    this.permitsStartRequest,
+    this.onStartRequested,
+    this.preview,
+  });
 
   final LocalAudioJournal journal;
   final String owner;
   final bool Function() canStart;
+  final bool Function()? permitsStartRequest;
   final Future<void> Function()? onStartRequested;
   final NextLivePreview? preview;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
-  Future<void> _sealing = Future.value();
+  Future<void>? _sealing;
+  bool get sealing => _sealing != null;
+  Future<void> get _sealed => _sealing ?? Future<void>.value();
   Cv1CaptureIntent _intent = Cv1CaptureIntent.stopped;
   Cv1CaptureIntent get intent => _intent;
   Cv1CaptureProblem? _problem;
@@ -82,13 +92,13 @@ class NextCv1Capture extends ChangeNotifier {
   }
 
   Future<void> stop() {
-    if (_closed) return _sealing;
+    if (_closed) return _sealed;
     _cancelButtonStart();
-    if (!active) return _sealing;
+    if (!active) return _sealed;
     _intent = Cv1CaptureIntent.stopped;
     _endSegment();
     notifyListeners();
-    return _sealing;
+    return _sealed;
   }
 
   void toggleMute() {
@@ -199,7 +209,11 @@ class NextCv1Capture extends ChangeNotifier {
     final segment = _segment;
     final attempt = _attempt;
     // stop() seals after every already accepted journal write on the same queue.
-    _sealing = current.stop().catchError((Object _) => _writeFailed(current, attempt, segment));
+    late final Future<void> seal;
+    seal = current.stop().catchError((Object _) => _writeFailed(current, attempt, segment)).whenComplete(() {
+      if (identical(_sealing, seal)) _sealing = null;
+    });
+    _sealing = seal;
   }
 
   void _button(int code) {
@@ -208,7 +222,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (code == 1) {
       if (active || _requestPending) {
         unawaited(stop());
-      } else if (codecSupported) {
+      } else if (codecSupported && (permitsStartRequest?.call() ?? true)) {
         unawaited(_startFromButton());
       }
     } else if (code == 2 && _intent == Cv1CaptureIntent.recording) {
@@ -249,12 +263,12 @@ class NextCv1Capture extends ChangeNotifier {
   }
 
   Future<void> close() {
-    if (_closed) return _sealing;
+    if (_closed) return _sealed;
     _closed = true;
     _cancelButtonStart();
     _intent = Cv1CaptureIntent.stopped;
     _endSegment();
-    return _sealing;
+    return _sealed;
   }
 
   @override

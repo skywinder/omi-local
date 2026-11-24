@@ -4,28 +4,66 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:omi/backend/http/api/conversations.dart';
 import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'live_preview.dart';
 import 'processing.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
+/// Reserves a quiet capture owner while its replacement is being committed.
+/// Acquisition and capture entry points run synchronously on the same isolate.
+class NextOwnerChangeGate extends ChangeNotifier {
+  bool _held = false;
+  bool _closed = false;
+  bool Function()? _captureBusy;
+
+  bool get permitsCapture => !_held && !_closed;
+
+  void attachCapture(bool Function() busy) => _captureBusy = busy;
+
+  void detachCapture(bool Function() busy) {
+    if (_captureBusy == busy) _captureBusy = null;
+  }
+
+  bool tryHold() {
+    if (!permitsCapture || _captureBusy?.call() == true) return false;
+    _held = true;
+    notifyListeners();
+    return true;
+  }
+
+  void release() {
+    if (_closed || !_held) return;
+    _held = false;
+    notifyListeners();
+  }
+
+  void _close() {
+    _closed = true;
+    _captureBusy = null;
+  }
+}
+
 class PairedLibrary {
-  PairedLibrary(String address, String appKey)
-    : origin = _origin(address),
-      _key = appKey.replaceAll(RegExp(r'\s'), '') {
+  PairedLibrary(String address, String appKey, {bool knownDelivery = false})
+    : origin = normalizeAddress(address),
+      _key = appKey.replaceAll(RegExp(r'\s'), ''),
+      audioDelivery = knownDelivery {
     if (!RegExp(r'^[a-zA-Z0-9_-]{43}$').hasMatch(_key)) throw LibraryFailure.key;
   }
 
   final Uri origin;
   final String _key;
   bool audioPlayback = false;
-  bool audioDelivery = false;
+  bool audioDelivery;
+  final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
   bool verified = false;
@@ -38,6 +76,7 @@ class PairedLibrary {
 
   void close() {
     _closed = true;
+    ownerChange._close();
     verified = false;
     audioDelivery = false;
     audioPlayback = false;
@@ -53,14 +92,13 @@ class PairedLibrary {
   static const pageSize = 30;
   static const _deadline = Duration(seconds: 15);
 
-  // One record switches the address and key atomically. An independent Keychain service
-  // also prevents legacy settings from being read when both apps use the same team.
-  static const _record = 'verified-pair.v1';
-  static const _storage = FlutterSecureStorage(
+  // The Next journal and credentials belong to this installation's service.
+  static const legacyPairingKey = 'verified-pair.v1';
+  static const pairingStorage = FlutterSecureStorage(
     iOptions: IOSOptions(accountName: 'omi-local-next', accessibility: KeychainAccessibility.first_unlock_this_device),
   );
 
-  static Uri _origin(String raw) {
+  static Uri normalizeAddress(String raw) {
     final input = raw.trim();
     final match = RegExp(r'^(?:(http)://)?([0-9.]+)(?::([0-9]+))?/?$').firstMatch(input);
     if (match != null) {
@@ -89,19 +127,36 @@ class PairedLibrary {
     return Uri(scheme: 'https', host: url.host);
   }
 
-  static Future<PairedLibrary?> restore() async {
-    final raw = await _storage.read(key: _record);
-    if (raw == null) return null;
-    final value = jsonDecode(raw);
-    if (value is! Map || value['address'] is! String || value['key'] is! String) throw LibraryFailure.storage;
-    return PairedLibrary(value['address'], value['key'])..audioDelivery = value['deliveryVersion'] == 2;
+  Future<bool> hasRetainedAudio() => retainedAudioFor(audioOwnerId);
+
+  static final _captureReleases = <String, Future<void>>{};
+
+  static void trackAudioRelease(String ownerId, Future<void> release) {
+    _captureReleases[ownerId] = release;
+    // A failed teardown leaves custody uncertain until the next recovery.
+    unawaited(
+      release.then<void>((_) {
+        if (identical(_captureReleases[ownerId], release)) _captureReleases.remove(ownerId);
+      }, onError: (Object _, StackTrace __) {}),
+    );
   }
 
-  Future<void> save() => _storage.write(
-    key: _record,
-    value: jsonEncode({'address': origin.origin, 'key': _key, 'deliveryVersion': audioDelivery ? 2 : 0}),
-  );
-  static Future<void> forget() => _storage.delete(key: _record);
+  static Future<bool> retainedAudioFor(String ownerId, {Directory? documents}) async {
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(ownerId)) throw LibraryFailure.storage;
+    try {
+      // Revocation can detach the capture view while accepted bytes are still sealing.
+      await _captureReleases[ownerId];
+      final base = documents ?? await getApplicationDocumentsDirectory();
+      final queue = Directory('${base.path}/outbox/$ownerId');
+      return await queue.list(followLinks: false).any((entry) {
+        return entry.path.endsWith('.part') || entry.path.endsWith('.ready');
+      });
+    } on PathNotFoundException {
+      return false;
+    } catch (_) {
+      throw LibraryFailure.storage;
+    }
+  }
 
   HttpClient _directClient() {
     final client = HttpClient()..connectionTimeout = _deadline;

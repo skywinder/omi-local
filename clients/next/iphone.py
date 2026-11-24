@@ -15,7 +15,17 @@ from prepare import HERE, PIN, ROOT
 
 sys.path.insert(0, str(ROOT / 'scripts/dev-harness'))
 from dev_harness.launch_iphone import select_iphone, LocalEnvError
-from dev_harness.server_presets import clean_environment
+from dev_harness.server_presets import FILE_ENV, clean_environment, launch_environment
+
+
+def isolate_host_environment():
+    """Keep private pairing inputs out of every child, including Xcode's device discovery."""
+    preset_file = os.environ.get(FILE_ENV)
+    clean = clean_environment(os.environ)
+    for name in tuple(os.environ):
+        if name not in clean or name == FILE_ENV or name.startswith(('OMI_SERVER_', 'DEVICECTL_CHILD_', 'SIMCTL_CHILD_')):
+            del os.environ[name]
+    return preset_file
 
 
 def output(command, **kwargs):
@@ -90,20 +100,36 @@ def boot_simulator():
     return identifier
 
 
-def install(app, simulator, device):
+def install(app, simulator, device, *, with_presets=False, preset_file=None):
     if simulator:
         output(['xcrun', 'simctl', 'install', device, app])
         output(['xcrun', 'simctl', 'launch', device, BUNDLE])
-    else:
-        for command in (['install', 'app', str(app)], ['process', 'launch', BUNDLE]):
-            args = ['xcrun', 'devicectl', 'device', *command[:2], '--device', device['hardwareProperties']['udid'],
-                    '--timeout', '120', '--json-output', '/dev/stdout', '--quiet', *command[2:]]
-            if json.loads(output(args)).get('info', {}).get('outcome') != 'success':
-                raise ValueError('Device did not confirm ' + command[0])
+        return
+    device_id = device['hardwareProperties']['udid']
+    if select_iphone()['hardwareProperties']['udid'] != device_id:
+        raise ValueError('The selected iPhone changed after attestation')
+    runtime = None
+    if with_presets:
+        source = dict(os.environ)
+        if preset_file is not None:
+            source[FILE_ENV] = preset_file
+        try:
+            runtime, _ = launch_environment(ROOT, environ=source, required=True)
+        except LocalEnvError:
+            raise LocalEnvError('Cannot prepare private server presets; check the file and its permissions.') from None
+        runtime.pop(FILE_ENV, None)
+    for command, env in ((['install', 'app', str(app)], None), (['process', 'launch', BUNDLE], runtime)):
+        args = ['xcrun', 'devicectl', 'device', *command[:2], '--device', device_id,
+                '--timeout', '120', '--json-output', '/dev/stdout', '--quiet', command[2]]
+        if json.loads(output(args, env=env)).get('info', {}).get('outcome') != 'success':
+            raise ValueError('Device did not confirm ' + command[0])
 
 
 def run(args):
-    env = clean_environment(os.environ)
+    if args.with_server_presets and (not args.install or args.simulator):
+        raise ValueError('--with-server-presets requires a physical iPhone --install')
+    preset_file = isolate_host_environment()
+    env = dict(os.environ)
     sim = args.simulator
     config = 'Debug-dev' if sim else 'Profile-dev'
     device = None
@@ -144,7 +170,7 @@ def run(args):
     print('Local commit', commit, '| upstream', PIN['commit'])
     print(json.dumps(proof, ensure_ascii=False), flush=True)
     if args.install:
-        install(product, sim, device)
+        install(product, sim, device, with_presets=args.with_server_presets, preset_file=preset_file)
         print('Omi Local Next installed and launched.')
 
 
@@ -153,6 +179,8 @@ if __name__ == '__main__':
     parser.add_argument('repository', type=Path, help='local BasedHardware/omi clone')
     parser.add_argument('--simulator', action='store_true')
     parser.add_argument('--install', action='store_true')
+    parser.add_argument('--with-server-presets', action='store_true',
+                        help='import private server presets on the separately installed iPhone app’s launch')
     try:
         run(parser.parse_args())
     except (LocalEnvError, ValueError, OSError, subprocess.SubprocessError) as exc:

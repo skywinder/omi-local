@@ -27,10 +27,13 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   // Release the previous owner's microphone and journal before recovering files.
   static Future<void> _previousRelease = Future.value();
   late final Future<void> _setup;
+  bool _initialized = false;
+  bool _captureBusy() => !_initialized || _inputs?.hasCaptureInProgress == true;
   LocalAudioJournal? _journal;
   NextCaptureInputs? _inputs;
   late final _processing = widget.library.processingClient(
-    permitsActivation: () => !_closed && _inputs?.isRecording == false,
+    permitsActivation: () =>
+        !_closed && widget.library.ownerChange.permitsCapture && _inputs?.hasCaptureInProgress == false,
   );
   bool _storageFailed = false;
   bool _closed = false;
@@ -38,7 +41,10 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   @override
   void initState() {
     super.initState();
-    _setup = _initialize(widget.library, _previousRelease);
+    widget.library.ownerChange.attachCapture(_captureBusy);
+    _setup = _initialize(widget.library, _previousRelease).whenComplete(() {
+      _initialized = true;
+    });
   }
 
   Future<void> _initialize(PairedLibrary library, Future<void> previous) async {
@@ -65,6 +71,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
           preview: NextLivePreview(library.audioOwnerId, library.connectPreview),
         ),
         IosCv1Transport(),
+        ownerChange: library.ownerChange,
       );
       journal.retry();
     } catch (_) {
@@ -76,7 +83,9 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   @override
   void dispose() {
     _closed = true;
+    widget.library.ownerChange.detachCapture(_captureBusy);
     _previousRelease = _release();
+    PairedLibrary.trackAudioRelease(widget.library.audioOwnerId, _previousRelease);
     super.dispose();
   }
 
@@ -112,11 +121,12 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
 
 /// Both inputs share one journal. Only an explicit Start can take it from the other source.
 class NextCaptureInputs extends ChangeNotifier {
-  NextCaptureInputs(this.phone, Cv1Transport transport) {
+  NextCaptureInputs(this.phone, Cv1Transport transport, {this.ownerChange}) {
     cv1 = NextCv1Capture(
       phone.journal,
       phone.owner,
-      canStart: () => !_closed && !switching && !_phoneOwns && !phone.active && !phone.busy,
+      canStart: () => permitsNewRecording && !switching && !_phoneOwns && !phone.active && !phone.busy,
+      permitsStartRequest: () => permitsNewRecording,
       onStartRequested: _claimCv1,
       preview: phone.preview,
     );
@@ -124,6 +134,7 @@ class NextCaptureInputs extends ChangeNotifier {
   }
 
   final NextPhoneCapture phone;
+  final NextOwnerChangeGate? ownerChange;
   late final NextCv1Capture cv1;
   late final Cv1Connection connection;
   bool _phoneOwns = false;
@@ -131,6 +142,8 @@ class NextCaptureInputs extends ChangeNotifier {
   Future<void>? _transition;
   bool get switching => _transition != null;
   bool get isRecording => phone.active || phone.busy || cv1.active;
+  bool get hasCaptureInProgress => switching || isRecording || cv1.sealing;
+  bool get permitsNewRecording => !_closed && (ownerChange?.permitsCapture ?? true);
   NextLivePreview? get preview => phone.preview;
 
   Future<void> _change(Future<void> Function() operation) {
@@ -143,32 +156,38 @@ class NextCaptureInputs extends ChangeNotifier {
     return pending;
   }
 
-  Future<void> _claimCv1() => _change(() async {
-    if (!cv1.linked || !cv1.codecSupported) return;
-    final needsSeal = phone.active || phone.busy;
-    if (needsSeal) await phone.stop();
-    if (_closed || (needsSeal && phone.problem == CaptureProblem.storage)) return;
-    _phoneOwns = false;
-  });
+  Future<void> _claimCv1() {
+    if (!permitsNewRecording) return Future<void>.value();
+    return _change(() async {
+      if (!cv1.linked || !cv1.codecSupported) return;
+      final needsSeal = phone.active || phone.busy;
+      if (needsSeal) await phone.stop();
+      if (_closed || (needsSeal && phone.problem == CaptureProblem.storage)) return;
+      _phoneOwns = false;
+    });
+  }
 
   Future<void> startCv1() async {
-    if (_closed || switching || !cv1.linked || !cv1.codecSupported) return;
+    if (!permitsNewRecording || switching || !cv1.linked || !cv1.codecSupported) return;
     final generation = cv1.generation;
     await _claimCv1();
     if (!_closed && !_phoneOwns && cv1.generation == generation && cv1.codecSupported) cv1.start();
   }
 
-  Future<void> togglePhone() => _change(() async {
-    _phoneOwns = true;
-    if (phone.active) {
-      await phone.stop();
-      return;
-    }
-    final needsSeal = cv1.active;
-    await cv1.stop();
-    if (_closed || (needsSeal && cv1.problem == Cv1CaptureProblem.storage)) return;
-    await phone.start();
-  });
+  Future<void> togglePhone() {
+    if (!phone.active && !permitsNewRecording) return Future<void>.value();
+    return _change(() async {
+      _phoneOwns = true;
+      if (phone.active) {
+        await phone.stop();
+        return;
+      }
+      final needsSeal = cv1.active;
+      await cv1.stop();
+      if (!permitsNewRecording || (needsSeal && cv1.problem == Cv1CaptureProblem.storage)) return;
+      await phone.start();
+    });
+  }
 
   Future<void> stopRecording() async {
     await _transition;
@@ -270,7 +289,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
     final link = inputs.connection;
-    final captureState = Listenable.merge([inputs, capture, cv1]);
+    final captureState = Listenable.merge([inputs, capture, cv1, inputs.ownerChange]);
     final journal = capture.journal;
     final l = context.l10n;
     return ListenableBuilder(
@@ -283,14 +302,16 @@ class LocalNextCaptureControls extends StatelessWidget {
             children: [
               OutlinedButton.icon(
                 key: const ValueKey('next-phone-capture'),
-                onPressed: inputs.switching || capture.busy ? null : inputs.togglePhone,
+                onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
+                    ? null
+                    : inputs.togglePhone,
                 icon: Icon(capture.active ? Icons.stop : Icons.mic),
                 label: Text(capture.active ? '${l.stop} · ${l.phone}' : l.recordWithPhoneMic),
               ),
               if (cv1.linked || cv1.active)
                 OutlinedButton.icon(
                   key: const ValueKey('next-cv1-capture'),
-                  onPressed: inputs.switching || (!cv1.active && !cv1.codecSupported)
+                  onPressed: inputs.switching || (!cv1.active && (!cv1.codecSupported || !inputs.permitsNewRecording))
                       ? null
                       : cv1.active
                       ? cv1.stop

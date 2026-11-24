@@ -109,6 +109,32 @@ python3 clients/next/iphone.py /path/to/omi --install
 Use `--simulator --install` for a simulator. A device install requires a paired,
 available iPhone and a provisioning profile for the Next bundle.
 
+## Saved servers
+
+Use **Servers** to save a name, address and app key for each Local server.
+Choose **Connect** to verify an address and key and make it active. A failed
+check leaves the previous connection selected. Stop any active recording before
+switching. Pending parts stay bound to the original address and key, and retry
+when you reconnect to that server. Clear the pending parts through normal
+delivery before removing or replacing the corresponding credentials.
+
+The first launch migrates an existing single-server Next pairing into its own
+Keychain catalog and retains its ability to journal offline. The existing
+Omi Local application keeps its separate data.
+
+To prefill saved entries from a private server preset file, use the format and
+permissions described in [Local iPhone setup](../../docs/LOCAL_SETUP.md#prefill-saved-servers).
+Opt in at installation on a connected iPhone:
+
+```sh
+python3 clients/next/iphone.py /path/to/omi --install --with-server-presets
+```
+
+The launcher reads the file selected by `OMI_LOCAL_SERVER_PRESETS_FILE`, or
+`.env.servers` by default. It can use an existing `.env` pairing when there is
+no preset file. The launch handoff imports entries once into Keychain and keeps
+manual edits and previous deletions. Select a saved entry to connect.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the
@@ -263,10 +289,17 @@ are retained locally for rollback. Xcode found no connected iPhone after the
 build. Installation of the new package and physical archive, recording and
 playback acceptance remain open.
 
+Saved servers passed the Next analyzer and all 46 Flutter tests. The scenarios
+include single-pair migration, failed verification, switching after capture,
+retaining an inactive owner's credentials while audio is pending, and resuming
+delivery to the original server after recording on a second one. All 34 native
+identity and installer handoff tests passed with synthetic presets. Receipt
+delivery and preset ingestion on a physical iPhone remain open.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Dedicated paired startup. Upstream API for paginated archive and detail, with original day headers and state tiles over Local status. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
+| Pairing and library | Named servers, verified switching and opt-in launch presets. Upstream API for paginated archive and detail, with original day headers and state tiles over Local status. Remaining Local parity includes server health and transcription readiness. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |

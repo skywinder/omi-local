@@ -49,7 +49,15 @@ Future<void> _openDetail(WidgetTester tester, _ExistingRecording library) async 
 void main() {
   testWidgets('a fresh install asks for pairing and reports a rejected key before network access', (tester) async {
     FlutterSecureStorage.setMockInitialValues({});
+    const environment = MethodChannel('org.omilocal.next/environment');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(environment, (call) async {
+      expect(call.method, 'takeLocalMacSettings');
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(environment, null));
     await tester.pumpWidget(const LocalNextApp());
+    await tester.pump();
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('server-connect'))).onPressed, isNotNull);
     await tester.pumpAndSettle();
     expect(find.text('Omi Local Next'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, '100.64.0.1');

@@ -1,11 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/processing.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 
 void main() {
   final key = List.filled(43, 'A').join();
@@ -203,7 +205,6 @@ void main() {
   });
 
   test('restored custody permits journaling but a revoked key stops upload before any audio leaves', () async {
-    FlutterSecureStorage.setMockInitialValues({});
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final requests = <String>[];
@@ -217,9 +218,10 @@ void main() {
       await r.response.close();
     });
     final pair = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(pair.close);
     await pair.verify();
-    await pair.save();
-    final restored = (await PairedLibrary.restore())!;
+    final restored = PairedLibrary(pair.origin.origin, key, knownDelivery: pair.audioDelivery);
+    addTearDown(restored.close);
     expect(restored.verified, isFalse);
     expect(restored.audioDelivery, isTrue);
     expect(restored.audioOwnerId, pair.audioOwnerId);
@@ -230,6 +232,89 @@ void main() {
     expect(restored.audioDelivery, isFalse);
     await expectLater(restored.list(0), throwsA(LibraryFailure.key));
     expect(requests, ['/v1/users/profile', '/v1/users/profile']);
+  });
+
+  test('a queued part stays with its original pairing while another server records and delivers', () async {
+    final documents = await Directory.systemTemp.createTemp('next-owner-fixture-');
+    addTearDown(() => documents.delete(recursive: true));
+    var oldAccepts = false;
+    final oldReceipts = <String>[], newReceipts = <String>[];
+
+    Future<PairedLibrary> receiver(bool Function() accepts, List<String> receipts) async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        final response = request.response;
+        if (request.uri.path == '/v1/users/profile') {
+          response.write('{"uid":"alice","local_audio_delivery_version":2}');
+        } else if (request.uri.path == '/v1/local/audio/parts' && accepts()) {
+          final body = Uint8List.fromList(await request.expand((chunk) => chunk).toList());
+          final size = ByteData.sublistView(body, 8, 12).getUint32(0);
+          final header = jsonDecode(utf8.decode(body.sublist(12, 12 + size))) as Map;
+          receipts.add(header['server_id'] as String);
+          response.write(jsonEncode({'stored': true, 'id': header['id'], 'sha256': '${sha256.convert(body)}'}));
+        } else {
+          response.statusCode = HttpStatus.serviceUnavailable;
+        }
+        await response.close();
+      });
+      final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+      addTearDown(library.close);
+      await library.verify();
+      return library;
+    }
+
+    LocalAudioJournal journalFor(PairedLibrary library) => LocalAudioJournal(
+      directory: Directory('${documents.path}/outbox/${library.audioOwnerId}'),
+      upload: library.uploadPart,
+    );
+
+    Future<void> record(LocalAudioJournal journal, PairedLibrary library) async {
+      await journal.initialize();
+      final capture = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: library.audioOwnerId);
+      await capture.add([1, 2]);
+      await capture.stop();
+      await journal.drain();
+    }
+
+    final old = await receiver(() => oldAccepts, oldReceipts);
+    final oldJournal = journalFor(old);
+    final release = Completer<void>();
+    addTearDown(() {
+      if (!release.isCompleted) release.complete();
+    });
+    PairedLibrary.trackAudioRelease(old.audioOwnerId, release.future);
+    var inspectedDuringSeal = false;
+    final beforeRemoval = PairedLibrary.retainedAudioFor(old.audioOwnerId, documents: documents).then((retained) {
+      inspectedDuringSeal = !release.isCompleted;
+      return retained;
+    });
+    await record(oldJournal, old);
+    expect(oldJournal.pendingParts, 1);
+    oldJournal.dispose();
+    old.close();
+    release.complete();
+    expect(await beforeRemoval, isTrue);
+    expect(inspectedDuringSeal, isFalse);
+
+    final next = await receiver(() => true, newReceipts);
+    expect(await PairedLibrary.retainedAudioFor(next.audioOwnerId, documents: documents), isFalse);
+    await expectLater(next.uploadPart(Uint8List(2), old.audioOwnerId), throwsA(LibraryFailure.key));
+    final newJournal = journalFor(next);
+    addTearDown(newJournal.dispose);
+    await record(newJournal, next);
+    expect(newReceipts, [next.audioOwnerId]);
+    expect(await PairedLibrary.retainedAudioFor(old.audioOwnerId, documents: documents), isTrue);
+
+    oldAccepts = true;
+    final restored = PairedLibrary(old.origin.origin, key, knownDelivery: true);
+    addTearDown(restored.close);
+    final recoveredJournal = journalFor(restored);
+    addTearDown(recoveredJournal.dispose);
+    await recoveredJournal.initialize();
+    await recoveredJournal.drain();
+    expect(oldReceipts, [old.audioOwnerId]);
+    expect(await PairedLibrary.retainedAudioFor(old.audioOwnerId, documents: documents), isFalse);
   });
 
   test('a redirect cannot forward the app key to a second server', () async {

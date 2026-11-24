@@ -1,10 +1,14 @@
 """Exercise the install guard for the separate Omi Local Next bundle."""
+import base64
 import importlib.util
+import json
+import os
 from pathlib import Path
 import plistlib
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
 import pytest
@@ -17,6 +21,7 @@ spec = importlib.util.spec_from_file_location('next_iphone', NEXT / 'iphone.py')
 iphone = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(iphone)
 from ios_prepare import prepare_info, prepare_scheme
+from dev_harness.server_presets import CHILD_ENV, FILE_ENV, HANDOFF_FIELDS
 sys.path.remove(str(NEXT))
 
 
@@ -34,6 +39,71 @@ def package(tmp_path, bundle):
 def test_reject_previous_app_before_inspecting_signature(tmp_path):
     with pytest.raises(ValueError, match='identity'):
         iphone.attest(package(tmp_path, 'org.example.legacy'), simulator=True)
+
+
+@pytest.mark.parametrize('install,presets', [(False, False), (True, False), (True, True)])
+def test_only_opted_in_physical_launch_receives_validated_catalog(tmp_path, monkeypatch, install, presets, capsys):
+    key = 'synthetic'.ljust(43, 'x')
+    catalog = tmp_path / 'private-fixture.env'
+    if presets:
+        catalog.write_text('OMI_SERVER_lab_NAME=Fixture\nOMI_SERVER_lab_URL=100.64.0.1:21000\n'
+                           f'OMI_SERVER_lab_KEY={key}\n')
+        catalog.chmod(0o600)
+    # A missing explicit file would fail if either build-only or ordinary install tried to read it.
+    environ = {**os.environ, **dict.fromkeys(HANDOFF_FIELDS, 'stale-handoff'), FILE_ENV: str(catalog),
+               'OMI_SERVER_lab_KEY': key, 'SIMCTL_CHILD_OMI_LOCAL_SERVER_PRESETS_B64': 'stale-handoff'}
+    monkeypatch.setattr(os, 'environ', environ)
+    commands = []
+    payloads = []
+
+    def observe(command, env):
+        args = list(map(str, command))
+        commands.append(args)
+        env = os.environ if env is None else env
+        encoded = env.get(CHILD_ENV)
+        assert FILE_ENV not in env and 'OMI_SERVER_lab_KEY' not in env
+        assert 'SIMCTL_CHILD_OMI_LOCAL_SERVER_PRESETS_B64' not in env
+        assert key not in str(args) and 'stale-handoff' not in env.values()
+        if encoded:
+            assert args[:5] == ['xcrun', 'devicectl', 'device', 'process', 'launch']
+            assert args[-1] == iphone.BUNDLE and encoded not in str(args)
+            assert json.loads(base64.b64decode(encoded))['servers'][0]['key'] == key
+            payloads.append(encoded)
+        return args
+
+    app = tmp_path / 'app'
+    app.mkdir()
+    def output(command, **kwargs):
+        args = observe(command, kwargs.get('env'))
+        if args[1:2] == [str(iphone.HERE / 'prepare.py')]:
+            return os.fsencode(app)
+        if args[:3] == ['flutter', '--version', '--machine']:
+            return json.dumps({'frameworkVersion': iphone.PIN['flutter'], 'frameworkRevision': 'fixture'}).encode()
+        if args[:2] == ['xcrun', 'devicectl']:
+            return b'{"info":{"outcome":"success"}}'
+        return b'fixture'
+
+    monkeypatch.setattr(iphone, 'output', output)
+    monkeypatch.setattr(iphone.subprocess, 'run', lambda command, **kw: observe(command, kw.get('env')))
+    monkeypatch.setattr(iphone, 'select_iphone', lambda: {'hardwareProperties': {'udid': 'fixture-device'}})
+    monkeypatch.setattr(iphone, 'attest', lambda *unused: {'bundle': iphone.BUNDLE})
+    iphone.run(SimpleNamespace(simulator=False, install=install, with_server_presets=presets, repository=tmp_path))
+    assert any(args[:3] == ['flutter', 'build', 'ios'] for args in commands)
+    assert any(args[:5] == ['xcrun', 'devicectl', 'device', 'install', 'app'] for args in commands) == install
+    assert len(payloads) == int(presets)
+    proof = (tmp_path / 'ios-device.json').read_text() + capsys.readouterr().out
+    assert key not in proof and str(catalog) not in proof and all(payload not in proof for payload in payloads)
+
+
+def test_device_change_or_invalid_preset_source_prevents_install(tmp_path, monkeypatch):
+    phone = {'hardwareProperties': {'udid': 'first-fixture'}}
+    monkeypatch.setattr(iphone, 'output', lambda *a, **kw: pytest.fail('unexpected device operation'))
+    monkeypatch.setattr(iphone, 'select_iphone', lambda: {'hardwareProperties': {'udid': 'second-fixture'}})
+    with pytest.raises(ValueError, match='iPhone changed'):
+        iphone.install(tmp_path, False, phone)
+    monkeypatch.setattr(iphone, 'select_iphone', lambda: phone)
+    with pytest.raises(iphone.LocalEnvError, match='Cannot prepare private server presets'):
+        iphone.install(tmp_path, False, phone, with_presets=True, preset_file=str(tmp_path / 'absent'))
 
 
 def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):
