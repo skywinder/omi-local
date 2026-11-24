@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'live_preview.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
+import 'recording_summary.dart';
 import 'recording_edit.dart';
 import 'task_suggestion.dart';
 
@@ -78,6 +79,7 @@ class PairedLibrary {
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
   bool taskSuggestionsAvailable = false;
+  bool summaryRegenerationAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -101,6 +103,7 @@ class PairedLibrary {
     speakerLabelsAvailable = false;
     tasksAvailable = false;
     taskSuggestionsAvailable = false;
+    summaryRegenerationAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -444,6 +447,7 @@ class PairedLibrary {
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
+    summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -641,6 +645,44 @@ class PairedLibrary {
     final provider = data['provider'];
     return provider == null ? null : RecordingChatProvider.fromJson(provider as Map<String, dynamic>);
   });
+
+  Future<RecordingSummaryOptions> readSummaryOptions(String id) async =>
+      RecordingSummaryOptions.fromJson(await _summaryRequest(id));
+
+  Future<void> regenerateSummary(String id, SummaryRegeneration request) async {
+    final result = await _summaryRequest(
+      id,
+      body: {
+        'request_id': request.requestId,
+        'source_revision': request.sourceRevision,
+        'provider_binding': request.binding,
+        'template_id': request.templateId,
+        'template_digest': request.templateDigest,
+        'prompt': request.prompt,
+      },
+    );
+    if (result['request_id'] != request.requestId) throw RecordingSummaryFailure.unavailable;
+  }
+
+  Future<Map<String, dynamic>> _summaryRequest(String id, {Map<String, String>? body}) async {
+    if (!isSignedIn || !summaryRegenerationAvailable) throw RecordingSummaryFailure.unavailable;
+    _conversation(id);
+    final result = await _request(
+      '/v1/local/conversations/$id/regenerate-summary',
+      (response) async => await _json(response, 1024 << 10) as Map<String, dynamic>,
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      statusFailure: (status) => switch (status) {
+        HttpStatus.conflict => RecordingSummaryFailure.conflict,
+        HttpStatus.requestEntityTooLarge => RecordingSummaryFailure.tooLarge,
+        422 => RecordingSummaryFailure.noTranscript,
+        _ => RecordingSummaryFailure.unavailable,
+      },
+      overallTimeout: body == null ? _deadline : const Duration(seconds: 225),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return result;
+  }
 
   Future<TaskSuggestions> suggestTasks(String id, String binding) =>
       _taskSuggestionRequest(id, TaskSuggestions.fromJson, body: {'provider_binding': binding});

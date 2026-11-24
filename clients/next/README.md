@@ -154,6 +154,12 @@ applied summary provider for future jobs. If another client saved in the
 meantime, refresh before editing the shared catalog again. The editor works
 with Omi Local servers that implement the same summary settings route.
 
+In an open recording use **Regenerate Recap** to select a prepared model,
+template and an optional prompt edit. Next sends the saved transcript after
+you confirm the destination. The current recap stays available until the
+replacement is published. A concurrent transcript or recap edit requires a
+refresh. Very large or preview-only transcripts are outside this request.
+
 ## Archive search
 
 Open **Search conversations** in the archive. Search covers saved transcripts,
@@ -551,9 +557,7 @@ paired server and an applied summary model.
 Shared summary templates passed the Next analyzer and 63 tests, the offline
 backend suite, and the legacy mobile transport suite. The isolated paired
 API and fixture model verified revision conflicts, save without inference,
-and an actual summary request using the selected default. Generating a new
-summary for an existing recording must use the edited transcript and preserve
-its user title.
+and an actual summary request using the selected default.
 
 The `Profile-dev` package from `200e141` passed independent signature and
 entitlement verification. Its executable SHA-256 begins with

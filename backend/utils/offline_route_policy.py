@@ -60,6 +60,13 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
     if method.upper() in {'GET', 'POST'} and (
+        path == '/v1/local/conversations/{conversation_id}/regenerate-summary'
+        or re.fullmatch(
+            r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/regenerate-summary', path,
+        )
+    ):
+        return True
+    if method.upper() in {'GET', 'POST'} and (
         path == '/v1/local/conversations/{conversation_id}/task-suggestions'
         or re.fullmatch(
             r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/task-suggestions', path,

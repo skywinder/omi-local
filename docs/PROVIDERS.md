@@ -167,6 +167,14 @@ when its provider profile is selected. Changing the catalog does not rerun
 existing recordings or change the prompt of a job that already has a profile.
 The catalog can be edited before applying a summary provider.
 
+In Next, **Regenerate Recap** in a saved recording lets you choose a prepared
+model, select a template and adjust its prompt for that request. The dialog
+shows the selected model and server before sending the saved transcript.
+Regeneration replaces the recap after successful publication and preserves
+the user title. If the transcript or recap changes during inference, refresh
+before generating again. This request covers at most 120,000 transcript
+characters. Preview-only transcripts need the full-recording path.
+
 ## Live translation
 
 Translation uses the connected server's active **Summarization** model by default,

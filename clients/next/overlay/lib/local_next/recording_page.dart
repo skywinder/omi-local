@@ -22,6 +22,7 @@ import 'folder_picker.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_search.dart';
+import 'recording_summary_page.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
 import 'task_editor.dart';
@@ -249,6 +250,25 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     return loaded;
   }
 
+  Future<void> _regenerateSummary() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => RecordingSummaryPage(id: widget.id, library: widget.library),
+      ),
+    );
+    if (!mounted || !widget.library.isSignedIn) return;
+    final refreshed = widget.library.detail(widget.id).then(_RecordingDetail.new);
+    setState(() {
+      detail = refreshed;
+    });
+    try {
+      final loaded = await refreshed;
+      if (mounted) widget.onEdited?.call(loaded.row);
+    } catch (_) {
+      // The detail's FutureBuilder displays the normal retry state.
+    }
+  }
+
   bool _focusMatch(_RecordingDetail loaded, TranscriptMatchSnippet match, {bool verifyExcerpt = false}) {
     bool hasExcerpt(TranscriptSegment line) => !verifyExcerpt || line.text.trim().startsWith(match.text);
     final start = match.start;
@@ -432,6 +452,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.summary => _regenerateSummary(),
                     _RecordingEditAction.taskSuggestions => Navigator.of(context).push<void>(
                       MaterialPageRoute(
                         builder: (_) => TaskSuggestionsPage(id: loaded.row.id, library: widget.library),
@@ -439,6 +460,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
+                      PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
                     if (widget.library.tasksAvailable)
                       PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
                     if (widget.library.tasksAvailable && loaded.sources.isNotEmpty)
@@ -570,7 +593,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 }
 
-enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine, taskSuggestions }
+enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine, taskSuggestions, summary }
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {

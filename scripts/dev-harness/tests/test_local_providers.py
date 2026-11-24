@@ -314,6 +314,39 @@ def test_shared_summary_catalog_preserves_drafts_and_pins_only_the_applied_defau
     assert 'template' not in before
 
 
+def test_summary_regeneration_uses_the_confirmed_model_and_template(cfg, monkeypatch):
+    from dev_harness import local_summary_regeneration
+
+    registry = Registry(cfg)
+    saved = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-summary-key'})
+    profile = saved['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    code, data = phone_request(cfg, '/regenerate-summary', method='GET')
+    assert code == 200 and 'fixture-summary-key' not in json.dumps(data)
+    assert http_request(cfg, '/api/processing/regenerate-summary', method='GET')[0] == 403
+    provider, = data['providers']
+    template, = data['templates']
+    body = {
+        'provider_binding': provider['binding'], 'template_id': template['id'],
+        'template_digest': '0' * 64, 'transcript': '[1.0] Corrected transcript.', 'prompt': 'Extract decisions.',
+    }
+    received = []
+
+    def summarize(snapshot, key, transcript, *_args, **_kwargs):
+        assert key == 'fixture-summary-key'
+        received.append((snapshot, transcript))
+        return {'title': 'Generated title', 'overview': 'Generated recap'}
+
+    monkeypatch.setattr(local_summary_regeneration.local_pipeline, 'summarize_text', summarize)
+    assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 409
+    assert not received
+    body['template_digest'] = template['digest']
+    assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 200
+    snapshot, transcript = received.pop()
+    assert snapshot['template']['prompt'] == body['prompt'] and transcript == body['transcript']
+
+
 def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkeypatch):
     from dev_harness import local_recording_chat
 

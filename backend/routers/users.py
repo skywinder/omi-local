@@ -338,6 +338,7 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
         profile['local_speaker_labels_version'] = 1
         profile['local_tasks_version'] = 1
         profile['local_task_suggestions_version'] = 1
+        profile['local_summary_regeneration_version'] = 1
     return profile
 
 

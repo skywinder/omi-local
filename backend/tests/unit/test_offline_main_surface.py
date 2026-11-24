@@ -147,6 +147,37 @@ local_tasks.local_recording_chat.sources_current.return_value = False
 assert client.post(suggestion_path, json=prompt, headers=headers).status_code == 409
 local_tasks.action_items.create_action_item.assert_not_called()
 
+from routers import local_summary
+from database import local_summary as summary_db
+
+summary_path = '/v1/local/conversations/' + documents[-1].id + '/regenerate-summary'
+assert client.get(summary_path).status_code == 401
+assert client.post(summary_path, json={}).status_code == 401
+raw = {'status': 'completed', 'user_title': 'Mine',
+       'structured': {'title': 'Mine', 'overview': 'Previous'},
+       'transcript_segments': [{'text': 'Corrected transcript.', 'start': 1}]}
+reference, transaction = MagicMock(), MagicMock()
+summary_db._ref = lambda *_: reference
+reference.get.return_value.to_dict.return_value = raw
+_, revision = summary_db.source(raw, 'fixture-owner')
+publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
+candidate = {'title': 'Generated title', 'overview': 'New recap'}
+reply = summary_db._publish.to_wrap(
+    transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication,
+)
+assert reply == publication
+transaction.update.assert_called_once_with(reference, {
+    'structured.overview': 'New recap', 'local_summary_publication': publication,
+})
+transaction.reset_mock()
+raw['transcript_segments'][0]['text'] = 'New edit.'
+try:
+    summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication)
+    raise AssertionError('A source edit must reject the candidate')
+except summary_db.SummaryChanged:
+    pass
+transaction.update.assert_not_called()
+
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
     'routers.payment', 'routers.stt', 'routers.tts', 'routers.desktop_realtime',
@@ -196,6 +227,7 @@ print(json.dumps({
         '/v1/local/action-items',
         '/v1/local/action-items/{task_id}',
         '/v1/local/conversations/{conversation_id}/task-suggestions',
+        '/v1/local/conversations/{conversation_id}/regenerate-summary',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

@@ -374,7 +374,9 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 return self.send_json({'error': 'Настройки недоступны.'}, 503)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                limit = 1024 * 1024 if self.path in ('/api/processing/summary-settings', '/api/settings/summary-settings') else 64 * 1024
+                large_requests = ('/api/processing/summary-settings', '/api/settings/summary-settings',
+                                  '/api/processing/regenerate-summary')
+                limit = 1024 * 1024 if self.path in large_requests else 64 * 1024
                 if (not 0 < length <= limit or self.headers.get('Transfer-Encoding')
                         or self.headers.get_content_type() != 'application/json'):
                     raise SettingsError('Некорректный запрос настроек.')
@@ -486,6 +488,14 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if not self.processing_allowed():
                     return self.reject('Настройки доступны только через сопряжённый сервер.')
                 self.send_json(processing.read())
+            elif path == '/api/processing/regenerate-summary' and processing is not None:
+                if not self.allowed(request='processing') or not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.summary_regeneration_options())
+                except (SettingsError, ValueError, KeyError):
+                    self.send_json({'error': 'Summary settings are unavailable.'}, 503)
             elif path in {
                 '/api/processing/recording-chat', '/api/processing/archive-chat', '/api/processing/task-suggestions',
             } and processing is not None:

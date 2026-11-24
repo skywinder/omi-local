@@ -347,17 +347,26 @@ class Registry:
             return self._summary_settings(state)
 
     @staticmethod
-    def _summary_settings(state):
+    def _summary_profiles(state):
         active = state['effective'].get('summary')
-        profiles = ([active] if active else []) + [
+        return ([active] if active else []) + [
             profile for profile in state['profiles']
             if profile['stage'] == 'summary' and (not active or profile['id'] != active['id'])
         ]
+
+    def summary_choices(self):
+        state = self._load()
+        active = state['effective'].get('summary')
+        return summary_templates(state), self._summary_profiles(state), active['id'] if active else None
+
+    @staticmethod
+    def _summary_settings(state):
+        active = state['effective'].get('summary')
         return {
             **summary_templates(state), 'revision': state['revision'],
             'profiles': [
                 {'id': profile['id'], 'name': profile['name'], 'model': profile['settings']['model']}
-                for profile in profiles
+                for profile in Registry._summary_profiles(state)
             ],
             'default_profile_id': active['id'] if active else None,
         }

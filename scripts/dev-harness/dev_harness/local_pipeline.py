@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+from time import monotonic
 
 import httpx
 
@@ -23,6 +24,10 @@ SUMMARY_REVISION = 'recording-summary-v1'
 
 class PipelineError(ValueError):
     """A fixed diagnostic; provider bodies and content never become errors."""
+
+
+class SummaryTooLong(PipelineError):
+    """The provider can retry with a more concise answer."""
 
 
 def _read(path):
@@ -123,12 +128,21 @@ def text_chunks(text, limit=SUMMARY_CHARS):
 def validate_summary(value):
     if (not isinstance(value, dict) or not isinstance(value.get('title'), str)
             or not isinstance(value.get('overview'), str) or not value['title'].strip()
-            or not value['overview'].strip() or len(value['title']) > 300 or len(value['overview']) > 4000):
+            or not value['overview'].strip()):
         raise PipelineError('Summary provider returned an invalid result')
-    return {'title': value['title'].strip(), 'overview': value['overview'].strip()}
+    title, overview = value['title'].strip(), value['overview'].strip()
+    if len(title) > 300 or len(overview) > 4000:
+        raise SummaryTooLong('Summary exceeded the publication limit')
+    return {'title': title, 'overview': overview}
 
 
 def summarize(snapshot, key, raw, folder, write):
+    text = '\n'.join(f"[{segment['start']:.1f}] {segment.get('speaker') or 'UNKNOWN'}: {segment['text']}"
+                     for segment in raw['segments'])
+    return summarize_text(snapshot, key, text, folder, write)
+
+
+def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
     settings = snapshot['settings']
     endpoint = transport.validate_url(settings['base_url']) + '/chat/completions'
     model = settings['model']
@@ -136,8 +150,6 @@ def summarize(snapshot, key, raw, folder, write):
     template = snapshot.get('template')
     if not isinstance(model, str) or not model or not re.fullmatch(r'[a-z]{2,3}|auto', language):
         raise PipelineError('Invalid summary settings')
-    text = '\n'.join(f"[{segment['start']:.1f}] {segment.get('speaker') or 'UNKNOWN'}: {segment['text']}"
-                     for segment in raw['segments'])
     cache = folder / 'summaries'
     cache.mkdir(mode=0o700, exist_ok=True)
 
@@ -159,18 +171,23 @@ def summarize(snapshot, key, raw, folder, write):
             + ('Combine the partial summaries into one coherent recording summary. ' if reduction else '')
             + ('Use the main language of the content.' if language == 'auto' else f'Write in language code {language}.')
         )
-        try:
-            with transport.client(key=key, timeout=180) as client:
-                body = {'model': model, 'messages': [{'role': 'system', 'content': system},
-                                                    {'role': 'user', 'content': part}],
+        def complete(instructions):
+            budget = 180 if deadline is None else min(180, deadline - monotonic())
+            if budget <= 0:
+                raise PipelineError('Summary processing deadline elapsed')
+            with transport.client(key=key, timeout=budget) as client:
+                body = {'model': model, 'messages': [{'role': 'system', 'content': instructions},
+                                                     {'role': 'user', 'content': part}],
                         'temperature': 0, 'max_tokens': 1600}
                 if settings.get('reasoning') == 'off':
                     # llama.cpp/vLLM chat-template switch for Qwen3-style models, whose
                     # thinking otherwise consumes the whole answer budget. Opt-in only:
                     # strict OpenAI-compatible servers reject unknown fields.
                     body['chat_template_kwargs'] = {'enable_thinking': False}
-                body = transport.post_json(client, endpoint, json=body, deadline_seconds=180)
+                body = transport.post_json(client, endpoint, json=body, deadline_seconds=budget)
             choice = body['choices'][0]
+            if choice.get('finish_reason') == 'length':
+                raise SummaryTooLong('Summary exceeded the provider response budget')
             if choice.get('finish_reason') not in (None, 'stop'):
                 raise ValueError()
             content = choice['message']['content']
@@ -178,7 +195,15 @@ def summarize(snapshot, key, raw, folder, write):
                 raise ValueError()
             # Some compatible servers wrap otherwise valid JSON in a code fence.
             content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content.strip())
-            result = validate_summary(json.loads(content))
+            return validate_summary(json.loads(content))
+
+        try:
+            try:
+                result = complete(system)
+            except SummaryTooLong:
+                result = complete(
+                    system + '\nRewrite concisely. Use at most 100 characters for the title and 1800 for the overview.',
+                )
         except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, IndexError):
             raise PipelineError('Summary request failed; transcription retained') from None
         write(path, result)

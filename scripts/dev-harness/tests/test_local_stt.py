@@ -747,6 +747,23 @@ def test_summary_reasoning_off_disables_thinking_only_when_selected(tmp_path, mo
     assert bodies[-1]['model'] == 'synthetic' and bodies[-1]['max_tokens'] == 1600
 
 
+def test_summary_retries_one_overlong_reply_concisely(tmp_path, monkeypatch):
+    from dev_harness import local_pipeline
+
+    prompts = []
+
+    def respond(_client, _url, **kwargs):
+        prompts.append(kwargs['json']['messages'][0]['content'])
+        overview = 'x' * 4001 if len(prompts) == 1 else 'Shortened recap'
+        return {'choices': [{'message': {'content': json.dumps({'title': 'Synthetic', 'overview': overview})}}]}
+
+    monkeypatch.setattr(local_pipeline.transport, 'post_json', respond)
+    snapshot = {'settings': {'base_url': 'https://summary.example/v1', 'model': 'fixture'}}
+    output = local_pipeline.summarize_text(snapshot, '', 'Synthetic transcript', tmp_path, local_stt.atomic_json)
+    assert output['overview'] == 'Shortened recap'
+    assert len(prompts) == 2 and 'Rewrite concisely' in prompts[-1]
+
+
 @pytest.mark.parametrize('response', [
     {'segments': [{'start': -1, 'end': .5, 'speaker': 'one'}]},
     {'segments': [{'start': 0, 'end': 3, 'speaker': 'one'}]},

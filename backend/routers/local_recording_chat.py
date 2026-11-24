@@ -73,11 +73,16 @@ class ChatPage(BaseModel):
 
 
 def _library_request(body=None, *, archive=False, suggestions=False):
-    origin = library_origin()
     operation = 'task-suggestions' if suggestions else ('archive-chat' if archive else 'recording-chat')
+    return library_request(
+        operation, body, timeout=72, size_limit=(64 if suggestions else 24) * 1024, error_prefix='recording_chat',
+    )
+
+
+def library_request(operation, body, *, timeout, size_limit, error_prefix='local_processing'):
+    origin = library_origin()
     path = '/api/processing/' + operation
-    timeout = 5 if body is None else 72
-    size_limit = (64 if suggestions else 24) * 1024
+    timeout = 5 if body is None else timeout
     try:
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=timeout) as client:
             with client.stream(
@@ -86,7 +91,7 @@ def _library_request(body=None, *, archive=False, suggestions=False):
                 **({'json': body} if body is not None else {}),
             ) as response:
                 if response.status_code == 409:
-                    raise HTTPException(409, 'recording_chat_provider_changed')
+                    raise HTTPException(409, error_prefix + '_provider_changed')
                 if response.status_code != 200:
                     raise ValueError()
                 data = bytearray()
@@ -96,7 +101,7 @@ def _library_request(body=None, *, archive=False, suggestions=False):
                         raise ValueError()
                 return data
     except (httpx.HTTPError, OfflineEgressBlocked, ValueError, OSError):
-        raise HTTPException(503, 'recording_chat_provider_unavailable') from None
+        raise HTTPException(503, error_prefix + '_provider_unavailable') from None
 
 
 def _recording(uid, conversation_id):

@@ -7,6 +7,7 @@ import httpx
 from .local_providers import Registry, SettingsError
 from .local_provider_probe import probe
 from .local_recording_chat import answer_recording, chat_provider, suggest_tasks
+from . import local_summary_regeneration
 
 
 class Settings:
@@ -103,10 +104,15 @@ class Processing(Settings):
     def recording_chat_provider(self):
         return chat_provider(self.registry)
 
+    def summary_regeneration_options(self):
+        return local_summary_regeneration.options(self.registry)
+
     def dispatch(self, method, path, body):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         operation = path.removeprefix('/api/processing/')
+        if method == 'POST' and operation == 'regenerate-summary':
+            return local_summary_regeneration.regenerate(self.registry, body)
         if method == 'POST' and operation == 'summary-settings':
             return self.registry.summary_settings(body)
         if method == 'POST' and operation in {'recording-chat', 'archive-chat'}:

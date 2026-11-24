@@ -80,6 +80,9 @@ compares its source text digest and uses the original recording revision in the
 create transaction. The paired task path has no hosted task side effects.
 Paired summary template settings use the harness's shared provider revision.
 The backend only forwards the catalog to the configured loopback library.
+Paired summary regeneration sends the canonical transcript to that same
+loopback service. Publication compares transcript and summary revisions in
+one transaction, preserving user titles and unrelated recording data.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;
