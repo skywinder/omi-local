@@ -308,3 +308,8 @@ Key rules:
 - `AGENT_FLUTTER_LOG` must point to flutter run stdout (not logcat).
 - Prefer `find type X` / `find key "name"` over hardcoded `@ref`. Add `Key('descriptive_name')` to new interactive widgets.
 - Full command reference: `agent-flutter schema`.
+
+The standalone app and Omi Local Next use the same recording journal in
+`lib/services/capture/local_audio_journal.dart`. Keep pairing, transport authorization
+and native capture registration in each app's composition. The journal owns part
+rotation, restart recovery, and exact server receipt validation.
