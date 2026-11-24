@@ -296,6 +296,13 @@ delivery to the original server after recording on a second one. All 34 native
 identity and installer handoff tests passed with synthetic presets. Receipt
 delivery and preset ingestion on a physical iPhone remain open.
 
+The signed iPhone `Profile-dev` package for `1921fd6` includes saved servers
+and the native one-use preset handoff. Its executable SHA-256 begins with
+`804ae52121419695`. The independent bundle identity, signature and entitlement
+checks passed. The preceding `09f15b2` package and attestation remain available
+for local rollback. Xcode found no connected iPhone after the build, so physical
+installation and preset import remain open.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
