@@ -658,6 +658,16 @@ unavailable. Recording acceptance is pending. On the device, verify capture
 through Stop and the saved archive in version 2, then repeat with silence
 splitting on a paired server with grouping enabled.
 
+The startup-default package `1cd5995` passed signature, entitlement and
+provisioning verification. Its executable SHA-256 begins with
+`d67d1cdeaae63d3f`. It was installed over USB with the Bastion preset.
+The physical iPhone opened Bastion automatically and showed
+`Connected · API Key Auth`. Next discovered and connected the CV1. After a
+short test and a Bluetooth reconnect, Bastion reported a durable receipt and
+a 2.06-second WAV from the wearable. The new card and playback were not
+confirmed on the iPhone. The physical button and the phone microphone
+remain unverified.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
