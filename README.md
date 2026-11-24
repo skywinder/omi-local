@@ -15,6 +15,8 @@ explicitly selected servers.
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
+The separately installable [Omi Local Next development client](clients/next/README.md) tracks the upstream Flutter app and uses this paired server.
+
 ## Features
 
 - **CV1 recording controls:** start and finish sessions with the device button;
