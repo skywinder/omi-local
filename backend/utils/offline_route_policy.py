@@ -21,6 +21,8 @@ _ALLOWED_HTTP = frozenset(
         ("GET", "/v1/local/status"),
         ("GET", "/v1/local/preview"),
         ("GET", "/v1/local/processing"),
+        ("GET", "/v1/local/processing/live-tuning"),
+        ("POST", "/v1/local/processing/live-tuning"),
         ("POST", "/v1/local/processing/save"),
         ("POST", "/v1/local/processing/probe"),
         ("POST", "/v1/local/processing/models"),

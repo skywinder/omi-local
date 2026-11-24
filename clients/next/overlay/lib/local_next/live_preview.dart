@@ -138,6 +138,8 @@ class NextLivePreview extends ChangeNotifier {
   String get otherLanguage => _other;
   String? _translationStatus;
   String? get translationStatus => _translationStatus;
+  ({String state, int? revision, int? speakers})? _speakerStatus;
+  ({String state, int? revision, int? speakers})? get speakerStatus => _speakerStatus;
   int _controlRevision = 0;
   bool _disposed = false;
   String? _recording, _shownRecording;
@@ -235,6 +237,7 @@ class NextLivePreview extends ChangeNotifier {
 
   void _detach() {
     _epoch++;
+    _speakerStatus = null;
     _retry?.cancel();
     _admission?.cancel();
     final priorId = _previewId;
@@ -329,6 +332,21 @@ class NextLivePreview extends ChangeNotifier {
     if (event is! Map) return;
     if (event['type'] == 'service_status') {
       final status = event['status'];
+      if (event['provider'] == 'local_live_tuning') {
+        final revision = event['revision'], speakers = event['max_speakers'];
+        if (status == 'unsupported' && _speakerStatus == null) {
+          _speakerStatus = (state: 'unsupported', revision: null, speakers: null);
+          notifyListeners();
+        } else if ((status == 'applied' || status == 'failed') &&
+            revision is int &&
+            revision >= (_speakerStatus?.revision ?? 0) &&
+            speakers is int &&
+            speakers >= 1 &&
+            speakers <= 4) {
+          _speakerStatus = (state: status as String, revision: revision, speakers: speakers);
+          notifyListeners();
+        }
+      }
       if (event['provider'] == 'local_live_translation' &&
           _target.isNotEmpty &&
           (event['revision'] == null || event['revision'] == _controlRevision) &&

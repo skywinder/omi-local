@@ -12,6 +12,49 @@ import 'package:omi/services/capture/local_audio_journal.dart';
 void main() {
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
+  test('live tuning uses the paired route and treats a mismatched publication as unconfirmed', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    var response = 0;
+    final writes = <Object?>[];
+    server.listen((request) async {
+      expect(request.uri.path, '/v1/local/processing/live-tuning');
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      if (request.method == 'POST') {
+        expect(request.contentLength, greaterThan(0));
+        writes.add(jsonDecode(await utf8.decoder.bind(request).join()));
+      }
+      if (++response == 1) {
+        request.response.statusCode = 404;
+      } else {
+        final (revision, speakers) = switch (response) {
+          2 || 3 => (5, 2),
+          4 => (6, 3),
+          _ => (7, 4),
+        };
+        request.response.write(
+          jsonEncode({
+            'available': true,
+            'revision': revision,
+            'settings': {'max_speakers': speakers},
+          }),
+        );
+      }
+      await request.response.close();
+    });
+    expect(await library.readLiveTuning(), isNull);
+    expect(await library.readLiveTuning(), (revision: 5, speakers: 2));
+    await expectLater(library.setLiveSpeakerLimit(5, 3), throwsA(NextProcessingFailure.indeterminate));
+    expect(await library.readLiveTuning(), (revision: 6, speakers: 3));
+    expect(await library.setLiveSpeakerLimit(6, 4), (revision: 7, speakers: 4));
+    expect(writes, [
+      {'revision': 5, 'max_speakers': 3},
+      {'revision': 6, 'max_speakers': 4},
+    ]);
+  });
+
   final row = {
     'id': id,
     'created_at': '2025-01-01T12:00:00Z',

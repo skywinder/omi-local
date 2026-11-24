@@ -223,10 +223,10 @@ class LocalLivePreview:
                            **({'other_language': self.translation_other_language}
                               if self.translation_other_language else {})})
 
-    async def _send_status(self, status, reason=None, *, provider='local_live_preview'):
+    async def _send_status(self, status, reason=None, *, provider='local_live_preview', extra=None):
         if not self.deliver:
             return
-        payload = {'type': 'service_status', 'status': status, 'provider': provider}
+        payload = {'type': 'service_status', 'status': status, 'provider': provider, **(extra or {})}
         if status == 'stt_failed':
             payload.update(outcome='unavailable', reason=reason, retryable=False)
         try:
@@ -279,6 +279,16 @@ class LocalLivePreview:
                 # Forward only fixed contract values; the relay never sends content here.
                 if message.get('status') in self.TRANSLATION_STATUSES:
                     await self._send_status(message['status'], provider='local_live_translation')
+                continue
+            if message.get('type') == 'live_tuning_status':
+                status = message.get('status')
+                revision, speakers = message.get('revision'), message.get('max_speakers')
+                if status == 'unsupported':
+                    await self._send_status(status, provider='local_live_tuning')
+                elif (status in {'applied', 'failed'} and type(revision) is int and revision >= 0
+                      and type(speakers) is int and 1 <= speakers <= 4):
+                    await self._send_status(status, provider='local_live_tuning',
+                                            extra={'revision': revision, 'max_speakers': speakers})
                 continue
             status = (message.get('status') if message.get('type') == 'diarization_status'
                       else message.get('diarization_status'))

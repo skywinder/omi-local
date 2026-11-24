@@ -167,6 +167,13 @@ live draft from the newly sent audio. The server's existing Live STT and
 translation settings select the providers. See [live preview](../../docs/LIVE_PREVIEW.md)
 and [provider setup](../../docs/PROVIDERS.md).
 
+Use the tuning button on the Live screen to set a limit of one to four voices
+when the paired server and Live provider support it. A save uses the current
+server revision. Refresh before retrying a conflict or an uncertain write.
+The saved limit applies when the server opens a new recognition stream. The
+current stream shows its separately acknowledged limit. Silence-based grouping
+requires the Local version-three recording group protocol.
+
 ## Processing profiles
 
 Open the processing controls from the paired library. Next shows the server's
@@ -303,6 +310,12 @@ checks passed. The preceding `09f15b2` package and attestation remain available
 for local rollback. Xcode found no connected iPhone after the build, so physical
 installation and preset import remain open.
 
+Live speaker tuning passed all 48 Next tests and the analyzer. The Local offline
+suite, 478 legacy transport tests and the analyzer ratchet passed. The focused
+backend rerun passed 170 tests. Loopback tests covered independent saved and
+current-stream limits, continued audio delivery, and refresh after an uncertain
+write. Provider acknowledgment was exercised with a simulated Live server.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -310,7 +323,7 @@ installation and preset import remain open.
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages network-adapter drafts and displays the effective summary/translation configuration. Silence tuning and the live speaker limit remain separate work. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

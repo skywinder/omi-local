@@ -98,6 +98,9 @@ async def forward(request: Request, suffix: str = '') -> JSONResponse:
         if activating:
             return error('Результат переключения не подтверждён. Обновите настройки и проверьте активный профиль.',
                          503, outcome='indeterminate')
+        if request.method == 'POST' and suffix == '/live-tuning':
+            return error('Результат сохранения не подтверждён. Обновите настройки и проверьте значение.',
+                         503, outcome='indeterminate')
         return error('Сервер настроек недоступен. Проверьте подключение и обновите настройки.', 503)
 
 
@@ -106,6 +109,12 @@ async def read_processing(request: Request) -> JSONResponse:
     return await forward(request)
 
 
+@router.get('/v1/local/processing/live-tuning', dependencies=[Depends(require_processing)])
+async def read_live_tuning(request: Request) -> JSONResponse:
+    return await forward(request, '/live-tuning')
+
+
+@router.post('/v1/local/processing/live-tuning', dependencies=[Depends(require_processing)])
 @router.post('/v1/local/processing/save', dependencies=[Depends(require_processing)])
 @router.post('/v1/local/processing/probe', dependencies=[Depends(require_processing)])
 @router.post('/v1/local/processing/models', dependencies=[Depends(require_processing)])

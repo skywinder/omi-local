@@ -458,6 +458,20 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json(runtime.snapshot())
             elif path == '/api/settings' and settings is not None:
                 self.send_json(settings.read())
+            elif path == '/api/settings/live-tuning' and settings is not None:
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(settings.live_tuning())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
+            elif path == '/api/processing/live-tuning' and processing is not None:
+                if not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.live_tuning())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
             elif path == '/api/processing' and processing is not None:
                 if not self.processing_allowed():
                     return self.reject('Настройки доступны только через сопряжённый сервер.')

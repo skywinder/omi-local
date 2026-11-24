@@ -41,6 +41,12 @@ PROCESSING_MESSAGES = {
         'serverAudioRetained': 'This phone has recordings waiting for this server. Reconnect and finish delivery before changing its credentials or removing it.',
         'serverActiveEdit': 'Choose Connect to verify changes to the active server.',
         'serverKeyHelp': 'Leave the key blank to keep the saved key for this address.',
+        'liveSpeakerLimit': 'Live speaker limit',
+        'liveSpeakerHelp': 'The number is an upper limit for detected voices. A saved change applies when the server opens a new recognition stream.',
+        'liveSpeakerSaved': 'Saved for the next recognition stream.',
+        'liveSpeakerApplied': 'Speaker limit in this stream:',
+        'liveSpeakerApplyFailed': 'The provider did not confirm the speaker limit for this stream.',
+        'liveSpeakerUnsupported': 'Live speaker tuning is unavailable on this server.',
     },
     'ru': {
         'processingPublished': 'Активный профиль выбран на сервере. Работу распознавания речи можно проверить на экране «Живая расшифровка».',
@@ -57,6 +63,12 @@ PROCESSING_MESSAGES = {
         'serverAudioRetained': 'На телефоне есть записи для этого сервера. Подключитесь к нему и дождитесь доставки, прежде чем менять ключ или адрес либо удалять сервер.',
         'serverActiveEdit': 'Нажмите «Подключиться», чтобы проверить новые настройки активного сервера.',
         'serverKeyHelp': 'Оставьте ключ пустым, чтобы сохранить прежний ключ для этого адреса.',
+        'liveSpeakerLimit': 'Лимит говорящих в Live',
+        'liveSpeakerHelp': 'Это верхний предел для распознаваемых голосов. Сохранённое значение применяется, когда сервер открывает новый поток распознавания.',
+        'liveSpeakerSaved': 'Сохранено для следующего потока распознавания.',
+        'liveSpeakerApplied': 'Лимит говорящих в текущем потоке:',
+        'liveSpeakerApplyFailed': 'Провайдер не подтвердил лимит говорящих для текущего потока.',
+        'liveSpeakerUnsupported': 'Настройка лимита говорящих недоступна на этом сервере.',
     },
 }
 

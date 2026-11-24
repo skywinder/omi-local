@@ -9,6 +9,8 @@ import 'package:omi/widgets/transcript.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'live_preview.dart';
+import 'live_tuning.dart';
+import 'paired_library.dart';
 import 'settings_labels.dart';
 
 class LocalNextLiveButton extends StatefulWidget {
@@ -20,6 +22,7 @@ class LocalNextLiveButton extends StatefulWidget {
     this.isMuted,
     required this.onStop,
     required this.serverLabel,
+    this.library,
   });
 
   final NextLivePreview preview;
@@ -28,6 +31,7 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function()? isMuted;
   final Future<void> Function() onStop;
   final String serverLabel;
+  final PairedLibrary? library;
 
   @override
   State<LocalNextLiveButton> createState() => _LocalNextLiveButtonState();
@@ -170,6 +174,15 @@ class _LivePageState extends State<_LivePage> {
           appBar: AppBar(
             title: Text(l.liveTranscript),
             actions: [
+              if (view.library case final library?)
+                IconButton(
+                  icon: const Icon(Icons.tune),
+                  tooltip: pairedSettingsLabel(context, 'liveSpeakerLimit'),
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (_) => NextLiveTuningSheet(library: library),
+                  ),
+                ),
               if (recording)
                 TextButton.icon(onPressed: _stopping ? null : _stop, icon: const Icon(Icons.stop), label: Text(l.stop)),
             ],
@@ -187,6 +200,15 @@ class _LivePageState extends State<_LivePage> {
                     onPressed: () => setState(() => _settings = !_settings),
                   ),
                 ),
+                if (preview.speakerStatus case final reporting?)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+                    child: Text(switch (reporting.state) {
+                      'applied' => '${pairedSettingsLabel(context, 'liveSpeakerApplied')} ${reporting.speakers}',
+                      'failed' => pairedSettingsLabel(context, 'liveSpeakerApplyFailed'),
+                      _ => pairedSettingsLabel(context, 'liveSpeakerUnsupported'),
+                    }),
+                  ),
                 if (preview.translationStatus == 'unconfigured' || preview.translationStatus == 'failed')
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),

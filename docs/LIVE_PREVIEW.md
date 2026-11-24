@@ -216,6 +216,21 @@ once per state, which the backend delivers to the phone as
 `service_status` with `provider: "local_live_translation"`, and it re-sends the
 latest snapshot with `translations` filled in when a batch completes.
 
+### Live speaker limit
+
+On a paired phone, `GET /v1/local/processing/live-tuning` reads the selected
+Live provider's capability and saved revision. `POST` to that route accepts
+the revision and a `max_speakers` value from 1 to 4. The server forwards both
+operations to the loopback library and relay. Saving changes the configuration
+for new recognition streams. A conflict or ambiguous response requires a new
+read before retrying.
+
+An external provider advertises the `live_tuning` capability at version 1 in
+its health response and stream configuration. At stream startup the relay sends
+the saved settings, waits for a matching acknowledgment within its deadline,
+then forwards PCM. The phone receives the outcome as `service_status` from
+`local_live_tuning`. Older providers keep the existing stream message order.
+
 Prepare a separate Mac environment after installing the backend:
 
 ```bash

@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/local_next/live_view.dart';
+import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/processing.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -60,7 +62,107 @@ class _Socket extends Fake implements WebSocket {
   });
 }
 
+class _TuningPair extends PairedLibrary {
+  _TuningPair() : super('100.64.0.1', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+
+  var revision = 4, speakers = 2;
+  final writes = <(int, int)>[];
+
+  @override
+  Future<({int revision, int speakers})?> readLiveTuning() async => (revision: revision, speakers: speakers);
+
+  @override
+  Future<({int revision, int speakers})> setLiveSpeakerLimit(int expected, int value) async {
+    writes.add((expected, value));
+    expect(expected, revision);
+    revision++;
+    speakers = value;
+    if (writes.length == 1) throw NextProcessingFailure.indeterminate;
+    return (revision: revision, speakers: speakers);
+  }
+}
+
 void main() {
+  testWidgets('saving a speaker limit requires confirmation and leaves the current stream status intact', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final socket = _Socket();
+    final library = _TuningPair();
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final recording = ValueNotifier(true);
+    addTearDown(preview.dispose);
+    addTearDown(recording.dispose);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: recording,
+            isRecording: () => recording.value,
+            serverLabel: 'fixture.local',
+            library: library,
+            onStop: () async {
+              preview.end('fixture');
+              recording.value = false;
+            },
+          ),
+        ),
+      ),
+    );
+    preview.begin('fixture', 'phone', 'pcm16');
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    socket.send({
+      'type': 'service_status',
+      'provider': 'local_live_tuning',
+      'status': 'applied',
+      'revision': 4,
+      'max_speakers': 2,
+    });
+    socket.send({
+      'type': 'service_status',
+      'provider': 'local_live_tuning',
+      'status': 'failed',
+      'revision': 3,
+      'max_speakers': 1,
+    });
+    await tester.pump();
+    expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
+    await tester.tap(find.byTooltip('Live speaker limit'));
+    await tester.pumpAndSettle();
+
+    Future<void> select(String value) async {
+      await tester.tap(find.byKey(const ValueKey('next-live-speakers')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(value).last);
+      await tester.pumpAndSettle();
+    }
+
+    final save = find.byType(FilledButton);
+    await select('3');
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(library.writes, [(4, 3)]);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    await tester.tap(find.text('Refresh'));
+    await tester.pumpAndSettle();
+    await select('4');
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(library.writes, [(4, 3), (5, 4)]);
+    expect(find.text('Saved for the next recognition stream.'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
+    await tester.tap(find.text('Stop'));
+    await tester.pumpAndSettle();
+    expect(find.text('Speaker limit in this stream: 2'), findsNothing);
+  });
+
   testWidgets('paired live transcript keeps a translation through a correction and Stop remains available', (
     tester,
   ) async {

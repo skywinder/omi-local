@@ -2,6 +2,8 @@
 from copy import deepcopy
 import re
 
+import httpx
+
 from .local_providers import Registry, SettingsError
 from .local_provider_probe import probe
 
@@ -14,10 +16,38 @@ class Settings:
     def read(self):
         return self.registry.read()
 
+    def live_tuning(self, body=None):
+        return self._live_tuning_request(body)
+
+    def live_tuning_next_session(self, body):
+        return self._live_tuning_request(body, next_session=True)
+
+    def _live_tuning_request(self, body, *, next_session=False):
+        from .local_provider_relay import port
+        try:
+            with httpx.Client(trust_env=False, follow_redirects=False, timeout=8) as client:
+                endpoint = f'http://127.0.0.1:{port(self.cfg)}/tuning'
+                if next_session:
+                    endpoint += '/next-session'
+                response = client.get(endpoint) if body is None else client.post(endpoint, json=body)
+                data = response.json()
+                if response.is_error:
+                    raise SettingsError(data.get('error', 'Настройки недоступны.'),
+                                        status=response.status_code, field=data.get('field'))
+                return data
+        except SettingsError:
+            raise
+        except (httpx.HTTPError, ValueError):
+            message = ('Результат сохранения не подтверждён. Обновите настройки и проверьте значение.'
+                       if next_session else 'Нет связи с сервисом Live. Проверьте, что он запущен.')
+            raise SettingsError(message, status=503) from None
+
     def dispatch(self, method, path, body):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         if method == 'POST':
+            if path == '/api/settings/live-tuning':
+                return self.live_tuning(body)
             if path == '/api/settings/save':
                 return self.registry.save(body)
             if path == '/api/settings/activate':
@@ -71,6 +101,8 @@ class Processing(Settings):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         operation = path.removeprefix('/api/processing/')
+        if method == 'POST' and operation == 'live-tuning':
+            return self.live_tuning_next_session(body)
         if method == 'POST' and operation in {'save', 'probe', 'models'}:
             profile = body.get('profile')
             if not self.can_edit(profile):

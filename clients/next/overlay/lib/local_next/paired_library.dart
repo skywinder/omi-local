@@ -268,6 +268,50 @@ class PairedLibrary {
 
   Future<Map<String, dynamic>> readProcessing() => _processing('');
 
+  Future<({int revision, int speakers})?> readLiveTuning() async {
+    try {
+      return _decodeLiveTuning(await _processing('/live-tuning'));
+    } on NextProcessingFailure catch (error) {
+      if (error == NextProcessingFailure.unsupported) return null;
+      rethrow;
+    }
+  }
+
+  Future<({int revision, int speakers})> setLiveSpeakerLimit(int revision, int speakers) async {
+    if (revision < 0 || speakers < 1 || speakers > 4 || !ownerChange.permitsCapture) {
+      throw NextProcessingFailure.invalid;
+    }
+    final wire = await _processing(
+      '/live-tuning',
+      body: {'revision': revision, 'max_speakers': speakers},
+      writes: true,
+    );
+    final saved = _decodeLiveTuning(wire, failure: NextProcessingFailure.indeterminate);
+    if (saved == null || saved.revision <= revision || saved.speakers != speakers) {
+      throw NextProcessingFailure.indeterminate;
+    }
+    return saved;
+  }
+
+  static ({int revision, int speakers})? _decodeLiveTuning(
+    Map<String, dynamic> data, {
+    NextProcessingFailure failure = NextProcessingFailure.unavailable,
+  }) {
+    if (data['available'] == false) return null;
+    final revision = data['revision'];
+    final settings = data['settings'];
+    final speakers = settings is Map ? settings['max_speakers'] : null;
+    if (data['available'] != true ||
+        revision is! int ||
+        revision < 0 ||
+        speakers is! int ||
+        speakers < 1 ||
+        speakers > 4) {
+      throw failure;
+    }
+    return (revision: revision, speakers: speakers);
+  }
+
   Future<Map<String, dynamic>> activateProcessing(Map<String, dynamic> body) => _processing(
     '/activate',
     body: body,

@@ -16,6 +16,7 @@ scripts/dev-harness/tests/test_local_provider_cli.py
 scripts/dev-harness/tests/test_local_provider_health.py
 scripts/dev-harness/tests/test_local_provider_http.py
 scripts/dev-harness/tests/test_local_provider_relay.py
+scripts/dev-harness/tests/test_local_live_tuning.py
 scripts/dev-harness/tests/test_local_providers.py
 scripts/dev-harness/tests/test_local_setup.py
 scripts/dev-harness/tests/test_local_stt.py

@@ -155,6 +155,23 @@ def test_processing_phone_is_paired_and_only_forwards_to_fixed_library(processin
     assert response.status_code == 200 and str(calls[-1].url).endswith('/api/processing/profiles/synthetic-id')
 
 
+def test_live_tuning_phone_requires_pairing_and_keeps_uncertain_writes_indeterminate(processing_client):
+    client, calls, responses = processing_client
+    path = '/v1/local/processing/live-tuning'
+    assert client.get(path).status_code == 401
+    assert client.post(path, json={'revision': 0, 'max_speakers': 3}).status_code == 401
+    headers = {'Authorization': 'Bearer ' + KEY}
+    assert client.get(path, headers=headers).status_code == 200
+    assert str(calls[-1].url) == 'http://127.0.0.1:20001/api/processing/live-tuning'
+    body = {'revision': 0, 'max_speakers': 3}
+    assert client.post(path, headers=headers, json=body).status_code == 200
+    assert json.loads(calls[-1].content) == body
+    responses.append(httpx.ReadTimeout('synthetic-private-server-details'))
+    result = client.post(path, headers=headers, json=body)
+    assert result.status_code == 503 and result.json()['outcome'] == 'indeterminate'
+    assert 'synthetic-private' not in result.text
+
+
 def test_processing_bounds_bodies_and_preserves_safe_conflicts(processing_client):
     client, calls, responses = processing_client
     headers = {'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json'}

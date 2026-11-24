@@ -115,6 +115,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       inputs: inputs,
       serverLabel: widget.library.origin.authority,
       processing: _processing,
+      library: widget.library,
     );
   }
 }
@@ -221,10 +222,17 @@ class NextCaptureInputs extends ChangeNotifier {
 }
 
 class LocalNextCaptureControls extends StatelessWidget {
-  const LocalNextCaptureControls({required this.inputs, this.serverLabel = '', this.processing, super.key});
+  const LocalNextCaptureControls({
+    required this.inputs,
+    this.serverLabel = '',
+    this.processing,
+    this.library,
+    super.key,
+  });
   final NextCaptureInputs inputs;
   final String serverLabel;
   final NextProcessingClient? processing;
+  final PairedLibrary? library;
 
   Future<void> _devices(BuildContext context) async {
     final connection = inputs.connection;
@@ -333,6 +341,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                   isMuted: () => cv1.intent == Cv1CaptureIntent.muted,
                   onStop: inputs.stopRecording,
                   serverLabel: serverLabel,
+                  library: library,
                 ),
               if (processing case final client?)
                 IconButton(

@@ -270,6 +270,31 @@ async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypa
 
 
 @pytest.mark.anyio
+async def test_live_tuning_confirmation_is_forwarded_without_provider_payload(monkeypatch):
+    event = {'type': 'live_tuning_status', 'status': 'applied', 'revision': 2,
+             'max_speakers': 3, 'details': 'synthetic-private'}
+    socket = Socket(response=event)
+    monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
+    statuses = []
+    reported = asyncio.Event()
+
+    async def send(message):
+        if message.get('provider') == 'local_live_tuning':
+            statuses.append(message)
+            reported.set()
+
+    preview = LocalLivePreview('ws://127.0.0.1:18090/asr', send)
+    preview.feed(b'\0\0' * 16000)
+    socket.incoming.put_nowait(json.dumps({**event, 'max_speakers': True}))
+    try:
+        await asyncio.wait_for(reported.wait(), 1)
+    finally:
+        await preview.finish()
+    assert statuses == [{'type': 'service_status', 'provider': 'local_live_tuning', 'status': 'applied',
+                         'revision': 2, 'max_speakers': 3}]
+
+
+@pytest.mark.anyio
 async def test_diarized_provider_handshake_reaches_phone_as_complete_snapshot(monkeypatch):
     socket = Socket(config={'diarization': True, 'stt_provider': 'synthetic-live'}, response={
         'lines': [{'text': 'Один.', 'speaker': 0, 'start': 0, 'end': .4},

@@ -114,13 +114,26 @@ def control_frame(raw):
 
 
 async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False, connector=connect,
-                        translation=None, translation_key=''):
+                        translation=None, translation_key='', controls=None):
     """Forward authoritative snapshots (plus relay-side translations) and retain upstream until explicit EOF."""
     endpoint, authenticated = upstream(snapshot, cfg, raw=raw_upstream)
     sent_eof = asyncio.Event()
     tasks = []
+    tuning = None
     disconnected = False
     eof_ack = False
+    latest = None
+
+    def preview(message, *, final=False):
+        if snapshot['settings'].get('preview_mode', 'draft') != 'stable' or final:
+            return message
+        if not isinstance(message.get('lines'), list):
+            return message
+        return {**message,
+                'lines': [line for line in message['lines']
+                          if not isinstance(line, dict) or (not line.get('is_draft')
+                              and line.get('start') is not None and line.get('end') is not None)],
+                'buffer_transcription': '', 'buffer_diarization': ''}
 
     async def send(raw):
         nonlocal disconnected
@@ -130,15 +143,24 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
             except Exception:
                 disconnected = True
 
+    async def send_tuning_status(status):
+        try:
+            await asyncio.wait_for(send(json.dumps(status)), 1)
+        except TimeoutError:
+            pass
+
     translator = LiveTranslator(translation, translation_key, send=send)
     try:
         async with connector(endpoint, key=key if authenticated else '') as provider:
             config = validate_config(await asyncio.wait_for(provider.recv(), 5))
+            tuning = controls.attach(snapshot, config) if controls else None
             await send(json.dumps(config))
 
             async def feed():
                 nonlocal disconnected
                 try:
+                    if tuning:
+                        await tuning.ready.wait()
                     while True:
                         event = await asyncio.wait_for(downstream.receive(), 60)
                         if event['type'] == 'websocket.disconnect':
@@ -158,14 +180,19 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     await provider.send(b'')
 
             async def receive():
-                nonlocal eof_ack
+                nonlocal eof_ack, latest
                 async for message in provider:
                     decoded = json.loads(message)
                     if not isinstance(decoded, dict):
                         raise RelayError('Invalid live provider message')
+                    if tuning and tuning.acknowledge(decoded):
+                        continue
                     if decoded.get('type') == 'ready_to_stop':
                         if not sent_eof.is_set():
                             raise RelayError('Live provider ended before input completed')
+                        # EOF drains the last hypothesis even in stable display mode.
+                        if latest is not None and snapshot['settings'].get('preview_mode') == 'stable':
+                            await send(json.dumps(translator.annotate(preview(latest, final=True))))
                         eof_ack = True
                         await send(message)
                         return
@@ -176,12 +203,16 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     # committed lines gain relay-side translations.
                     # Remember text while translation is off so enabling it can
                     # translate the visible snapshot without waiting for speech.
-                    await send(json.dumps(translator.annotate(decoded)))
+                    if isinstance(decoded.get('lines'), list):
+                        latest = decoded
+                    await send(json.dumps(translator.annotate(preview(decoded))))
                 raise RelayError('Live provider closed without end acknowledgement')
 
             feeder = asyncio.create_task(feed(), name='provider-relay-feed')
             receiver = asyncio.create_task(receive(), name='provider-relay-receive')
             tasks = [feeder, receiver]
+            if tuning:
+                tasks.append(asyncio.create_task(tuning.run(provider, snapshot, send_tuning_status), name='live-tuning'))
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 task.result()
@@ -189,6 +220,8 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
             if not eof_ack:
                 raise RelayError('Live provider final drain failed')
     finally:
+        if tuning:
+            controls.detach(tuning)
         await translator.close()
         for task in tasks:
             task.cancel()
@@ -230,13 +263,38 @@ async def diarization_health(snapshot, cfg, *, key=''):
 
 
 def create_app(cfg, *, registry=None, connector=connect, health_probe=diarization_health):
-    from fastapi import FastAPI, WebSocket
+    from fastapi import FastAPI, Request, WebSocket
     from fastapi.responses import JSONResponse
+    from .local_live_tuning import Controls
+    from .local_providers import SettingsError
     if registry is None:
         from .local_providers import Registry
         registry = Registry(cfg)
     app = FastAPI()
     active = 0
+    controls = Controls(cfg, registry)
+    app.state.live_controls = controls
+
+    @app.api_route('/tuning', methods=['GET', 'POST'])
+    @app.post('/tuning/next-session')
+    async def tuning_control(request: Request):
+        if (request.client is None or request.client.host not in {'127.0.0.1', '::1'}
+                or 'origin' in request.headers or any(name == 'forwarded' or name.startswith('x-forwarded-')
+                                                      for name in request.headers)):
+            return JSONResponse({'error': 'Loopback only'}, status_code=403)
+        try:
+            if request.method == 'GET':
+                return await controls.read()
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise SettingsError('Ожидается объект настроек.')
+            if request.url.path == '/tuning/next-session':
+                return await controls.update_next_session(body)
+            return await controls.update(body)
+        except SettingsError as error:
+            return JSONResponse({'error': str(error), 'field': error.field}, status_code=error.status)
+        except ValueError:
+            return JSONResponse({'error': 'Некорректные настройки.'}, status_code=400)
 
     @app.get('/health')
     async def health():
@@ -273,7 +331,7 @@ def create_app(cfg, *, registry=None, connector=connect, health_probe=diarizatio
                     translation = copy.deepcopy(await asyncio.to_thread(registry.snapshot, 'translation'))
                     translation_key = await asyncio.to_thread(registry.key, translation) if translation else ''
                     await relay_session(socket, snapshot, cfg, key=key, raw_upstream=raw, connector=connector,
-                                        translation=translation, translation_key=translation_key)
+                                        translation=translation, translation_key=translation_key, controls=controls)
                 finally:
                     active -= 1
         except Exception:
