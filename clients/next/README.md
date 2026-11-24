@@ -135,6 +135,18 @@ The launcher reads the file selected by `OMI_LOCAL_SERVER_PRESETS_FILE`, or
 no preset file. The launch handoff imports entries once into Keychain and keeps
 manual edits and previous deletions. Select a saved entry to connect.
 
+## Server status
+
+Open **Server status** from the archive to see confirmed paired access, audio
+received by the server, Live transcription and Live diarization. The same
+screen shows final transcription, diarization and summary readiness when the
+server reports fresh stage data. The Local and Next clients share the wire
+model for `GET /v1/local/status`.
+
+Next refreshes diagnostics while the screen is visible in the foreground.
+Older servers without the endpoint show an unavailable-diagnostics state.
+Polling ends when the screen closes and resumes when foreground access returns.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the
@@ -323,10 +335,15 @@ for local rollback. The connected iPhone initially needed an unlock. After
 unlock the host still saw the iPhone on USB, but CoreDevice did not have a
 connected tunnel for installation. The signed package is ready for a retry.
 
+The server status screen passed all 51 Next tests and the analyzer. The Local
+offline suite, all 478 legacy transport tests and the analyzer ratchet passed.
+Tests covered paired authorization, older servers, stale readiness and polling
+when the app or screen is hidden.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Named servers, verified switching and opt-in launch presets. Upstream API for paginated archive and detail, with original day headers and state tiles over Local status. Remaining Local parity includes server health and transcription readiness. |
+| Pairing and library | Named servers, verified switching and opt-in launch presets. Next reads authenticated server diagnostics and processing readiness. The archive and detail use the upstream API, with original day headers and state tiles. Physical pairing, presets and status verification remain open. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |

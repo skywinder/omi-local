@@ -11,6 +11,7 @@ import 'processing_page.dart';
 import 'recording_page.dart';
 import 'server_catalog.dart';
 import 'server_session.dart';
+import 'server_status_page.dart';
 import 'servers_page.dart';
 import 'settings_labels.dart';
 
@@ -145,6 +146,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   Widget build(BuildContext context) {
     final l = context.l10n;
     final library = widget.library;
+    final serverName = widget.serverName ?? library.origin.authority;
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -156,6 +158,15 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: pairedSettingsLabel(context, 'serverStatus'),
+            icon: const Icon(Icons.monitor_heart_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => NextServerStatusPage(library: library, serverName: serverName),
+              ),
+            ),
+          ),
           if (!library.audioDelivery)
             IconButton(
               tooltip: l.processing,

@@ -21,6 +21,7 @@ KEYS = (
     'providerMisconfigured',
     'providerUnavailable',
     'localMacServers',
+    'transcriptionFailed',
 )
 
 # The paired selector reports a registry result even when the phone cannot
@@ -47,6 +48,13 @@ PROCESSING_MESSAGES = {
         'liveSpeakerApplied': 'Speaker limit in this stream:',
         'liveSpeakerApplyFailed': 'The provider did not confirm the speaker limit for this stream.',
         'liveSpeakerUnsupported': 'Live speaker tuning is unavailable on this server.',
+        'serverStatus': 'Server status',
+        'serverStatusUnsupported': 'This server does not provide diagnostics.',
+        'serverStatusUnavailable': 'Could not read server status.',
+        'serverStatusAudio': 'Audio received by server',
+        'serverNoAudioStream': 'No active audio stream',
+        'serverLiveDiarization': 'Live diarization',
+        'serverStageStale': 'Waiting for fresh processing status.',
     },
     'ru': {
         'processingPublished': 'Активный профиль выбран на сервере. Работу распознавания речи можно проверить на экране «Живая расшифровка».',
@@ -69,6 +77,13 @@ PROCESSING_MESSAGES = {
         'liveSpeakerApplied': 'Лимит говорящих в текущем потоке:',
         'liveSpeakerApplyFailed': 'Провайдер не подтвердил лимит говорящих для текущего потока.',
         'liveSpeakerUnsupported': 'Настройка лимита говорящих недоступна на этом сервере.',
+        'serverStatus': 'Статус сервера',
+        'serverStatusUnsupported': 'Сервер не предоставляет диагностику.',
+        'serverStatusUnavailable': 'Не удалось получить статус сервера.',
+        'serverStatusAudio': 'Аудио на сервере',
+        'serverNoAudioStream': 'Нет активного аудиопотока',
+        'serverLiveDiarization': 'Диаризация в Live',
+        'serverStageStale': 'Ожидаем актуальный статус обработки.',
     },
 }
 

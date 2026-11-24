@@ -12,6 +12,45 @@ import 'package:omi/services/capture/local_audio_journal.dart';
 void main() {
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
+  test('runtime diagnostics use the paired route and distinguish older servers from key rejection', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    var calls = 0, revoked = false;
+    library.onKeyRejected = () => revoked = true;
+    server.listen((request) async {
+      expect(request.method, 'GET');
+      expect(request.uri.path, '/v1/local/status');
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      switch (++calls) {
+        case 1:
+          request.response.statusCode = HttpStatus.notFound;
+        case 2:
+          request.response.write(
+            jsonEncode({
+              'backend': 'ready',
+              'capture': {'state': 'received', 'audio_seconds': 12, 'frames_received': 3},
+              'live_transcript': {'state': 'streaming', 'updates': 2},
+            }),
+          );
+        case 3:
+          request.response.statusCode = HttpStatus.forbidden;
+      }
+      await request.response.close();
+    });
+    expect(await library.readRuntimeStatus(), isNull);
+    expect(revoked, isFalse);
+    final status = await library.readRuntimeStatus();
+    expect(status?.audioSeconds, 12);
+    expect(status?.transcriptUpdates, 2);
+    expect(status?.diarizationState.name, 'unknown');
+    await expectLater(library.readRuntimeStatus(), throwsA(LibraryFailure.key));
+    expect(revoked, isTrue);
+    await expectLater(library.readRuntimeStatus(), throwsA(LibraryFailure.key));
+    expect(calls, 3);
+  });
+
   test('live tuning uses the paired route and treats a mismatched publication as unconfirmed', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

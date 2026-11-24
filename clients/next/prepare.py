@@ -58,8 +58,12 @@ def main():
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
     shutil.copytree(HERE / 'overlay', app, dirs_exist_ok=True)
     prepare_live_labels(ROOT, app)
-    for name in ('local_audio_journal.dart', 'local_opus_preroll.dart', 'cv1_opus_frame_assembler.dart'):
-        relative = Path('lib/services/capture') / name
+    for relative in (
+        'lib/services/capture/local_audio_journal.dart',
+        'lib/services/capture/local_opus_preroll.dart',
+        'lib/services/capture/cv1_opus_frame_assembler.dart',
+        'lib/services/local_runtime_status_model.dart',
+    ):
         if subprocess.check_output(['git', '-C', args.repository, 'ls-tree', revision, 'app/' + str(relative)]):
             raise ValueError(f'Upstream now supplies {relative}; reconcile its implementation before updating')
         shutil.copy2(ROOT / 'app' / relative, app / relative)

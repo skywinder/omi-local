@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:omi/backend/http/api/conversations.dart';
 import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'live_preview.dart';
@@ -258,6 +259,21 @@ class PairedLibrary {
       jsonDecode(utf8.decode(await _bytes(response, limit)));
 
   Future<void> verify() => _checking ??= _verify().whenComplete(() => _checking = null);
+
+  Future<LocalRuntimeStatus?> readRuntimeStatus() => _request(
+    '/v1/local/status',
+    (response) async {
+      if (_closed) throw LibraryFailure.key;
+      final code = response.statusCode;
+      if (code == 404 || code == 405 || code == 501) return null;
+      if (code != 200) throw LibraryFailure.unavailable;
+      final value = LocalRuntimeStatus.fromJson(await _json(response, 64 << 10));
+      if (_closed) throw LibraryFailure.key;
+      return value;
+    },
+    readHttpErrors: true,
+    overallTimeout: const Duration(seconds: 8),
+  );
 
   NextProcessingClient processingClient({bool Function()? permitsActivation}) => NextProcessingClient(
     read: readProcessing,
