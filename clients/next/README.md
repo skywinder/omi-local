@@ -20,10 +20,11 @@ atomic index write. Between the October 28 and November 24 original revisions,
 1,250 files changed under `app/`. Copying each new screen and its providers into
 the September snapshot would also give Local ownership of their future fixes.
 
-Of ten upstream Dart files imported directly by the current Next overlay, three
-changed across that interval and two changed between November 17 (`501a543f3e`)
-and November 24. The search widget and theme were identical in all three trees.
-The conversation wire schema and generated localization changed in both intervals.
+Of seventeen upstream Dart files imported directly by the Next overlay, seven
+changed across that interval and four changed between November 17
+(`501a543f3e`) and November 24. The search widget and theme were identical
+in all three trees. The conversation models, transcript widget and generated
+localization changed in both intervals.
 The upstream native project also added a PostHog Swift source file. This static
 comparison covers direct imports only. A clean build still needs to catch changes
 in their dependencies and a device test needs to catch behavioral changes.
@@ -112,10 +113,13 @@ On the test simulator the launcher reused the attested artifact and installation
 succeeded. The installed executable matched the original SHA-256. A subsequent
 launch of that exact build rendered the pairing form and its Connect button.
 Pairing and capture acceptance against a running local server remain open.
-The subsequent detail change passed the Next analyzer and all eight Flutter
-tests. Its new UI fixture opens a cited line in the original transcript widget
-and checks that summary images do not load external URLs or files. That detail
-change has separate build and device verification.
+With the CV1 assembler, the Local transport gate passed 477 Flutter tests and
+its analyzer. The Next analyzer and all nine tests passed. The detail fixtures
+cover opening a cited line, prioritizing the saved edited overview in both
+detail and search, copying summary text, and rendering Markdown without opening
+image URLs or files. The presentation adaptation applied twice identically on
+three donor revisions, including November 17 and the current pin. That check
+did not build the other revisions.
 
 | Area | Status and next verification |
 | --- | --- |

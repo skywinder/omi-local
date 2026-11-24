@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
@@ -11,8 +12,10 @@ import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart'
 import 'package:omi/widgets/transcript.dart';
 
 class _ExistingRecording extends PairedLibrary {
-  _ExistingRecording({this.sections = const []}) : super('100.64.0.1', List.filled(43, 'A').join());
+  _ExistingRecording({this.overview = 'Meeting summary', this.sections = const []})
+    : super('100.64.0.1', List.filled(43, 'A').join());
 
+  final String overview;
   final List<Map<String, dynamic>> sections;
 
   @override
@@ -21,7 +24,7 @@ class _ExistingRecording extends PairedLibrary {
     'created_at': '2026-01-01T00:00:00Z',
     'started_at': null,
     'finished_at': null,
-    'structured': {'title': 'Fixture meeting', 'overview': 'Meeting summary', 'sections': sections},
+    'structured': {'title': 'Fixture meeting', 'overview': overview, 'sections': sections},
     'external_data': {'local_transcript': <String, dynamic>{}},
     'transcript_segments': [
       {'id': 'line-1', 'is_user': true, 'text': 'Fixture utterance', 'start': 62.0, 'end': 63.0},
@@ -90,6 +93,46 @@ void main() {
     expect(find.text('0/0'), findsOneWidget);
   });
 
+  testWidgets(
+    'an edited overview can be copied and searched after replacing generated sections',
+    (tester) async {
+      await _openDetail(
+        tester,
+        _ExistingRecording(
+          overview: 'Revised verdict',
+          sections: [
+            {'heading': 'Earlier verdict', 'body_markdown': 'Superseded decision'},
+          ],
+        ),
+      );
+      final revision = find.text('Revised verdict', findRichText: true);
+      expect(revision, findsOneWidget);
+      expect(find.text('Superseded decision', findRichText: true), findsNothing);
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = call.arguments['text'] as String?;
+        if (call.method == 'Clipboard.hasStrings') return {'value': false};
+        return null;
+      });
+      await tester.longPressAt(tester.getTopLeft(revision) + const Offset(18, 10));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Copy'));
+      await tester.pumpAndSettle();
+      expect(copied?.trim(), 'Revised');
+
+      await tester.tap(find.byIcon(Icons.search));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Superseded');
+      await tester.pump();
+      expect(find.text('0/0'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Revised');
+      await tester.pump();
+      expect(find.text('1/1'), findsOneWidget);
+      expect(find.text('Revised verdict'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
   testWidgets('section citations reach the transcript on an older server without loading Markdown images', (
     tester,
   ) async {
@@ -103,7 +146,9 @@ void main() {
       await _openDetail(
         tester,
         _ExistingRecording(
+          overview: '',
           sections: [
+            {'heading': 'Unused heading', 'body_markdown': '  '},
             {
               'heading': 'Decision',
               'body_markdown':
@@ -116,6 +161,7 @@ void main() {
       );
       expect(find.byType(NoteSectionsSliver), findsOneWidget);
       expect(find.text('Decision', findRichText: true), findsOneWidget);
+      expect(find.text('Unused heading', findRichText: true), findsNothing);
       expect(find.text('Approved', findRichText: true), findsOneWidget);
       expect(find.descendant(of: find.byType(ConversationMarkdownSliver), matching: find.byType(Image)), findsNothing);
       expect(networkImageLoads, 0);

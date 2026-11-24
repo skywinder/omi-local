@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/pages/conversation_detail/widgets/detail_search_bar.dart';
 import 'package:omi/ui/format/omi_duration.dart';
@@ -7,9 +6,16 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 /// Returns the selected transcript match to the detail view.
 class RecordingSearch extends StatefulWidget {
-  const RecordingSearch({super.key, required this.row, required this.lines, required this.canPlay});
+  const RecordingSearch({
+    super.key,
+    required this.title,
+    required this.summary,
+    required this.lines,
+    required this.canPlay,
+  });
 
-  final GeneratedConversation row;
+  final String title;
+  final String summary;
   final List<TranscriptSegment> lines;
   final bool canPlay;
 
@@ -33,17 +39,12 @@ class _RecordingSearchState extends State<RecordingSearch> {
 
   void search(String text) {
     final query = text.trim().toLowerCase();
-    final row = widget.row;
     setState(() {
       index = 0;
       hits = query.isEmpty
           ? []
           : [
-              for (final value in [
-                row.structured.title,
-                row.structured.overview,
-                for (final section in row.structured.sections ?? const []) ...[section.heading, section.bodyMarkdown],
-              ])
+              for (final value in [widget.title, widget.summary])
                 if (value.toLowerCase().contains(query)) (text: value, line: null),
               for (final segment in widget.lines)
                 if (segment.text.toLowerCase().contains(query)) (text: segment.text, line: segment),

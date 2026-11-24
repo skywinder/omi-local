@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
+import 'package:omi/backend/schema/structured.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
+import 'package:omi/pages/conversation_detail/conversation_summary_selection.dart';
 import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
 import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart';
 import 'package:omi/ui/components/omi_page_states.dart';
@@ -183,7 +186,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           final line = await Navigator.push<TranscriptSegment>(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => RecordingSearch(row: loaded.row, lines: loaded.lines, canPlay: canPlay),
+                              builder: (_) => RecordingSearch(
+                                title: loaded.row.structured.title,
+                                summary: loaded.summary.content,
+                                lines: loaded.lines,
+                                canPlay: canPlay,
+                              ),
                             ),
                           );
                           if (mounted && line != null) {
@@ -271,6 +279,14 @@ class _RecordingDetail {
   final GeneratedConversation row;
   final List<TranscriptSegment> lines;
   final sources = <TranscriptSegment>[];
+  late final summary = ConversationSummarySelection.firstParty(
+    ServerConversation(
+      id: row.id,
+      createdAt: row.createdAt,
+      structured: Structured.fromGenerated(row.structured),
+      transcriptSegments: sources,
+    ),
+  );
   bool get pending => row.externalData?['local_recording'] is Map;
 }
 
@@ -281,25 +297,28 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final structured = detail.row.structured;
-    final sections = structured.sections;
-    return CustomScrollView(
-      slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.all(OmiSpacing.md),
-          sliver: sections != null && sections.isNotEmpty
-              ? NoteSectionsSliver(
-                  sections: sections,
-                  transcriptSegments: detail.sources,
-                  onOpenSource: (id) => onOpenLine(detail.sources.firstWhere((line) => line.id == id)),
-                )
-              : structured.overview.trim().isNotEmpty
-              ? ConversationMarkdownSliver(content: structured.overview)
-              : SliverToBoxAdapter(
-                  child: Text(detail.pending ? recordingStatus(context, detail.row) : context.l10n.noSummaryAvailable),
-                ),
-        ),
-      ],
+    final summary = detail.summary;
+    return SelectionArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(OmiSpacing.md),
+            sliver: summary.sections.isNotEmpty
+                ? NoteSectionsSliver(
+                    sections: summary.sections,
+                    transcriptSegments: detail.sources,
+                    onOpenSource: (id) => onOpenLine(detail.sources.firstWhere((line) => line.id == id)),
+                  )
+                : summary.content.isNotEmpty
+                ? ConversationMarkdownSliver(content: summary.content)
+                : SliverToBoxAdapter(
+                    child: Text(
+                      detail.pending ? recordingStatus(context, detail.row) : context.l10n.noSummaryAvailable,
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
