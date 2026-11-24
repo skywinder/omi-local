@@ -6,6 +6,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'conversation_categories.dart';
 import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
@@ -300,6 +301,29 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                           label: Text(l.starred),
                           selected: archive.starredOnly,
                           onSelected: archive.busy ? null : archive.filterStarred,
+                        ),
+                        FilterChip(
+                          key: const ValueKey('archive-category'),
+                          label: Text(
+                            archive.category == null
+                                ? l.categories
+                                : conversationCategoryLabel(context, archive.category!),
+                          ),
+                          selected: archive.category != null,
+                          onSelected: archive.busy
+                              ? null
+                              : (_) async {
+                                  final category = await pickConversationCategory(
+                                    context,
+                                    current: archive.category,
+                                    filter: true,
+                                  );
+                                  if (mounted && identical(archive, _archive) && category != null) {
+                                    await archive.filterCategory(
+                                      category == allConversationCategories ? null : category,
+                                    );
+                                  }
+                                },
                         ),
                         if (library.foldersAvailable)
                           ActionChip(

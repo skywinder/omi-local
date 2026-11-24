@@ -19,7 +19,13 @@ import httpx
 from . import local_diarization, local_provider_http as transport, stt_install
 
 SUMMARY_CHARS = 12000
-SUMMARY_REVISION = 'recording-summary-v1'
+SUMMARY_REVISION = 'recording-summary-v2'
+CONVERSATION_CATEGORIES = (
+    'personal, education, health, finance, legal, philosophy, spiritual, science, entrepreneurship, '
+    'parenting, romantic, travel, inspiration, technology, business, social, work, sports, politics, literature, '
+    'history, architecture, music, weather, news, entertainment, psychology, real, design, family, economics, '
+    'environment, other'
+)
 
 
 class PipelineError(ValueError):
@@ -133,7 +139,13 @@ def validate_summary(value):
     title, overview = value['title'].strip(), value['overview'].strip()
     if len(title) > 300 or len(overview) > 4000:
         raise SummaryTooLong('Summary exceeded the publication limit')
-    return {'title': title, 'overview': overview}
+    result = {'title': title, 'overview': overview}
+    category, emoji = value.get('category'), value.get('emoji')
+    if isinstance(category, str) and category.strip() in CONVERSATION_CATEGORIES.split(', '):
+        result['category'] = category.strip()
+    if isinstance(emoji, str) and 0 < len(emoji.strip()) <= 12:
+        result['emoji'] = emoji.strip()
+    return result
 
 
 def summarize(snapshot, key, raw, folder, write):
@@ -167,7 +179,8 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
             + (f"Apply this owner-selected template:\n{template['prompt']}\n" if template else
                'Preserve decisions, important facts and explicit action items. ')
             + 'Do not invent speaker names or facts. Return only JSON with string fields "title" (under 300 characters) '
-            'and "overview" (under 4000 characters). '
+            'and "overview" (under 4000 characters), plus "emoji" (one emoji representing the subject) and '
+            f'"category" (one exact label from: {CONVERSATION_CATEGORIES}; use "real" for real estate). '
             + ('Combine the partial summaries into one coherent recording summary. ' if reduction else '')
             + ('Use the main language of the content.' if language == 'auto' else f'Write in language code {language}.')
         )

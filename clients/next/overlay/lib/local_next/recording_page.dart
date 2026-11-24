@@ -22,6 +22,7 @@ import 'folder_picker.dart';
 import 'local_goals_page.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
+import 'conversation_categories.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
 import 'settings_labels.dart';
@@ -155,6 +156,19 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       widget.onEdited?.call(row);
     } finally {
       if (mounted) setState(() => _editing = false);
+    }
+  }
+
+  Future<void> _changeCategory(_RecordingDetail loaded) async {
+    final current = conversationCategoryKey(loaded.row.structured.category);
+    final choice = await pickConversationCategory(context, current: current);
+    if (!mounted || choice == null || choice == current) return;
+    try {
+      await _save(RecordingEdit.category(current, choice));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
     }
   }
 
@@ -451,6 +465,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
                     _RecordingEditAction.folder => _moveFolder(loaded),
+                    _RecordingEditAction.category => _changeCategory(loaded),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
                     _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
@@ -489,6 +504,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       ),
                     if (widget.library.foldersAvailable)
                       PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
+                    if (widget.library.recordingCategories)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.category,
+                        child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
+                      ),
                     PopupMenuItem(
                       value: _RecordingEditAction.title,
                       child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
@@ -548,6 +568,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                 )
               : Column(
                   children: [
+                    if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(conversationCategoryLabel(context, loaded.row.structured.category)),
+                      ),
                     TabBar(
                       controller: tabs,
                       tabs: [
@@ -609,6 +634,7 @@ enum _RecordingEditAction {
   star,
   transcript,
   folder,
+  category,
   task,
   taskFromLine,
   taskSuggestions,

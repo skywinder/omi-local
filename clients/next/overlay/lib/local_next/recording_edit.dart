@@ -13,6 +13,7 @@ class RecordingEdit {
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
   const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
+  const RecordingEdit.category(String this.expected, String this.value) : field = 'category', segmentId = null;
   const RecordingEdit.taskDescription(String this.expected, String this.value)
     : field = 'description',
       segmentId = null;

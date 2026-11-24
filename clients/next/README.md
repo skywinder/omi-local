@@ -247,6 +247,18 @@ transcript. Edits require an updated paired server.
 
 ## Organize recordings into folders
 
+The archive also has a **Categories** filter using the Omi conversation
+model's category names and an emoji for each category. It combines with folders and favorites.
+The filter walks normal archive pages, so use **Show more** to reach older
+matches. Next shows the subject emoji if the conversation has one and uses
+the category emoji in place of a generic tile for classified recordings.
+
+On servers that advertise `local_recording_categories_version=1`, open a completed recording and
+choose **Change category**. The saved category applies wherever the recording
+appears in Next, and later server processing preserves the owner's choice.
+New local summaries can assign a category and subject emoji using the selected
+summary model. Existing older recordings can keep their original metadata.
+
 Tap **Folders** in the archive to create or rename a folder or filter the
 archive. A folder filter can be combined with **Starred**. In a finished
 recording, use **Move to Folder** to select a folder or remove the assignment.

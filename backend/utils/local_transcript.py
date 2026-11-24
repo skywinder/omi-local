@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import math
 import re
+from unicodedata import category as unicode_category
 import uuid
 from datetime import datetime, timedelta
 
 from models.conversation import Conversation
 from models.structured import Structured
+from models.conversation_enums import CategoryEnum
 from models.transcript_segment import TranscriptSegment
 
 
@@ -125,11 +127,22 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
             raise ValueError('Invalid local recording summary')
         structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
+        category = summary.get('category')
+        if isinstance(category, str) and category in CategoryEnum._value2member_map_:
+            structured['category'] = category
+        emoji = summary.get('emoji')
+        if isinstance(emoji, str) and 0 < len(emoji) <= 12:
+            kinds = [unicode_category(char) for char in emoji]
+            if 'So' in kinds and all(
+                kind in {'So', 'Sk'} or char in {'\u200d', '\ufe0f'}
+                for char, kind in zip(emoji, kinds)
+            ):
+                structured['emoji'] = emoji
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
         finished_at=started + timedelta(seconds=duration),
         source=manifest['source'], language=raw.get('language'),
-        structured=Structured(**structured, emoji='🎙️'),
+        structured=Structured(**({'emoji': '🎙️'} | structured)),
         transcript_segments=segments, status='completed', uses_custom_stt=True,
         discarded=False, deferred=False,
         external_data={'local_transcript': {'version': 1, 'audio_sha256': digest, 'result_key': result_key,

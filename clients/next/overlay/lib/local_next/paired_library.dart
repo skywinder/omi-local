@@ -81,6 +81,7 @@ class PairedLibrary {
   bool audioDelivery;
   bool conversationGroups = false;
   bool recordingEdits = false;
+  bool recordingCategories = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
   bool taskSuggestionsAvailable = false;
@@ -108,6 +109,7 @@ class PairedLibrary {
     conversationGroups = false;
     audioPlayback = false;
     recordingEdits = false;
+    recordingCategories = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
     taskSuggestionsAvailable = false;
@@ -455,6 +457,7 @@ class PairedLibrary {
     conversationGroups = audioDelivery && data['local_conversation_group_version'] == 1;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
+    recordingCategories = recordingEdits && data['local_recording_categories_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
@@ -593,7 +596,7 @@ class PairedLibrary {
 
   Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    if (!recordingEdits) throw RecordingEditFailure.unavailable;
+    if (!recordingEdits || (edit.field == 'category' && !recordingCategories)) throw RecordingEditFailure.unavailable;
     _conversation(id);
     try {
       final row = await _request(

@@ -707,7 +707,8 @@ def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, mo
             failed_once = True
             return httpx.Response(503)
         return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps({
-            'title': 'Synthetic', 'overview': 'Synthetic facts and decisions.'})}}]})
+            'title': 'Synthetic', 'overview': 'Synthetic facts and decisions.',
+            'category': 'work', 'emoji': '💼'})}}]})
 
     factory = httpx.Client
     monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
@@ -716,6 +717,7 @@ def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, mo
         local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
     result = local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
     assert result['title'] == 'Synthetic'
+    assert result['category'] == 'work' and result['emoji'] == '💼'
     assert seen.count(seen[0]) == 1
     assert any('UNIQUE_END' in part for part in seen)
     before = len(seen)

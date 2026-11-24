@@ -15,6 +15,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'paired_library.dart';
 import 'recording_page.dart';
+import 'conversation_categories.dart';
 
 /// Feed and cursor belong to a single verified pairing. Its raw page count
 /// advances past duplicates and malformed records on accepted partial pages.
@@ -38,6 +39,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   int _refreshedDelivery = 0;
   Timer? _localRefresh;
   Folder? folder;
+  String? category;
 
   bool get starredOnly => _starredOnly;
   Future<void> refresh() => _load(append: false);
@@ -98,6 +100,12 @@ class PairedArchiveProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> filterCategory(String? value) async {
+    if (_disposed || busy || category == value) return;
+    category = value;
+    await _refreshFilter();
+  }
+
   void renameFolder(Folder value) {
     if (_disposed || folder?.id != value.id) return;
     folder = value;
@@ -105,7 +113,9 @@ class PairedArchiveProvider extends ChangeNotifier {
   }
 
   bool _matches(ServerConversation row) =>
-      (!_starredOnly || row.starred) && (folder == null || row.folderId == folder!.id);
+      (!_starredOnly || row.starred) &&
+      (folder == null || row.folderId == folder!.id) &&
+      (category == null || conversationCategoryKey(row.structured.category) == category);
 
   Future<void> _refreshFilter() async {
     _rows.clear();
@@ -116,7 +126,7 @@ class PairedArchiveProvider extends ChangeNotifier {
 
   void applyEdit(ServerConversation row) {
     if (_disposed) return;
-    if ((_starredOnly || folder != null) && _matches(row) != _rows.containsKey(row.id)) {
+    if ((_starredOnly || folder != null || category != null) && _matches(row) != _rows.containsKey(row.id)) {
       if (busy) {
         _editsDuringRead[row.id] = row;
         _refreshAfterRead = true;
@@ -295,9 +305,14 @@ class _ArchiveRow extends StatelessWidget {
     // tell the upstream tile whether transcription or summary is in progress.
     final tile = local == null ? row.v3?.tileState : null;
     final failed = local?['status'] == 'failed' || (local == null && row.status == ConversationStatus.failed);
+    final category = conversationCategoryKey(row.structured.category);
+    final showCategory = local == null && row.status == ConversationStatus.completed;
+    final useCategoryEmoji =
+        showCategory && category != 'other' && const {'', '🧠', '💬', '🎙️'}.contains(row.structured.emoji.trim());
     final meta = [
       OmiDateFormat.of(context).time(started),
       if (duration > 0) OmiDuration.compact(duration, context.l10n),
+      if (showCategory) conversationCategoryLabel(context, category),
       recordingStatus(context, row),
     ].join(' · ');
     return Padding(
@@ -316,7 +331,11 @@ class _ArchiveRow extends StatelessWidget {
                   // The stock failure glyph announces "summary failed". Local
                   // processing can fail earlier; its exact label is in the subtitle.
                   excluding: local != null || (failed && tile == null),
-                  child: ConversationStateTile(conversation: row, state: failed ? ConversationTileState.failed : tile),
+                  child: ConversationStateTile(
+                    conversation: row,
+                    state: failed ? ConversationTileState.failed : tile,
+                    emojiOverride: useCategoryEmoji ? conversationCategories[category]!.emoji : null,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

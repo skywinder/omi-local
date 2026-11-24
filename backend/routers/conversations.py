@@ -49,7 +49,7 @@ from utils.conversations.mcp_transcript_search import (
     merge_typesense_page_with_transcript_hits,
     search_transcript_conversation_ids,
 )
-from models.conversation_enums import ConversationStatus, ConversationVisibility
+from models.conversation_enums import CategoryEnum, ConversationStatus, ConversationVisibility
 from models.conversation_photo import ConversationPhoto
 from models.geolocation import Geolocation
 from models.app import App
@@ -323,6 +323,12 @@ class LocalFolderEdit(BaseModel):
     value: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
 
 
+class LocalCategoryEdit(BaseModel):
+    field: Literal['category']
+    expected: CategoryEnum
+    value: CategoryEnum
+
+
 class LocalSpeakerAssignment(BaseModel):
     person_id: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
     is_user: bool = Field(strict=True)
@@ -343,7 +349,8 @@ class LocalSpeakerEdit(BaseModel):
 
 
 LocalRecordingEdit = Annotated[
-    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit | LocalSpeakerEdit, Field(discriminator='field'),
+    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit | LocalCategoryEdit | LocalSpeakerEdit,
+    Field(discriminator='field'),
 ]
 
 

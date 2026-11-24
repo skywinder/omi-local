@@ -46,20 +46,27 @@ class _ArchiveLibrary extends PairedLibrary {
   Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) => search!(query, after);
 }
 
-ServerConversation _row(String id, String title, DateTime start, {String? localState, DateTime? created}) =>
-    ServerConversation.fromJson({
-      'id': id,
-      'created_at': (created ?? start).toUtc().toIso8601String(),
-      'started_at': start.toUtc().toIso8601String(),
-      'finished_at': start.add(const Duration(minutes: 8)).toUtc().toIso8601String(),
-      'structured': {'title': title, 'overview': 'Local archive detail', 'emoji': '📌'},
-      'status': localState == null ? 'completed' : 'processing',
-      'external_data': localState == null
-          ? {'local_transcript': <String, dynamic>{}}
-          : {
-              'local_recording': {'status': localState},
-            },
-    });
+ServerConversation _row(
+  String id,
+  String title,
+  DateTime start, {
+  String? localState,
+  DateTime? created,
+  String category = 'other',
+  String emoji = '📌',
+}) => ServerConversation.fromJson({
+  'id': id,
+  'created_at': (created ?? start).toUtc().toIso8601String(),
+  'started_at': start.toUtc().toIso8601String(),
+  'finished_at': start.add(const Duration(minutes: 8)).toUtc().toIso8601String(),
+  'structured': {'title': title, 'overview': 'Local archive detail', 'emoji': emoji, 'category': category},
+  'status': localState == null ? 'completed' : 'processing',
+  'external_data': localState == null
+      ? {'local_transcript': <String, dynamic>{}}
+      : {
+          'local_recording': {'status': localState},
+        },
+});
 
 Future<void> _show(WidgetTester tester, PairedLibrary library) async {
   await tester.pumpWidget(
@@ -73,6 +80,31 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('category labels retain the subject emoji and filtering can reach older matching recordings', (
+    tester,
+  ) async {
+    final time = DateTime.utc(2026, 1, 2);
+    final work = _row(_firstId, 'Work recording', time, category: 'work', emoji: '💻');
+    final personal = _row(_secondId, 'Older personal recording', time, category: 'personal', emoji: '🎙️');
+    final library = _ArchiveLibrary((offset) async {
+      return (rows: [offset == 0 ? work : personal], consumed: 1, partial: false, more: offset == 0);
+    }, personal);
+    addTearDown(library.close);
+    await _show(tester, library);
+    expect(find.text('💻'), findsOneWidget);
+    expect(find.textContaining('💼 Work'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('archive-category')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('conversation-category-personal')));
+    await tester.pumpAndSettle();
+    expect(find.text('Work recording'), findsNothing);
+    await tester.tap(find.text('show more ↓'));
+    await tester.pumpAndSettle();
+    expect(library.offsets, [0, 0, 1]);
+    expect(find.text('Older personal recording'), findsOneWidget);
+    expect(find.text('👤'), findsOneWidget);
+  });
+
   testWidgets('a durable delivery refreshes the archive and follows local processing to its result', (tester) async {
     final time = DateTime.utc(2026, 1, 2);
     final existing = _row(_firstId, 'Existing', time);

@@ -20,6 +20,7 @@ class _EditableLibrary extends PairedLibrary {
 
   String title = 'Original title';
   String transcript = 'Original words';
+  String category = 'other';
   bool starred = false;
   bool conflict = false;
   String? currentFolder;
@@ -33,7 +34,7 @@ class _EditableLibrary extends PairedLibrary {
     'created_at': '2026-01-02T11:00:00Z',
     'started_at': '2026-01-02T11:00:00Z',
     'finished_at': '2026-01-02T11:01:00Z',
-    'structured': {'title': title},
+    'structured': {'title': title, 'category': category},
     'status': 'completed',
     'starred': starred,
     'folder_id': currentFolder,
@@ -70,6 +71,8 @@ class _EditableLibrary extends PairedLibrary {
         starred = edit.value as bool;
       case 'folder':
         currentFolder = edit.value as String?;
+      case 'category':
+        category = edit.value as String;
     }
     return detail(id);
   }
@@ -250,7 +253,7 @@ void main() {
   });
 
   testWidgets('a paired archive edits title and transcript and can filter by favorites', (tester) async {
-    final library = _EditableLibrary();
+    final library = _EditableLibrary()..recordingCategories = true;
     addTearDown(library.close);
     await tester.pumpWidget(
       MaterialApp(
@@ -267,6 +270,10 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(find.text('Revised title'), findsOneWidget);
+    await _menu(tester, 'Change category');
+    await tester.tap(find.byKey(const ValueKey('conversation-category-personal')));
+    await tester.pumpAndSettle();
+    expect(find.text('👤 Personal'), findsOneWidget);
     await _menu(tester, 'Add to favorites');
     await _menu(tester, 'Edit transcript');
     expect(find.text('No stable identifier'), findsNothing);
@@ -285,7 +292,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Revised title'), findsOneWidget);
-    await tester.tap(find.byType(FilterChip));
+    await tester.tap(find.widgetWithText(FilterChip, 'Starred'));
     await tester.pumpAndSettle();
     expect(library.filters, [false, true]);
     expect(find.text('Revised title'), findsOneWidget);
@@ -293,6 +300,7 @@ void main() {
     final originalText = sha256.convert(utf8.encode('Original words')).toString();
     expect(library.requests, [
       {'field': 'title', 'expected': originalTitle, 'value': 'Revised title'},
+      {'field': 'category', 'expected': 'other', 'value': 'personal'},
       {'field': 'starred', 'expected': false, 'value': true},
       {'field': 'segment_text', 'expected': originalText, 'value': 'Corrected words', 'segment_id': 'actual-line'},
       {'field': 'segment_text', 'expected': originalText, 'value': 'Corrected words', 'segment_id': 'actual-line'},

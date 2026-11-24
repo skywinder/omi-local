@@ -42,9 +42,12 @@ def apply_presentation(repository, revision, app):
         ("import 'package:omi/providers/conversations_v3_provider.dart';\n", ''),
         (UI_BARREL, imports('components/omi_cross_fade', 'components/omi_live_indicators',
                             'components/omi_spinner', 'omi_tokens')),
-        ('required this.conversation});', 'required this.conversation, this.state});'),
+        ('required this.conversation});', 'required this.conversation, this.state, this.emojiOverride});'),
         ('  final ServerConversation conversation;',
-         '  final ServerConversation conversation;\n  final ConversationTileState? state;'),
+         '  final ServerConversation conversation;\n  final ConversationTileState? state;\n'
+         '  final String? emojiOverride;'),
+        ('            conversation.structured.getEmoji(),',
+         '            widget.emojiOverride ?? conversation.structured.getEmoji(),'),
         ('    final v3On = context.select<ConversationsV3Provider?, bool>((p) => p?.v3 ?? false);\n'
          '    final state = v3On ? conversation.v3?.tileState : null;',
          '    final state = widget.state;'),

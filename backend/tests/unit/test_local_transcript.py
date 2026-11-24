@@ -79,12 +79,18 @@ def test_empty_transcript_is_not_success_and_unknown_speaker_is_not_user():
 def test_selected_pipeline_summary_projects_into_existing_conversation_contract():
     data, result = manifest(), raw()
     data['profile']['pipeline'] = {'summary': {'kind': 'openai-compatible'}}
-    result['structured'] = {'title': 'Обсуждение API', 'overview': 'Проверили работу API.'}
+    result['structured'] = {
+        'title': 'Обсуждение API', 'overview': 'Проверили работу API.', 'category': 'technology', 'emoji': '💻',
+    }
     conversation = build_conversation(result, data)
     assert conversation.structured.title == 'Обсуждение API'
     assert conversation.structured.overview == 'Проверили работу API.'
+    assert conversation.structured.category == 'technology' and conversation.structured.emoji == '💻'
     assert conversation.external_data['local_transcript']['profile'] == data['profile']
     assert conversation.structured.action_items == []
+    result['structured'].update(category='unknown', emoji='not an emoji')
+    legacy = build_conversation(result, data)
+    assert legacy.structured.category == 'other' and legacy.structured.emoji == '🎙️'
     result['structured']['overview'] = {'invalid': True}
     with pytest.raises(ValueError, match='summary'):
         build_conversation(result, data)
