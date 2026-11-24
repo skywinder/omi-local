@@ -29,7 +29,7 @@ test-transport-unit:
 
 test-transport-app:
 	cd app && bash test.sh test/unit/stored_device_decode_test.dart test/unit/preferences_cache_decode_test.dart test/unit/structured_decode_blast_radius_test.dart test/unit/wal_file_manager_torn_write_test.dart test/unit/wal_delete_cascade_test.dart
-	cd app && bash test.sh test/unit/native_ble_transport_resync_test.dart test/services/devices/transports/native_ble_transport_test.dart
+	cd app && bash test.sh test/unit/native_ble_transport_resync_test.dart test/services/devices/transports/native_ble_transport_test.dart test/services/cv1_opus_frame_assembler_test.dart
 	cd app && bash test.sh test/unit/local_processing_test.dart test/widgets/local_processing_page_test.dart test/unit/local_mac_presets_test.dart test/services/local_audio_outbox_test.dart
 	cd app && bash test.sh test/providers/conversation_provider_processing_reconcile_test.dart test/widgets/processing_conversation_widget_test.dart
 	cd app && bash test.sh test/widgets/transcript_test.dart test/unit/stt_provider_display_test.dart test/unit/transcript_segment_speaker_test.dart test/services/sockets/transcription_service_onboarding_test.dart
