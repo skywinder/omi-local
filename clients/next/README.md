@@ -668,6 +668,18 @@ a 2.06-second WAV from the wearable. The new card and playback were not
 confirmed on the iPhone. The physical button and the phone microphone
 remain unverified.
 
+Next refreshes the archive after an exact durable receipt. While the first
+page is visible, it also refreshes local recordings awaiting processing so
+the final conversation can replace the temporary card. A background refresh
+keeps existing rows after a transient failure. Loading older pages suspends
+automatic refresh until the next manual refresh.
+
+The previously delivered CV1 recording was verified on Bastion. The
+transcription watcher completed, the imported conversation appeared on the
+first archive page, and its detail endpoint returned HTTP 200. Bastion's
+deployed profile did not advertise the paired WAV route. The WAV exists on
+the server, and playback from Next still needs a compatible deployment.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |

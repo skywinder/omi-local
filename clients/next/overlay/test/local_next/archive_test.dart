@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
+import 'package:omi/local_next/archive.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_page.dart';
@@ -72,6 +73,46 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('a durable delivery refreshes the archive and follows local processing to its result', (tester) async {
+    final time = DateTime.utc(2026, 1, 2);
+    final existing = _row(_firstId, 'Existing', time);
+    final pending = _row(_secondId, 'Pending', time, localState: 'pending');
+    final completed = _row(_secondId, 'Completed', time);
+    var outcome = 0;
+    final library = _ArchiveLibrary((_) async {
+      if (outcome == 1) throw LibraryFailure.unavailable;
+      final rows = [existing, if (outcome == 2) pending, if (outcome == 3) completed];
+      return (rows: rows, consumed: rows.length, partial: false, more: false);
+    }, completed);
+    var visible = true;
+    final archive = PairedArchiveProvider(library, canRefreshRecordings: () => visible);
+    try {
+      await archive.refresh();
+      outcome = 1;
+      archive.refreshAfterRecording();
+      archive.refreshAfterRecording();
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(library.offsets, [0, 0]);
+      expect(archive.rowById(_firstId), existing);
+      expect(archive.failure, isNull);
+      outcome = 2;
+      visible = false;
+      await tester.pump(const Duration(seconds: 5));
+      expect(library.offsets, [0, 0]);
+      visible = true;
+      await tester.pump(const Duration(seconds: 5));
+      expect(archive.rowById(_secondId), pending);
+      outcome = 3;
+      await tester.pump(const Duration(seconds: 5));
+      expect(archive.rowById(_secondId), completed);
+      await tester.pump(const Duration(seconds: 10));
+      expect(library.offsets, [0, 0, 0, 0]);
+    } finally {
+      archive.dispose();
+      library.close();
+    }
+  });
+
   testWidgets('archive search crosses an empty storage page and opens the matching transcript line', (tester) async {
     final time = DateTime.utc(2026, 1, 2);
     final row = ServerConversation.fromJson({

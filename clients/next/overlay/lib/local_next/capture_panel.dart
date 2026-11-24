@@ -18,8 +18,9 @@ import 'processing_page.dart';
 import 'settings_labels.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
-  const LocalNextCapturePanel({required this.library, super.key});
+  const LocalNextCapturePanel({required this.library, this.onDelivered, super.key});
   final PairedLibrary library;
+  final VoidCallback? onDelivered;
 
   @override
   State<LocalNextCapturePanel> createState() => _CapturePanelState();
@@ -32,6 +33,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   bool _initialized = false;
   bool _captureBusy() => !_initialized || _inputs?.hasCaptureInProgress == true;
   LocalAudioJournal? _journal;
+  int _deliveryRevision = 0;
   NextCaptureInputs? _inputs;
   late final _processing = widget.library.processingClient(
     permitsActivation: () =>
@@ -75,6 +77,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       );
       await journal.initialize();
       if (_closed) return;
+      journal.addListener(_deliveryChanged);
       WidgetsBinding.instance.addObserver(journal);
       _inputs = NextCaptureInputs(
         NextPhoneCapture(
@@ -93,6 +96,13 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     if (!_closed) setState(() {});
   }
 
+  void _deliveryChanged() {
+    final revision = _journal!.deliveryRevision;
+    if (_closed || revision == _deliveryRevision) return;
+    _deliveryRevision = revision;
+    widget.onDelivered?.call();
+  }
+
   @override
   void dispose() {
     _closed = true;
@@ -106,6 +116,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     await _setup;
     final journal = _journal;
     if (journal == null) return;
+    journal.removeListener(_deliveryChanged);
     WidgetsBinding.instance.removeObserver(journal);
     try {
       await _inputs?.close();

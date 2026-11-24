@@ -167,8 +167,17 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   }
 
   void _attach() {
-    _archive = PairedArchiveProvider(widget.library)..addListener(_changed);
+    _archive = PairedArchiveProvider(widget.library, canRefreshRecordings: _canRefreshRecordings)
+      ..addListener(_changed);
     _archive.refresh();
+  }
+
+  bool _canRefreshRecordings() {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return mounted &&
+        _selection == null &&
+        (state == null || state == AppLifecycleState.resumed) &&
+        ModalRoute.isCurrentOf(context) == true;
   }
 
   void _changed() => setState(() {});
@@ -263,7 +272,12 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
       ),
       body: Column(
         children: [
-          if (library.audioDelivery) LocalNextCapturePanel(key: ValueKey(library.audioOwnerId), library: library),
+          if (library.audioDelivery)
+            LocalNextCapturePanel(
+              key: ValueKey(library.audioOwnerId),
+              library: library,
+              onDelivered: _archive.refreshAfterRecording,
+            ),
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: Padding(

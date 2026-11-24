@@ -150,6 +150,7 @@ void main() {
     await outbox.drain();
     expect(received.single, body);
     expect(receipt(received.single)['id'], '00000000-0000-0000-0000-000000000001');
+    expect(outbox.deliveryRevision, 1);
     expect(directory.listSync(), isEmpty);
   });
 
@@ -387,6 +388,7 @@ void main() {
     await recording.stop();
     await wrong.drain();
     expect(directory.listSync().whereType<File>(), hasLength(1));
+    expect(wrong.deliveryRevision, 0);
     wrong.dispose();
   });
 

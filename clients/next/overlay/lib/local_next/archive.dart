@@ -19,8 +19,10 @@ import 'recording_page.dart';
 /// Feed and cursor belong to a single verified pairing. Its raw page count
 /// advances past duplicates and malformed records on accepted partial pages.
 class PairedArchiveProvider extends ChangeNotifier {
-  PairedArchiveProvider(this._library);
+  PairedArchiveProvider(this._library, {bool Function()? canRefreshRecordings})
+    : _canRefreshRecordings = canRefreshRecordings;
   final PairedLibrary _library;
+  final bool Function()? _canRefreshRecordings;
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
@@ -30,7 +32,11 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool _disposed = false;
   bool _retryAppend = false;
   bool _starredOnly = false;
-  bool _refreshStarred = false;
+  bool _refreshAfterRead = false;
+  bool _paged = false;
+  int _deliveryRevision = 0;
+  int _refreshedDelivery = 0;
+  Timer? _localRefresh;
   Folder? folder;
 
   bool get starredOnly => _starredOnly;
@@ -39,11 +45,37 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> retry() => _load(append: _retryAppend);
   ServerConversation? rowById(String id) => _rows[id];
 
+  // A durable receipt is independent of the Live socket and survives retries.
+  // Keep a user's position after loading older pages until an explicit refresh.
+  void refreshAfterRecording() {
+    if (_disposed) return;
+    _deliveryRevision++;
+    _scheduleLocalRefresh(now: true);
+  }
+
+  void _scheduleLocalRefresh({bool now = false}) {
+    final canRefresh = _canRefreshRecordings;
+    if (_disposed || canRefresh == null || _paged || busy || (!now && _localRefresh != null)) return;
+    final awaitingProcessing = _rows.values.any(
+      (row) => const {'saved', 'pending', 'processing'}.contains(row.externalIntegration?.localRecording?['status']),
+    );
+    if (_refreshedDelivery == _deliveryRevision && !awaitingProcessing) return;
+    _localRefresh?.cancel();
+    _localRefresh = Timer(now ? Duration.zero : const Duration(seconds: 5), () {
+      _localRefresh = null;
+      if (canRefresh()) {
+        unawaited(_load(append: false, automatic: true));
+      } else {
+        _scheduleLocalRefresh();
+      }
+    });
+  }
+
   void refreshAfterFolderChange({String? deletedId}) {
     if (_disposed) return;
     if (deletedId != null && folder?.id == deletedId) folder = null;
     if (busy) {
-      _refreshStarred = true;
+      _refreshAfterRead = true;
     } else {
       unawaited(refresh());
     }
@@ -87,7 +119,7 @@ class PairedArchiveProvider extends ChangeNotifier {
     if ((_starredOnly || folder != null) && _matches(row) != _rows.containsKey(row.id)) {
       if (busy) {
         _editsDuringRead[row.id] = row;
-        _refreshStarred = true;
+        _refreshAfterRead = true;
       } else {
         unawaited(refresh());
       }
@@ -100,12 +132,17 @@ class PairedArchiveProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _load({required bool append}) async {
+  Future<void> _load({required bool append, bool automatic = false}) async {
     if (_disposed || busy || (append && !more)) return;
+    _localRefresh?.cancel();
+    _localRefresh = null;
+    final deliveryAtRead = _deliveryRevision;
     busy = true;
-    failure = null;
-    _retryAppend = append;
-    notifyListeners();
+    if (!automatic) {
+      failure = null;
+      _retryAppend = append;
+      notifyListeners();
+    }
     try {
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
@@ -113,9 +150,12 @@ class PairedArchiveProvider extends ChangeNotifier {
       if (_disposed) return;
       if (!append) {
         _rows.clear();
+        if (!result.partial) _refreshedDelivery = deliveryAtRead;
         partial = false;
         _offset = 0;
       }
+      _paged = append;
+      failure = null;
       for (final row in result.rows) {
         final fresh = _editsDuringRead[row.id] ?? row;
         if (_matches(fresh)) _rows[fresh.id] = fresh;
@@ -138,22 +178,27 @@ class PairedArchiveProvider extends ChangeNotifier {
       entries = List.unmodifiable(grouped);
     } catch (error) {
       if (_disposed) return;
-      failure = error;
       if (error == LibraryFailure.key) {
+        failure = error;
         _rows.clear();
         entries = const [];
         _offset = 0;
         more = false;
         partial = false;
+        _refreshedDelivery = _deliveryRevision;
+      } else if (!automatic || entries.isEmpty) {
+        failure = error;
       }
     } finally {
       _editsDuringRead.clear();
       if (!_disposed) {
         busy = false;
         notifyListeners();
-        if (_refreshStarred) {
-          _refreshStarred = false;
+        if (_refreshAfterRead) {
+          _refreshAfterRead = false;
           unawaited(refresh());
+        } else {
+          _scheduleLocalRefresh(now: deliveryAtRead != _deliveryRevision);
         }
       }
     }
@@ -162,6 +207,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _localRefresh?.cancel();
     _rows.clear();
     _editsDuringRead.clear();
     entries = const [];

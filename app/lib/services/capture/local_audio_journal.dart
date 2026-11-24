@@ -48,6 +48,8 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   int _queuedBytes = 0;
   int pendingParts = 0;
   int pendingBytes = 0;
+  int _deliveryRevision = 0;
+  int get deliveryRevision => _deliveryRevision;
   bool deliveryFailed = false;
   bool _recoveryFailed = false;
   String? captureIssue;
@@ -327,6 +329,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
             throw const FormatException('Mismatched durable audio receipt');
           }
           await file.delete(); // Only this exact immutable body has been acknowledged.
+          _deliveryRevision++;
         } catch (_) {
           // A part for another server must not starve this server's deliveries.
           deliveryFailed = true;
