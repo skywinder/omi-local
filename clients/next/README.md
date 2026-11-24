@@ -190,7 +190,7 @@ a persistent index and archive chat history are separate parity items.
 ## Edit a saved recording
 
 In a finished recording, use the menu to rename it, add it to favorites or
-correct a transcript line. The archive's Favorites filter uses the server's
+correct a transcript line. The archive's **Starred** filter uses the server's
 paged starred query. Transcript edits preserve segment IDs and timestamps
 so archive search and playback can continue to reference the same line.
 
@@ -439,6 +439,18 @@ and entitlement verification. Its executable SHA-256 begins with
 Installation and physical playback are pending because Xcode found no
 eligible iPhone. The active paired server needs the archive chat update.
 
+Recording edits and the Starred filter passed the Next analyzer and all 57
+tests, the offline backend suite and all 478 existing transport tests. An
+isolated Firestore run verified concurrent transcript edits, stale conflicts,
+idempotent repeats, encrypted long transcripts, search at the original
+timecode and preservation on re-import.
+
+The signed `Profile-dev` package from `5bd406e` passed independent signature
+and entitlement verification. Its executable SHA-256 begins with
+`a8c79d37db57bd6d`. Package `59dc5ce` was verified and retained for rollback.
+Xcode still found no eligible iPhone for installation. The paired server
+needs the recording edit update before physical acceptance.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -447,6 +459,6 @@ eligible iPhone. The active paired server needs the archive chat update.
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
 | Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
-| Upstream product screens | Paired archive search and both chat modes can open a recording at the matching transcript line. Verify them on the iPhone with an updated server. Semantic retrieval, persistent archive chat history, editing/folders, named speakers, tasks, daily recaps, memory and integrations need corresponding support. Episodes, Review and Dream retain separate availability checks. |
+| Upstream product screens | Paired archive search and both chat modes can open a recording at the matching transcript line. Saved recordings support title and transcript edits and a Starred archive filter. Verify these on the iPhone with an updated server. Semantic retrieval, persistent archive chat history, folders, named speakers, tasks, daily recaps, memory and integrations need corresponding support. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |
