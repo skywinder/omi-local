@@ -20,7 +20,8 @@ atomic index write. Between the October 28 and November 24 original revisions,
 1,250 files changed under `app/`. Copying each new screen and its providers into
 the September snapshot would also give Local ownership of their future fixes.
 
-Of seventeen upstream Dart files imported directly by the Next overlay, seven
+At the detail milestone, seventeen upstream Dart files were imported directly
+by the Next overlay. Seven of those
 changed across that interval and four changed between November 17
 (`501a543f3e`) and November 24. The search widget and theme were identical
 in all three trees. The conversation models, transcript widget and generated
@@ -102,6 +103,21 @@ operations for the pinned CV1 services.
 Recovery from the wearable's offline ring has separate custody requirements.
 See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 
+## Live transcript
+
+Open Live while recording with the phone or CV1. The screen uses the original
+Omi transcript list and shows where live processing runs. Translation can use
+one target or two languages selected for the paired server. Stop remains
+available on the Live screen.
+
+Next sends a frame to the paired `/v4/listen` preview socket after the journal
+flushes it to disk. The separate part upload owns retention and durable
+delivery. A preview outage leaves the recording in the journal. Socket
+reconnection keeps text already displayed for that recording and starts a new
+live draft from the newly sent audio. The server's existing Live STT and
+translation settings select the providers. See [live preview](../../docs/LIVE_PREVIEW.md)
+and [provider setup](../../docs/PROVIDERS.md).
+
 ## Updating the original
 
 Fetch the original repository, inspect changes under `app/` since the recorded
@@ -154,6 +170,18 @@ inventory query found both clients on the iPhone and matched the running Next
 process to the installed bundle. Physical server pairing, CV1 audio and playback
 are still open.
 
+An authenticated, read-only Bastion probe on November 24 confirmed the current
+deployment advertises durable delivery v2 and declares the local preview route.
+Its offline policy permits the listen WebSocket. Its profile did not advertise
+the Next WAV playback contract. This check queried capability and status
+metadata without opening a conversation, recording or live audio session.
+
+The Live change passed all 24 Next Flutter tests and the analyzer. The
+loopback integration test delivered the same PCM used by the journal over a
+paired WebSocket and through the durable part upload. Transport tests cover
+redirect refusal, revoked credentials and corrections across reconnect.
+The widget test covers drafts, translations, saved language choices and Stop.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Pinned November 24 Flutter app, independent Runner identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -161,7 +189,7 @@ are still open.
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Existing server owns Live/final STT, diarization, summaries and translation. Port the client status, provider selection and live transcript/translation controls. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. The server owns Live/final STT, diarization, summaries and translation. The client ports for provider selection, silence tuning and the live speaker limit are separate work. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

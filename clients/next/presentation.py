@@ -67,6 +67,9 @@ def apply_presentation(repository, revision, app):
         ("import 'package:omi/providers/people_provider.dart';\n", ''),
         ("import 'package:provider/provider.dart';\n", ''),
         ("import 'package:omi/utils/platform/platform_manager.dart';\n", ''),
+        ('  final bool followLatest;', '  final bool followLatest;\n  final bool showTranslationNotice;'),
+        ('    this.followLatest = false,', '    this.followLatest = false,\n    this.showTranslationNotice = true,'),
+        ('_buildTranslationNotice(),', 'if (widget.showTranslationNotice) _buildTranslationNotice(),', 2),
         ('final people = context.watch<PeopleProvider?>()?.people ?? SharedPreferencesUtil().cachedPeople;',
          'const people = <Person>[];'),
         # No editing or hosted analytics in the read-only transcript.

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/cv1_capture.dart';
+import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 const _silence = [0xf8, 0xff, 0xfe];
@@ -30,6 +31,7 @@ class _Fixture {
     Future<void> Function()? acquire,
     bool Function()? canStart,
     Future<RandomAccessFile> Function(File)? openJournal,
+    NextLivePreview? preview,
   }) async {
     final files = await Directory.systemTemp.createTemp();
     journal = LocalAudioJournal(
@@ -55,7 +57,13 @@ class _Fixture {
       },
     );
     await journal.initialize();
-    capture = NextCv1Capture(journal, owner, canStart: canStart ?? () => true, onStartRequested: acquire);
+    capture = NextCv1Capture(
+      journal,
+      owner,
+      canStart: canStart ?? () => true,
+      onStartRequested: acquire,
+      preview: preview,
+    );
     addTearDown(() async {
       await capture.close();
       await journal.drain();
@@ -66,7 +74,64 @@ class _Fixture {
   }
 }
 
+class _PreviewProbe extends NextLivePreview {
+  _PreviewProbe(String owner)
+    : super(owner, (owner, source, codec) => throw StateError('No network in capture fixture'));
+
+  String? active;
+  final openings = <String>[];
+  final frames = <List<int>>[];
+
+  @override
+  void begin(String recordingId, String source, String codec) {
+    if (active == recordingId) return;
+    active = recordingId;
+    openings.add(recordingId);
+  }
+
+  @override
+  void end(String recordingId) {
+    if (active == recordingId) active = null;
+  }
+
+  @override
+  void addPersisted(String recordingId, String source, String codec, Uint8List bytes, {required double startSeconds}) {
+    expect(active, recordingId);
+    frames.add(bytes);
+  }
+}
+
 void main() {
+  test('CV1 mute cuts only preview and fences pre-mute flush callbacks from the resumed socket', () async {
+    final fixture = _Fixture();
+    final preview = _PreviewProbe(fixture.owner);
+    addTearDown(preview.dispose);
+    await fixture.open(preview: preview);
+    final capture = fixture.capture;
+    capture.handle(const Cv1LinkReady(1, 21));
+    capture.start();
+    capture.handle(_audio(1, 0, 0, _silence));
+    capture.handle(_audio(1, 1, 0, _padded));
+    await fixture.journal.flushPendingWrites();
+    expect(preview.frames, [_silence]);
+
+    capture.handle(_audio(1, 2, 0, _silence)); // Confirms _padded before its disk flush completes.
+    capture.toggleMute();
+    expect(preview.active, isNull);
+    capture.toggleMute();
+    capture.handle(_audio(1, 8, 0, _silence));
+    capture.handle(_audio(1, 9, 0, _padded));
+    await fixture.journal.flushPendingWrites();
+    expect(preview.openings, hasLength(2));
+    expect(preview.openings.toSet(), hasLength(1));
+    expect(preview.frames, [_silence, _silence]);
+    await capture.stop();
+    await fixture.journal.drain();
+    final parts = fixture.uploads.toList()
+      ..sort((a, b) => (a.header['index'] as int).compareTo(b.header['index'] as int));
+    expect(parts.expand((part) => part.frames), [_silence, _padded, _silence]);
+  });
+
   test('complete CV1 frames reach only the paired owner, with a new codec and recording after reconnect', () async {
     final fixture = _Fixture();
     await fixture.open();

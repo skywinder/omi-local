@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+from live_labels import prepare_live_labels
 from presentation import apply_presentation
 
 HERE = Path(__file__).resolve().parent
@@ -56,6 +57,7 @@ def main():
         extract(args.repository.resolve(), build, 'app/ios')
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
     shutil.copytree(HERE / 'overlay', app, dirs_exist_ok=True)
+    prepare_live_labels(ROOT, app)
     for name in ('local_audio_journal.dart', 'local_opus_preroll.dart', 'cv1_opus_frame_assembler.dart'):
         relative = Path('lib/services/capture') / name
         if subprocess.check_output(['git', '-C', args.repository, 'ls-tree', revision, 'app/' + str(relative)]):

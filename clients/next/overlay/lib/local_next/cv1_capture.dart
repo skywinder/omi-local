@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:omi/services/capture/cv1_opus_frame_assembler.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
+import 'live_preview.dart';
+
 sealed class Cv1CaptureEvent {
   const Cv1CaptureEvent(this.generation);
   final int generation;
@@ -33,12 +35,13 @@ enum Cv1CaptureIntent { stopped, recording, muted }
 enum Cv1CaptureProblem { unsupportedCodec, storage, sourceSwitch }
 
 class NextCv1Capture extends ChangeNotifier {
-  NextCv1Capture(this.journal, this.owner, {required this.canStart, this.onStartRequested});
+  NextCv1Capture(this.journal, this.owner, {required this.canStart, this.onStartRequested, this.preview});
 
   final LocalAudioJournal journal;
   final String owner;
   final bool Function() canStart;
   final Future<void> Function()? onStartRequested;
+  final NextLivePreview? preview;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
   Future<void> _sealing = Future.value();
@@ -65,6 +68,7 @@ class NextCv1Capture extends ChangeNotifier {
   bool _closed = false;
   int _attempt = 0;
   int _segment = 0;
+  int _previewEpoch = 0;
   int _buttonRequest = 0;
   bool _requestPending = false;
 
@@ -92,6 +96,7 @@ class NextCv1Capture extends ChangeNotifier {
     _intent = _intent == Cv1CaptureIntent.muted ? Cv1CaptureIntent.recording : Cv1CaptureIntent.muted;
     if (_intent == Cv1CaptureIntent.muted) {
       _frames.discardPending();
+      _cutPreview();
       _checkpoint(resetOpusContext: true);
     }
     notifyListeners();
@@ -131,6 +136,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (previousDrops != _frames.discardedCandidates) {
       // Start new decoder context after a gap. The assembler may already have
       // accepted the first fragment of the next frame.
+      _cutPreview();
       _checkpoint(resetOpusContext: true);
     }
     if (frame == null) return;
@@ -138,18 +144,38 @@ class NextCv1Capture extends ChangeNotifier {
     final current = _recording ??= journal.beginForServer(source: 'omi', codec: _codec!, serverId: owner);
     final attempt = _attempt;
     final segment = _segment;
+    final previewEpoch = _previewEpoch;
     unawaited(
       current
           .add(
             frame,
             afterPersisted: () {
-              if (_closed || current != _recording || _hasPersistedAudio) return;
-              _hasPersistedAudio = true;
-              notifyListeners();
+              if (_closed || current != _recording) return;
+              if (preview case final live? when previewEpoch == _previewEpoch) {
+                live.begin(current.recordingId, current.source, current.codec);
+                final duration = LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000;
+                live.addPersisted(
+                  current.recordingId,
+                  current.source,
+                  current.codec,
+                  frame,
+                  startSeconds: current.audioSeconds - duration,
+                );
+              }
+              if (!_hasPersistedAudio) {
+                _hasPersistedAudio = true;
+                notifyListeners();
+              }
             },
           )
           .catchError((Object _) => _writeFailed(current, attempt, segment)),
     );
+  }
+
+  void _cutPreview() {
+    _previewEpoch++;
+    final recording = _recording;
+    if (recording != null) preview?.end(recording.recordingId);
   }
 
   void _writeFailed(LocalAudioRecording current, int attempt, int segment) {
@@ -166,6 +192,7 @@ class NextCv1Capture extends ChangeNotifier {
   void _endSegment() {
     _frames.discardPending();
     _hasPersistedAudio = false;
+    _cutPreview();
     final current = _recording;
     _recording = null;
     if (current == null) return;

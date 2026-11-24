@@ -132,4 +132,44 @@ void main() {
     expect(() => PairedLibrary('https://example.org/#x', key), throwsA(LibraryFailure.address));
     expect(() => PairedLibrary('https://example.org', 'bad'), throwsA(LibraryFailure.key));
   });
+
+  test('the paired live upgrade refuses redirects and revokes on a forbidden response', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final paths = <String>[];
+    var revoked = false;
+    server.listen((request) async {
+      paths.add(request.uri.path);
+      final response = request.response;
+      if (request.uri.path == '/v1/users/profile') {
+        response.write(jsonEncode({'uid': 'alice', 'local_audio_delivery_version': 2}));
+      } else if (request.uri.path == '/v4/listen') {
+        if (!revoked) {
+          await response.redirect(Uri.parse('/redirected'));
+          return;
+        }
+        response.statusCode = HttpStatus.forbidden;
+      }
+      await response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    var rejections = 0;
+    library.onKeyRejected = () => rejections++;
+    await expectLater(library.connectPreview('another pairing', 'phone', 'pcm16'), throwsA(LibraryFailure.key));
+    expect(paths, isEmpty);
+    await expectLater(
+      library.connectPreview(library.audioOwnerId, 'phone', 'pcm16'),
+      throwsA(isA<WebSocketException>()),
+    );
+    expect(paths, ['/v1/users/profile', '/v4/listen']);
+    expect(rejections, 0);
+    revoked = true;
+    await expectLater(
+      library.connectPreview(library.audioOwnerId, 'phone', 'pcm16'),
+      throwsA(isA<WebSocketException>()),
+    );
+    expect(rejections, 1);
+    expect(library.audioDelivery, isFalse);
+  });
 }

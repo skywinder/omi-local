@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'package:omi/services/capture/local_audio_journal.dart';
 
+import 'live_preview.dart';
+
 abstract interface class NextPhoneMicrophone {
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure);
   Future<void> stop();
@@ -51,11 +53,12 @@ class IosPhoneMicrophone implements NextPhoneMicrophone {
 enum CaptureProblem { permission, microphone, storage, empty }
 
 class NextPhoneCapture extends ChangeNotifier {
-  NextPhoneCapture(this.journal, this.owner, this.microphone);
+  NextPhoneCapture(this.journal, this.owner, this.microphone, {this.preview});
 
   final LocalAudioJournal journal;
   final String owner;
   final NextPhoneMicrophone microphone;
+  final NextLivePreview? preview;
   LocalAudioRecording? _recording;
   CaptureProblem? problem;
   bool busy = false;
@@ -75,6 +78,9 @@ class NextPhoneCapture extends ChangeNotifier {
     notifyListeners();
     try {
       await microphone.start((bytes) => _write(current, bytes), () => _fail(current, CaptureProblem.microphone));
+      if (_recording == current && !_writeFailed && _stopping == null) {
+        preview?.begin(current.recordingId, current.source, current.codec);
+      }
     } catch (error) {
       _fail(current, error is PhoneCaptureDenied ? CaptureProblem.permission : CaptureProblem.microphone);
     } finally {
@@ -91,11 +97,26 @@ class NextPhoneCapture extends ChangeNotifier {
     }
     for (int offset = 0; offset < bytes.length; offset += LocalAudioJournal.maxFrameBytes) {
       final end = math.min(offset + LocalAudioJournal.maxFrameBytes, bytes.length);
+      final view = Uint8List.sublistView(bytes, offset, end);
+      final activePreview = preview;
+      final frame = activePreview == null ? view : Uint8List.fromList(view);
       // add() snapshots and counts bytes synchronously before its serialized disk flush.
       unawaited(
-        current.add(Uint8List.sublistView(bytes, offset, end)).catchError((Object _) {
-          _fail(current, CaptureProblem.storage);
-        }),
+        current
+            .add(
+              frame,
+              afterPersisted: activePreview == null
+                  ? null
+                  : () => activePreview.addPersisted(
+                      current.recordingId,
+                      current.source,
+                      current.codec,
+                      frame,
+                      startSeconds:
+                          current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
+                    ),
+            )
+            .catchError((Object _) => _fail(current, CaptureProblem.storage)),
       );
     }
   }
@@ -111,6 +132,8 @@ class NextPhoneCapture extends ChangeNotifier {
   Future<void> stop() => _stopping ??= _stop().whenComplete(() => _stopping = null);
 
   Future<void> _stop() async {
+    final previewRecording = _recording;
+    if (previewRecording != null) preview?.end(previewRecording.recordingId);
     await _starting;
     final current = _recording;
     if (current == null) return;

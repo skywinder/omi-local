@@ -7,6 +7,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
 
+import 'live_preview.dart';
+
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
 class PairedLibrary {
@@ -25,6 +27,7 @@ class PairedLibrary {
   bool verified = false;
   Future<void>? _checking;
   final _clients = <HttpClient>{};
+  final _previews = <WebSocket>{};
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
 
   void close() {
@@ -35,6 +38,10 @@ class PairedLibrary {
     for (final client in _clients) {
       client.close(force: true);
     }
+    for (final socket in _previews) {
+      abortPairedPreview(socket);
+    }
+    _previews.clear();
   }
 
   static const pageSize = 30;
@@ -90,6 +97,22 @@ class PairedLibrary {
   );
   static Future<void> forget() => _storage.delete(key: _record);
 
+  HttpClient _directClient() {
+    final client = HttpClient()..connectionTimeout = _deadline;
+    _clients.add(client);
+    client.findProxy = (target) {
+      if (target.origin != origin.origin) throw LibraryFailure.address;
+      return 'DIRECT';
+    };
+    return client;
+  }
+
+  void _rejectKey() {
+    if (_closed) return;
+    close();
+    onKeyRejected?.call();
+  }
+
   Future<T> _request<T>(
     String path,
     Future<T> Function(HttpClientResponse) read, {
@@ -98,12 +121,7 @@ class PairedLibrary {
   }) async {
     if (_closed) throw LibraryFailure.key;
     final uri = origin.replace(path: path, queryParameters: query);
-    final client = HttpClient()..connectionTimeout = _deadline;
-    _clients.add(client);
-    client.findProxy = (target) {
-      if (target.origin != origin.origin) throw LibraryFailure.address;
-      return 'DIRECT';
-    };
+    final client = _directClient();
     try {
       final req = await client.openUrl(body == null ? 'GET' : 'POST', uri).timeout(_deadline);
       req.followRedirects = false;
@@ -115,14 +133,39 @@ class PairedLibrary {
       }
       final response = await req.close().timeout(_deadline);
       if (response.statusCode == 401 || response.statusCode == 403) {
-        if (!_closed) {
-          close();
-          onKeyRejected?.call();
-        }
+        _rejectKey();
         throw LibraryFailure.key;
       }
       if (response.statusCode != 200) throw LibraryFailure.unavailable;
       return await read(response);
+    } finally {
+      _clients.remove(client);
+      client.close(force: true);
+    }
+  }
+
+  Future<WebSocket> connectPreview(String serverId, String source, String codec) async {
+    if (_closed || serverId != audioOwnerId) throw LibraryFailure.key;
+    if (!verified) await verify();
+    if (_closed || !audioDelivery) throw LibraryFailure.unavailable;
+    final client = _directClient();
+    try {
+      final socket = await upgradePairedPreview(client, origin, _key, source, codec);
+      if (_closed) {
+        abortPairedPreview(socket);
+        throw LibraryFailure.key;
+      }
+      _previews.add(socket);
+      unawaited(
+        socket.done.then<void>(
+          (_) => _previews.remove(socket),
+          onError: (Object _, StackTrace __) => _previews.remove(socket),
+        ),
+      );
+      return socket;
+    } on WebSocketException catch (error) {
+      if (error.httpStatusCode == 401 || error.httpStatusCode == 403) _rejectKey();
+      rethrow;
     } finally {
       _clients.remove(client);
       client.close(force: true);

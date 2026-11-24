@@ -9,6 +9,8 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'capture.dart';
 import 'cv1_capture.dart';
 import 'cv1_transport.dart';
+import 'live_preview.dart';
+import 'live_view.dart';
 import 'paired_library.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
@@ -51,7 +53,12 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       if (_closed) return;
       WidgetsBinding.instance.addObserver(journal);
       _inputs = NextCaptureInputs(
-        NextPhoneCapture(journal, library.audioOwnerId, IosPhoneMicrophone()),
+        NextPhoneCapture(
+          journal,
+          library.audioOwnerId,
+          IosPhoneMicrophone(),
+          preview: NextLivePreview(library.audioOwnerId, library.connectPreview),
+        ),
         IosCv1Transport(),
       );
       journal.retry();
@@ -90,7 +97,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     if (inputs == null) {
       return _storageFailed ? Text(l.couldNotStartRecording) : const SizedBox.shrink();
     }
-    return LocalNextCaptureControls(inputs: inputs);
+    return LocalNextCaptureControls(inputs: inputs, serverLabel: widget.library.origin.authority);
   }
 }
 
@@ -102,6 +109,7 @@ class NextCaptureInputs extends ChangeNotifier {
       phone.owner,
       canStart: () => !_closed && !switching && !_phoneOwns && !phone.active && !phone.busy,
       onStartRequested: _claimCv1,
+      preview: phone.preview,
     );
     connection = Cv1Connection(transport, cv1);
   }
@@ -113,6 +121,8 @@ class NextCaptureInputs extends ChangeNotifier {
   bool _closed = false;
   Future<void>? _transition;
   bool get switching => _transition != null;
+  bool get isRecording => phone.active || phone.busy || cv1.active;
+  NextLivePreview? get preview => phone.preview;
 
   Future<void> _change(Future<void> Function() operation) {
     if (_closed || switching) return Future.value();
@@ -151,6 +161,17 @@ class NextCaptureInputs extends ChangeNotifier {
     await phone.start();
   });
 
+  Future<void> stopRecording() async {
+    await _transition;
+    await _change(() async {
+      if (phone.active || phone.busy) {
+        await phone.stop();
+      } else {
+        await cv1.stop();
+      }
+    });
+  }
+
   Future<void> close() async {
     _closed = true;
     try {
@@ -166,13 +187,15 @@ class NextCaptureInputs extends ChangeNotifier {
     connection.dispose();
     cv1.dispose();
     phone.dispose();
+    preview?.dispose();
     super.dispose();
   }
 }
 
 class LocalNextCaptureControls extends StatelessWidget {
-  const LocalNextCaptureControls({required this.inputs, super.key});
+  const LocalNextCaptureControls({required this.inputs, this.serverLabel = '', super.key});
   final NextCaptureInputs inputs;
+  final String serverLabel;
 
   Future<void> _devices(BuildContext context) async {
     final connection = inputs.connection;
@@ -237,10 +260,11 @@ class LocalNextCaptureControls extends StatelessWidget {
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
     final link = inputs.connection;
+    final captureState = Listenable.merge([inputs, capture, cv1]);
     final journal = capture.journal;
     final l = context.l10n;
     return ListenableBuilder(
-      listenable: Listenable.merge([inputs, capture, journal, cv1, link]),
+      listenable: Listenable.merge([captureState, journal, link]),
       builder: (context, _) => Column(
         children: [
           Wrap(
@@ -269,6 +293,15 @@ class LocalNextCaptureControls extends StatelessWidget {
                   tooltip: cv1.intent == Cv1CaptureIntent.muted ? l.unmute : l.mute,
                   icon: Icon(cv1.intent == Cv1CaptureIntent.muted ? Icons.mic_off : Icons.mic),
                   onPressed: inputs.switching ? null : cv1.toggleMute,
+                ),
+              if (inputs.preview case final preview?)
+                LocalNextLiveButton(
+                  preview: preview,
+                  capture: captureState,
+                  isRecording: () => inputs.isRecording,
+                  isMuted: () => cv1.intent == Cv1CaptureIntent.muted,
+                  onStop: inputs.stopRecording,
+                  serverLabel: serverLabel,
                 ),
               TextButton.icon(
                 key: const ValueKey('next-cv1-devices'),
