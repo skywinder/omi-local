@@ -359,6 +359,20 @@ The prior `266bb45` package was verified and saved for rollback. The physical
 USB device matched one paired iPhone, but its CoreDevice tunnel was unavailable
 and the install preflight found no eligible phone.
 
+Archive search passed the Next analyzer and all 53 tests, plus the offline
+backend and existing mobile transport suites. An isolated Firestore run found
+a compressed transcript on the third page after both cursor records were
+deleted between requests. The UI test opened the original transcript at the
+matching segment. Next distinguishes the older offline server's route
+rejection from a temporary service failure.
+
+The signed `Profile-dev` device package from `0c2eb38` passed independent
+signature and entitlement verification. Its executable SHA-256 begins with
+`cdb37b333e178502`. Package `2a93827` was verified and retained for rollback.
+The Mac enumerated an iPhone over USB. CoreDevice had no eligible connected
+phone at installation preflight, so installation and device playback remain
+pending. Archive search on the active server also requires a server update.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -367,6 +381,6 @@ and the install preflight found no eligible phone.
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
 | Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
-| Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
+| Upstream product screens | Paired archive search can open a recording at the matching transcript line. Verify it on the iPhone with an updated server. Next is source-linked chat, followed by editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |
