@@ -51,7 +51,9 @@ def is_offline_http_route_allowed(method: str, path: str) -> bool:
     ):
         return True
     if method.upper() == 'GET' and (
-        path == '/v1/conversations/{conversation_id}'
+        path == '/v1/local/conversations/{conversation_id}/audio'
+        or re.fullmatch(r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/audio', path)
+        or path == '/v1/conversations/{conversation_id}'
         or re.fullmatch(r'/v1/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', path)
     ):
         return True

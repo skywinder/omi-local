@@ -95,6 +95,7 @@ print(json.dumps({
         '/v1/health',
         '/v1/local/status',
         '/v1/local/audio/parts',
+        '/v1/local/conversations/{conversation_id}/audio',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/save',

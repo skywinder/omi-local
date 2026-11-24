@@ -368,3 +368,10 @@ Custom local STT: finished WAVs may use a loopback OpenAI-compatible timed API;
 Argmax/WhisperLiveKit services; `apply-stt` checks capture idle again after model
 startup before restarting its backend. See `docs/LOCAL_STT.md` and
 `docs/LIVE_PREVIEW.md`. Never add ML imports or provider URLs to phone builds.
+
+The paired owner can play a finalized WAV through
+`GET /v1/local/conversations/{conversation_id}/audio` when the profile advertises
+`local_audio_playback_version: 1`. Single HTTP byte ranges support seeking.
+Imported audio must match the owner's saved transcript digest. A pending recording
+must still appear in the owner's library and carry its paired upload receipt.
+Older listen recordings become eligible after transcript import.

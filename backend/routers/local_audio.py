@@ -96,4 +96,7 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
         except (ValueError, KeyError, TypeError, UnicodeError):
             raise HTTPException(status_code=422, detail='Invalid audio part') from None
 
+    from routers.local_playback import build_playback_router
+
+    router.include_router(build_playback_router(authenticate))
     return router

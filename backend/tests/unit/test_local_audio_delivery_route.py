@@ -222,3 +222,67 @@ def test_departed_http_callers_hold_body_admission_until_disk_workers_finish(tmp
                 await asyncio.gather(*[task for task in (first, second, third) if task is not None], return_exceptions=True)
 
     asyncio.run(exercise())
+
+
+def test_paired_playback_reads_uploaded_and_imported_audio_and_rejects_wrong_provenance(tmp_path, monkeypatch):
+    from uuid import NAMESPACE_URL, uuid5
+    from routers import local_playback
+
+    api, key = client(tmp_path, monkeypatch)
+    headers = {'Authorization': f'Bearer {key}'}
+    part_id = api.post('/v1/local/audio/parts', content=part(b'\x02\x00' * 160), headers=headers).json()['id']
+    saved = {}
+    monkeypatch.setattr(local_playback, 'get_playback_conversation', lambda uid, cid: saved.get((uid, cid)))
+    capture = tmp_path / 'state/services/storage/listen-captures' / part_id
+    audio = (capture / 'audio.wav').read_bytes()
+    pending = str(uuid5(NAMESPACE_URL, 'omi-local-capture:' + part_id))
+    url = f'/v1/local/conversations/{pending}/audio'
+    assert api.get(url).status_code == 401
+    assert api.get(url, headers=headers).content == audio
+    partial = api.get(url, headers={**headers, 'Range': 'bytes=2-6'})
+    assert partial.status_code == 206 and partial.content == audio[2:7]
+    assert partial.headers['content-range'] == f'bytes 2-6/{len(audio)}'
+    assert 'no-store' in partial.headers['cache-control']
+    assert api.get(url, headers={**headers, 'Range': 'bytes=999999-'}).status_code == 416
+
+    result_key = 'a' * 64
+    complete = str(uuid5(NAMESPACE_URL, 'omi-local-stt:' + result_key))
+    complete_url = f'/v1/local/conversations/{complete}/audio'
+    folder = tmp_path / 'state/services/local-transcripts' / result_key
+    folder.mkdir(parents=True)
+    provenance = {'audio_sha256': hashlib.sha256(audio).hexdigest(), 'result_key': result_key}
+    manifest = {**provenance, 'capture_key': hashlib.sha256(part_id.encode()).hexdigest()}
+    (folder / 'import.json').write_text(json.dumps({'import': 'passed', 'capture_key': manifest['capture_key']}))
+    (folder / 'manifest.json').write_text(json.dumps(manifest))
+    assert api.get(url, headers=headers).status_code == 404
+    saved['other-owner', complete] = {'external_data': {'local_transcript': provenance}}
+    assert api.get(complete_url, headers=headers).status_code == 404
+    saved['alice', complete] = saved['other-owner', complete]
+    assert api.get(complete_url, headers={**headers, 'Range': 'bytes=-2'}).content == audio[-2:]
+    saved['alice', complete]['deleted'] = True
+    assert api.get(complete_url, headers=headers).status_code == 404
+    saved['alice', complete].pop('deleted')
+    (capture / 'audio.wav').write_bytes(audio[:-2] + b'zz')
+    assert api.get(complete_url, headers=headers).status_code == 404
+
+
+def test_pending_playback_requires_paired_delivery_and_refuses_linked_wav(tmp_path, monkeypatch):
+    from uuid import NAMESPACE_URL, uuid5
+    from routers import local_playback
+
+    api, key = client(tmp_path, monkeypatch)
+    monkeypatch.setattr(local_playback, 'get_playback_conversation', lambda uid, cid: None)
+    headers = {'Authorization': f'Bearer {key}'}
+    part_id = api.post('/v1/local/audio/parts', content=part(b'\x03\x00' * 160), headers=headers).json()['id']
+    capture = tmp_path / 'state/services/storage/listen-captures' / part_id
+    pending = str(uuid5(NAMESPACE_URL, 'omi-local-capture:' + part_id))
+    url = f'/v1/local/conversations/{pending}/audio'
+    path = capture / 'metadata.json'
+    meta = json.loads(path.read_text())
+    path.write_text(json.dumps({k: v for k, v in meta.items() if k != 'delivery'}))
+    assert api.get(url, headers=headers).status_code == 404
+    path.write_text(json.dumps(meta))
+    wav = capture / 'audio.wav'
+    other = wav.rename(tmp_path / 'outside.wav')
+    wav.symlink_to(other)
+    assert api.get(url, headers=headers).status_code == 404
