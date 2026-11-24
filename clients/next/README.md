@@ -147,6 +147,13 @@ seal, retired subscription events, Opus custody and link recovery. The Local
 offline suite and all 478 transport tests passed. The native Swift tests verify
 button decoding, subscription fencing and Runner identity.
 
+The physical `Profile-dev` build at `4092769` passed signature, entitlement
+and provisioning checks. The launcher reused that exact package and
+CoreDevice confirmed installation and launch of `org.omilocal.next`. A separate
+inventory query found both clients on the iPhone and matched the running Next
+process to the installed bundle. Physical server pairing, CV1 audio and playback
+are still open.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Pinned November 24 Flutter app, independent Runner identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
