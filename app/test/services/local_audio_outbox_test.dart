@@ -348,6 +348,32 @@ void main() {
     expect(fresh, List.generate(6, (i) => [0x78, i + 1]));
   });
 
+  test('a discontinuity seals prior audio without carrying Opus context into the same recording', () async {
+    final recording = outbox.begin(
+      source: 'omi',
+      codec: 'opus_fs320',
+      address: 'https://synthetic.example/',
+      key: 'same-key',
+    );
+    for (var i = 1; i <= 5; i++) {
+      await recording.add([0x78, i]);
+    }
+    final boundary = recording.checkpoint(resetOpusContext: true);
+    final resumed = recording.add([0x78, 6]);
+    final stopped = recording.stop();
+    await boundary;
+    await resumed;
+    await stopped;
+    await outbox.drain();
+    await outbox.drain();
+
+    final parts = received.map(envelope).toList()
+      ..sort((a, b) => (a.header['index'] as int).compareTo(b.header['index'] as int));
+    expect(parts.map((part) => part.header['preroll_frames']), [0, 0]);
+    expect(parts.map((part) => part.header['recording_id']).toSet(), {recording.recordingId});
+    expect(parts.expand((part) => part.packets).map((packet) => packet[1]), [1, 2, 3, 4, 5, 6]);
+  });
+
   test('a mismatched receipt cannot delete unacknowledged audio', () async {
     final wrong = LocalAudioOutbox(directory: directory, upload: (_, __) async => {'stored': true});
     await wrong.initialize();

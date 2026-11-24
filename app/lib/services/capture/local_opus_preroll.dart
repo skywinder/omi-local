@@ -21,4 +21,9 @@ class LocalOpusPreroll {
       _microseconds -= _history.removeAt(0).microseconds;
     }
   }
+
+  void clear() {
+    _history.clear();
+    _microseconds = 0;
+  }
 }

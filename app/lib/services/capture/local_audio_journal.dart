@@ -412,13 +412,19 @@ class LocalAudioRecording {
     return _stopping = outbox._serial(_seal);
   }
 
-  Future<void> checkpoint() => outbox._serial(() async {
-    if (_closed || _writeFailed) return;
-    try {
-      await _seal();
-    } catch (_) {
-      _writeFailed = true;
-      rethrow;
-    }
-  });
+  /// Seal the accepted prefix. A transport discontinuity can drop decoder
+  /// context while preserving the recording identity and upload order.
+  Future<void> checkpoint({bool resetOpusContext = false}) {
+    if (_closed) return Future.value();
+    return outbox._serial(() async {
+      if (_writeFailed) return;
+      try {
+        await _seal();
+        if (resetOpusContext) _preroll.clear();
+      } catch (_) {
+        _writeFailed = true;
+        rethrow;
+      }
+    });
+  }
 }
