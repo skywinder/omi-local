@@ -201,6 +201,10 @@ passed against that revision. The processing fixtures cover independent stage
 activation, the capture interlock, revision conflicts and uncertain writes.
 A read-only authenticated Bastion request confirmed all five stages in the
 deployed registry. Its active selections were not changed.
+The signed `Profile-dev` build from `0c32b8d` includes Live and the processing
+screen. The launcher reused that exact package and CoreDevice confirmed its
+installation and launch on the physical iPhone. The device inventory showed
+both apps, and the running Next process matched its own installed bundle.
 
 | Area | Status and next verification |
 | --- | --- |
