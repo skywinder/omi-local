@@ -254,6 +254,15 @@ malformed rows and credential revocation. The source adapters applied
 deterministically at both `4ff5502` and `ba4d7ac`. A live Bastion archive probe
 was blocked at SSH authentication, before any HTTP request.
 
+The focused archive, Local audio delivery, and route-policy Python suites
+passed all 46 tests. The signed iPhone `Profile-dev` package for `09f15b2`
+includes the archive and the processing draft editor. The executable SHA-256
+begins with `e71fd8ee7d49e89c`. The bundle identity, strict signature and
+entitlement checks passed. The preceding signed package and its attestation
+are retained locally for rollback. Xcode found no connected iPhone after the
+build. Installation of the new package and physical archive, recording and
+playback acceptance remain open.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
