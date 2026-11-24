@@ -602,6 +602,16 @@ and entitlement verification. Its executable SHA-256 begins with
 `03157331363adb72`. Verified rollback package `cf70c54` is available.
 Xcode found no eligible connected iPhone for installation.
 
+Local goals passed the Next analyzer and 66 tests, the offline backend
+suite, legacy transport tests, and focused canonical goal tests. Isolated
+Firestore verified revision conflicts, replay, existing goals, metric
+bounds and links to owned recordings.
+
+The signed `Profile-dev` package from `5c2f56b` passed independent signature
+and entitlement verification. Its executable SHA-256 begins with
+`9fc7591a66d4aa46`. Verified rollback package `28f61eb` is available.
+Xcode found no eligible iPhone for installation.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -610,6 +620,6 @@ Xcode found no eligible connected iPhone for installation.
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
 | Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
-| Upstream product screens | Paired search, chat, folders, manual speaker labels, tasks and manually generated daily recaps are available in Next. Task suggestions cite a transcript line and require individual acceptance. These features need physical verification with an updated server. Scheduled recaps, goal progress, semantic retrieval, persistent archive chat history, automatic speaker recognition, memory and integrations remain open. Episodes, Review and Dream retain separate availability checks. |
+| Upstream product screens | Paired search, chat, folders, manual speaker labels, tasks, manually generated daily recaps, and manual goal progress are available in Next. Task suggestions cite a transcript line and require individual acceptance. These features need physical verification with an updated server. Scheduled recaps, goal suggestions and lifecycle, semantic retrieval, persistent archive chat history, automatic speaker recognition, memory and integrations remain open. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |
