@@ -33,6 +33,9 @@ to the loopback library. It requires the existing paired key, rejects non-loopba
 clients, non-loopback receiving sockets and all forwarded headers, and uses
 `Cache-Control: no-store`. Never add draft text to the status endpoint, logs or a diagnostic file.
 Updated paired clients send bounded immutable parts to `/v1/local/audio/parts`.
+Grouped delivery acquires the per-recording lock, checks adjacent sample positions
+and advances only through the ordered durable prefix. Preserve immutable receipts
+and allow legacy parts to use the existing independent capture path.
 Authenticate before consuming bodies. Publish the complete WAV and metadata
 outside watcher staging, sync them, and return a receipt for that exact ID/hash.
 Retries must not overwrite or duplicate audio. The explicit outbox header makes

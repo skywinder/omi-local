@@ -195,3 +195,138 @@ def test_v1_cannot_silently_opt_into_v2_preroll(tmp_path):
             part(*([b'\x78\x01'] * 5), source='omi', codec='opus', preroll_frames=4, index=1, version=1), tmp_path
         )
     assert not (tmp_path / 'listen-captures').exists()
+
+
+def group_message(recording_id, index, offset, pcm=b'', *, finish=False, silence=30):
+    fields = dict(version=3, group_version=1, kind='finish' if finish else 'audio',
+                  id=recording_id if finish else str(uuid.uuid5(uuid.UUID(recording_id), str(index))),
+                  recording_id=recording_id, index=index, source='phone', codec='pcm16',
+                  server_id='a'*64, started_at='2026-11-20T08:00:00Z', group_started_at='2026-11-20T08:00:00Z',
+                  preroll_frames=0, silence_seconds=silence, first_sample=offset)
+    header = json.dumps(fields).encode()
+    packets = [pcm[i:i+4000] for i in range(0, len(pcm), 4000)]
+    return MAGIC + struct.pack('>I', len(header)) + header + b''.join(struct.pack('>I', len(p)) + p for p in packets)
+
+
+def test_bad_neighbor_does_not_poison_group_and_disabled_splitting_preserves_silence(tmp_path):
+    recording = str(uuid.uuid4())
+    pcm = bytes(3200)
+    args = {'silence': 0}
+    first = group_message(recording, 0, 0, pcm, **args)
+    second = group_message(recording, 1, 1600, pcm, **args)
+    assert accept_part(first, tmp_path)['stored']
+    with pytest.raises(DeliveryConflict, match='preceding part'):
+        accept_part(group_message(recording, 1, 1601, pcm, **args), tmp_path)
+    assert accept_part(second, tmp_path)['stored']
+    finish = group_message(recording, 2, 0, finish=True, **args)
+    assert accept_part(finish, tmp_path)['stored']
+    audio_path, = (tmp_path / 'listen-captures').glob('*/audio.wav')
+    with wave.open(str(audio_path)) as wav:
+        assert wav.readframes(wav.getnframes()) == pcm * 2
+    group = tmp_path / 'grouped-recordings' / recording
+    assert not list(group.glob('parts/*/audio.wav'))
+    assert accept_part(second, tmp_path)['stored']
+
+
+def test_group_order_loss_replay_and_two_rotations_make_one_conversation(tmp_path):
+    recording = str(uuid.uuid4())
+    with wave.open(str(Path(__file__).parents[2] / 'testing/release_fixtures/transcription-release-probe.wav')) as audio:
+        words = audio.readframes(audio.getnframes())
+    pcm = (words * 125)[:610 * 32000]
+    spans = [pcm[:300 * 32000], pcm[300 * 32000:600 * 32000], pcm[600 * 32000:]]
+    bodies = [group_message(recording, i, i * 300 * 16000, span) for i, span in enumerate(spans)]
+    end = group_message(recording, 3, 0, finish=True)
+    for body in [end, bodies[2], bodies[0], bodies[2]]:
+        accept_part(body, tmp_path)
+    progress = tmp_path / 'grouped-recordings' / recording / 'progress.json'
+    assert json.loads(progress.read_text())['waiting_for_parts'] is True
+    assert not list((tmp_path / 'listen-captures').glob('*/audio.wav'))
+    for body in [bodies[1], end, *bodies]:
+        accept_part(body, tmp_path)
+    assert json.loads(progress.read_text())['completed']
+    audio_path, = (tmp_path / 'listen-captures').glob('*/audio.wav')
+    group = json.loads(audio_path.with_name('metadata.json').read_text())['conversation_group']
+    assert group['end_sample'] == len(pcm) // 2
+    assert 'speech_end_sample' not in group  # Explicit Stop retains the whole waveform for inference.
+    with wave.open(str(audio_path)) as audio:
+        assert audio.readframes(audio.getnframes()) == pcm[group['start_sample']*2:]
+
+
+def test_group_29_seconds_does_not_finish_30_does_and_next_voice_starts_new_card(tmp_path, monkeypatch):
+    from utils import local_conversation_groups as groups
+    # Inject known detector decisions; exercise the production journal, reducer and published WAVs.
+    def decisions(self, pcm):
+        voiced = [i for i in range(0, len(pcm), 32000) if pcm[i] == 1]
+        return [(i//2, min(i//2 + 16000, len(pcm)//2)) for i in voiced]
+    monkeypatch.setattr(groups.SpeechDetector, 'runs', decisions)
+    recording = str(uuid.uuid4())
+    voice, quiet = b'\x01\0' * 16000, b'\0\0' * 16000
+    def send(i, offset, pcm):
+        return accept_part(group_message(recording, i, offset*16000, pcm), tmp_path)
+    send(0, 0, voice + quiet * 29)
+    assert not list((tmp_path / 'listen-captures').glob('*/audio.wav'))
+    send(1, 30, quiet + quiet * 3 + voice + quiet * 30 + quiet * 2)
+    paths = list((tmp_path / 'listen-captures').glob('*/metadata.json'))
+    assert len(paths) == 2
+    boundaries = [json.loads(path.read_text())['conversation_group'] for path in paths]
+    ranges = sorted((g['start_sample'], g['speech_end_sample'], g['end_sample']) for g in boundaries)
+    assert ranges == [(0, 16000, 31 * 16000), (34 * 16000 - 3200, 35 * 16000, 65 * 16000)]
+    accept_part(group_message(recording, 2, 0, finish=True), tmp_path)
+    assert len(list((tmp_path / 'listen-captures').glob('*/audio.wav'))) == 2
+
+
+
+def test_retry_after_older_publication_preserves_existing_metadata(tmp_path, monkeypatch):
+    from utils import local_conversation_groups as groups
+
+    publish = groups._publish
+    monkeypatch.setattr(groups.SpeechDetector, 'runs', lambda _self, _pcm: [(0, 16000)])
+
+    def interrupt_after_legacy_publication(root, group, config, index, start, end, speech_end):
+        publish(root, group, config, index, start, end, None)
+        raise OSError('Interrupted before group checkpoint')
+
+    monkeypatch.setattr(groups, '_publish', interrupt_after_legacy_publication)
+    body = group_message(str(uuid.uuid4()), 0, 0, bytes(31 * 32000))
+    with pytest.raises(OSError):
+        accept_part(body, tmp_path)
+    meta, = list((tmp_path / 'listen-captures').glob('*/metadata.json'))
+    before = meta.read_bytes()
+    assert 'speech_end_sample' not in json.loads(before)['conversation_group']
+    monkeypatch.setattr(groups, '_publish', publish)
+    assert accept_part(body, tmp_path)['stored'] is True
+    assert meta.read_bytes() == before
+
+
+def test_onset_preroll_survives_many_short_reconnect_parts(tmp_path, monkeypatch):
+    from utils import local_conversation_groups as groups
+
+    monkeypatch.setattr(groups.SpeechDetector, 'runs', lambda _s, pcm: [(0, len(pcm)//2)] if pcm[0] else [])
+    recording = str(uuid.uuid4())
+    for i in range(8):
+        data = bytes([int(i == 7), 0]) * 640
+        accept_part(group_message(recording, i, i*640, data), tmp_path)
+    accept_part(group_message(recording, 8, 0, finish=True), tmp_path)
+    meta, = list((tmp_path/'listen-captures').glob('*/metadata.json'))
+    data = json.loads(meta.read_text())
+    assert data['conversation_group']['start_sample'] == 7*640 - 3200
+    assert data['decoded_pcm_bytes'] == (3200+640)*2
+    assert data['frames_received'] is None and data['encoded_bytes'] is None
+
+def test_long_conversation_writes_rf64_with_64bit_sample_count(tmp_path):
+    from utils.local_conversation_groups import _conversation_wav
+
+    audio = tmp_path / 'audio.wav'
+    frames = (1 << 31) + 16000
+    with _conversation_wav(audio, frames) as output:
+        header_size = output.tell()
+        output.seek(2 * (frames - 1), 1)
+        output.write(b'\x23\x01')
+    assert audio.stat().st_size == 2 * frames + header_size
+    with audio.open('rb') as source:
+        assert source.read(16) == b'RF64\xff\xff\xff\xffWAVEds64'
+        chunk_size, riff_size, data_size, samples, table = struct.unpack('<IQQQI', source.read(32))
+        assert (chunk_size, riff_size, data_size, samples, table) == (28, audio.stat().st_size - 8, 2 * frames, frames, 0)
+    with pytest.raises(ValueError, match='Incomplete'):
+        with _conversation_wav(tmp_path / 'incomplete.wav', frames) as output:
+            output.write(b'\x00\x00')

@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import config, safety
+from .local_capture_wav import read_wave
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
@@ -199,7 +200,7 @@ class Library:
                     identity = (stamp.st_size, stamp.st_mtime_ns, stamp.st_ino)
                     cached = self.digests.get(audio)
                     if cached is None or cached[0] != identity:
-                        with wave.open(str(audio)) as wav:
+                        with audio.open('rb') as source_stream, read_wave(source_stream) as wav:
                             if wav.getcomptype() != 'NONE' or not wav.getframerate():
                                 continue
                             duration = wav.getnframes() / wav.getframerate()

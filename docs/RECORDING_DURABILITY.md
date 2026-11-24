@@ -126,6 +126,17 @@ directory before acknowledging. A repeated identical part returns the same
 receipt. Reusing its identity with different bytes returns conflict and cannot
 overwrite the original. Interrupted staging never appears as a completed WAV.
 
+The server accepts version-three grouped parts through the same endpoint.
+Grouped clients supply a recording ID, consecutive indexes, sample positions,
+and an explicit finish marker. The server stores out-of-order parts but advances
+only along a continuous sample range. With a configured silence threshold it
+publishes a conversation after the corresponding silent interval and retains
+onset context for the next conversation. With splitting disabled it retains all
+captured samples through finish, including silence. Matching receipts remain
+available after original staged parts are retired. Next currently sends
+version-two parts while its grouped journal and live boundary controls are
+being integrated.
+
 ## Recovery boundaries
 
 On application startup, a valid unfinished journal is sealed for retry. An

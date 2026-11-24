@@ -14,6 +14,13 @@ the iPhone app.
 The separate experimental path for draft text during recording is documented in
 [Live preview](LIVE_PREVIEW.md); it preserves final WAV processing.
 
+Grouped recordings use overlapping inference windows on a common sample clock.
+Completed windows are reused after a retry. A silence-closed group limits
+inference to the final detected speech and a short release while playback
+retains the published WAV. Extended-size RF64 supports a sample range beyond
+the RIFF limit. End-to-end import of a transcript that exceeds Firestore's
+document size and long RF64 playback on iPhone still need separate verification.
+
 ## WhisperKit
 
 The selected profile is **large-v3-turbo**, the Core ML variant

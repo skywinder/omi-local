@@ -26,14 +26,14 @@ def packet_microseconds(packet: bytes) -> int:
 
 def validate_preroll(header: dict, frames: list[bytes]) -> int:
     version = header['version']
-    if version not in {1, 2} or (version == 2 and 'preroll_frames' not in header):
+    if version not in {1, 2, 3} or (version >= 2 and 'preroll_frames' not in header):
         raise ValueError('Unsupported audio pre-roll protocol version')
     count = header.get('preroll_frames', 0)
     if type(count) is not int or not 0 <= count <= MAX_PREROLL_FRAMES or len(frames) <= count:
         raise ValueError('Invalid audio pre-roll count or empty fresh audio')
     if count:
-        if version != 2:
-            raise ValueError('Audio pre-roll requires delivery protocol version 2')
+        if version < 2:
+            raise ValueError('Audio pre-roll requires delivery protocol version 2 or later')
         if header['codec'] == 'pcm16' or header['index'] == 0:
             raise ValueError('Audio pre-roll requires a later Opus part')
         durations = [packet_microseconds(frame) for frame in frames[:count]]

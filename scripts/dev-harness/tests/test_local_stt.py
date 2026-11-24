@@ -290,6 +290,28 @@ def test_parakeet_failed_process_never_imports_or_writes_raw_result(tmp_path, mo
     assert not list(settings.layout.services_dir.glob('local-transcripts/*/audio.json'))
 
 
+def test_only_grouped_parakeet_windows_accept_an_empty_result(tmp_path, monkeypatch):
+    settings = cfg(tmp_path)
+    (settings.layout.state_root / 'stt-engine.json').write_text(json.dumps({'engine': 'parakeet-mlx'}))
+    engine = local_stt.EngineConfig.load(settings)
+    monkeypatch.setattr(local_stt, 'check_model', lambda _: Path('/fixture/python'))
+
+    def process(command, **kwargs):
+        if '--allow-empty' not in command:
+            return SimpleNamespace(returncode=1)
+        Path(command[command.index('--output') + 1]).write_text(json.dumps({'segments': [], 'outcome': 'no_speech'}))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(local_stt.subprocess, 'run', process)
+    audio = audio_file(tmp_path)
+    manifest = local_stt.inspect_audio(audio)
+    with pytest.raises(local_stt.TranscriptionError):
+        local_stt.run_parakeet(engine, audio, tmp_path, manifest)
+    assert local_stt.run_parakeet(engine, audio, tmp_path, {
+        **manifest, 'conversation_window': True,
+    })['outcome'] == 'no_speech'
+
+
 @pytest.mark.parametrize('diarization', ['none', 'pyannote/speaker-diarization-community-1'])
 def test_whisperx_diarization_mode_controls_cli_speakers_and_cache_identity(tmp_path, monkeypatch, diarization):
     settings = cfg(tmp_path)
@@ -994,3 +1016,151 @@ def test_live_diarization_wraps_local_or_external_asr_without_changing_upstream(
     path.write_text(json.dumps({**original, 'diarization': 'invalid'}))
     with pytest.raises(services.ServiceError, match='diarization settings'):
         services.live_url(cfg)
+
+
+@pytest.mark.parametrize('window_seconds', [600, 4])
+def test_silence_closed_group_inference_excludes_trailing_quiet_and_keeps_original_wav(tmp_path, monkeypatch, window_seconds):
+    import uuid
+    from dev_harness import local_stt_windows as windows
+
+    rate = windows.RATE
+    monkeypatch.setattr(windows, 'WINDOW', window_seconds * rate)
+    fixture = Path(__file__).parents[1] / 'fixtures' / 'speech-check.wav'
+    with wave.open(str(fixture)) as wav:
+        spoken = wav.readframes(wav.getnframes())
+    speech_frames = len(spoken) // 2
+    pcm = spoken + bytes(2 * 30 * rate)
+    folder = tmp_path / 'conversation'
+    folder.mkdir()
+    audio = folder / 'audio.wav'
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setparams((1, 2, rate, 0, 'NONE', 'not compressed'))
+        wav.writeframes(pcm)
+    start = 919 * rate
+    group = {'recording_id': str(uuid.uuid4()), 'start_sample': start, 'end_sample': start + len(pcm)//2}
+    meta = {'status': 'completed', 'decode_errors': 0, 'source': 'omi', 'duration_seconds': len(pcm)/(2*rate),
+            'started_at': '2026-11-20T10:00:00+00:00', 'conversation_group': group}
+    path = folder / 'metadata.json'
+    path.write_text(json.dumps(meta))
+    legacy = local_stt.inspect_audio(audio)
+    assert windows.needed(legacy) == (window_seconds == 4)
+    group['speech_end_sample'] = start + speech_frames
+    path.write_text(json.dumps(meta))
+    manifest = local_stt.inspect_audio(audio)
+    assert windows.needed(manifest)
+    ranges = []
+    limit = speech_frames + windows.SPEECH_RELEASE
+
+    def recognize(piece, cache, info, _partial):
+        offset, stop, _ = map(int, cache.name.split('-'))
+        with wave.open(str(piece)) as wav:
+            frames = wav.getnframes()
+            assert frames == stop-offset
+            assert wav.readframes(frames) == pcm[offset*2:stop*2]
+        ranges.append((offset, stop))
+        assert stop <= limit
+        return {'language': 'ru', 'segments': [{'text':'words', 'start':0.0, 'end': info['duration_seconds']}]}
+
+    result = windows.run(audio, folder, manifest, 'stt', recognize, local_stt.atomic_json)
+    assert ranges[0][0] == 0 and ranges[-1][1] == limit
+    assert result['segments'][-1]['end'] <= limit/rate
+    assert local_stt.inspect_audio(audio)['audio_sha256'] == legacy['audio_sha256']
+    for invalid in (True, start, group['end_sample'] + 1):
+        group['speech_end_sample'] = invalid
+        path.write_text(json.dumps(meta))
+        with pytest.raises(local_stt.TranscriptionError, match='sample range'):
+            local_stt.inspect_audio(audio)
+
+
+def test_grouped_windows_keep_absolute_words_and_one_summary_after_retry(tmp_path, monkeypatch):
+    import uuid
+    from collections import Counter
+    from dev_harness import local_pipeline, local_stt_windows as windows
+
+    cfg = selected_pipeline_cfg(tmp_path)
+    rate = windows.RATE
+    monkeypatch.setattr(windows, 'WINDOW', 10 * rate)
+    group_id = uuid.uuid4()
+    folder = tmp_path / str(uuid.uuid5(group_id, 'conversation:0'))
+    folder.mkdir()
+    audio = folder / 'audio.wav'
+    with wave.open(str(audio), 'wb') as wav:
+        wav.setparams((1, 2, rate, 0, 'NONE', 'not compressed'))
+        for second in range(23):
+            wav.writeframes((second + 1).to_bytes(2, 'little') * rate)
+    (folder / 'metadata.json').write_text(json.dumps({'status': 'completed', 'decode_errors': 0,
+        'source': 'omi', 'duration_seconds': 23, 'started_at': '2026-11-20T10:00:00+00:00',
+        'conversation_group': {'recording_id': str(group_id), 'start_sample': 0, 'end_sample': 23 * rate}}))
+
+    calls = Counter()
+
+    def first_second(piece):
+        with wave.open(str(piece)) as wav:
+            return int.from_bytes(wav.readframes(1), 'little') - 1
+
+    def asr(engine, piece, cache, info):
+        start = first_second(piece)
+        calls['stt', start] += 1
+        duration = int(info['duration_seconds'])
+        words = [dict(start=i + .1, end=i + .5, word=str(start + i)) for i in range(duration)]
+        return {'language': 'en', 'segments': [dict(start=.1, end=duration - .5,
+                text=' '.join(w['word'] for w in words), words=words)]}
+
+    def diarize(provider, key, piece, cache, info, raw):
+        start = first_second(piece)
+        calls['diarization', start] += 1
+        if start == 8 and calls['diarization', start] == 1:
+            raise local_pipeline.PipelineError('synthetic transient failure')
+        label = f'SPEAKER_{start:02d}'
+        return {**raw, 'segments': [{**s, 'speaker': label} for s in raw['segments']],
+                'diarization': {'turns': [[0, info['duration_seconds'], label]]}}
+
+    def summarize(provider, key, raw, cache, write):
+        calls['summary'] += 1
+        assert [s['speaker'] for s in raw['segments']] == ['SPEAKER_00'] * 3
+        words = [w for s in raw['segments'] for w in s['words']]
+        assert [w['word'] for w in words] == list(map(str, range(23)))
+        assert [w['start'] for w in words] == pytest.approx([i + .1 for i in range(23)])
+        assert [w['end'] for w in words] == pytest.approx([i + .5 for i in range(23)])
+        return {'title': 'Synthetic', 'overview': 'One complete dialogue'}
+
+    imports = []
+    monkeypatch.setattr(local_stt, 'backend_step', lambda cfg, result=None:
+                        imports.append(result) or {} if result is not None else {})
+    monkeypatch.setattr(local_stt, 'run_openai', asr)
+    monkeypatch.setattr(local_pipeline, 'remote_diarization', diarize)
+    monkeypatch.setattr(local_pipeline, 'summarize', summarize)
+    with pytest.raises(local_pipeline.PipelineError, match='synthetic transient failure'):
+        local_stt.transcribe(cfg, str(audio))
+    assert not imports and not calls['summary']
+    assert local_stt.transcribe(cfg, str(audio)) == 0
+    assert len(imports) == 1 and calls['summary'] == 1
+    assert [calls['stt', offset] for offset in (0, 8, 18)] == [1, 1, 1]
+    assert [calls['diarization', offset] for offset in (0, 8, 18)] == [1, 2, 1]
+
+
+def test_capture_rf64_extracts_final_pcm_after_riff_limit_and_rejects_truncation(tmp_path):
+    import struct
+    from dev_harness.local_capture_wav import read_wave
+    from dev_harness.local_stt_windows import _write_slice
+
+    frames = 1 + (1 << 31)
+    audio = tmp_path / 'audio.wav'
+    with audio.open('wb') as out:
+        out.write(b'RF64\xff\xff\xff\xffWAVEds64')
+        out.write(struct.pack('<IQQQI', 28, frames * 2 + 72, frames * 2, frames, 0))
+        out.write(struct.pack('<4sIHHIIHH', b'fmt ', 16, 1, 1, 16000, 32000, 2, 16))
+        out.write(b'data\xff\xff\xff\xff')
+        out.seek((frames - 1) * 2, 1)
+        out.write(b'\x23\x01')
+    piece = tmp_path / 'inference.wav'
+    with audio.open('rb') as stream, read_wave(stream) as wav:
+        assert (wav.getnframes(), wav.getframerate()) == (frames, 16000)
+        _write_slice(wav, piece, frames - 1, frames)
+    with wave.open(str(piece)) as wav:
+        assert wav.getnframes() == 1 and wav.readframes(1) == b'\x23\x01'
+    with audio.open('ab') as out:
+        out.truncate(audio.stat().st_size - 2)
+    with pytest.raises(wave.Error, match='Invalid'):
+        with audio.open('rb') as stream, read_wave(stream):
+            pass

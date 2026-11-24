@@ -301,8 +301,10 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. Silence-based grouping
-requires the Local version-three recording group protocol.
+current stream shows its separately acknowledged limit. The server accepts
+the version-three grouping protocol and prepares grouped WAVs for final
+transcription. Next still journals version-two parts. Grouped journal recovery
+and live silence controls remain separate client work.
 
 ## Processing profiles
 
@@ -611,6 +613,14 @@ The signed `Profile-dev` package from `5c2f56b` passed independent signature
 and entitlement verification. Its executable SHA-256 begins with
 `9fc7591a66d4aa46`. Verified rollback package `28f61eb` is available.
 Xcode found no eligible iPhone for installation.
+
+Grouped capture server verification covered late and repeated parts, exact
+silence boundaries, no-split silence retention, and RF64 headers. An isolated
+paired upload passed through the real voice detector, the transcription queue
+with a fixture recognizer, Firestore import, and authenticated WAV playback.
+The offline and legacy transport suites passed. This was a server-only change,
+so the signed `5c2f56b` package was verified for reuse. Next still uses version
+two. Its grouped journal, live boundary controls and physical tests remain open.
 
 | Area | Status and next verification |
 | --- | --- |

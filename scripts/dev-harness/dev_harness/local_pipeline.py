@@ -258,6 +258,8 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
         return {**raw, 'processing': processing}
     diarization = pipeline.get('diarization')
     if diarization:
+        from . import local_stt_windows
+
         def diarize():
             if diarization.get('embedded', False):
                 if (engine.engine not in {'whisperx', 'parakeet-mlx'}
@@ -266,10 +268,15 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
                     raise PipelineError('The selected STT provider does not supply this embedded diarization')
                 return raw  # Migrated legacy STT already produced speaker labels.
             if diarization['kind'] == 'pyannote':
-                return local_speakers(engine, audio, folder, manifest, raw)
-            if diarization['kind'] == 'mycelia':
-                return remote_diarization(diarization, engine.provider_key('diarization'), audio, folder, manifest, raw)
-            raise PipelineError('Unsupported diarization provider')
+                adapter = lambda piece, _cache, info, part: local_speakers(engine, piece, _cache, info, part)
+            elif diarization['kind'] == 'mycelia':
+                key = engine.provider_key('diarization')
+                adapter = lambda piece, cache, info, part: remote_diarization(diarization, key, piece, cache, info, part)
+            else:
+                raise PipelineError('Unsupported diarization provider')
+            if local_stt_windows.needed(manifest):
+                return local_stt_windows.run(audio, folder, manifest, 'diarization', adapter, write, speakers=True)
+            return adapter(audio, folder, manifest, raw)
         raw = stage('diarization', folder / 'diarized.json', diarize)
     summary = pipeline.get('summary')
     if summary:

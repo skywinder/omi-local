@@ -123,6 +123,8 @@ def process(args, versions):
         segments.append({'text': sentence.text.strip(), 'start': min(w['start'] for w in words),
                          'end': max(w['end'] for w in words), 'words': words})
     if not segments:
+        if args.allow_empty:
+            return {'language': None, 'segments': [], 'outcome': 'no_speech', 'runtime': {'engine': 'parakeet-mlx'}}
         raise ValueError('No speech segments')
     asr_done = time.monotonic()
     metrics = {'engine': 'parakeet-mlx', 'device': str(mx.default_device()),
@@ -165,6 +167,7 @@ def process(args, versions):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
+    parser.add_argument('--allow-empty', action='store_true')
     parser.add_argument('--model', required=True)
     parser.add_argument('--diarization-model', required=True)
     parser.add_argument('--audio')
