@@ -340,6 +340,12 @@ offline suite, all 478 legacy transport tests and the analyzer ratchet passed.
 Tests covered paired authorization, older servers, stale readiness and polling
 when the app or screen is hidden.
 
+The signed device package for `2a93827` passed independent signature and
+entitlement verification. Its executable SHA-256 begins with `e71746706a3c154d`.
+The prior `266bb45` package was verified and saved for rollback. The physical
+USB device matched one paired iPhone, but its CoreDevice tunnel was unavailable
+and the install preflight found no eligible phone.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
