@@ -165,6 +165,8 @@ print(json.dumps({
         '/v1/local/folders/move',
         '/v1/local/folders/reorder',
         '/v1/local/people',
+        '/v1/local/action-items',
+        '/v1/local/action-items/{task_id}',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

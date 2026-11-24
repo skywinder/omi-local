@@ -220,6 +220,15 @@ to the matching speaker group within this recording. Names use the paired
 server's existing people collection. Assignments preserve segment text and
 timestamps. Automatic recognition and voice samples are tracked separately.
 
+## Tasks
+
+Open **Tasks** in the archive to create, edit, complete or reopen a task.
+The recording menu can create an item linked to that conversation. **Add task
+from transcript** pre-fills the selected line and asks for confirmation
+before saving. A linked item can open its recording at that line.
+Tasks use the paired server's canonical task store. The local edits keep
+notification and external task-sync behavior outside this workflow.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the

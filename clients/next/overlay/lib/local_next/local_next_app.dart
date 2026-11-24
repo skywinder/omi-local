@@ -7,6 +7,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
 import 'folder_picker.dart';
+import 'local_tasks_page.dart';
 import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
@@ -300,6 +301,14 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                                     );
                                     if (choice != null) await archive.filterFolder(choice.folder);
                                   },
+                          ),
+                        if (library.tasksAvailable)
+                          ActionChip(
+                            avatar: const Icon(Icons.task_alt),
+                            label: Text(l.tasks),
+                            onPressed: () => Navigator.of(
+                              context,
+                            ).push(MaterialPageRoute<void>(builder: (_) => LocalTasksPage(library: library))),
                           ),
                         if (library.folderManagementAvailable)
                           ActionChip(

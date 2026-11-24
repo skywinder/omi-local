@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:omi/backend/http/api/conversations.dart';
 import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/action_item.dart';
 import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
@@ -74,6 +75,7 @@ class PairedLibrary {
   bool audioDelivery;
   bool recordingEdits = false;
   bool speakerLabelsAvailable = false;
+  bool tasksAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -95,6 +97,7 @@ class PairedLibrary {
     audioPlayback = false;
     recordingEdits = false;
     speakerLabelsAvailable = false;
+    tasksAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -431,6 +434,7 @@ class PairedLibrary {
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
+    tasksAvailable = data['local_tasks_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -592,6 +596,60 @@ class PairedLibrary {
   }
 
   static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+
+  Future<ActionItemsResponse> readTasks(int offset) async {
+    if (!isSignedIn || !tasksAvailable) throw LibraryFailure.unavailable;
+    final page = await _request(
+      '/v1/action-items',
+      (response) async => ActionItemsResponse.fromJson(await _json(response, 1 << 20) as Map<String, dynamic>),
+      query: {'offset': '$offset', 'limit': '30'},
+      overallTimeout: _deadline,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return page;
+  }
+
+  Future<ActionItemWithMetadata> readTask(String id) => _taskRequest(id: id, method: 'GET');
+
+  Future<ActionItemWithMetadata> createTask(
+    String requestId,
+    String description, {
+    String? conversationId,
+    String? segmentId,
+  }) => _taskRequest(
+    method: 'POST',
+    data: {
+      'request_id': requestId,
+      'description': description,
+      if (conversationId != null) 'conversation_id': conversationId,
+      if (segmentId != null) 'segment_id': segmentId,
+    },
+  );
+
+  Future<ActionItemWithMetadata> editTask(String id, RecordingEdit edit) =>
+      _taskRequest(id: id, method: 'PATCH', data: edit.wire);
+
+  Future<ActionItemWithMetadata> _taskRequest({String? id, required String method, Map<String, Object?>? data}) async {
+    if (!isSignedIn || !tasksAvailable) throw LibraryFailure.unavailable;
+    if (id != null && !_folderId.hasMatch(id)) throw LibraryFailure.malformed;
+    final task = await _request(
+      id == null ? '/v1/local/action-items' : '/v1/local/action-items/$id',
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
+        if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
+        final task = ActionItemWithMetadata.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>);
+        if (id != null && task.id != id) throw LibraryFailure.malformed;
+        return task;
+      },
+      method: method,
+      body: data == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(data))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+      overallTimeout: _deadline,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return task;
+  }
 
   Person _decodePerson(dynamic data) {
     final row = data as Map<String, dynamic>;

@@ -25,6 +25,7 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/folders/move"),
         ("GET", "/v1/local/people"),
         ("POST", "/v1/local/people"),
+        ("POST", "/v1/local/action-items"),
         ("GET", "/v1/goals/all"),
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),
@@ -56,6 +57,10 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() in {'GET', 'PATCH'} and (
+        path == '/v1/local/action-items/{task_id}' or re.fullmatch(r'/v1/local/action-items/[A-Za-z0-9_-]{1,128}', path)
+    ):
+        return True
     if method.upper() == 'DELETE' and (
         path == '/v1/local/folders/{folder_id}' or re.fullmatch(r'/v1/local/folders/[A-Za-z0-9_-]{1,128}', path)
     ):

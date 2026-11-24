@@ -24,6 +24,7 @@ import 'recording_edit.dart';
 import 'recording_search.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
+import 'task_editor.dart';
 
 String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
     ? context.l10n.recording
@@ -171,29 +172,47 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     );
   }
 
-  Future<void> _chooseLine(_RecordingDetail loaded) async {
-    final line = await showModalBottomSheet<TranscriptSegment>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => FractionallySizedBox(
-        heightFactor: 0.65,
-        child: SafeArea(
-          child: ListView.builder(
-            itemCount: loaded.sources.length,
-            itemBuilder: (context, index) {
-              final line = loaded.sources[index];
-              return ListTile(
-                title: Text(line.text, maxLines: 3, overflow: TextOverflow.ellipsis),
-                subtitle: Text(OmiDuration.offset(line.start)),
-                onTap: () => Navigator.of(context).pop(line),
-              );
-            },
-          ),
+  Future<TranscriptSegment?> _pickLine(_RecordingDetail loaded) => showModalBottomSheet<TranscriptSegment>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => FractionallySizedBox(
+      heightFactor: 0.65,
+      child: SafeArea(
+        child: ListView.builder(
+          itemCount: loaded.sources.length,
+          itemBuilder: (context, index) {
+            final line = loaded.sources[index];
+            return ListTile(
+              title: Text(line.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+              subtitle: Text(OmiDuration.offset(line.start)),
+              onTap: () => Navigator.of(context).pop(line),
+            );
+          },
         ),
       ),
-    );
+    ),
+  );
+
+  Future<void> _chooseLine(_RecordingDetail loaded) async {
+    final line = await _pickLine(loaded);
     if (mounted && line != null) await _editText(loaded, line: line);
+  }
+
+  Future<void> _addTask(_RecordingDetail loaded, {bool useLine = false}) async {
+    final line = useLine ? await _pickLine(loaded) : null;
+    if (!mounted || (useLine && line == null)) return;
+    final initial = line == null ? '' : String.fromCharCodes(line.text.trim().runes.take(4096));
+    final created = await createLocalTask(
+      context,
+      widget.library,
+      conversationId: widget.id,
+      segmentId: line?.id,
+      initial: initial,
+    );
+    if (created && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.saved)));
+    }
   }
 
   Future<void> _changeStar(_RecordingDetail loaded) async {
@@ -410,8 +429,17 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
                     _RecordingEditAction.folder => _moveFolder(loaded),
+                    _RecordingEditAction.task => _addTask(loaded),
+                    _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.tasksAvailable)
+                      PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
+                    if (widget.library.tasksAvailable && loaded.sources.isNotEmpty)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.taskFromLine,
+                        child: Text(pairedSettingsLabel(context, 'localTaskFromLine')),
+                      ),
                     if (widget.library.foldersAvailable)
                       PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
                     PopupMenuItem(
@@ -529,7 +557,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 }
 
-enum _RecordingEditAction { title, star, transcript, folder }
+enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine }
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {

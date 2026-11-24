@@ -13,6 +13,10 @@ class RecordingEdit {
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
   const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
+  const RecordingEdit.taskDescription(String this.expected, String this.value)
+    : field = 'description',
+      segmentId = null;
+  const RecordingEdit.taskCompleted(bool this.expected, bool this.value) : field = 'completed', segmentId = null;
   const RecordingEdit.speaker(Map<String, Object?> this.expected, Map<String, Object?> this.value)
     : field = 'speaker',
       segmentId = null;
@@ -24,7 +28,7 @@ class RecordingEdit {
 
   Map<String, Object?> get wire => {
     'field': field,
-    'expected': field == 'title' || field == 'segment_text'
+    'expected': field == 'title' || field == 'segment_text' || field == 'description'
         ? sha256.convert(utf8.encode(expected as String)).toString()
         : expected,
     'value': value,
@@ -46,6 +50,8 @@ class RecordingTextEditor extends StatefulWidget {
     required this.maxLength,
     required this.multiline,
     required this.onSave,
+    this.saveUnchanged = false,
+    this.errorText = recordingEditError,
   });
 
   final String label;
@@ -53,6 +59,8 @@ class RecordingTextEditor extends StatefulWidget {
   final int maxLength;
   final bool multiline;
   final Future<void> Function(String) onSave;
+  final bool saveUnchanged;
+  final String Function(BuildContext, Object) errorText;
 
   @override
   State<RecordingTextEditor> createState() => _RecordingTextEditorState();
@@ -71,7 +79,7 @@ class _RecordingTextEditorState extends State<RecordingTextEditor> {
       _error = null;
     });
     try {
-      if (value != widget.initial) await widget.onSave(value);
+      if (widget.saveUnchanged || value != widget.initial) await widget.onSave(value);
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (mounted) setState(() => _error = error);
@@ -105,7 +113,7 @@ class _RecordingTextEditorState extends State<RecordingTextEditor> {
           onChanged: (_) => setState(() {}),
           onSubmitted: widget.multiline ? null : (_) => _save(),
           decoration: InputDecoration(
-            errorText: error == null ? null : recordingEditError(context, error),
+            errorText: error == null ? null : widget.errorText(context, error),
             errorMaxLines: 3,
           ),
         ),
