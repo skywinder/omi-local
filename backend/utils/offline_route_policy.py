@@ -19,6 +19,8 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/conversations/search"),
         ("GET", "/v1/local/conversations/chat"),
         ("POST", "/v1/local/conversations/chat"),
+        ("GET", "/v1/local/folders"),
+        ("POST", "/v1/local/folders"),
         ("GET", "/v1/goals/all"),
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),
@@ -50,6 +52,10 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() == 'PATCH' and (
+        path == '/v1/local/folders/{folder_id}' or re.fullmatch(r'/v1/local/folders/[A-Za-z0-9_-]{1,128}', path)
+    ):
+        return True
     if method.upper() == 'PATCH' and (
         path == '/v1/local/conversations/{conversation_id}/edit'
         or re.fullmatch(r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/edit', path)

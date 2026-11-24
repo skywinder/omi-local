@@ -1066,7 +1066,8 @@ def update_conversation_title(uid: str, conversation_id: str, title: str):
 
 @firestore.transactional
 def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
-    ref = db.collection('users').document(uid).collection(conversations_collection).document(conversation_id)
+    owner = db.collection('users').document(uid)
+    ref = owner.collection(conversations_collection).document(conversation_id)
     snapshot = ref.get(transaction=transaction, timeout=6)
     raw = snapshot.to_dict()
     if not raw or raw.get('is_locked') or raw.get('local_chat_deleting'):
@@ -1079,7 +1080,9 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     row['id'] = conversation_id
 
     def matches_original(current):
-        return expected == (hashlib.sha256(current.encode('utf-8')).hexdigest() if isinstance(current, str) else current)
+        if field in {'title', 'segment_text'} and isinstance(current, str):
+            return expected == hashlib.sha256(current.encode('utf-8')).hexdigest()
+        return expected == current
 
     if field == 'title':
         structured = row.get('structured')
@@ -1097,6 +1100,14 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         current = bool(row.get('starred'))
         row['starred'] = value
         patch = {'starred': value}
+    elif field == 'folder':
+        current = row.get('folder_id')
+        if value is not None:
+            target = owner.collection('folders').document(value)
+            if not target.get(transaction=transaction, timeout=6).exists:
+                return 'conflict', None
+        row['folder_id'] = value
+        patch = {'folder_id': value, 'folder_user_set': True}
     elif field == 'segment_text':
         segments = row.get('transcript_segments')
         if not isinstance(segments, list):
@@ -1120,7 +1131,9 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     if current != value and not matches_original(current):
         return 'conflict', None
     # Repeating a confirmed edit does not change the Firestore revision.
-    if current != value or (field == 'title' and raw.get('user_title') != value):
+    if current != value or (field == 'title' and raw.get('user_title') != value) or (
+        field == 'folder' and not raw.get('folder_user_set')
+    ):
         transaction.update(ref, patch)
     return 'ok', row
 

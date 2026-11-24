@@ -12,15 +12,18 @@ class RecordingEdit {
   const RecordingEdit.title(String this.expected, String this.value) : field = 'title', segmentId = null;
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
+  const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
 
   final String field;
   final String? segmentId;
-  final Object expected;
-  final Object value;
+  final Object? expected;
+  final Object? value;
 
-  Map<String, Object> get wire => {
+  Map<String, Object?> get wire => {
     'field': field,
-    'expected': expected is String ? sha256.convert(utf8.encode(expected as String)).toString() : expected,
+    'expected': field == 'title' || field == 'segment_text'
+        ? sha256.convert(utf8.encode(expected as String)).toString()
+        : expected,
     'value': value,
     if (segmentId != null) 'segment_id': segmentId!,
   };

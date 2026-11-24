@@ -317,7 +317,15 @@ class LocalSegmentEdit(BaseModel):
     value: str = Field(min_length=1, max_length=10000)
 
 
-LocalRecordingEdit = Annotated[LocalTitleEdit | LocalStarEdit | LocalSegmentEdit, Field(discriminator='field')]
+class LocalFolderEdit(BaseModel):
+    field: Literal['folder']
+    expected: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
+    value: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
+
+
+LocalRecordingEdit = Annotated[
+    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit, Field(discriminator='field'),
+]
 
 
 @router.patch(

@@ -22,6 +22,7 @@ class _Pair extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    String? folderId,
   }) async => (
     rows: [
       ServerConversation.fromJson({

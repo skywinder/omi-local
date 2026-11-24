@@ -17,6 +17,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'paired_library.dart';
+import 'folder_picker.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_search.dart';
@@ -140,6 +141,18 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final before = loaded.row.starred;
     try {
       await _save(RecordingEdit.starred(before, !before));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  Future<void> _moveFolder(_RecordingDetail loaded) async {
+    final choice = await pickLocalFolder(context, widget.library, moving: true);
+    if (!mounted || choice == null) return;
+    try {
+      await _save(RecordingEdit.folder(loaded.row.folderId, choice.folder?.id));
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
@@ -337,8 +350,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
+                    _RecordingEditAction.folder => _moveFolder(loaded),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.foldersAvailable)
+                      PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
                     PopupMenuItem(
                       value: _RecordingEditAction.title,
                       child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
@@ -450,7 +466,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 }
 
-enum _RecordingEditAction { title, star, transcript }
+enum _RecordingEditAction { title, star, transcript, folder }
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {

@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
@@ -21,7 +22,9 @@ class _EditableLibrary extends PairedLibrary {
   String transcript = 'Original words';
   bool starred = false;
   bool conflict = false;
-  final requests = <Map<String, Object>>[];
+  String? currentFolder;
+  Folder? savedFolder;
+  final requests = <Map<String, Object?>>[];
   final filters = <bool>[];
 
   @override
@@ -33,6 +36,7 @@ class _EditableLibrary extends PairedLibrary {
     'structured': {'title': title},
     'status': 'completed',
     'starred': starred,
+    'folder_id': currentFolder,
     'transcript_segments': [
       {'id': 'actual-line', 'text': transcript, 'start': 4.25, 'end': 6.0, 'is_user': true},
       {'text': 'No stable identifier', 'start': 7.0, 'end': 8.0, 'is_user': true},
@@ -43,9 +47,12 @@ class _EditableLibrary extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    String? folderId,
   }) async {
     filters.add(starredOnly);
-    final rows = !starredOnly || starred ? [await detail(_id)] : <ServerConversation>[];
+    final rows = (!starredOnly || starred) && (folderId == null || currentFolder == folderId)
+        ? [await detail(_id)]
+        : <ServerConversation>[];
     return (rows: rows, consumed: rows.length, partial: false, more: false);
   }
 
@@ -61,8 +68,30 @@ class _EditableLibrary extends PairedLibrary {
         transcript = edit.value as String;
       case 'starred':
         starred = edit.value as bool;
+      case 'folder':
+        currentFolder = edit.value as String?;
     }
     return detail(id);
+  }
+
+  @override
+  Future<List<Folder>> readFolders() async => [if (savedFolder != null) savedFolder!];
+
+  @override
+  Future<Folder> saveFolder(String name, {String? id}) async {
+    final now = DateTime.utc(2026, 1, 2);
+    return savedFolder = Folder(
+      id: id ?? 'project-folder',
+      name: name,
+      color: '#6B7280',
+      icon: 'folder',
+      createdAt: now,
+      updatedAt: now,
+      order: 0,
+      conversationCount: 0,
+      isDefault: false,
+      isSystem: false,
+    );
   }
 }
 
@@ -74,6 +103,58 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('paired folders can be created, renamed, selected, and cleared on a recording', (tester) async {
+    final library = _EditableLibrary()..foldersAvailable = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await _menu(tester, 'Move to Folder');
+    await tester.tap(find.byIcon(Icons.create_new_folder_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Projects');
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(library.savedFolder?.name, 'Projects');
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(find.widgetWithText(ListTile, 'Projects'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(library.currentFolder, 'project-folder', reason: 'Sent edits: ${library.requests}');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(ActionChip));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Meetings');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Meetings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Original title'), findsOneWidget);
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await _menu(tester, 'Move to Folder');
+    await tester.tap(find.text('No Folder'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Original title'), findsNothing);
+    expect(library.requests, [
+      {'field': 'folder', 'expected': null, 'value': 'project-folder'},
+      {'field': 'folder', 'expected': 'project-folder', 'value': null},
+    ]);
+  });
+
   testWidgets('a paired archive edits title and transcript and can filter by favorites', (tester) async {
     final library = _EditableLibrary();
     addTearDown(library.close);

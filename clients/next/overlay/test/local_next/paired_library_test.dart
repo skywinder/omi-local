@@ -179,6 +179,7 @@ void main() {
         case '/v1/conversations':
           expect(request.method, 'GET');
           expect(request.uri.queryParameters['starred'], 'true');
+          expect(request.uri.queryParameters['folder_id'], 'project-folder');
           response.write(
             jsonEncode([
               {...row, 'starred': true},
@@ -210,7 +211,7 @@ void main() {
       throwsA(RecordingEditFailure.conflict),
     );
     expect((await library.editRecording(id, const RecordingEdit.starred(false, true))).starred, isTrue);
-    expect((await library.list(0, starredOnly: true)).rows.single.starred, isTrue);
+    expect((await library.list(0, starredOnly: true, folderId: 'project-folder')).rows.single.starred, isTrue);
     expect(edits, [
       {'field': 'title', 'expected': sha256.convert(utf8.encode('Earlier')).toString(), 'value': 'New title'},
       {'field': 'starred', 'expected': false, 'value': true},

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/backend/schema/conversation_v3.dart';
 import 'package:omi/pages/conversations/widgets/conversation_state_tile.dart';
 import 'package:omi/pages/conversations/widgets/date_list_item.dart';
@@ -30,6 +31,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool _retryAppend = false;
   bool _starredOnly = false;
   bool _refreshStarred = false;
+  Folder? folder;
 
   bool get starredOnly => _starredOnly;
   Future<void> refresh() => _load(append: false);
@@ -39,6 +41,30 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> filterStarred(bool value) async {
     if (_disposed || busy || _starredOnly == value) return;
     _starredOnly = value;
+    await _refreshFilter();
+  }
+
+  Future<void> filterFolder(Folder? value) async {
+    if (_disposed || busy) return;
+    final changed = folder?.id != value?.id;
+    folder = value;
+    if (changed) {
+      await _refreshFilter();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  void renameFolder(Folder value) {
+    if (_disposed || folder?.id != value.id) return;
+    folder = value;
+    notifyListeners();
+  }
+
+  bool _matches(ServerConversation row) =>
+      (!_starredOnly || row.starred) && (folder == null || row.folderId == folder!.id);
+
+  Future<void> _refreshFilter() async {
     _rows.clear();
     entries = const [];
     more = false;
@@ -47,7 +73,7 @@ class PairedArchiveProvider extends ChangeNotifier {
 
   void applyEdit(ServerConversation row) {
     if (_disposed) return;
-    if (_starredOnly && row.starred != _rows.containsKey(row.id)) {
+    if ((_starredOnly || folder != null) && _matches(row) != _rows.containsKey(row.id)) {
       if (busy) {
         _editsDuringRead[row.id] = row;
         _refreshStarred = true;
@@ -72,7 +98,7 @@ class PairedArchiveProvider extends ChangeNotifier {
     try {
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
-      final result = await _library.list(append ? _offset : 0, starredOnly: _starredOnly);
+      final result = await _library.list(append ? _offset : 0, starredOnly: _starredOnly, folderId: folder?.id);
       if (_disposed) return;
       if (!append) {
         _rows.clear();
@@ -81,7 +107,7 @@ class PairedArchiveProvider extends ChangeNotifier {
       }
       for (final row in result.rows) {
         final fresh = _editsDuringRead[row.id] ?? row;
-        if (!_starredOnly || fresh.starred) _rows[fresh.id] = fresh;
+        if (_matches(fresh)) _rows[fresh.id] = fresh;
       }
       _offset += result.consumed;
       more = result.more && result.consumed > 0;

@@ -200,6 +200,15 @@ screen. Re-importing the same local processing result preserves the edits.
 A different processing result is a separate recording and retains its own
 transcript. Edits require an updated paired server.
 
+## Organize recordings into folders
+
+Tap **Folders** in the archive to create or rename a folder or filter the
+archive. A folder filter can be combined with **Starred**. In a finished
+recording, use **Move to Folder** to select a folder or remove the assignment.
+The paired server uses the existing owner-scoped folder collection and
+preserves manual assignments on replay. Folder deletion, ordering and bulk
+moves are tracked separately.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the

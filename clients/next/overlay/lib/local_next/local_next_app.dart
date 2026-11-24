@@ -5,6 +5,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'folder_picker.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'paired_library.dart';
@@ -220,10 +221,31 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
             alignment: AlignmentDirectional.centerStart,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
-              child: FilterChip(
-                label: Text(l.starred),
-                selected: _archive.starredOnly,
-                onSelected: _archive.busy ? null : _archive.filterStarred,
+              child: Wrap(
+                spacing: OmiSpacing.sm,
+                children: [
+                  FilterChip(
+                    label: Text(l.starred),
+                    selected: archive.starredOnly,
+                    onSelected: archive.busy ? null : archive.filterStarred,
+                  ),
+                  if (library.foldersAvailable)
+                    ActionChip(
+                      avatar: const Icon(Icons.folder_outlined),
+                      label: Text(archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders')),
+                      onPressed: archive.busy
+                          ? null
+                          : () async {
+                              final choice = await pickLocalFolder(
+                                context,
+                                library,
+                                moving: false,
+                                onRename: archive.renameFolder,
+                              );
+                              if (choice != null) await archive.filterFolder(choice.folder);
+                            },
+                    ),
+                ],
               ),
             ),
           ),

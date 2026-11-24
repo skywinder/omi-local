@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:omi/backend/http/api/conversations.dart';
 import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -71,6 +72,7 @@ class PairedLibrary {
   bool audioPlayback = false;
   bool audioDelivery;
   bool recordingEdits = false;
+  bool foldersAvailable = false;
   final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
@@ -89,6 +91,7 @@ class PairedLibrary {
     audioDelivery = false;
     audioPlayback = false;
     recordingEdits = false;
+    foldersAvailable = false;
     for (final client in _clients) {
       client.close(force: true);
     }
@@ -422,6 +425,7 @@ class PairedLibrary {
     audioDelivery = data['local_audio_delivery_version'] == 2;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
+    foldersAvailable = data['local_folders_version'] == 1;
   }
 
   static final _archiveId = RegExp(r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$');
@@ -446,7 +450,9 @@ class PairedLibrary {
     final query = uri.queryParameters;
     if (collection) {
       final hasStarred = query['starred'] == 'true';
-      if (query.length != (hasStarred ? 5 : 4) ||
+      final folder = query['folder_id'];
+      if (query.length != 4 + (hasStarred ? 1 : 0) + (folder == null ? 0 : 1) ||
+          (folder != null && !_folderId.hasMatch(folder)) ||
           (query.containsKey('starred') && !hasStarred) ||
           uri.queryParametersAll.values.any((values) => values.length != 1) ||
           query['limit'] != '$pageSize' ||
@@ -491,6 +497,7 @@ class PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    String? folderId,
   }) async {
     if (offset < 0) throw LibraryFailure.malformed;
     var storageCount = 0;
@@ -501,6 +508,7 @@ class PairedLibrary {
       statuses: _archiveStatuses,
       includeDiscarded: true,
       starred: starredOnly ? true : null,
+      folderId: folderId,
       onStorageCount: (value) => storageCount = value,
       onPageHeaders: (headers) => hasMore = headers.hasMore,
     );
@@ -574,6 +582,42 @@ class PairedLibrary {
     } on FormatException {
       throw LibraryFailure.malformed;
     }
+  }
+
+  static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+
+  Folder _decodeFolder(dynamic body) {
+    final folder = Folder.fromJson(body as Map<String, dynamic>);
+    if (!_folderId.hasMatch(folder.id)) throw LibraryFailure.malformed;
+    return folder;
+  }
+
+  Future<List<Folder>> readFolders() async {
+    if (!isSignedIn || !foldersAvailable) throw LibraryFailure.unavailable;
+    return _request('/v1/local/folders', (response) async {
+      final raw = await _json(response, 256 << 10) as List;
+      return raw.map(_decodeFolder).toList();
+    });
+  }
+
+  Future<Folder> saveFolder(String name, {String? id}) async {
+    if (!isSignedIn || !foldersAvailable) throw LibraryFailure.unavailable;
+    if (id != null && !_folderId.hasMatch(id)) throw LibraryFailure.malformed;
+    return _request(
+      id == null ? '/v1/local/folders' : '/v1/local/folders/$id',
+      (response) async {
+        if (response.statusCode != (id == null ? HttpStatus.created : HttpStatus.ok)) {
+          throw LibraryFailure.unavailable;
+        }
+        final saved = _decodeFolder(await _json(response, 16 << 10));
+        if (id != null && saved.id != id) throw LibraryFailure.malformed;
+        return saved;
+      },
+      method: id == null ? 'POST' : 'PATCH',
+      body: Uint8List.fromList(utf8.encode(jsonEncode({'name': name}))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+    );
   }
 
   Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) async {

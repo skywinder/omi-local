@@ -63,6 +63,9 @@ Paired recording edits accept JSON on the local edit route. They compare the
 prior field or transcript digest in the write transaction, preserve segment
 identity and use the existing transcript storage encoder. The trusted-host
 importer preserves edits on replay through create-if-absent.
+Paired folder management shares the Omi folder collection. A recording move
+checks the destination within the recording mutation transaction and marks the
+assignment as user-owned, including when the user removes the folder.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

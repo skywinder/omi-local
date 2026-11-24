@@ -30,7 +30,7 @@ class _ArchiveLibrary extends PairedLibrary {
   final opened = <String>[];
 
   @override
-  Future<_Page> list(int offset, {bool starredOnly = false}) {
+  Future<_Page> list(int offset, {bool starredOnly = false, String? folderId}) {
     offsets.add(offset);
     return page(offset);
   }
