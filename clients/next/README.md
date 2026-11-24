@@ -564,6 +564,17 @@ entitlement verification. Its executable SHA-256 begins with
 `d8256f02545ec364`. Package `902cfa3` was verified and retained for rollback.
 Xcode found no eligible connected iPhone for installation.
 
+Recap regeneration passed the Next analyzer and 64 tests, the offline
+backend suite, and the legacy transport tests. An isolated Firestore and
+fixture model verified generation from a transcript edited through the
+normal write path, confirmed replay, title preservation, and conflict on
+a concurrent transcript change.
+
+The `Profile-dev` package from `cf70c54` passed independent signature and
+entitlement verification. Its executable SHA-256 begins with
+`8bca971dd55a115a`. Verified rollback package `200e141` is available. The
+Mac saw no iPhone on USB and Xcode found no eligible phone for installation.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
