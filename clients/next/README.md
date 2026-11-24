@@ -120,6 +120,9 @@ detail and search, copying summary text, and rendering Markdown without opening
 image URLs or files. The presentation adaptation applied twice identically on
 three donor revisions, including November 17 and the current pin. That check
 did not build the other revisions.
+The updated detail client at `f459b5b` also built successfully in Xcode for the
+simulator. Its bundle identity and signature passed attestation. The installed
+simulator app used for the pairing-form observation was the earlier build.
 
 | Area | Status and next verification |
 | --- | --- |
