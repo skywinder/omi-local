@@ -700,6 +700,14 @@ from `c6d0fb8` was independently verified with executable SHA-256 prefix
 `36c5a08845872e0f`. No eligible iPhone was available to install it. The
 previous signed package `1cd5995` is available for rollback.
 
+The archive category milestone matches all 33 category keys in the pinned Omi
+source. The analyzer and all 73 Next tests passed, as did the offline and
+legacy transport gates. An isolated paired API and Firestore verified category
+edits, stale edit conflicts, and preservation after a later processing write.
+Bastion's deployed profile does not yet advertise category edits. The separately
+signed `35bbf19` package passed independent verification, with executable
+SHA-256 prefix `a96020e4202fcfc6`. No eligible iPhone was available to install it.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
