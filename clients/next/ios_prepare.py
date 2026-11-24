@@ -2,6 +2,7 @@
 import argparse
 import json
 import plistlib
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -56,6 +57,19 @@ def prepare_project(project_file):
             continue
         kept.append(ref)
     runner['buildPhases'] = kept
+    # Add the isolated bridge next to the Runner's AppDelegate in the Xcode project.
+    sources, = [objects[ref] for ref in kept if objects[ref]['isa'] == 'PBXSourcesBuildPhase']
+    delegate = objects[sources['files'][0]]['fileRef']
+    group, = [item for item in objects.values() if delegate in item.get('children', [])]
+    bridge_file = 'A7B3C1000000000000000001'
+    bridge_build = 'A7B3C1000000000000000002'
+    if bridge_file in objects or bridge_build in objects:
+        raise ValueError('Review new upstream Xcode object identifiers')
+    objects[bridge_file] = {'isa': 'PBXFileReference', 'lastKnownFileType': 'sourcecode.swift',
+                            'path': 'NextCV1.swift', 'sourceTree': '<group>'}
+    objects[bridge_build] = {'isa': 'PBXBuildFile', 'fileRef': bridge_file}
+    group['children'].append(bridge_file)
+    sources['files'].append(bridge_build)
     for owner in (root, runner):
         config_list = objects[owner['buildConfigurationList']]
         kept_configs = [ref for ref in config_list['buildConfigurations'] if objects[ref]['name'] in CONFIGS]
@@ -101,7 +115,8 @@ def prepare_info(runner):
     info.update({
         'CFBundleDisplayName': NAME, 'CFBundleName': NAME, 'UILaunchStoryboardName': 'LaunchScreen',
         'NSMicrophoneUsageDescription': 'Record audio to your paired Omi Local server.',
-        'UIBackgroundModes': ['audio'],
+        'NSBluetoothAlwaysUsageDescription': 'Connect to your selected Omi wearable and receive audio and button events.',
+        'UIBackgroundModes': ['audio', 'bluetooth-central'],
         'NSLocalNetworkUsageDescription': 'Omi Local Next connects to your paired recording server.',
         'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True, 'NSExceptionDomains': {
             '100.64.0.0/10': {'NSExceptionAllowsInsecureHTTPLoads': True},
@@ -136,6 +151,9 @@ def prepare(app):
     prepare_project(ios / 'Runner.xcodeproj' / 'project.pbxproj')
     prepare_info(runner)
     shutil.copyfile(HERE / 'ios' / 'AppDelegate.swift', runner / 'AppDelegate.swift')
+    models = (app / 'lib/services/devices/models.dart').read_text()
+    (runner / 'NextCV1.swift').write_text((HERE / 'ios/NextCV1.swift').read_text() + '\n' +
+                                         (HERE / 'ios/CV1Protocol.swift').read_text() + '\n' + cv1_uuids(models))
     shutil.copyfile(HERE / 'ios' / 'Podfile', ios / 'Podfile')
     # Runner is the only target in this disposable project.
     for scheme in (ios / 'Runner.xcodeproj' / 'xcshareddata' / 'xcschemes').glob('*.xcscheme'):
@@ -143,6 +161,18 @@ def prepare(app):
             scheme.unlink()
         else:
             prepare_scheme(scheme)
+
+
+def cv1_uuids(models):
+    names = {'audioService': 'omiServiceUuid', 'audio': 'audioDataStreamCharacteristicUuid',
+             'codec': 'audioCodecCharacteristicUuid', 'buttonService': 'buttonServiceUuid',
+             'button': 'buttonTriggerCharacteristicUuid'}
+    constants = []
+    for name, upstream in names.items():
+        match, = re.findall(rf"^const String {upstream} = '([a-f0-9]{{8}}(?:-[a-f0-9]{{4}}){{3}}-[a-f0-9]{{12}})';$",
+                            models, re.MULTILINE)
+        constants.append(f'  static let {name} = CBUUID(string: "{match}")')
+    return 'private enum CV1UUID {\n' + '\n'.join(constants) + '\n}\n'
 
 
 if __name__ == '__main__':

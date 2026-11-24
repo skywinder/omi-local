@@ -46,6 +46,36 @@ def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):
     actual = plistlib.loads(manifest.read_bytes())
     assert 'WKCompanionAppBundleIdentifier' not in actual
     assert actual['CFBundleDisplayName'] == iphone.NAME
+    assert 'bluetooth-central' in actual['UIBackgroundModes']
+    assert actual['NSBluetoothAlwaysUsageDescription']
+
+
+@pytest.mark.skipif(shutil.which('swiftc') is None, reason='Swift toolchain')
+def test_cv1_mute_and_stop_fence_queued_notifications(tmp_path):
+    main = tmp_path / 'main.swift'
+    main.write_text('''import Foundation
+      var subscription = CV1AudioSubscription()
+      precondition(subscription.request(true, token: 1) == nil)
+      precondition(subscription.emitting == nil)
+      subscription.acknowledge(true, token: 1)
+      precondition(subscription.emitting == 1)
+      precondition(subscription.request(true, token: 2) == "busy")
+      precondition(subscription.request(false, token: 1) == nil && subscription.emitting == nil)
+      precondition(subscription.request(true, token: 2) == nil)
+      subscription.acknowledge(true, token: 1)
+      precondition(subscription.emitting == nil)
+      subscription.acknowledge(false, token: 1)
+      precondition(subscription.emitting == nil)
+      subscription.acknowledge(true, token: 2)
+      precondition(subscription.emitting == 2)
+      precondition(subscription.request(false, token: 1) == "stale" && subscription.emitting == 2)
+      precondition(CV1Wire.buttonCode(Data([5, 1, 2, 3, 255])) == 0x03020105)
+      precondition(CV1Wire.buttonCode(Data([5])) == nil)
+    ''')
+    program = tmp_path / 'cv1'
+    subprocess.run(['swiftc', '-module-cache-path', str(tmp_path / 'modules'), NEXT / 'ios/CV1Protocol.swift',
+                    main, '-o', program], check=True)
+    subprocess.run([program], check=True)
 
 
 def test_scheme_builds_the_runner_it_launches(tmp_path):

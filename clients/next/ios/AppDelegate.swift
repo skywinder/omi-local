@@ -13,6 +13,7 @@ import shared_preferences_foundation
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     let registry = engineBridge.pluginRegistry
     let plugins: [(String, FlutterPlugin.Type)] = [
+      ("OmiLocalNextCV1", NextCV1.self),
       ("AudioSessionPlugin", AudioSessionPlugin.self),
       ("FlutterSecureStoragePlugin", FlutterSecureStoragePlugin.self),
       ("FlutterSound", FlutterSound.self),
