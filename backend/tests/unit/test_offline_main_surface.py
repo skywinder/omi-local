@@ -81,6 +81,38 @@ collection = owner.collection.return_value
 query = collection.order_by.return_value.select.return_value
 search_url = '/v1/local/conversations/search'
 client = TestClient(main.app)
+from utils import local_recording_rows
+original_canonical = main.conversations.conversations_db.get_conversations_without_photos
+original_local = local_recording_rows.local_recording_rows
+time = datetime(2026, 1, 2, tzinfo=timezone.utc)
+archive_fixture = {
+    'id': '00000000-0000-4000-8000-000000000042', 'structured': {'title': 'Fixture'},
+    'created_at': time, 'started_at': time, 'finished_at': time, 'status': 'completed',
+}
+def read_archive(uid, limit, offset, *, budget, **filters):
+    assert uid == 'fixture-owner' and limit == 2
+    if offset:
+        budget.mark_exhausted('documents')
+        return []
+    return [archive_fixture]
+main.conversations.conversations_db.get_conversations_without_photos = read_archive
+local_recording_rows.local_recording_rows = lambda uid: []
+archive_auth = main.conversations.auth.get_current_user_uid
+main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
+archive_headers = {'Authorization': 'Bearer ' + key}
+first_archive = client.get('/v1/conversations?limit=1', headers=archive_headers)
+assert first_archive.status_code == 200, first_archive.text
+assert first_archive.json()[0]['id'] == archive_fixture['id']
+assert first_archive.headers['X-Omi-Conversation-Page-Size'] == '1'
+assert first_archive.headers['X-Omi-Has-More'] == 'false'
+cut_archive = client.get('/v1/conversations?limit=1&offset=1', headers=archive_headers)
+assert cut_archive.status_code == 200 and cut_archive.json() == []
+assert cut_archive.headers['X-Omi-List-Truncated'] == 'true'
+assert cut_archive.headers['X-Omi-Conversation-Page-Size'] == '0'
+assert 'X-Omi-Has-More' not in cut_archive.headers
+main.conversations.conversations_db.get_conversations_without_photos = original_canonical
+local_recording_rows.local_recording_rows = original_local
+del main.app.dependency_overrides[archive_auth]
 assert client.post(search_url, json={'query': 'привет'}).status_code == 401
 db.collection.assert_not_called()
 headers = {'Authorization': 'Bearer ' + key}

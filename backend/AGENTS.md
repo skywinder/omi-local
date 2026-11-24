@@ -47,6 +47,9 @@ Offline capture rotates at decoded packet boundaries after five minutes without
 closing the listen socket. Saved audio is projected read-only into the paired
 owner's Conversations list/detail until import succeeds; never expose capture
 paths, provider credentials, or add processing placeholders to Firestore.
+The paired archive adapter emits upstream page-size and continuation headers.
+Keep truncated reads distinct from end of list. See [Backend compatibility](../docs/BACKEND_PARITY.md)
+for the shared route and local adapter boundaries.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.

@@ -115,3 +115,41 @@ def filter_local_recording_rows(rows, *, statuses, sources, start_date, end_date
 def merge_local_recording_page(conversations, recordings, *, offset, limit):
     rows = sorted([*conversations, *recordings], key=lambda row: row['created_at'], reverse=True)
     return rows[offset:offset + limit]
+
+
+def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **filters):
+    """Read one paired page with the same storage advance as the upstream list."""
+    recordings = filter_local_recording_rows(
+        local_recording_rows(uid),
+        statuses=filters['statuses'],
+        sources=filters['sources'],
+        start_date=filters['start_date'],
+        end_date=filters['end_date'],
+        folder_id=filters['folder_id'],
+        starred=filters['starred'],
+    )
+    # One extra row distinguishes a full final page from an actual continuation.
+    canonical = read_canonical(
+        uid,
+        limit + offset + 1 if recordings else limit + 1,
+        0 if recordings else offset,
+        budget=budget,
+        **filters,
+    )
+    if recordings:
+        if budget.truncated:
+            # A local capture behind the observed Firestore prefix may follow
+            # unread canonical rows. Advancing past it would skip those rows.
+            recordings = (
+                [row for row in recordings if row['created_at'] > canonical[-1]['created_at']]
+                if canonical else []
+            )
+        page = merge_local_recording_page(canonical, recordings, offset=offset, limit=limit + 1)
+    else:
+        page = canonical
+    has_more = None if budget.truncated else len(page) > limit
+    return page[:limit], has_more
+
+
+def get_local_recording(uid: str, conversation_id: str) -> dict | None:
+    return next((row for row in local_recording_rows(uid) if row['id'] == conversation_id), None)

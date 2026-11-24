@@ -96,6 +96,44 @@ def test_selected_pipeline_summary_projects_into_existing_conversation_contract(
         build_conversation(result, data)
 
 
+def test_paired_archive_page_counts_merged_rows_and_never_advances_past_a_truncated_prefix(monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from utils import local_recording_rows as records
+
+    def row(identifier, minute):
+        return {'id': identifier, 'created_at': datetime(2026, 1, 2, 0, minute, tzinfo=timezone.utc), 'source': 'omi'}
+
+    older, newest = row('older', 1), row('newest', 4)
+    local_first, local_last = row('local-first', 5), row('local-last', 0)
+    monkeypatch.setattr(records, 'local_recording_rows', lambda uid: [local_first, local_last])
+    filters = dict(
+        statuses=['processing', 'completed'], sources=['omi'], start_date=None, end_date=None,
+        folder_id=None, starred=None, include_discarded=True,
+    )
+    reads = []
+
+    def read(uid, limit, offset, *, budget, **received_filters):
+        reads.append((uid, limit, offset))
+        assert received_filters == filters
+        return [newest] if budget.truncated else [newest, older][offset:offset + limit]
+
+    complete = SimpleNamespace(truncated=False)
+    assert records.read_local_archive_page(read, 'owner', 2, 0, budget=complete, **filters) == (
+        [local_first, newest], True,
+    )
+    assert records.read_local_archive_page(read, 'owner', 2, 2, budget=complete, **filters) == (
+        [older, local_last], False,
+    )
+    partial = SimpleNamespace(truncated=True)
+    assert records.read_local_archive_page(read, 'owner', 3, 0, budget=partial, **filters) == (
+        [local_first, newest], None,
+    )
+    assert records.read_local_archive_page(read, 'owner', 2, 2, budget=partial, **filters) == ([], None)
+    assert reads == [('owner', 3, 0), ('owner', 5, 0), ('owner', 4, 0), ('owner', 5, 0)]
+
+
 @pytest.mark.parametrize('state', ['pending', 'processing', 'failed', 'no_speech'])
 def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypatch, state):
     import hashlib

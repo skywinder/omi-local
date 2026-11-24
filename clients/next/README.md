@@ -361,6 +361,10 @@ Run the Next checks, legacy transport checks, and iOS build and device checks
 for the changed inputs. Each enabled feature needs a compatible server endpoint
 or a detectable capability on the paired server. Record the results below.
 
+For backend updates, compare the shared archive and processing contracts in
+[Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
+deployments have separate authentication and audio processing boundaries.
+
 ## Migration ledger
 
 The [feature inventory and port estimates](FEATURES.md) compare the original
@@ -707,6 +711,13 @@ edits, stale edit conflicts, and preservation after a later processing write.
 Bastion's deployed profile does not yet advertise category edits. The separately
 signed `35bbf19` package passed independent verification, with executable
 SHA-256 prefix `a96020e4202fcfc6`. No eligible iPhone was available to install it.
+
+The paired server now emits Omi archive page metadata without changing the
+response body. An isolated Firestore run paged across an imported conversation
+and a pending local WAV, including the pending recording's detail. Contract
+tests covered a full final page and a truncated query without a false
+end-of-list signal. The 73 existing Next tests passed against the pinned client.
+This change does not require a new iPhone build. Bastion was not updated.
 
 | Area | Status and next verification |
 | --- | --- |

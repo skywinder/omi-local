@@ -787,15 +787,7 @@ def get_conversations(
     # query and the page stream runs under the derived per-RPC timeout, so a
     # deep page cannot consume the whole HTTP_GET_TIMEOUT (#11831).
     budget = list_read_budget_for_request(request, route='conversations')
-    from utils.local_recording_rows import local_recording_rows, filter_local_recording_rows, merge_local_recording_page
-    recordings = filter_local_recording_rows(
-        local_recording_rows(uid), statuses=status_filter, sources=source_list,
-        start_date=start_date, end_date=end_date, folder_id=folder_id, starred=starred,
-    )
-    conversations = conversations_db.get_conversations_without_photos(
-        uid,
-        limit + offset if recordings else limit,
-        0 if recordings else offset,
+    filters = dict(
         include_discarded=include_discarded,
         statuses=status_filter,
         sources=source_list,
@@ -803,11 +795,19 @@ def get_conversations(
         end_date=end_date,
         folder_id=folder_id,
         starred=starred,
-        budget=budget,
     )
+    if is_offline_runtime():
+        from utils.local_recording_rows import read_local_archive_page
 
-    if recordings:
-        conversations = merge_local_recording_page(conversations, recordings, offset=offset, limit=limit)
+        conversations, has_more = read_local_archive_page(
+            conversations_db.get_conversations_without_photos, uid, limit, offset, budget=budget, **filters,
+        )
+        if response is not None:
+            response.headers['X-Omi-Conversation-Page-Size'] = str(len(conversations))
+            if has_more is not None:
+                response.headers['X-Omi-Has-More'] = 'true' if has_more else 'false'
+    else:
+        conversations = conversations_db.get_conversations_without_photos(uid, limit, offset, budget=budget, **filters)
     redact_conversations_for_list(conversations)
     if budget.truncated and response is not None:
         response.headers[OMI_LIST_TRUNCATED_HEADER] = OMI_LIST_TRUNCATED_VALUE
@@ -871,8 +871,11 @@ def get_conversation_by_id(
 ):
     if not is_offline_runtime():
         logger.info(f'get_conversation_by_id {uid} {conversation_id}')
-    from utils.local_recording_rows import local_recording_rows
-    conversation = next((row for row in local_recording_rows(uid) if row['id'] == conversation_id), None)
+    conversation = None
+    if is_offline_runtime():
+        from utils.local_recording_rows import get_local_recording
+
+        conversation = get_local_recording(uid, conversation_id)
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:
