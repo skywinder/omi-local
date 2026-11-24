@@ -460,6 +460,17 @@ and entitlement verification. Its executable SHA-256 begins with
 Xcode still found no eligible iPhone for installation. The paired server
 needs the recording edit update before physical acceptance.
 
+Folder management passed the Next analyzer and 58 tests, the offline backend
+suite and the existing mobile transport suite. An isolated Firestore run
+verified owner-scoped creation and renaming, move conflicts, the combined
+folder and Starred query, clearing an assignment and re-import preservation.
+
+The signed `Profile-dev` package from `76a5db7` passed independent signature
+and entitlement verification. Its executable SHA-256 begins with
+`1e25ef8a7cfebc3c`. Package `5bd406e` remains available for rollback. Xcode
+found no eligible iPhone for installation. The paired server needs the folder
+update before physical acceptance.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
