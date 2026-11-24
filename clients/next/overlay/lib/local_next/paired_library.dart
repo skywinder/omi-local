@@ -18,6 +18,10 @@ import 'processing.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
+typedef ArchiveSearchHit = ({String id, String title, DateTime startedAt, List<TranscriptMatchSnippet> snippets});
+
+typedef ArchiveSearchPage = ({List<ArchiveSearchHit> hits, String? nextCursor});
+
 /// Reserves a quiet capture owner while its replacement is being committed.
 /// Acquisition and capture entry points run synchronously on the same isolate.
 class NextOwnerChangeGate extends ChangeNotifier {
@@ -527,6 +531,57 @@ class PairedLibrary {
       }
     } on TypeError {
       // Domain model normalization also rejects incompatible JSON field types.
+      throw LibraryFailure.malformed;
+    }
+  }
+
+  Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (query.isEmpty || query.runes.length > 240) throw LibraryFailure.malformed;
+    try {
+      final page = await _request(
+        '/v1/local/conversations/search',
+        (response) async {
+          if (response.statusCode == HttpStatus.notFound) return null;
+          if (response.statusCode == HttpStatus.serviceUnavailable &&
+              response.headers.contentType?.mimeType == ContentType.json.mimeType) {
+            final error = await _json(response, 4096);
+            if (error is Map && error['reason'] == 'offline_route_blocked') return null;
+          }
+          if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
+          final data = await _json(response, 384 << 10) as Map<String, dynamic>;
+          if (!data.containsKey('next_cursor')) throw LibraryFailure.malformed;
+          final raw = data['items'] as List;
+          final cursor = data['next_cursor'] as String?;
+          if (raw.length > 40 || (cursor != null && (cursor.isEmpty || cursor == after))) {
+            throw LibraryFailure.malformed;
+          }
+          final hits = <ArchiveSearchHit>[];
+          for (final item in raw.cast<Map<String, dynamic>>()) {
+            final id = item['id'] as String;
+            if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+            hits.add((
+              id: id,
+              title: item['title'] as String,
+              startedAt: DateTime.parse(item['started_at'] as String),
+              snippets: (item['match_snippets'] as List)
+                  .cast<Map<String, dynamic>>()
+                  .map(TranscriptMatchSnippet.fromJson)
+                  .toList(),
+            ));
+          }
+          return (hits: hits, nextCursor: cursor);
+        },
+        body: Uint8List.fromList(utf8.encode(jsonEncode({'query': query, if (after != null) 'after': after}))),
+        bodyType: ContentType.json,
+        readHttpErrors: true,
+        overallTimeout: const Duration(seconds: 12),
+      );
+      if (!isSignedIn) throw LibraryFailure.key;
+      return page;
+    } on TypeError {
+      throw LibraryFailure.malformed;
+    } on FormatException {
       throw LibraryFailure.malformed;
     }
   }

@@ -42,6 +42,13 @@ def test_offline_main_imports_without_provider_keys_and_registers_only_allowlist
 import json
 import os
 import sys
+import hashlib
+import zlib
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import MagicMock
+
+from fastapi.testclient import TestClient
 import main
 
 fixture = {'id': 'synthetic', 'deferred': True, 'transcript_segments': [{'text': 'Synthetic fixture'}]}
@@ -58,6 +65,58 @@ profile = main.users.get_user_profile_endpoint(uid='synthetic')
 assert profile['local_transcription']['live']['status'] == 'disabled'
 assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
+
+key = 'A' * 43
+pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
+pairing.write_text(json.dumps({'version': 1, 'owner_uid': 'fixture-owner',
+                               'key_sha256': hashlib.sha256(key.encode()).hexdigest()}))
+pairing.chmod(0o600)
+os.environ['OMI_LOCAL_PAIRING_FILE'] = str(pairing)
+db = main.conversations.conversations_db.db = MagicMock()
+owner = db.collection.return_value.document.return_value
+collection = owner.collection.return_value
+query = collection.order_by.return_value.select.return_value
+search_url = '/v1/local/conversations/search'
+client = TestClient(main.app)
+assert client.post(search_url, json={'query': 'привет'}).status_code == 401
+db.collection.assert_not_called()
+headers = {'Authorization': 'Bearer ' + key}
+assert client.post(search_url, json={'query': '  '}, headers=headers).status_code == 400
+assert client.post(search_url, json={'query': 'привет', 'after': 'users/other'}, headers=headers).status_code == 400
+
+timestamp = datetime(2026, 1, 2, tzinfo=timezone.utc)
+documents = []
+for i in range(1, 42):
+    doc = MagicMock()
+    doc.id = '00000000-0000-4000-8000-' + str(i).zfill(12)
+    doc.to_dict.return_value = {'created_at': timestamp, 'is_locked': i == 1,
+                                'structured': {'title': 'Запись'},
+                                'transcript_segments': [{'text': 'Привет'}] if i == 1 else []}
+    documents.append(doc)
+documents[-1].to_dict.return_value.update({
+    'user_title': 'Моя запись',
+    'transcript_segments_compressed': True,
+    'transcript_segments': zlib.compress(json.dumps([
+        {'id': 'fixture-line', 'text': 'ПРИВЕТ из старой записи', 'start': 4.25, 'end': 6}
+    ]).encode()),
+})
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
+query.start_after.return_value.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents[-1:])
+first = client.post(search_url, json={'query': 'привет', 'uid': 'other'}, headers=headers)
+assert first.status_code == 200, first.text
+assert first.json() == {'items': [], 'next_cursor': documents[39].id}
+documents[0].to_dict.assert_called_once()
+assert first.headers['Cache-Control'] == 'no-store'
+db.collection.return_value.document.assert_called_with('fixture-owner')
+second = client.post(search_url, json={'query': 'привет', 'after': first.json()['next_cursor']}, headers=headers)
+assert second.status_code == 200, second.text
+hit, = second.json()['items']
+assert hit['title'] == 'Моя запись'
+assert hit['match_snippets'][0]['start_ms'] == 4250
+assert hit['match_snippets'][0]['segment_id'] == 'fixture-line'
+assert second.json()['next_cursor'] is None
+collection.document.assert_called_once_with(documents[39].id)
+query.start_after.assert_called_once_with({'__name__': collection.document.return_value})
 
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
@@ -96,6 +155,7 @@ print(json.dumps({
         '/v1/local/status',
         '/v1/local/audio/parts',
         '/v1/local/conversations/{conversation_id}/audio',
+        '/v1/local/conversations/search',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

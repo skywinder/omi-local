@@ -5,6 +5,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'paired_library.dart';
 import 'processing_page.dart';
@@ -158,6 +159,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: l.searchConversations,
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => ArchiveSearchPageView(library: library))),
+          ),
           IconButton(
             tooltip: pairedSettingsLabel(context, 'serverStatus'),
             icon: const Icon(Icons.monitor_heart_outlined),

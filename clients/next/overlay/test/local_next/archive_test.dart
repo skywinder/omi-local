@@ -10,6 +10,7 @@ import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/pages/conversations/widgets/conversation_state_tile.dart';
 import 'package:omi/pages/conversations/widgets/date_list_item.dart';
 import 'package:omi/ui/components/omi_partial_notice.dart';
+import 'package:omi/widgets/transcript.dart';
 
 const _firstId = '00000000-0000-4000-8000-000000000001';
 const _secondId = '00000000-0000-4000-8000-000000000002';
@@ -18,12 +19,13 @@ const _thirdId = '00000000-0000-4000-8000-000000000003';
 typedef _Page = ({List<ServerConversation> rows, int consumed, bool partial, bool more});
 
 class _ArchiveLibrary extends PairedLibrary {
-  _ArchiveLibrary(this.page, this.record, {String address = '100.64.0.1'})
+  _ArchiveLibrary(this.page, this.record, {this.search, String address = '100.64.0.1'})
     : super(address, List.filled(43, 'A').join()) {
     verified = true;
   }
   final Future<_Page> Function(int) page;
   final ServerConversation record;
+  final Future<ArchiveSearchPage> Function(String, String?)? search;
   final offsets = <int>[];
   final opened = <String>[];
 
@@ -38,6 +40,9 @@ class _ArchiveLibrary extends PairedLibrary {
     opened.add(id);
     return record;
   }
+
+  @override
+  Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) => search!(query, after);
 }
 
 ServerConversation _row(String id, String title, DateTime start, {String? localState, DateTime? created}) =>
@@ -67,6 +72,54 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('archive search crosses an empty storage page and opens the matching transcript line', (tester) async {
+    final time = DateTime.utc(2026, 1, 2);
+    final row = ServerConversation.fromJson({
+      'id': _secondId,
+      'created_at': time.toIso8601String(),
+      'started_at': time.toIso8601String(),
+      'finished_at': time.add(const Duration(seconds: 6)).toIso8601String(),
+      'structured': {'title': 'Older saved recording'},
+      'transcript_segments': [
+        {'id': 'first', 'text': 'Opening words', 'start': 0.0, 'end': 2.0, 'is_user': true},
+        {'id': 'hit', 'text': 'Matching words', 'start': 4.25, 'end': 6.0, 'is_user': true},
+      ],
+    });
+    final requests = <(String, String?)>[];
+    final library = _ArchiveLibrary(
+      (_) async => (rows: <ServerConversation>[], consumed: 0, partial: false, more: false),
+      row,
+      search: (query, cursor) async {
+        requests.add((query, cursor));
+        if (cursor == null) return (hits: <ArchiveSearchHit>[], nextCursor: _firstId);
+        return (
+          hits: [
+            (
+              id: row.id,
+              title: row.structured.title,
+              startedAt: time,
+              snippets: [const TranscriptMatchSnippet(text: 'Matching words', segmentId: 'hit', start: 4.25)],
+            ),
+          ],
+          nextCursor: null,
+        );
+      },
+    );
+    await _show(tester, library);
+    await tester.tap(find.byTooltip('Search conversations'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'matching');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(requests, [('matching', null), ('matching', _firstId)]);
+    await tester.tap(find.text('Matching words'));
+    await tester.pumpAndSettle();
+    expect(library.opened, [_secondId]);
+    expect(tester.widget<TabBar>(find.byType(TabBar)).controller?.index, 1);
+    expect(tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).followTargetSegmentId, 'hit');
+    expect(find.textContaining('Matching words', findRichText: true), findsOneWidget);
+  });
+
   testWidgets('paired feed groups by local start date and opens a selected archive row after an older-page retry', (
     tester,
   ) async {

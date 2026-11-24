@@ -16,6 +16,7 @@ _ALLOWED_HTTP = frozenset(
         ("GET", "/v1/account/cutover/control"),
         ("GET", "/v1/action-items"),
         ("GET", "/v1/conversations"),
+        ("POST", "/v1/local/conversations/search"),
         ("GET", "/v1/goals/all"),
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),

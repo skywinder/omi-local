@@ -35,27 +35,46 @@ String recordingStatus(BuildContext context, ServerConversation row) {
 }
 
 class RecordingPage extends StatefulWidget {
-  const RecordingPage({super.key, required this.library, required this.id});
+  const RecordingPage({super.key, required this.library, required this.id, this.initialMatch});
   final PairedLibrary library;
   final String id;
+  final TranscriptMatchSnippet? initialMatch;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
 }
 
 class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
-  late final tabs = TabController(length: 2, vsync: this);
+  late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
   late Future<_RecordingDetail> detail = _load();
   String? focusedLine;
   int focusRequest = 0;
   AudioPlayer? player;
   Directory? temp;
+  Duration? _initialPosition;
   bool opening = false;
   bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
       (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
 
-  Future<_RecordingDetail> _load() async => _RecordingDetail(await widget.library.detail(widget.id));
+  Future<_RecordingDetail> _load() async {
+    final loaded = _RecordingDetail(await widget.library.detail(widget.id));
+    final match = widget.initialMatch;
+    if (match != null) {
+      final start = match.start;
+      final line =
+          loaded.sources.where((line) => line.id == match.segmentId).firstOrNull ??
+          loaded.lines.where((line) => start != null && (line.start - start).abs() < 0.01).firstOrNull;
+      if (line != null) {
+        focusedLine = line.id;
+        focusRequest++;
+        if (line.start.isFinite && line.start >= 0) {
+          _initialPosition = Duration(milliseconds: (line.start * 1000).round());
+        }
+      }
+    }
+    return loaded;
+  }
 
   void _openLine(TranscriptSegment line, {required bool canPlay}) {
     if (opening) return;
@@ -98,8 +117,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       }
       if (!mounted) return;
       final current = player!;
-      if (position != null) {
-        await current.seek(position);
+      final target = position ?? _initialPosition;
+      if (target != null) {
+        await current.seek(target);
+        _initialPosition = null;
       } else if (current.processingState == ProcessingState.completed) {
         await current.seek(Duration.zero);
       }

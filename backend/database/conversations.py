@@ -338,6 +338,30 @@ def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], 
     return data
 
 
+def read_local_search_page(uid: str, after: Optional[str], limit: int) -> tuple[list[dict], Optional[str]]:
+    """Read an owner-scoped slice without photos or offset scans."""
+    collection = db.collection('users').document(uid).collection(conversations_collection)
+    query = collection.order_by('__name__').select(
+        [
+            'created_at', 'started_at', 'is_locked', 'structured', 'user_title', 'data_protection_level',
+            'transcript_segments', 'transcript_segments_compressed',
+        ]
+    )
+    if after is not None:
+        query = query.start_after({'__name__': collection.document(after)})
+    documents = list(query.limit(limit + 1).stream(retry=None, timeout=8))
+    rows = []
+    for document in documents[:limit]:
+        data = document.to_dict()
+        if not data or data.get('is_locked'):
+            continue
+        row = _prepare_conversation_for_read(data, uid)
+        if row is not None:
+            row['id'] = document.id
+            rows.append(row)
+    return rows, documents[limit - 1].id if len(documents) > limit else None
+
+
 def _document_data_with_revision(document) -> Optional[Dict[str, Any]]:
     """Return Firestore document data with its canonical server revision."""
     data = document.to_dict()

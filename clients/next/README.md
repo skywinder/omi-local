@@ -67,8 +67,8 @@ usable. Changing the default HTTP base would leave account identity, side
 effects and state semantics spread across upstream providers and native startup.
 
 Close the capture and replay acceptance gates before switching everyday use to
-Next. Match saved server selection and status with Local. Then ship archive
-search and a source-linked conversation assistant as separate features. Connect
+Next. Verify archive search on the iPhone, then build a source-linked
+conversation assistant as a separate feature. Connect
 Home v3 once Local can represent a recording in progress, a queued upload and
 a server-side finish with their distinct identifiers and transitions.
 
@@ -146,6 +146,19 @@ model for `GET /v1/local/status`.
 Next refreshes diagnostics while the screen is visible in the foreground.
 Older servers without the endpoint show an unavailable-diagnostics state.
 Polling ends when the screen closes and resumes when foreground access returns.
+
+## Archive search
+
+Open **Search conversations** in the archive. Search covers saved transcripts,
+titles and summaries on the paired server. Tap a transcript match to open the
+line. When WAV playback is available, Play starts at that line's timestamp.
+Use **Show more** to continue from the last scanned page.
+
+`POST /v1/local/conversations/search` reads the current owner's Firestore records
+in bounded pages and reuses Omi's transcript snippet format. It covers records
+saved before this feature and reflects edits without a separate index. Search
+requires an updated paired server. Search duration for a rare term grows with
+the archive size.
 
 ## Recording from CV1
 

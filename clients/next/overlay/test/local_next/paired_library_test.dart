@@ -12,6 +12,65 @@ import 'package:omi/services/capture/local_audio_journal.dart';
 void main() {
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
+  test('archive search follows a cursor and retains transcript evidence', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key)..verified = true;
+    addTearDown(library.close);
+    final requests = <Object?>[];
+    server.listen((request) async {
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/v1/local/conversations/search');
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      requests.add(jsonDecode(await utf8.decoder.bind(request).join()));
+      switch (requests.length) {
+        case 1:
+          request.response.write(jsonEncode({'items': [], 'next_cursor': id}));
+        case 2:
+          request.response.write(
+            jsonEncode({
+              'items': [
+                {
+                  'id': id,
+                  'title': 'Fixture',
+                  'started_at': '2026-01-02T00:00:00Z',
+                  'match_snippets': [
+                    {'text': 'Привет', 'segment_id': 'line', 'start': 4.25, 'start_ms': 4250},
+                  ],
+                },
+              ],
+              'next_cursor': null,
+            }),
+          );
+        case 3:
+          request.response.statusCode = 503;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({'reason': 'offline_route_blocked'}));
+        case 4:
+          request.response.statusCode = 503;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({'reason': 'fixture_unavailable'}));
+      }
+      await request.response.close();
+    });
+
+    final first = (await library.searchArchive('привет'))!;
+    expect(first.hits, isEmpty);
+    expect(first.nextCursor, id);
+    final second = (await library.searchArchive('привет', after: first.nextCursor))!;
+    expect(second.hits.single.snippets.single.segmentId, 'line');
+    expect(second.hits.single.snippets.single.startMs, 4250);
+    expect(second.nextCursor, isNull);
+    expect(await library.searchArchive('привет'), isNull);
+    await expectLater(library.searchArchive('привет'), throwsA(LibraryFailure.unavailable));
+    expect(requests, [
+      {'query': 'привет'},
+      {'query': 'привет', 'after': id},
+      {'query': 'привет'},
+      {'query': 'привет'},
+    ]);
+  });
+
   test('runtime diagnostics use the paired route and distinguish older servers from key rejection', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

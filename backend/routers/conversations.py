@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import re
+from unicodedata import normalize
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, BackgroundTasks
 from typing import Any, Dict, List, Optional
@@ -43,6 +45,7 @@ from utils.conversations.analytics import build_conversation_analytics
 from utils.conversations.render import redact_conversations_for_list
 from utils.conversations.mcp_transcript_search import (
     attach_match_snippets_to_conversations,
+    build_transcript_match_snippets,
     merge_typesense_page_with_transcript_hits,
     search_transcript_conversation_ids,
 )
@@ -102,6 +105,7 @@ from utils.retrieval.tools.google_utils import refresh_google_token
 from utils.conversations.location import resolve_geolocation
 from utils.observability.fallback import record_fallback
 from utils.env_loader import is_offline_runtime
+from utils.local_transport_auth import LocalTransportAuthError, local_tunnel_enabled, verify_local_authorization
 import logging
 
 logger = logging.getLogger(__name__)
@@ -272,6 +276,68 @@ class SearchConversationsResponse(BaseModel):
     total_pages: int
     current_page: int
     per_page: int
+
+
+class LocalArchiveSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=240)
+    after: Optional[str] = Field(default=None, min_length=1, max_length=1500)
+
+
+class LocalArchiveSearchHit(BaseModel):
+    id: str
+    title: str
+    started_at: datetime
+    match_snippets: List[TranscriptMatchSnippet]
+
+
+class LocalArchiveSearchPage(BaseModel):
+    items: List[LocalArchiveSearchHit]
+    next_cursor: Optional[str]
+
+
+_LOCAL_ARCHIVE_ID = re.compile(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}')
+
+
+def _paired_archive_owner(request: Request) -> str:
+    if not is_offline_runtime() or not local_tunnel_enabled():
+        raise HTTPException(status_code=404, detail='Local archive search is unavailable')
+    try:
+        return verify_local_authorization(request.scope['headers'])
+    except LocalTransportAuthError:
+        raise HTTPException(status_code=401, detail='local_auth_required') from None
+
+
+@router.post('/v1/local/conversations/search', response_model=LocalArchiveSearchPage, tags=['local'])
+def search_local_archive(
+    search: LocalArchiveSearchRequest, response: Response, uid: str = Depends(_paired_archive_owner),
+):
+    query = search.query.strip()
+    after = search.after
+    if not query or (after is not None and (
+        after in {'.', '..'} or '/' in after or '\x00' in after or len(after.encode('utf-8')) > 1500
+    )):
+        raise HTTPException(status_code=400, detail='Invalid archive search')
+    rows, next_cursor = conversations_db.read_local_search_page(uid, after, limit=40)
+    needle = normalize('NFKC', query).casefold()
+    hits = []
+    for row in rows:
+        if not _LOCAL_ARCHIVE_ID.fullmatch(row['id']):
+            continue
+        started_at = row.get('started_at') or row.get('created_at')
+        if not isinstance(started_at, datetime):
+            continue
+        structured = row.get('structured')
+        structured = structured if isinstance(structured, dict) else {}
+        title = str(structured.get('title') or '')
+        overview = str(structured.get('overview') or '')
+        segments = row.get('transcript_segments')
+        snippets = build_transcript_match_snippets(
+            segments, query, context_neighbors=0, max_chars=360,
+        ) if isinstance(segments, list) else []
+        if snippets or any(needle in normalize('NFKC', value).casefold() for value in (title, overview)):
+            hits.append({'id': row['id'], 'title': title[:240], 'started_at': started_at, 'match_snippets': snippets})
+    response.headers['Cache-Control'] = 'no-store'
+    return {'items': hits, 'next_cursor': next_cursor}
 
 
 class ConversationStatusResponse(BaseModel):
