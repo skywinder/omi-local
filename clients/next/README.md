@@ -680,10 +680,18 @@ first archive page, and its detail endpoint returned HTTP 200. Bastion's
 deployed profile did not advertise the paired WAV route. The WAV exists on
 the server, and playback from Next still needs a compatible deployment.
 
+The Next analyzer and all 72 Next tests passed, along with the offline and
+legacy transport gates. On an isolated server, the grouped recording reached
+the transcription queue, was imported into Firestore, and served its original
+WAV over the authenticated range endpoint. The signed `Profile-dev` package
+from `c6d0fb8` was independently verified with executable SHA-256 prefix
+`36c5a08845872e0f`. No eligible iPhone was available to install it. The
+previous signed package `1cd5995` is available for rollback.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Named servers, verified switching and opt-in launch presets. Next reads authenticated server diagnostics and processing readiness. The archive and detail use the upstream API, with original day headers and state tiles. Physical pairing, presets and status verification remain open. |
+| Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default Bastion preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
