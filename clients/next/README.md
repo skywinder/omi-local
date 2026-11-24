@@ -20,6 +20,14 @@ atomic index write. Between the October 28 and November 24 original revisions,
 1,250 files changed under `app/`. Copying each new screen and its providers into
 the September snapshot would also give Local ownership of their future fixes.
 
+Of ten upstream Dart files imported directly by the current Next overlay, three
+changed across that interval and two changed between November 17 (`501a543f3e`)
+and November 24. The search widget and theme were identical in all three trees.
+The conversation wire schema and generated localization changed in both intervals.
+The upstream native project also added a PostHog Swift source file. This static
+comparison covers direct imports only. A clean build still needs to catch changes
+in their dependencies and a device test needs to catch behavioral changes.
+
 The Next bootstrap currently owns navigation and the archive/detail screens.
 It already uses the upstream conversation model, theme, localization and detail
 search widget. The next UI milestone is to run an upstream conversation screen
@@ -90,6 +98,16 @@ or a detectable capability on the paired server. Record the results below.
 
 The [feature inventory and port estimates](FEATURES.md) compare the original
 app, the existing Local client and the new client by user-visible behavior.
+
+On 2026-11-24, the Local offline suite passed and `make test-transport-app`
+passed 473 Flutter tests and the analyzer ratchet. The Next analyzer and seven
+Next Flutter tests passed on its own pinned SDK. Those tests exercise pairing,
+authorized reads, key rejection and redirect handling, the capture queue across
+restart, and the detail/search UI on fixtures. Flutter and Xcode produced a
+Debug-dev simulator app for `org.omilocal.next`. Its signature, identity and
+entitlements passed verification. This required reconciling the original watch
+marker, dev scheme and Pod deployment settings with the Next target. An iPhone
+build, installation and end-to-end microphone/CV1 acceptance remain open.
 
 | Area | Status and next verification |
 | --- | --- |
