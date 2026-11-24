@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/utils/l10n_extensions.dart';
@@ -14,6 +15,7 @@ import 'live_view.dart';
 import 'paired_library.dart';
 import 'processing.dart';
 import 'processing_page.dart';
+import 'settings_labels.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
   const LocalNextCapturePanel({required this.library, super.key});
@@ -37,6 +39,9 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   );
   bool _storageFailed = false;
   bool _closed = false;
+  int? _groupSilence;
+  SharedPreferences? _groupPrefs;
+  String get _groupPrefKey => 'next.capture.groupSilence.${widget.library.audioOwnerId}';
 
   @override
   void initState() {
@@ -52,9 +57,17 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       await previous;
       if (_closed || !library.audioDelivery) return;
       final documents = await getApplicationDocumentsDirectory();
+      try {
+        _groupPrefs = await SharedPreferences.getInstance();
+        final value = _groupPrefs?.getInt(_groupPrefKey);
+        if (LocalAudioJournal.groupSilenceChoices.contains(value)) _groupSilence = value;
+      } catch (_) {
+        // Audio capture remains available with the default part settings.
+      }
       if (_closed) return;
       final journal = _journal = LocalAudioJournal(
         directory: Directory('${documents.path}/outbox/${library.audioOwnerId}'),
+        groupSilence: () => library.conversationGroups ? _groupSilence : null,
         upload: (body, id) {
           if (_closed) throw StateError('Pairing closed');
           return library.uploadPart(body, id);
@@ -116,7 +129,26 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       serverLabel: widget.library.origin.authority,
       processing: _processing,
       library: widget.library,
+      groupSilence: _groupSilence,
+      onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
     );
+  }
+
+  Future<void> _setGroupSilence(int? seconds) async {
+    final prefs = _groupPrefs;
+    if (prefs == null || _captureBusy() || !widget.library.ownerChange.permitsCapture) return;
+    try {
+      final saved = seconds == null ? await prefs.remove(_groupPrefKey) : await prefs.setInt(_groupPrefKey, seconds);
+      if (saved && mounted) {
+        setState(() => _groupSilence = seconds);
+        return;
+      }
+    } catch (_) {
+      // Report failure without changing the setting for the next recording.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.couldNotLoadPage)));
+    }
   }
 }
 
@@ -227,12 +259,16 @@ class LocalNextCaptureControls extends StatelessWidget {
     this.serverLabel = '',
     this.processing,
     this.library,
+    this.groupSilence,
+    this.onGroupSilence,
     super.key,
   });
   final NextCaptureInputs inputs;
   final String serverLabel;
   final NextProcessingClient? processing;
   final PairedLibrary? library;
+  final int? groupSilence;
+  final Future<void> Function(int?)? onGroupSilence;
 
   Future<void> _devices(BuildContext context) async {
     final connection = inputs.connection;
@@ -357,6 +393,23 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
+              if (library?.conversationGroups == true && onGroupSilence != null)
+                PopupMenuButton<int>(
+                  tooltip: pairedSettingsLabel(context, 'groupCaptureLabel'),
+                  icon: const Icon(Icons.call_split),
+                  enabled: !inputs.hasCaptureInProgress && library?.ownerChange.permitsCapture == true,
+                  initialValue: groupSilence ?? -1,
+                  onSelected: (value) => unawaited(onGroupSilence!(value == -1 ? null : value)),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(value: -1, child: Text(pairedSettingsLabel(context, 'groupCaptureLegacy'))),
+                    PopupMenuItem(value: 0, child: Text(pairedSettingsLabel(context, 'groupCaptureSingle'))),
+                    for (final seconds in LocalAudioJournal.groupSilenceChoices.where((value) => value > 0))
+                      PopupMenuItem(
+                        value: seconds,
+                        child: Text('${pairedSettingsLabel(context, 'groupCaptureSilence')} · ${seconds}s'),
+                      ),
+                  ],
                 ),
               TextButton.icon(
                 key: const ValueKey('next-cv1-devices'),

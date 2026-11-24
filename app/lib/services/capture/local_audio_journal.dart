@@ -19,6 +19,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     required this.directory,
     required this.upload,
     this.openJournal,
+    this.groupSilence,
     DateTime Function()? clock,
     this.partDuration = const Duration(minutes: 5),
     this.maxStorageBytes = 512 * 1024 * 1024,
@@ -29,9 +30,12 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   static const maxPartBytes = 16 * 1024 * 1024;
   static const maxFrameBytes = 4096;
   static const maxPartPackets = 60000;
+  static const groupSilenceChoices = {0, 15, 30, 60, 120};
+  static final _groupUuid = RegExp(r'^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$');
   final Directory directory;
   final LocalPartUploader upload;
   final Future<RandomAccessFile> Function(File file)? openJournal;
+  final int? Function()? groupSilence;
   final DateTime Function() clock;
   final Duration partDuration;
   final int maxStorageBytes;
@@ -65,6 +69,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> initialize() async {
     await directory.create(recursive: true);
+    final incompleteGroups = <String>{};
     for (final entity in directory.listSync()) {
       if (entity is File && entity.path.endsWith('.part')) {
         try {
@@ -73,13 +78,26 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           // Keep malformed originals for recovery; never replace or delete them.
           deliveryFailed = true;
           _recoveryFailed = true;
+          final fields = entity.uri.pathSegments.last.split('.');
+          if (fields.length == 3 && _groupUuid.hasMatch(fields.first)) incompleteGroups.add(fields.first);
         }
+      }
+    }
+    for (final marker in directory.listSync().whereType<File>().where((f) => f.path.endsWith('.finish'))) {
+      final id = marker.uri.pathSegments.last.split('.').first;
+      if (incompleteGroups.contains(id)) continue;
+      try {
+        await _promoteFinish(marker, id);
+      } catch (_) {
+        deliveryFailed = true;
+        _recoveryFailed = true;
       }
     }
     await _countPending();
   }
 
-  static bool requiresDeliveryV2(Uint8List bytes) => _header(bytes).header['version'] == 2;
+  static bool requiresDeliveryV2(Uint8List bytes) => deliveryVersion(bytes) >= 2;
+  static int deliveryVersion(Uint8List bytes) => _header(bytes).header['version'] as int;
 
   static ({Map<String, dynamic> header, int offset}) _header(Uint8List bytes) {
     if (bytes.length < 12 || !listEquals(bytes.sublist(0, 8), magic)) {
@@ -90,7 +108,11 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
       throw const FormatException('Invalid local audio journal header');
     }
     final header = jsonDecode(utf8.decode(bytes.sublist(12, 12 + size))) as Map<String, dynamic>;
-    if (!const {1, 2}.contains(header['version']) || header['id'] is! String || header['server_id'] is! String) {
+    final version = header['version'];
+    if (version is! int ||
+        !const {1, 2, 3}.contains(version) ||
+        header['id'] is! String ||
+        header['server_id'] is! String) {
       throw const FormatException('Invalid local audio journal identity');
     }
     final preroll = header['preroll_frames'] ?? 0;
@@ -98,9 +120,23 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
         preroll < 0 ||
         preroll > 32 ||
         (header['version'] == 1 && preroll != 0) ||
-        (header['version'] == 2 && !header.containsKey('preroll_frames')) ||
+        (header['version'] != 1 && !header.containsKey('preroll_frames')) ||
         (header['codec'] == 'pcm16' && preroll != 0)) {
       throw const FormatException('Invalid local audio pre-roll');
+    }
+    if (header['version'] == 3) {
+      final record = header['recording_id'], index = header['index'], kind = header['kind'];
+      if (header['group_version'] != 1 ||
+          record is! String ||
+          !_groupUuid.hasMatch(record) ||
+          !groupSilenceChoices.contains(header['silence_seconds']) ||
+          index is! int ||
+          index < 0 ||
+          (kind == 'finish' && (index == 0 || header['id'] != record || preroll != 0 || bytes.length != 12 + size)) ||
+          (kind == 'audio' && (header['first_sample'] is! int || (header['first_sample'] as int) < 0)) ||
+          (kind != 'audio' && kind != 'finish')) {
+        throw const FormatException('Invalid local grouped journal');
+      }
     }
     return (header: header, offset: 12 + size);
   }
@@ -129,7 +165,65 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       await handle.close();
     }
+    if (envelope.header['version'] == 3) await _writeFinishMarker(envelope.header);
     await file.rename(file.path.replaceFirst(RegExp(r'\.part$'), '.ready'));
+  }
+
+  Future<Map<String, dynamic>> _finishHeader(File marker, String recordingId) async {
+    if (await marker.length() > 4108) throw const FormatException('Oversized local group finish');
+    final header = _header(await marker.readAsBytes()).header;
+    if (header['kind'] != 'finish' || header['recording_id'] != recordingId || header['version'] != 3) {
+      throw const FormatException('Invalid local group finish');
+    }
+    return header;
+  }
+
+  Future<void> _writeFinishMarker(Map<String, dynamic> part) async {
+    final id = part['recording_id'] as String;
+    final index = (part['index'] as int) + 1;
+    final marker = File('${directory.path}/$id.finish');
+    final oldBytes = await marker.exists() ? await marker.length() : 0;
+    if (oldBytes != 0 && ((await _finishHeader(marker, id))['index'] as int) >= index) return;
+    final header = utf8.encode(
+      jsonEncode(
+        {
+          ...part,
+          'kind': 'finish',
+          'id': id,
+          'index': index,
+          'started_at': part['group_started_at'],
+          'preroll_frames': 0,
+        }..remove('first_sample'),
+      ),
+    );
+    final temp = File('${marker.path}.tmp');
+    await temp.writeAsBytes([...magic, ..._length(header.length), ...header], flush: true);
+    await temp.rename(marker.path);
+    pendingBytes += 12 + header.length - oldBytes;
+  }
+
+  Future<void> _publishFinish(String recordingId) async {
+    final marker = File('${directory.path}/$recordingId.finish');
+    if (!await marker.exists()) return;
+    if (await _promoteFinish(marker, recordingId)) pendingParts++;
+    _notifyChanged();
+    retry();
+  }
+
+  Future<bool> _promoteFinish(File marker, String recordingId) async {
+    await _finishHeader(marker, recordingId);
+    final ready = File('${directory.path}/$recordingId.ready');
+    if (await ready.exists()) {
+      if (!listEquals(await marker.readAsBytes(), await ready.readAsBytes())) {
+        throw const FormatException('Conflicting local group finish');
+      }
+      final bytes = await marker.length();
+      await marker.delete();
+      pendingBytes -= bytes;
+      return false;
+    }
+    await marker.rename(ready.path);
+    return true;
   }
 
   LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) {
@@ -137,7 +231,9 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
       throw StateError('Unsupported local recording format');
     }
     captureIssue = null;
-    final recording = LocalAudioRecording._(this, source, codec, serverId);
+    final silence = groupSilence?.call();
+    if (silence != null && !groupSilenceChoices.contains(silence)) throw ArgumentError.value(silence);
+    final recording = LocalAudioRecording._(this, source, codec, serverId, silence);
     _recordings.add(recording);
     return recording;
   }
@@ -155,9 +251,10 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     var count = 0;
     var bytes = 0;
     for (final entity in directory.listSync()) {
-      if (entity is File && (entity.path.endsWith('.ready') || entity.path.endsWith('.part'))) {
-        count++;
-        bytes += await entity.length();
+      if (entity is File) {
+        final pending = entity.path.endsWith('.ready') || entity.path.endsWith('.part');
+        if (pending) count++;
+        if (pending || entity.path.endsWith('.finish')) bytes += await entity.length();
       }
     }
     pendingParts = count;
@@ -252,17 +349,22 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
 }
 
 class LocalAudioRecording {
-  LocalAudioRecording._(this.outbox, this.source, this.codec, this.serverId);
+  LocalAudioRecording._(this.outbox, this.source, this.codec, this.serverId, this.silenceSeconds);
 
   final LocalAudioJournal outbox;
   final String source;
   final String codec;
   final String serverId;
+  final int? silenceSeconds;
   final String recordingId = const Uuid().v4();
   int _index = 0;
   File? _file;
   RandomAccessFile? _handle;
   DateTime? _started;
+  DateTime? _groupStarted;
+  Map<String, dynamic>? _partHeader;
+  int _samples = 0;
+  int _freshPackets = 0;
   int _bytes = 0;
   int _audioMicroseconds = 0;
   int _totalAudioMicroseconds = 0;
@@ -293,8 +395,13 @@ class LocalAudioRecording {
     return outbox._serial(() async {
       try {
         if (_writeFailed) throw StateError('Local journal write failed; original part is retained');
+        const groupedPartMicros = 15 * Duration.microsecondsPerSecond;
+        final configuredLimit = outbox.partDuration.inMicroseconds;
+        final partLimit = (silenceSeconds ?? 0) > 0 && configuredLimit > groupedPartMicros
+            ? groupedPartMicros
+            : configuredLimit;
         if (_handle != null &&
-            (_audioMicroseconds + duration > outbox.partDuration.inMicroseconds ||
+            (_audioMicroseconds + duration > partLimit ||
                 _packetCount >= LocalAudioJournal.maxPartPackets ||
                 _bytes + snapshot.length + 4 > LocalAudioJournal.maxPartBytes)) {
           await _seal();
@@ -309,6 +416,8 @@ class LocalAudioRecording {
         _bytes += snapshot.length + 4;
         _audioMicroseconds += duration;
         _totalAudioMicroseconds += duration;
+        _samples += codec == 'pcm16' ? snapshot.length ~/ 2 : duration * 16 ~/ 1000;
+        _freshPackets++;
         _packetCount++;
         outbox.pendingBytes += snapshot.length + 4;
         if (codec != 'pcm16') _preroll.remember(snapshot, duration);
@@ -350,26 +459,35 @@ class LocalAudioRecording {
   Future<void> _open(DateTime acceptedAt, int freshPacketBytes) async {
     final id = const Uuid().v4();
     _started = acceptedAt;
+    _groupStarted ??= acceptedAt;
     _audioMicroseconds = 0;
     final preroll = _preroll.packets;
-    final header = utf8.encode(
-      jsonEncode({
-        'version': 2,
-        'id': id,
-        'recording_id': recordingId,
-        'index': _index++,
-        'source': source,
-        'codec': codec,
-        'started_at': _started!.toIso8601String(),
-        'server_id': serverId,
-        'preroll_frames': preroll.length,
-      }),
-    );
+    _freshPackets = 0;
+    final part = _partHeader = {
+      'version': silenceSeconds == null ? 2 : 3,
+      if (silenceSeconds != null) ...{
+        'group_version': 1,
+        'kind': 'audio',
+        'group_started_at': _groupStarted!.toIso8601String(),
+        'silence_seconds': silenceSeconds,
+        'first_sample': _samples,
+      },
+      'id': id,
+      'recording_id': recordingId,
+      'index': _index++,
+      'source': source,
+      'codec': codec,
+      'started_at': _started!.toIso8601String(),
+      'server_id': serverId,
+      'preroll_frames': preroll.length,
+    };
+    final header = utf8.encode(jsonEncode(part));
     final openingBytes = 12 + header.length + preroll.fold<int>(0, (total, packet) => total + 4 + packet.length);
     if (outbox.pendingBytes + openingBytes + freshPacketBytes > outbox.maxStorageBytes) {
       throw StateError('Local audio storage is full; pending audio is retained');
     }
-    _file = File('${outbox.directory.path}/$id.part');
+    final filename = silenceSeconds == null ? id : '$recordingId.$id';
+    _file = File('${outbox.directory.path}/$filename.part');
     await _file!.create(exclusive: true);
     _handle = await (outbox.openJournal?.call(_file!) ?? _file!.open(mode: FileMode.writeOnly));
     await _handle!.writeFrom(LocalAudioJournal.magic);
@@ -400,6 +518,7 @@ class LocalAudioRecording {
     await _handle!.flush();
     await _handle!.close();
     _handle = null;
+    if (silenceSeconds != null && _freshPackets > 0) await outbox._writeFinishMarker(_partHeader!);
     await _file!.rename(_file!.path.replaceFirst(RegExp(r'\.part$'), '.ready'));
     _file = null;
     outbox.retry();
@@ -409,7 +528,10 @@ class LocalAudioRecording {
     if (_stopping != null) return _stopping!;
     _closed = true; // Fence future hardware callbacks before draining accepted ones.
     outbox._recordings.remove(this);
-    return _stopping = outbox._serial(_seal);
+    return _stopping = outbox._serial(() async {
+      await _seal();
+      if (silenceSeconds != null && !_writeFailed) await outbox._publishFinish(recordingId);
+    });
   }
 
   /// Seal the accepted prefix. A transport discontinuity can drop decoder

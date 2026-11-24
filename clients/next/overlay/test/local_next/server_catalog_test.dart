@@ -24,6 +24,7 @@ void main() {
     expect(old.audioOwnerId, PairedLibrary(first, key).audioOwnerId);
     expect(old.verified, isFalse);
     expect(old.audioDelivery, isTrue);
+    expect(old.conversationGroups, isFalse);
     expect(await storage.read(key: PairedLibrary.legacyPairingKey), isNull);
     await catalog.deactivate(old.audioOwnerId);
     await catalog.delete(migrated.activeId!, beforeReplace: (_) async {});
@@ -89,8 +90,13 @@ void main() {
     await expectLater(catalog.activate(a, b.open()..verified = true), throwsA(LibraryFailure.key));
     final verified = a.open()
       ..verified = true
-      ..audioDelivery = true;
+      ..audioDelivery = true
+      ..conversationGroups = true;
     await catalog.activate(a, verified);
+    final restoredLibrary = (await NextServerCatalog().load()).restoreActive()!;
+    expect(restoredLibrary.audioDelivery, isTrue);
+    expect(restoredLibrary.conversationGroups, isTrue);
+    expect(restoredLibrary.isSignedIn, isFalse);
     await expectLater(catalog.activate(b, b.open()..verified = true), throwsA(LibraryFailure.unavailable));
     await expectLater(catalog.delete(a.id), throwsA(LibraryFailure.unavailable));
     await expectLater(

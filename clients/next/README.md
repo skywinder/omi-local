@@ -301,10 +301,12 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. The server accepts
-the version-three grouping protocol and prepares grouped WAVs for final
-transcription. Next still journals version-two parts. Grouped journal recovery
-and live silence controls remain separate client work.
+current stream shows its separately acknowledged limit. **Conversation
+boundaries** in the capture controls selects one recording per part, one
+conversation until Stop, or separation after a chosen silent interval.
+The grouped options appear on a compatible paired server and apply to the next
+recording. Conversation publication follows the server's durable sample clock.
+Live drafts still represent the capture session.
 
 ## Processing profiles
 
@@ -619,8 +621,19 @@ silence boundaries, no-split silence retention, and RF64 headers. An isolated
 paired upload passed through the real voice detector, the transcription queue
 with a fixture recognizer, Firestore import, and authenticated WAV playback.
 The offline and legacy transport suites passed. This was a server-only change,
-so the signed `5c2f56b` package was verified for reuse. Next still uses version
-two. Its grouped journal, live boundary controls and physical tests remain open.
+so the signed `5c2f56b` package was verified for reuse at that milestone.
+
+Next now offers per-server conversation boundaries in the capture controls.
+The default uses version 2. A compatible server enables version 3 with a single
+conversation until Stop or splitting after 15, 30, 60 or 120 seconds of silence.
+The phone recovers complete journal packets and the finish marker after restart.
+CV1 can seal and resume the same group across a reconnect with the same codec.
+The Next suite passed 70 tests. A wire smoke used bodies from the actual
+Flutter journal against the paired API, including finish before audio,
+reverse-order parts and replay. The real voice detector, transcription queue
+with a fixture recognizer, Firestore import and range playback all passed.
+The current Live transcript still covers the capture session. Resetting its
+display at a saved conversation boundary and physical acceptance remain open.
 
 | Area | Status and next verification |
 | --- | --- |
@@ -629,7 +642,7 @@ two. Its grouped journal, live boundary controls and physical tests remain open.
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Opt-in silence-based grouping runs on the paired server. Live boundary display and editing summary/translation profiles remain open. |
 | Upstream product screens | Paired search, chat, folders, manual speaker labels, tasks, manually generated daily recaps, and manual goal progress are available in Next. Task suggestions cite a transcript line and require individual acceptance. These features need physical verification with an updated server. Scheduled recaps, goal suggestions and lifecycle, semantic retrieval, persistent archive chat history, automatic speaker recognition, memory and integrations remain open. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

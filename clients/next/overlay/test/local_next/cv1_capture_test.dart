@@ -32,11 +32,13 @@ class _Fixture {
     bool Function()? canStart,
     Future<RandomAccessFile> Function(File)? openJournal,
     NextLivePreview? preview,
+    int? Function()? groupSilence,
   }) async {
     final files = await Directory.systemTemp.createTemp();
     journal = LocalAudioJournal(
       directory: files,
       openJournal: openJournal,
+      groupSilence: groupSilence,
       upload: (bytes, destination) async {
         expect(destination, owner);
         expect(bytes.take(8), LocalAudioJournal.magic);
@@ -130,6 +132,32 @@ void main() {
     final parts = fixture.uploads.toList()
       ..sort((a, b) => (a.header['index'] as int).compareTo(b.header['index'] as int));
     expect(parts.expand((part) => part.frames), [_silence, _padded, _silence]);
+  });
+
+  test('a grouped CV1 capture keeps its identity across a same-codec reconnect', () async {
+    final f = _Fixture();
+    await f.open(groupSilence: () => 15);
+    f.capture.handle(const Cv1LinkReady(1, 20));
+    f.capture.start();
+    f.capture.handle(_audio(1, 1, 0, _silence));
+    f.capture.handle(_audio(1, 2, 0, _silence));
+    await f.journal.flushPendingWrites();
+    f.capture.handle(const Cv1LinkLost(2));
+    await f.journal.flushPendingWrites();
+    await f.journal.drain();
+    expect(f.capture.active, isTrue);
+    expect(f.uploads.map((part) => part.header['kind']), ['audio']);
+    f.capture.handle(const Cv1LinkReady(3, 20));
+    f.capture.handle(_audio(1, 3, 0, _silence));
+    f.capture.handle(_audio(3, 1, 0, _silence));
+    f.capture.handle(_audio(3, 2, 0, _silence));
+    await f.capture.stop();
+    await f.journal.drain();
+    expect(f.uploads.map((part) => part.header['kind']), ['audio', 'audio', 'finish']);
+    final recordingId = f.uploads.first.header['recording_id'];
+    expect(f.uploads.every((part) => part.header['recording_id'] == recordingId), isTrue);
+    expect(f.uploads[1].header['first_sample'], 320);
+    expect(f.uploads[1].header['preroll_frames'], 0);
   });
 
   test('complete CV1 frames reach only the paired owner, with a new codec and recording after reconnect', () async {

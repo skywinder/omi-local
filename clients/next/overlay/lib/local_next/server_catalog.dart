@@ -24,17 +24,21 @@ class NextSavedServer {
 }
 
 class NextServerSnapshot {
-  const NextServerSnapshot._(this.servers, this.activeId, this._delivery);
+  const NextServerSnapshot._(this.servers, this.activeId, this._delivery, this._groups);
   final List<NextSavedServer> servers;
   final String? activeId;
   final bool _delivery;
+  final bool _groups;
   NextSavedServer? get _active => servers.where((s) => s.id == activeId).firstOrNull;
   String? get activeOwnerId => _active?.ownerId;
 
   // A previous v2 receipt protocol permits offline journaling. All sends still re-verify.
   PairedLibrary? restoreActive() {
     final active = _active?.open();
-    if (active != null) active.audioDelivery = _delivery;
+    if (active != null) {
+      active.audioDelivery = _delivery;
+      active.conversationGroups = _groups;
+    }
     return active;
   }
 }
@@ -44,6 +48,7 @@ class _Catalog {
   final seenPresets = <String>{};
   String? activeId;
   bool delivery = false;
+  bool groups = false;
   int activeRevision = 0;
 
   String? get activeOwner {
@@ -63,6 +68,7 @@ class _Catalog {
     'active': activeId,
     'active_revision': activeRevision,
     'delivery_version': delivery ? 2 : 0,
+    if (groups) 'group_delivery_version': 1,
   });
 }
 
@@ -130,6 +136,7 @@ class NextServerCatalog {
       catalog.activeRevision = (value['active_revision'] as int?) ?? 0;
       if (catalog.activeRevision < 0) throw LibraryFailure.storage;
       catalog.delivery = value['delivery_version'] == 2;
+      catalog.groups = catalog.delivery && value['group_delivery_version'] == 1;
       if (catalog.activeId == null ? catalog.delivery : !catalog.servers.containsKey(catalog.activeId)) {
         throw LibraryFailure.storage;
       }
@@ -175,6 +182,7 @@ class NextServerCatalog {
       List.unmodifiable(catalog.servers.entries.map((e) => _entry(catalog, e.key, e.value))),
       catalog.activeId,
       catalog.delivery,
+      catalog.groups,
     );
   });
 
@@ -242,6 +250,7 @@ class NextServerCatalog {
         catalog.activeId = entry.id;
         catalog.activeRevision++;
         catalog.delivery = verified.audioDelivery;
+        catalog.groups = verified.conversationGroups;
         await _write(catalog);
       });
 
@@ -251,6 +260,7 @@ class NextServerCatalog {
     catalog.activeId = null;
     catalog.activeRevision++;
     catalog.delivery = false;
+    catalog.groups = false;
     await _write(catalog);
   });
 

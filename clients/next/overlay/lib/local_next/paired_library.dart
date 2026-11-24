@@ -14,6 +14,7 @@ import 'package:omi/backend/schema/action_item.dart';
 import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/backend/schema/gen/goals_wire.g.dart';
 import 'package:omi/backend/schema/person.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -78,6 +79,7 @@ class PairedLibrary {
   final String _key;
   bool audioPlayback = false;
   bool audioDelivery;
+  bool conversationGroups = false;
   bool recordingEdits = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
@@ -103,6 +105,7 @@ class PairedLibrary {
     ownerChange._close();
     verified = false;
     audioDelivery = false;
+    conversationGroups = false;
     audioPlayback = false;
     recordingEdits = false;
     speakerLabelsAvailable = false;
@@ -182,7 +185,7 @@ class PairedLibrary {
       final base = documents ?? await getApplicationDocumentsDirectory();
       final queue = Directory('${base.path}/outbox/$ownerId');
       return await queue.list(followLinks: false).any((entry) {
-        return entry.path.endsWith('.part') || entry.path.endsWith('.ready');
+        return entry.path.endsWith('.part') || entry.path.endsWith('.ready') || entry.path.endsWith('.finish');
       });
     } on PathNotFoundException {
       return false;
@@ -449,6 +452,7 @@ class PairedLibrary {
     if (_closed) throw LibraryFailure.key;
     verified = true;
     audioDelivery = data['local_audio_delivery_version'] == 2;
+    conversationGroups = audioDelivery && data['local_conversation_group_version'] == 1;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
@@ -1073,6 +1077,7 @@ class PairedLibrary {
     // A saved v2 capability permits offline journaling; first send after launch needs a fresh profile.
     if (!verified) await verify();
     if (!audioDelivery || _closed) throw LibraryFailure.key;
+    if (LocalAudioJournal.deliveryVersion(body) == 3 && !conversationGroups) throw LibraryFailure.unavailable;
     final result = await _request('/v1/local/audio/parts', (r) => _json(r, 4096), body: body);
     if (result is! Map<String, dynamic>) throw LibraryFailure.malformed;
     return result;

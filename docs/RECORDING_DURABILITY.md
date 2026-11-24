@@ -133,9 +133,17 @@ only along a continuous sample range. With a configured silence threshold it
 publishes a conversation after the corresponding silent interval and retains
 onset context for the next conversation. With splitting disabled it retains all
 captured samples through finish, including silence. Matching receipts remain
-available after original staged parts are retired. Next currently sends
-version-two parts while its grouped journal and live boundary controls are
-being integrated.
+available after original staged parts are retired. Next offers **Conversation
+boundaries** with grouped delivery on a compatible paired server. The setting
+applies to the next capture and is remembered for that pairing. The journal
+retains version-two delivery in the one-recording-per-part mode.
+
+With silence-based grouping, Next seals a part after at most 15 seconds of
+captured audio. The paired server can publish a closed conversation while
+the phone continues capturing. The finish marker becomes ready after Stop,
+or on restart after recoverable parts have been sealed. A malformed group
+part keeps its finish marker pending for recovery. A same-codec CV1 reconnect
+keeps the group and resets Opus decoder context.
 
 ## Recovery boundaries
 

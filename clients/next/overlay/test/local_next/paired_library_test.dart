@@ -222,6 +222,24 @@ void main() {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final seen = <String>[];
+    Uint8List envelope(Map<String, dynamic> fields) {
+      final data = utf8.encode(jsonEncode(fields));
+      final length = (ByteData(4)..setUint32(0, data.length, Endian.big)).buffer.asUint8List();
+      return Uint8List.fromList([...LocalAudioJournal.magic, ...length, ...data]);
+    }
+
+    final part = envelope({'version': 2, 'id': id, 'server_id': 'fixture', 'preroll_frames': 0});
+    final finish = envelope({
+      'version': 3,
+      'id': id,
+      'recording_id': id,
+      'server_id': 'fixture',
+      'preroll_frames': 0,
+      'group_version': 1,
+      'kind': 'finish',
+      'silence_seconds': 30,
+      'index': 1,
+    });
     server.listen((request) async {
       seen.add(request.uri.path);
       final response = request.response;
@@ -247,7 +265,7 @@ void main() {
             response.add([1, 2, 3]);
           case '/v1/local/audio/parts':
             final payload = await request.expand((part) => part).toList();
-            if (request.method != 'POST' || payload.join(',') != '4,5') response.statusCode = 400;
+            if (request.method != 'POST' || payload.join(',') != part.join(',')) response.statusCode = 400;
             response.write(jsonEncode({'stored': true}));
           default:
             response.statusCode = 404;
@@ -271,8 +289,8 @@ void main() {
     final wav = File('${dir.path}/fixture');
     await library.downloadAudio(id, wav);
     expect(await wav.readAsBytes(), [1, 2, 3]);
-    final part = Uint8List.fromList([4, 5]);
     await expectLater(library.uploadPart(part, 'other pairing'), throwsA(LibraryFailure.key));
+    await expectLater(library.uploadPart(finish, library.audioOwnerId), throwsA(LibraryFailure.unavailable));
     expect(await library.uploadPart(part, library.audioOwnerId), {'stored': true});
     library.close();
     expect(library.isSignedIn, isFalse);

@@ -333,6 +333,7 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
     if transcription is not None:
         profile['local_transcription'] = transcription
         profile['local_audio_delivery_version'] = 2
+        profile['local_conversation_group_version'] = 1
         profile['local_audio_playback_version'] = 1
         profile['local_recording_edits_version'] = 1
         profile['local_folders_version'] = 2

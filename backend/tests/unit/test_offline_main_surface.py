@@ -66,6 +66,7 @@ assert profile['local_transcription']['live']['status'] == 'disabled'
 assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
 assert profile['local_recording_edits_version'] == 1
+assert profile['local_conversation_group_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'

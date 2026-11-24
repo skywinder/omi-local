@@ -63,7 +63,8 @@ class NextCv1Capture extends ChangeNotifier {
   int? get generation => _generation;
   int? _codecCode;
   bool get linked => _codecCode != null;
-  String? get _codec => switch (_codecCode) {
+  String? get _codec => _codecFor(_codecCode);
+  String? _codecFor(int? code) => switch (code) {
     20 => 'opus',
     21 => 'opus_fs320',
     _ => null,
@@ -130,7 +131,18 @@ class NextCv1Capture extends ChangeNotifier {
 
   void _setLink(int generation, int? codecCode) {
     _cancelButtonStart();
-    _endSegment();
+    final current = _recording;
+    if (current != null &&
+        current.silenceSeconds != null &&
+        active &&
+        (codecCode == null || current.codec == _codecFor(codecCode))) {
+      _frames.discardPending();
+      _hasPersistedAudio = false;
+      _cutPreview();
+      _checkpoint(resetOpusContext: true);
+    } else {
+      _endSegment();
+    }
     _generation = generation;
     _codecCode = codecCode;
     _lastButtonCode = null;
