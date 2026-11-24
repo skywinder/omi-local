@@ -73,7 +73,7 @@ def prepare_project(project_file):
                 settings.update({
                     'PRODUCT_BUNDLE_IDENTIFIER': BUNDLE, 'APP_BUNDLE_IDENTIFIER': BUNDLE,
                     'BUNDLE_DISPLAY_NAME': NAME, 'BUNDLE_NAME': NAME, 'INFOPLIST_KEY_CFBundleDisplayName': NAME,
-                    'INFOPLIST_FILE': 'Runner/Info-Next.plist', 'CODE_SIGN_STYLE': 'Automatic',
+                    'INFOPLIST_FILE': 'Runner/Info.plist', 'CODE_SIGN_STYLE': 'Automatic',
                     'ASSETCATALOG_COMPILER_APPICON_NAME': 'devAppIcon',
                     'DEVELOPMENT_TEAM': '$(OMI_APPLE_TEAM_ID)',
                     'SWIFT_OBJC_BRIDGING_HEADER': '', 'CODE_SIGN_ENTITLEMENTS': '',
@@ -82,13 +82,9 @@ def prepare_project(project_file):
     project_file.write_bytes(plistlib.dumps(project, sort_keys=False))
 
 
-def prepare(app):
-    if (app.parent / 'upstream-revision').read_text().strip() != json.loads((HERE / 'upstream.json').read_text())['commit']:
-        raise ValueError('Prepare the pinned disposable app with prepare.py')
-    ios = app / 'ios'
-    runner = ios / 'Runner'
-    prepare_project(ios / 'Runner.xcodeproj' / 'project.pbxproj')
-    # Leave the original Info.plist intact for future capability ports.
+def prepare_info(runner):
+    # Flutter checks Runner/Info.plist for watch companionship even when Xcode's
+    # INFOPLIST_FILE points elsewhere. Keep one manifest in this prepared Runner.
     original = plistlib.loads((runner / 'Info.plist').read_bytes())
     keys = {'CFBundleDevelopmentRegion', 'CFBundleExecutable', 'CFBundleIdentifier', 'CFBundleInfoDictionaryVersion',
             'CFBundleName', 'CFBundleDisplayName', 'CFBundlePackageType', 'CFBundleShortVersionString',
@@ -107,7 +103,16 @@ def prepare(app):
             '100.64.0.0/10': {'NSExceptionAllowsInsecureHTTPLoads': True},
         }},
     })
-    (runner / 'Info-Next.plist').write_bytes(plistlib.dumps(info))
+    (runner / 'Info.plist').write_bytes(plistlib.dumps(info))
+
+
+def prepare(app):
+    if (app.parent / 'upstream-revision').read_text().strip() != json.loads((HERE / 'upstream.json').read_text())['commit']:
+        raise ValueError('Prepare the pinned disposable app with prepare.py')
+    ios = app / 'ios'
+    runner = ios / 'Runner'
+    prepare_project(ios / 'Runner.xcodeproj' / 'project.pbxproj')
+    prepare_info(runner)
     shutil.copyfile(HERE / 'ios' / 'AppDelegate.swift', runner / 'AppDelegate.swift')
     shutil.copyfile(HERE / 'ios' / 'Podfile', ios / 'Podfile')
     # Runner is the only target in this disposable project.

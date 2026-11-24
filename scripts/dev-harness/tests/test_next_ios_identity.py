@@ -15,6 +15,7 @@ sys.path.insert(0, str(NEXT))
 spec = importlib.util.spec_from_file_location('next_iphone', NEXT / 'iphone.py')
 iphone = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(iphone)
+from ios_prepare import prepare_info
 sys.path.remove(str(NEXT))
 
 
@@ -32,6 +33,18 @@ def package(tmp_path, bundle):
 def test_reject_previous_app_before_inspecting_signature(tmp_path):
     with pytest.raises(ValueError, match='identity'):
         iphone.attest(package(tmp_path, 'org.example.legacy'), simulator=True)
+
+
+def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):
+    manifest = tmp_path / 'Info.plist'
+    manifest.write_bytes(plistlib.dumps({
+        'WKCompanionAppBundleIdentifier': '$(APP_BUNDLE_IDENTIFIER)',
+        'UIApplicationSceneManifest': {'UISceneConfigurations': {'UIWindowSceneSessionRoleApplication': [{}]}},
+    }))
+    prepare_info(tmp_path)
+    actual = plistlib.loads(manifest.read_bytes())
+    assert 'WKCompanionAppBundleIdentifier' not in actual
+    assert actual['CFBundleDisplayName'] == iphone.NAME
 
 
 @pytest.mark.skipif(sys.platform != 'darwin', reason='macOS signing tools')
