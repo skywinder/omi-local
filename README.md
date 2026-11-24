@@ -54,7 +54,7 @@ provisioning and Developer Mode requirements.
 ### 1. Start the Mac services
 
 ```bash
-git clone https://github.com/vquaron/omi-local.git omiloc
+git clone https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./start.command
 ```
@@ -116,7 +116,7 @@ Install and start Docker Engine or Docker Desktop with Compose **2.32 or later**
 From a new checkout of `main`:
 
 ```bash
-git clone --branch main https://github.com/vquaron/omi-local.git omiloc
+git clone --branch main https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./docker.sh up
 ```
@@ -316,9 +316,7 @@ speech fixture retain their original text.
 
 Read [AGENTS.md](AGENTS.md) and the relevant component guide before changing code.
 Use the standalone repository's commands, add regression tests for bug fixes,
-and describe your verification in the pull request. Report reproducible problems
-through [GitHub Issues](https://github.com/vquaron/omi-local/issues), with secrets
-and personal recording content removed.
+and describe your verification in the pull request. For reproducible problems, see the [project repository](https://github.com/skywinder/omi-local); remove secrets and personal recording content from reports.
 
 ## License and acknowledgements
 

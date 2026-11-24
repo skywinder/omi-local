@@ -15,7 +15,7 @@ The first installation needs internet access.
 Get the project and start setup in Terminal:
 
 ```bash
-git clone https://github.com/vquaron/omi-local.git omiloc
+git clone https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./start.command
 ```

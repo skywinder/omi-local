@@ -1,5 +1,11 @@
 # Origin
 
+Omi Local is maintained independently at
+[skywinder/omi-local](https://github.com/skywinder/omi-local). Its history and
+licenses are retained below for attribution; upstream synchronization is not
+required for development. Third-party libraries remain separately maintained
+external dependencies.
+
 Original project: [BasedHardware/omi](https://github.com/BasedHardware/omi).
 Upstream baseline: `2ce52f13f4724eee989158da6318dc6f27aa744e`.
 
