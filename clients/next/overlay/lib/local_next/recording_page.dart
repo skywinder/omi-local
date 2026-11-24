@@ -4,8 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
+import 'package:omi/backend/schema/transcript_segment.dart';
+import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
+import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart';
 import 'package:omi/ui/components/omi_page_states.dart';
-import 'package:omi/ui/format/omi_duration.dart';
+import 'package:omi/ui/omi_tokens.dart';
+import 'package:omi/widgets/transcript.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -38,14 +42,31 @@ class RecordingPage extends StatefulWidget {
   State<RecordingPage> createState() => _RecordingPageState();
 }
 
-class _RecordingPageState extends State<RecordingPage> {
-  late Future<GeneratedConversation> detail = widget.library.detail(widget.id);
+class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
+  late final tabs = TabController(length: 2, vsync: this);
+  late Future<_RecordingDetail> detail = _load();
+  String? focusedLine;
+  int focusRequest = 0;
   AudioPlayer? player;
   Directory? temp;
   bool opening = false;
   bool _canPlay(GeneratedConversation row) =>
       widget.library.audioPlayback &&
       (row.externalData?['local_recording'] is Map || row.externalData?['local_transcript'] is Map);
+
+  Future<_RecordingDetail> _load() async => _RecordingDetail(await widget.library.detail(widget.id));
+
+  void _openLine(TranscriptSegment line, {required bool canPlay}) {
+    if (opening) return;
+    setState(() {
+      focusedLine = line.id;
+      focusRequest++;
+    });
+    tabs.animateTo(1);
+    if (canPlay && line.start.isFinite && line.start >= 0) {
+      unawaited(_start(position: Duration(milliseconds: (line.start * 1000).round())));
+    }
+  }
 
   Future<void> _start({Duration? position}) async {
     if (opening) return;
@@ -69,7 +90,9 @@ class _RecordingPageState extends State<RecordingPage> {
             if (player != fresh) await fresh.dispose();
           }
         } finally {
-          if (temp != folder && await folder.exists()) await folder.delete(recursive: true);
+          if (temp != folder && await folder.exists()) {
+            await folder.delete(recursive: true);
+          }
         }
       }
       if (!mounted) return;
@@ -98,6 +121,7 @@ class _RecordingPageState extends State<RecordingPage> {
 
   @override
   void dispose() {
+    tabs.dispose();
     final current = player;
     final folder = temp;
     temp = null;
@@ -105,111 +129,177 @@ class _RecordingPageState extends State<RecordingPage> {
       try {
         await current?.dispose();
       } finally {
-        if (folder != null && await folder.exists()) await folder.delete(recursive: true);
+        if (folder != null && await folder.exists()) {
+          await folder.delete(recursive: true);
+        }
       }
     }());
     super.dispose();
   }
 
+  Widget _playbackControls() => StreamBuilder<PlayerState>(
+    stream: player?.playerStateStream,
+    builder: (context, state) {
+      final playing = state.data?.playing == true && state.data?.processingState != ProcessingState.completed;
+      final l = context.l10n;
+      return TextButton.icon(
+        onPressed: opening
+            ? null
+            : playing
+            ? () async {
+                try {
+                  await player?.pause();
+                } catch (_) {
+                  _playFailed();
+                }
+              }
+            : _start,
+        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+        label: Text(playing ? l.pause : l.play),
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l.transcript),
-        actions: [
-          FutureBuilder<GeneratedConversation>(
-            future: detail,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const SizedBox.shrink();
-              final row = snapshot.requireData;
-              return IconButton(
-                tooltip: l.search,
-                icon: const Icon(Icons.search),
-                onPressed: () async {
-                  final position = await Navigator.push<Duration>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RecordingSearch(row: row, canPlay: _canPlay(row)),
-                    ),
-                  );
-                  if (mounted && position != null) await _start(position: position);
-                },
-              );
-            },
+    return FutureBuilder<_RecordingDetail>(
+      future: detail,
+      builder: (context, snapshot) {
+        final loaded = snapshot.data;
+        final row = loaded?.row;
+        final canPlay = row != null && _canPlay(row);
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(row == null ? l.conversations : recordingTitle(context, row)),
+            actions: [
+              if (loaded != null)
+                IconButton(
+                  tooltip: l.search,
+                  icon: const Icon(Icons.search),
+                  onPressed: opening
+                      ? null
+                      : () async {
+                          final line = await Navigator.push<TranscriptSegment>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RecordingSearch(row: loaded.row, lines: loaded.lines, canPlay: canPlay),
+                            ),
+                          );
+                          if (mounted && line != null) {
+                            _openLine(line, canPlay: canPlay);
+                          }
+                        },
+                ),
+            ],
           ),
-        ],
-      ),
-      body: FutureBuilder<GeneratedConversation>(
-        future: detail,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const OmiLoadingState();
-          if (!snapshot.hasData) {
-            return OmiErrorState(
-              message: snapshot.error == LibraryFailure.key ? l.invalidKey : l.couldNotLoadPage,
-              onRetry: () => setState(() => detail = widget.library.detail(widget.id)),
-            );
-          }
-          final row = snapshot.requireData;
-          final canPlay = _canPlay(row);
-          final current = player;
-          return ListView.builder(
-            itemCount: 1 + row.transcriptSegments.length,
-            itemBuilder: (context, i) {
-              if (i == 0) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(recordingTitle(context, row), style: Theme.of(context).textTheme.headlineSmall),
-                      if (row.structured.overview.isNotEmpty) SelectableText(row.structured.overview),
-                      if (canPlay)
-                        StreamBuilder<PlayerState>(
-                          stream: current?.playerStateStream,
-                          builder: (context, state) {
-                            final playing =
-                                state.data?.playing == true && state.data?.processingState != ProcessingState.completed;
-                            return TextButton.icon(
-                              onPressed: opening
-                                  ? null
-                                  : playing
-                                  ? () async {
-                                      try {
-                                        await current?.pause();
-                                      } catch (_) {
-                                        _playFailed();
-                                      }
-                                    }
-                                  : _start,
-                              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                              label: Text(playing ? l.pause : l.play),
-                            );
-                          },
-                        ),
-                      if (opening) const LinearProgressIndicator(),
-                      if (row.transcriptSegments.isEmpty)
-                        Text(
-                          row.externalData?['local_recording'] is Map
-                              ? recordingStatus(context, row)
-                              : l.noTranscriptAvailable,
-                        ),
-                    ],
-                  ),
-                );
-              }
-              final segment = row.transcriptSegments[i - 1];
-              return ListTile(
-                leading: Text(OmiDuration.offset(segment.start)),
-                title: Text(segment.text),
-                onTap: canPlay && !opening
-                    ? () => _start(position: Duration(milliseconds: (segment.start * 1000).round()))
-                    : null,
-              );
-            },
-          );
-        },
-      ),
+          body: snapshot.connectionState != ConnectionState.done
+              ? const OmiLoadingState()
+              : loaded == null
+              ? OmiErrorState(
+                  message: snapshot.error == LibraryFailure.key ? l.invalidKey : l.couldNotLoadPage,
+                  onRetry: () => setState(() => detail = _load()),
+                )
+              : Column(
+                  children: [
+                    TabBar(
+                      controller: tabs,
+                      tabs: [
+                        Tab(text: l.summary),
+                        Tab(text: l.transcript),
+                      ],
+                    ),
+                    if (canPlay) _playbackControls(),
+                    if (opening) const LinearProgressIndicator(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: tabs,
+                        children: [
+                          _Summary(
+                            detail: loaded,
+                            onOpenLine: (line) => _openLine(line, canPlay: canPlay),
+                          ),
+                          loaded.lines.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    loaded.pending ? recordingStatus(context, loaded.row) : l.noTranscriptAvailable,
+                                  ),
+                                )
+                              : TranscriptWidget(
+                                  segments: loaded.lines,
+                                  isConversationDetail: true,
+                                  bottomMargin: OmiSpacing.md,
+                                  onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,
+                                  currentSegmentId: focusedLine,
+                                  followTargetSegmentId: focusedLine,
+                                  playbackFollowRequest: focusRequest,
+                                  followCurrentSegment: true,
+                                ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+class _RecordingDetail {
+  _RecordingDetail(this.row) : lines = row.transcriptSegments.map(TranscriptSegment.fromGenerated).toList() {
+    // Some older recordings carry no segment ID or repeat one. Give those rows
+    // distinct keys for the transcript viewport without changing valid citations.
+    final reserved = <String, int>{};
+    for (final line in lines) {
+      reserved.update(line.id, (count) => count + 1, ifAbsent: () => 1);
+    }
+    final ids = <String>{};
+    for (final (index, line) in lines.indexed) {
+      if (line.id.isNotEmpty && ids.add(line.id)) {
+        if (reserved[line.id] == 1) sources.add(line);
+        continue;
+      }
+      var id = 'local-next-$index';
+      while (reserved.containsKey(id)) {
+        id = ':$id';
+      }
+      line.id = id;
+    }
+  }
+
+  final GeneratedConversation row;
+  final List<TranscriptSegment> lines;
+  final sources = <TranscriptSegment>[];
+  bool get pending => row.externalData?['local_recording'] is Map;
+}
+
+class _Summary extends StatelessWidget {
+  const _Summary({required this.detail, required this.onOpenLine});
+  final _RecordingDetail detail;
+  final ValueChanged<TranscriptSegment> onOpenLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final structured = detail.row.structured;
+    final sections = structured.sections;
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(OmiSpacing.md),
+          sliver: sections != null && sections.isNotEmpty
+              ? NoteSectionsSliver(
+                  sections: sections,
+                  transcriptSegments: detail.sources,
+                  onOpenSource: (id) => onOpenLine(detail.sources.firstWhere((line) => line.id == id)),
+                )
+              : structured.overview.trim().isNotEmpty
+              ? ConversationMarkdownSliver(content: structured.overview)
+              : SliverToBoxAdapter(
+                  child: Text(detail.pending ? recordingStatus(context, detail.row) : context.l10n.noSummaryAvailable),
+                ),
+        ),
+      ],
     );
   }
 }

@@ -28,13 +28,13 @@ The upstream native project also added a PostHog Swift source file. This static
 comparison covers direct imports only. A clean build still needs to catch changes
 in their dependencies and a device test needs to catch behavioral changes.
 
-The Next bootstrap currently owns navigation and the archive/detail screens.
-It already uses the upstream conversation model, theme, localization and detail
-search widget. The next UI milestone is to run an upstream conversation screen
-with its own provider against paired data. Upstream's
-`ConversationDetailProvider` accepts a read function. Its production screen
-also consumes capture state, preferences and actions. Enable actions when the
-paired server implements their contracts. Home v3 separately reads
+The Next bootstrap owns navigation and pairing. The detail route composes the
+original Omi transcript, markdown and note source widgets over the paired
+archive. The pinned presentation adaptations live in
+[`presentation.py`](presentation.py). Upstream's `ConversationDetailProvider`
+accepts a read function. Its production route also starts Siri, summary
+experiments, identity and live services. Enable actions when the paired server
+implements their contracts. Home v3 separately reads
 `GET /v1/conversations/live`; the Local v1 archive alone cannot drive its
 listening and pending-finish states.
 
@@ -109,17 +109,21 @@ entitlements passed verification. This required reconciling the original watch
 marker, dev scheme and Pod deployment settings with the Next target. An iPhone
 build, installation and end-to-end microphone/CV1 acceptance remain open.
 On the test simulator the launcher reused the attested artifact and installation
-succeeded. The installed executable matched the original SHA-256 and the
-simulator Home Screen displayed Omi Local Next. The launch request timed out
-and rendering of the pairing screen remains indeterminate.
+succeeded. The installed executable matched the original SHA-256. A subsequent
+launch of that exact build rendered the pairing form and its Connect button.
+Pairing and capture acceptance against a running local server remain open.
+The subsequent detail change passed the Next analyzer and all eight Flutter
+tests. Its new UI fixture opens a cited line in the original transcript widget
+and checks that summary images do not load external URLs or files. That detail
+change has separate build and device verification.
 
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Pinned November 24 Flutter app, independent Runner identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
 | Pairing and library | Dedicated paired startup, conversation list, detail, transcript and pending rows. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
-| Playback | Versioned paired WAV endpoint with ownership and integrity checks. The Next detail view uses the advertised capability and supports segment seeking. The original search control finds text in the open transcript and summary and can play a matching segment. Older servers continue to serve the archive without the new playback endpoint. |
+| Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
-| CV1 | Pending native Bluetooth registration and connection, button/Stop/mute intent, reconnect, and arbitration with phone input. Upstream firmware can split an Opus frame across notifications. Validate reassembly, loss, wrap and Stop against its MTU fixture, then exercise the actual device. The phone outbox and wearable's offline ring have different recovery rules. |
+| CV1 | The shared Dart Opus assembler in `213bfb1` passes fragmentation, counter-wrap and loss tests. Libopus decoded the assembled 18-byte MTU-23 fixture. Pending native registration and connection, button/Stop/mute intent, reconnect and input arbitration. The wire has no end marker, so an unconfirmed last packet is discarded on stop or loss. Test this behavior on the device before enabling capture. |
 | Processing | Existing server owns Live/final STT, diarization, summaries and translation. Port the client status, provider selection and live transcript/translation controls. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |

@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+from presentation import apply_presentation
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -49,15 +50,7 @@ def main():
     if (build / 'upstream-revision').read_text().strip() != revision:
         raise ValueError('Unexpected source directory')
     app = build / 'app'
-    # The upstream search widget imports the design-system barrel, which also
-    # exports account-backed services. Keep its widget implementation intact.
-    search = Path('lib/pages/conversation_detail/widgets/detail_search_bar.dart')
-    widget = subprocess.check_output(['git', '-C', args.repository, 'show', f'{revision}:app/{search}'], text=True)
-    barrel = "import 'package:omi/ui/ui.dart';"
-    if widget.count(barrel) != 1:
-        raise ValueError('Review the upstream DetailSearchBar imports for this revision')
-    imports = ['components/omi_button', 'components/omi_icon_button', 'components/omi_search_field', 'omi_tokens']
-    (app / search).write_text(widget.replace(barrel, '\n'.join(f"import 'package:omi/ui/{name}.dart';" for name in imports)))
+    apply_presentation(args.repository, revision, app)
     if not args.source_only:
         # Restore tracked native inputs before applying the repeatable identity overlay.
         extract(args.repository.resolve(), build, 'app/ios')

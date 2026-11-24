@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
+import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/pages/conversation_detail/widgets/detail_search_bar.dart';
 import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
-/// Returns the timestamp of a selected transcript match for playback in detail.
+/// Returns the selected transcript match to the detail view.
 class RecordingSearch extends StatefulWidget {
-  const RecordingSearch({super.key, required this.row, required this.canPlay});
+  const RecordingSearch({super.key, required this.row, required this.lines, required this.canPlay});
 
   final GeneratedConversation row;
+  final List<TranscriptSegment> lines;
   final bool canPlay;
 
   @override
@@ -18,7 +20,7 @@ class RecordingSearch extends StatefulWidget {
 class _RecordingSearchState extends State<RecordingSearch> {
   final controller = TextEditingController();
   final focus = FocusNode();
-  List<({String text, double? seconds})> hits = [];
+  List<({String text, TranscriptSegment? line})> hits = [];
   int index = 0;
 
   @override
@@ -37,10 +39,14 @@ class _RecordingSearchState extends State<RecordingSearch> {
       hits = query.isEmpty
           ? []
           : [
-              for (final value in [row.structured.title, row.structured.overview])
-                if (value.toLowerCase().contains(query)) (text: value, seconds: null),
-              for (final segment in row.transcriptSegments)
-                if (segment.text.toLowerCase().contains(query)) (text: segment.text, seconds: segment.start),
+              for (final value in [
+                row.structured.title,
+                row.structured.overview,
+                for (final section in row.structured.sections ?? const []) ...[section.heading, section.bodyMarkdown],
+              ])
+                if (value.toLowerCase().contains(query)) (text: value, line: null),
+              for (final segment in widget.lines)
+                if (segment.text.toLowerCase().contains(query)) (text: segment.text, line: segment),
             ];
     });
   }
@@ -55,7 +61,7 @@ class _RecordingSearchState extends State<RecordingSearch> {
   @override
   Widget build(BuildContext context) {
     final match = hits.isEmpty ? null : hits[index];
-    final seconds = match?.seconds;
+    final line = match?.line;
     return Scaffold(
       appBar: AppBar(title: Text(context.l10n.search)),
       body: Column(
@@ -77,13 +83,13 @@ class _RecordingSearchState extends State<RecordingSearch> {
                 children: [
                   ListTile(
                     title: SelectableText(match.text),
-                    subtitle: seconds == null ? null : Text(OmiDuration.offset(seconds)),
-                    trailing: seconds == null || !widget.canPlay
+                    subtitle: line == null ? null : Text(OmiDuration.offset(line.start)),
+                    trailing: line == null
                         ? null
                         : IconButton(
-                            tooltip: context.l10n.play,
-                            icon: const Icon(Icons.play_arrow),
-                            onPressed: () => Navigator.pop(context, Duration(milliseconds: (seconds * 1000).round())),
+                            tooltip: widget.canPlay ? context.l10n.play : context.l10n.viewTranscript,
+                            icon: Icon(widget.canPlay ? Icons.play_arrow : Icons.notes),
+                            onPressed: () => Navigator.pop(context, line),
                           ),
                   ),
                 ],
