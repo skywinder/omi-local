@@ -8,15 +8,8 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'live_labels.g.dart';
 import 'live_preview.dart';
-
-String _label(BuildContext context, String key) {
-  final locale = Localizations.localeOf(context);
-  return pairedTranslationLabels[locale.toLanguageTag()]?[key] ??
-      pairedTranslationLabels[locale.languageCode]?[key] ??
-      pairedTranslationLabels['en']![key]!;
-}
+import 'settings_labels.dart';
 
 class LocalNextLiveButton extends StatefulWidget {
   const LocalNextLiveButton({
@@ -190,7 +183,7 @@ class _LivePageState extends State<_LivePage> {
                   subtitle: Text(status),
                   trailing: IconButton(
                     icon: Icon(_settings ? Icons.close : Icons.translate),
-                    tooltip: _settings ? l.close : _label(context, 'liveTranslation'),
+                    tooltip: _settings ? l.close : pairedSettingsLabel(context, 'liveTranslation'),
                     onPressed: () => setState(() => _settings = !_settings),
                   ),
                 ),
@@ -198,7 +191,7 @@ class _LivePageState extends State<_LivePage> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
                     child: Text(
-                      _label(
+                      pairedSettingsLabel(
                         context,
                         preview.translationStatus == 'unconfigured'
                             ? 'liveTranslationUnconfigured'
@@ -315,7 +308,7 @@ class _TranslationSettings extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_label(context, 'liveTranslationTargetLanguage'), style: OmiType.headline),
+                Text(pairedSettingsLabel(context, 'liveTranslationTargetLanguage'), style: OmiType.headline),
                 DropdownButton<String>(
                   key: const ValueKey('next-live-target'),
                   value: target,
@@ -329,8 +322,8 @@ class _TranslationSettings extends StatelessWidget {
                   },
                 ),
                 if (target.isNotEmpty) ...[
-                  Text(_label(context, 'liveTranslationBidirectional'), style: OmiType.headline),
-                  Text(_label(context, 'liveTranslationPairHelp')),
+                  Text(pairedSettingsLabel(context, 'liveTranslationBidirectional'), style: OmiType.headline),
+                  Text(pairedSettingsLabel(context, 'liveTranslationPairHelp')),
                   DropdownButton<String>(
                     key: const ValueKey('next-live-other'),
                     value: other,

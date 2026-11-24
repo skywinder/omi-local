@@ -118,6 +118,19 @@ live draft from the newly sent audio. The server's existing Live STT and
 translation settings select the providers. See [live preview](../../docs/LIVE_PREVIEW.md)
 and [provider setup](../../docs/PROVIDERS.md).
 
+## Processing profiles
+
+Open the processing controls from the paired library. Next shows the server's
+effective profile and the prepared choices for each supported stage. Live STT,
+final transcription and diarization are selected separately. The summary
+and translation cards show the configurations already published on the server.
+
+Select a prepared profile and confirm while capture is idle. Confirmation
+uses the registry revision read by the screen and waits for the effective
+profile returned by the server. After a conflict or an uncertain result,
+refresh before confirming again. Create, edit and probe profile drafts through
+the Local processing library.
+
 ## Updating the original
 
 Fetch the original repository, inspect changes under `app/` since the recorded
@@ -182,14 +195,21 @@ paired WebSocket and through the durable part upload. Transport tests cover
 redirect refusal, revoked credentials and corrections across reconnect.
 The widget test covers drafts, translations, saved language choices and Stop.
 
+The original checkout and the Next pin advanced from `4ff5502` to `ba4d7ac`.
+Native project materialization, the Next analyzer and all 29 Flutter tests
+passed against that revision. The processing fixtures cover independent stage
+activation, the capture interlock, revision conflicts and uncertain writes.
+A read-only authenticated Bastion request confirmed all five stages in the
+deployed registry. Its active selections were not changed.
+
 | Area | Status and next verification |
 | --- | --- |
-| Base and installation identity | Pinned November 24 Flutter app, independent Runner identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
+| Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
 | Pairing and library | Dedicated paired startup, conversation list, detail, transcript and pending rows. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Live transcript and one-way/two-way translation use the paired server. The server owns Live/final STT, diarization, summaries and translation. The client ports for provider selection, silence tuning and the live speaker limit are separate work. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles and displays the effective summary/translation configuration. Draft editing, silence tuning and the live speaker limit remain separate work. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

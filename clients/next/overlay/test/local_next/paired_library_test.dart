@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/processing.dart';
 
 void main() {
   final key = List.filled(43, 'A').join();
@@ -171,5 +172,55 @@ void main() {
     );
     expect(rejections, 1);
     expect(library.audioDelivery, isFalse);
+  });
+
+  test('paired processing sends one JSON activation and distinguishes refusal, uncertainty and revocation', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final seen = <(String, String)>[];
+    final payloads = <Object?>[];
+    var activationStatus = HttpStatus.forbidden;
+    var readStatus = HttpStatus.ok;
+    server.listen((request) async {
+      final response = request.response;
+      seen.add((request.method, request.uri.path));
+      if (request.headers.value(HttpHeaders.authorizationHeader) != 'Bearer $key') {
+        response.statusCode = HttpStatus.unauthorized;
+      } else if (request.method == 'POST') {
+        if (request.headers.contentType?.mimeType != 'application/json' || request.contentLength <= 0) {
+          response.statusCode = HttpStatus.badRequest;
+        } else {
+          payloads.add(jsonDecode(await utf8.decoder.bind(request).join()));
+          response.statusCode = activationStatus;
+        }
+        response.write(jsonEncode({'error': 'private processing detail'}));
+      } else {
+        response.statusCode = readStatus;
+        response.write(jsonEncode({'revision': 7, 'profiles': [], 'effective': {}}));
+      }
+      await response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    var rejections = 0;
+    library.onKeyRejected = () => rejections++;
+    final payload = {'stage': 'live', 'id': 'prepared-profile', 'revision': 7};
+    expect((await library.readProcessing())['revision'], 7);
+    await expectLater(library.activateProcessing(payload), throwsA(NextProcessingFailure.invalid));
+    expect(rejections, 0);
+    activationStatus = HttpStatus.serviceUnavailable;
+    await expectLater(library.activateProcessing(payload), throwsA(NextProcessingFailure.indeterminate));
+    expect(payloads, [payload, payload]);
+    expect(seen, [
+      ('GET', '/v1/local/processing'),
+      ('POST', '/v1/local/processing/activate'),
+      ('POST', '/v1/local/processing/activate'),
+    ]);
+
+    readStatus = HttpStatus.unauthorized;
+    await expectLater(library.readProcessing(), throwsA(NextProcessingFailure.unauthorized));
+    expect(rejections, 1);
+    await expectLater(library.readProcessing(), throwsA(NextProcessingFailure.unauthorized));
+    expect(seen, hasLength(4));
   });
 }

@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
 
 import 'live_preview.dart';
+import 'processing.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
@@ -118,26 +119,35 @@ class PairedLibrary {
     Future<T> Function(HttpClientResponse) read, {
     Map<String, String>? query,
     Uint8List? body,
+    ContentType? bodyType,
+    Duration? overallTimeout,
+    Object Function(int status)? statusFailure,
   }) async {
     if (_closed) throw LibraryFailure.key;
     final uri = origin.replace(path: path, queryParameters: query);
     final client = _directClient();
-    try {
+    Future<T> send() async {
       final req = await client.openUrl(body == null ? 'GET' : 'POST', uri).timeout(_deadline);
       req.followRedirects = false;
       req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_key');
       if (body != null) {
-        req.headers.contentType = ContentType.binary;
+        req.headers.contentType = bodyType ?? ContentType.binary;
         req.contentLength = body.length;
         req.add(body);
       }
-      final response = await req.close().timeout(_deadline);
-      if (response.statusCode == 401 || response.statusCode == 403) {
+      final response = await req.close().timeout(overallTimeout ?? _deadline);
+      final status = response.statusCode;
+      if (status == 401 || (status == 403 && statusFailure == null)) {
         _rejectKey();
         throw LibraryFailure.key;
       }
-      if (response.statusCode != 200) throw LibraryFailure.unavailable;
-      return await read(response);
+      if (status != 200) throw statusFailure?.call(status) ?? LibraryFailure.unavailable;
+      return read(response);
+    }
+
+    try {
+      final response = send();
+      return await (overallTimeout == null ? response : response.timeout(overallTimeout));
     } finally {
       _clients.remove(client);
       client.close(force: true);
@@ -182,6 +192,47 @@ class PairedLibrary {
   }
 
   Future<void> verify() => _checking ??= _verify().whenComplete(() => _checking = null);
+
+  NextProcessingClient processingClient({bool Function()? permitsActivation}) => NextProcessingClient(
+    read: readProcessing,
+    activatePrepared: activateProcessing,
+    permitsActivation: permitsActivation,
+  );
+
+  Future<Map<String, dynamic>> readProcessing() => _processing();
+
+  Future<Map<String, dynamic>> activateProcessing(Map<String, dynamic> body) => _processing(body: body);
+
+  Future<Map<String, dynamic>> _processing({Map<String, dynamic>? body}) async {
+    final activating = body != null;
+    try {
+      final payload = body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body)));
+      if (payload != null && payload.length > 64 * 1024) throw NextProcessingFailure.invalid;
+      final data = await _request(
+        activating ? '/v1/local/processing/activate' : '/v1/local/processing',
+        (response) => _json(response, 2 * 1024 * 1024),
+        body: payload,
+        bodyType: ContentType.json,
+        // The paired router allows preparation of a local provider for up to 700 seconds.
+        overallTimeout: activating ? const Duration(seconds: 720) : _deadline,
+        statusFailure: (status) => switch (status) {
+          404 when activating => NextProcessingFailure.conflict,
+          404 || 405 || 501 => NextProcessingFailure.unsupported,
+          409 => NextProcessingFailure.conflict,
+          400 || 403 || 413 || 422 => NextProcessingFailure.invalid,
+          _ => activating ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable,
+        },
+      );
+      if (_closed) throw NextProcessingFailure.unauthorized;
+      if (data is! Map<String, dynamic>) throw LibraryFailure.malformed;
+      return data;
+    } on NextProcessingFailure {
+      rethrow;
+    } catch (error) {
+      if (_closed || error == LibraryFailure.key) throw NextProcessingFailure.unauthorized;
+      throw activating ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable;
+    }
+  }
 
   Future<void> _verify() async {
     final data = await _request('/v1/users/profile', (r) => _json(r, 256 * 1024));

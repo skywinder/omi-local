@@ -10,6 +10,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'capture_panel.dart';
 import 'paired_library.dart';
+import 'processing_page.dart';
 import 'recording_page.dart';
 
 class LocalNextApp extends StatelessWidget {
@@ -237,6 +238,23 @@ class _LibraryPageState extends State<_LibraryPage> {
       appBar: AppBar(
         title: Text(l.conversations),
         actions: [
+          if (!widget.library.audioDelivery)
+            IconButton(
+              tooltip: l.processing,
+              icon: const Icon(Icons.tune),
+              onPressed: () {
+                final client = widget.library.processingClient();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => LocalNextProcessingPage(
+                      client: client,
+                      serverLabel: widget.library.origin.authority,
+                      isRecording: () => false,
+                    ),
+                  ),
+                );
+              },
+            ),
           IconButton(tooltip: l.refresh, onPressed: busy ? null : _load, icon: const Icon(Icons.refresh)),
           IconButton(tooltip: l.disconnect, onPressed: widget.disconnect, icon: const Icon(Icons.link_off)),
         ],

@@ -12,6 +12,8 @@ import 'cv1_transport.dart';
 import 'live_preview.dart';
 import 'live_view.dart';
 import 'paired_library.dart';
+import 'processing.dart';
+import 'processing_page.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
   const LocalNextCapturePanel({required this.library, super.key});
@@ -27,6 +29,9 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   late final Future<void> _setup;
   LocalAudioJournal? _journal;
   NextCaptureInputs? _inputs;
+  late final _processing = widget.library.processingClient(
+    permitsActivation: () => !_closed && _inputs?.isRecording == false,
+  );
   bool _storageFailed = false;
   bool _closed = false;
 
@@ -97,7 +102,11 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     if (inputs == null) {
       return _storageFailed ? Text(l.couldNotStartRecording) : const SizedBox.shrink();
     }
-    return LocalNextCaptureControls(inputs: inputs, serverLabel: widget.library.origin.authority);
+    return LocalNextCaptureControls(
+      inputs: inputs,
+      serverLabel: widget.library.origin.authority,
+      processing: _processing,
+    );
   }
 }
 
@@ -193,9 +202,10 @@ class NextCaptureInputs extends ChangeNotifier {
 }
 
 class LocalNextCaptureControls extends StatelessWidget {
-  const LocalNextCaptureControls({required this.inputs, this.serverLabel = '', super.key});
+  const LocalNextCaptureControls({required this.inputs, this.serverLabel = '', this.processing, super.key});
   final NextCaptureInputs inputs;
   final String serverLabel;
+  final NextProcessingClient? processing;
 
   Future<void> _devices(BuildContext context) async {
     final connection = inputs.connection;
@@ -302,6 +312,21 @@ class LocalNextCaptureControls extends StatelessWidget {
                   isMuted: () => cv1.intent == Cv1CaptureIntent.muted,
                   onStop: inputs.stopRecording,
                   serverLabel: serverLabel,
+                ),
+              if (processing case final client?)
+                IconButton(
+                  tooltip: l.processing,
+                  icon: const Icon(Icons.tune),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => LocalNextProcessingPage(
+                        client: client,
+                        serverLabel: serverLabel,
+                        capture: captureState,
+                        isRecording: () => inputs.isRecording,
+                      ),
+                    ),
+                  ),
                 ),
               TextButton.icon(
                 key: const ValueKey('next-cv1-devices'),
