@@ -48,6 +48,11 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() in {'GET', 'POST'} and (
+        path == '/v1/local/conversations/{conversation_id}/chat'
+        or re.fullmatch(r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/chat', path)
+    ):
+        return True
     if method.upper() == 'DELETE' and (
         path == '/v1/local/processing/profiles/{profile_id}'
         or re.fullmatch(r'/v1/local/processing/profiles/[A-Za-z0-9_-]{1,64}', path)

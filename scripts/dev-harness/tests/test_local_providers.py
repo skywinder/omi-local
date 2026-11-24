@@ -285,6 +285,47 @@ def phone_request(cfg, operation='', **kwargs):
                         overrides={'X-Omiloc-Request': 'processing'}, **kwargs)
 
 
+def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    assert phone_request(cfg, '/recording-chat', method='GET') == (200, {'provider': None})
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-chat-key'})
+    profile = state['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/recording-chat', method='GET')
+    assert status == 200
+    assert data['provider']['host'] == 'llm.example'
+    assert 'fixture-chat-key' not in json.dumps(data)
+    assert http_request(cfg, '/api/processing/recording-chat', method='GET')[0] == 403
+
+    citations = [1]
+    sent = []
+
+    def respond(client, url, **kwargs):
+        assert url == 'https://llm.example/v1/chat/completions'
+        assert client.headers['Authorization'] == 'Bearer fixture-chat-key'
+        sent.append(kwargs['json'])
+        return {'choices': [{'finish_reason': 'stop', 'message': {
+            'content': json.dumps({'answer': 'The plan was accepted.', 'sources': citations}),
+        }}]}
+
+    monkeypatch.setattr(local_recording_chat.transport, 'post_json', respond)
+    body = {'binding': '0' * 64, 'question': 'Was the plan accepted?', 'sources': ['We accepted the plan.'], 'history': []}
+    assert phone_request(cfg, '/recording-chat', payload=body)[0] == 409
+    assert sent == []
+    body['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/recording-chat', payload=body) == (200, {
+        'answer': 'The plan was accepted.', 'sources': [1],
+    })
+    assert json.loads(sent[0]['messages'][1]['content'])['transcript'] == [
+        {'source': 1, 'text': 'We accepted the plan.'},
+    ]
+    citations[:] = [2]
+    assert phone_request(cfg, '/recording-chat', payload=body)[0] == 502
+
+
 def test_phone_remote_profile_roundtrip_reuses_keys_revision_and_activation(cfg, monkeypatch):
     from dev_harness import local_provider_probe
     monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'ready'})

@@ -105,7 +105,7 @@ from utils.retrieval.tools.google_utils import refresh_google_token
 from utils.conversations.location import resolve_geolocation
 from utils.observability.fallback import record_fallback
 from utils.env_loader import is_offline_runtime
-from utils.local_transport_auth import LocalTransportAuthError, local_tunnel_enabled, verify_local_authorization
+from utils.local_transport_auth import require_paired_owner
 import logging
 
 logger = logging.getLogger(__name__)
@@ -298,18 +298,9 @@ class LocalArchiveSearchPage(BaseModel):
 _LOCAL_ARCHIVE_ID = re.compile(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}')
 
 
-def _paired_archive_owner(request: Request) -> str:
-    if not is_offline_runtime() or not local_tunnel_enabled():
-        raise HTTPException(status_code=404, detail='Local archive search is unavailable')
-    try:
-        return verify_local_authorization(request.scope['headers'])
-    except LocalTransportAuthError:
-        raise HTTPException(status_code=401, detail='local_auth_required') from None
-
-
 @router.post('/v1/local/conversations/search', response_model=LocalArchiveSearchPage, tags=['local'])
 def search_local_archive(
-    search: LocalArchiveSearchRequest, response: Response, uid: str = Depends(_paired_archive_owner),
+    search: LocalArchiveSearchRequest, response: Response, uid: str = Depends(require_paired_owner),
 ):
     query = search.query.strip()
     after = search.after

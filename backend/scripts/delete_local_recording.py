@@ -11,6 +11,7 @@ from utils.other.local_storage import local_storage_root_from_env
 import main as backend_main
 from database._client import get_firestore_client
 from database import conversations as conversations_db
+from database.local_recording_chat import delete_recording
 from utils.local_recording_delete import delete_linked_conversations
 
 
@@ -25,7 +26,7 @@ def main():
         payload = json.loads(sys.stdin.read(65536))
         count = delete_linked_conversations(
             owner, payload['digest'], payload['result_keys'], get=conversations_db.get_conversation,
-            delete=conversations_db.delete_conversation, check_only=payload.get('check_only', False),
+            delete=delete_recording, check_only=payload.get('check_only', False),
         )
         print(json.dumps({'status': 'passed', 'conversations': count}))
         return 0

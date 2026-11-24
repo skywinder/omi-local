@@ -14,6 +14,8 @@ import os
 import re
 from pathlib import Path
 
+from fastapi import HTTPException, Request
+
 from utils.env_loader import is_offline_runtime
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,15 @@ def verify_local_authorization(headers: list[tuple[bytes, bytes]]) -> str:
     except (UnicodeError, ValueError) as error:
         raise LocalTransportAuthError("Invalid local authorization") from error
     return verify_local_key(token)
+
+
+def require_paired_owner(request: Request) -> str:
+    if not is_offline_runtime() or not local_tunnel_enabled():
+        raise HTTPException(status_code=404, detail='Paired archive is unavailable')
+    try:
+        return verify_local_authorization(request.scope['headers'])
+    except LocalTransportAuthError:
+        raise HTTPException(status_code=401, detail='local_auth_required') from None
 
 
 class LocalTransportAuthMiddleware:

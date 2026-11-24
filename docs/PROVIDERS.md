@@ -33,6 +33,13 @@ An older Omi backend shows an update message instead of these controls. Updating
 the backend/harness and installing an updated iPhone build is required once;
 subsequent provider switches need no app rebuild.
 
+Next's recording chat can use the applied summary provider. Before sending
+the first question, Next shows the model and endpoint host and asks for
+confirmation. A request can include the question, excerpts from the recording
+and recent chat turns. The harness sends that request to the confirmed provider,
+including a remote provider if one is selected. The paired server stores chat
+history with the recording in local Firestore.
+
 | Stage | Supported protocol or engine |
 |---|---|
 | Live STT | Prepared WhisperLiveKit; external WLK-compatible `/asr` servers, including an existing Parakeet server |

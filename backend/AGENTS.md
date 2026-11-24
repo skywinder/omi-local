@@ -54,6 +54,11 @@ The library provider registry and selected remote adapters run in the harness.
 Generated summaries use the same trusted-host import after all enabled stages
 finish. Remote Live runs through the owned loopback provider relay; never widen
 backend egress or forward provider credentials to it. See `docs/PROVIDERS.md`.
+Paired chat reads one recording and stores encrypted turns inside its Firestore
+subcollection. The loopback library owns inference and checks the confirmed
+summary provider binding. The backend validates cited excerpts against the
+submitted context. Trusted-host deletion marks the source unavailable to
+in-flight chat before enumerating the recording's child collections.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

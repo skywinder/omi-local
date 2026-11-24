@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:omi/backend/schema/conversation.dart';
@@ -15,7 +16,9 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'paired_library.dart';
+import 'recording_chat_page.dart';
 import 'recording_search.dart';
+import 'settings_labels.dart';
 
 String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
     ? context.l10n.recording
@@ -61,19 +64,61 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final loaded = _RecordingDetail(await widget.library.detail(widget.id));
     final match = widget.initialMatch;
     if (match != null) {
-      final start = match.start;
-      final line =
-          loaded.sources.where((line) => line.id == match.segmentId).firstOrNull ??
-          loaded.lines.where((line) => start != null && (line.start - start).abs() < 0.01).firstOrNull;
-      if (line != null) {
-        focusedLine = line.id;
-        focusRequest++;
-        if (line.start.isFinite && line.start >= 0) {
-          _initialPosition = Duration(milliseconds: (line.start * 1000).round());
-        }
-      }
+      _focusMatch(loaded, match);
     }
     return loaded;
+  }
+
+  bool _focusMatch(_RecordingDetail loaded, TranscriptMatchSnippet match, {bool verifyExcerpt = false}) {
+    bool hasExcerpt(TranscriptSegment line) => !verifyExcerpt || line.text.trim().startsWith(match.text);
+    final start = match.start;
+    final line =
+        loaded.sources.where((line) => line.id == match.segmentId && hasExcerpt(line)).firstOrNull ??
+        loaded.lines
+            .where((line) => start != null && (line.start - start).abs() < 0.01 && hasExcerpt(line))
+            .firstOrNull;
+    if (line == null) return false;
+    focusedLine = line.id;
+    focusRequest++;
+    if (line.start.isFinite && line.start >= 0) {
+      _initialPosition = Duration(milliseconds: (line.start * 1000).round());
+    }
+    return true;
+  }
+
+  Future<void> _openChat() async {
+    if (opening) return;
+    final match = await Navigator.of(context).push<TranscriptMatchSnippet>(
+      MaterialPageRoute(
+        builder: (_) => RecordingChatPage(id: widget.id, library: widget.library),
+      ),
+    );
+    if (!mounted || match == null) return;
+    setState(() => opening = true);
+    try {
+      await player?.pause();
+      final loaded = _RecordingDetail(await widget.library.detail(widget.id));
+      if (!mounted) return;
+      final focused = _focusMatch(loaded, match, verifyExcerpt: true);
+      setState(() {
+        detail = SynchronousFuture(loaded);
+      });
+      if (focused) {
+        tabs.index = 1;
+      } else {
+        _chatSourceUnavailable();
+      }
+    } catch (_) {
+      if (mounted) _chatSourceUnavailable();
+    } finally {
+      if (mounted) setState(() => opening = false);
+    }
+  }
+
+  void _chatSourceUnavailable() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))));
   }
 
   void _openLine(TranscriptSegment line, {required bool canPlay}) {
@@ -195,6 +240,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
           appBar: AppBar(
             title: Text(row == null ? l.conversations : recordingTitle(context, row)),
             actions: [
+              if (loaded != null && loaded.lines.isNotEmpty)
+                IconButton(
+                  tooltip: l.askOmi,
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  onPressed: opening ? null : _openChat,
+                ),
               if (loaded != null)
                 IconButton(
                   tooltip: l.search,
@@ -225,7 +276,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
               : loaded == null
               ? OmiErrorState(
                   message: snapshot.error == LibraryFailure.key ? l.invalidKey : l.couldNotLoadPage,
-                  onRetry: () => setState(() => detail = _load()),
+                  onRetry: () => setState(() {
+                    detail = _load();
+                  }),
                 )
               : Column(
                   children: [

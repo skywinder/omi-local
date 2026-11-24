@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'live_preview.dart';
 import 'processing.dart';
+import 'recording_chat.dart';
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
@@ -543,11 +544,7 @@ class PairedLibrary {
         '/v1/local/conversations/search',
         (response) async {
           if (response.statusCode == HttpStatus.notFound) return null;
-          if (response.statusCode == HttpStatus.serviceUnavailable &&
-              response.headers.contentType?.mimeType == ContentType.json.mimeType) {
-            final error = await _json(response, 4096);
-            if (error is Map && error['reason'] == 'offline_route_blocked') return null;
-          }
+          if (await _blockedOffline(response)) return null;
           if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
           final data = await _json(response, 384 << 10) as Map<String, dynamic>;
           if (!data.containsKey('next_cursor')) throw LibraryFailure.malformed;
@@ -579,6 +576,78 @@ class PairedLibrary {
       );
       if (!isSignedIn) throw LibraryFailure.key;
       return page;
+    } on TypeError {
+      throw LibraryFailure.malformed;
+    } on FormatException {
+      throw LibraryFailure.malformed;
+    }
+  }
+
+  Future<bool> _blockedOffline(HttpClientResponse response) async {
+    if (response.statusCode != HttpStatus.serviceUnavailable ||
+        response.headers.contentType?.mimeType != ContentType.json.mimeType) {
+      return false;
+    }
+    final error = await _json(response, 4096);
+    return error is Map && error['reason'] == 'offline_route_blocked';
+  }
+
+  String _chatPath(String id) {
+    _conversation(id);
+    return '/v1/local/conversations/$id/chat';
+  }
+
+  Future<RecordingChatPageData?> readRecordingChat(String id, {int? before}) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    try {
+      final page = await _request(
+        _chatPath(id),
+        (response) async {
+          if (await _blockedOffline(response)) return null;
+          if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
+          return RecordingChatPageData.fromJson(await _json(response, 768 << 10) as Map<String, dynamic>, id);
+        },
+        query: before == null ? null : {'before': '$before'},
+        readHttpErrors: true,
+        overallTimeout: const Duration(seconds: 18),
+      );
+      if (!isSignedIn) throw LibraryFailure.key;
+      return page;
+    } on TypeError {
+      throw LibraryFailure.malformed;
+    } on FormatException {
+      throw LibraryFailure.malformed;
+    }
+  }
+
+  Future<RecordingChatTurn> askRecordingChat({
+    required String id,
+    required String turnId,
+    required String? previous,
+    required String binding,
+    required String question,
+  }) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    final payload = {'id': turnId, 'previous': previous, 'provider_binding': binding, 'question': question};
+    try {
+      final turn = await _request(
+        _chatPath(id),
+        (response) async {
+          if (response.statusCode == HttpStatus.conflict || await _blockedOffline(response)) {
+            throw RecordingChatFailure.changed;
+          }
+          if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
+          final turn = RecordingChatTurn.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>, id);
+          if (turn.id != turnId || turn.question != question) throw LibraryFailure.malformed;
+          return turn;
+        },
+        body: Uint8List.fromList(utf8.encode(jsonEncode(payload))),
+        bodyType: ContentType.json,
+        readHttpErrors: true,
+        overallTimeout: const Duration(seconds: 165),
+      );
+      if (!isSignedIn) throw LibraryFailure.key;
+      return turn;
     } on TypeError {
       throw LibraryFailure.malformed;
     } on FormatException {

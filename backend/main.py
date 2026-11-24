@@ -196,7 +196,10 @@ app.add_middleware(
 )
 
 if _OFFLINE_RUNTIME:
+    from routers import local_recording_chat
+
     _router_modules = (
+        local_recording_chat,
         local_processing,
         transcribe,
         conversations,

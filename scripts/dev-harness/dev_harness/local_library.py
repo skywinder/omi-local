@@ -476,6 +476,14 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if not self.processing_allowed():
                     return self.reject('Настройки доступны только через сопряжённый сервер.')
                 self.send_json(processing.read())
+            elif path == '/api/processing/recording-chat' and processing is not None:
+                if not self.allowed(request='processing') or not self.processing_allowed():
+                    return self.reject('Доступ только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.recording_chat_provider())
+                except (SettingsError, ValueError, KeyError):
+                    self.send_json({'error': 'Recording chat provider is unavailable.'}, 503)
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])

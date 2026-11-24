@@ -67,8 +67,8 @@ usable. Changing the default HTTP base would leave account identity, side
 effects and state semantics spread across upstream providers and native startup.
 
 Close the capture and replay acceptance gates before switching everyday use to
-Next. Verify archive search on the iPhone, then build a source-linked
-conversation assistant as a separate feature. Connect
+Next. Verify archive search and chat about one recording on the iPhone.
+Use the archive search contract when adding chat across recordings. Connect
 Home v3 once Local can represent a recording in progress, a queued upload and
 a server-side finish with their distinct identifiers and transitions.
 
@@ -159,6 +159,22 @@ in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
 requires an updated paired server. Search duration for a rare term grows with
 the archive size.
+
+## Chat about a recording
+
+Open a recording with a transcript and tap **Ask Omi**. Next displays the
+currently applied summary model and host and asks before sending anything.
+Each request can send the question, excerpts from the selected recording and
+up to three recent turns to that provider. A model or endpoint change requires
+fresh confirmation. The response arrives as one answer.
+
+The paired server stores encrypted turns under the recording in its local
+Firestore. It verifies that each cited excerpt was supplied to the model.
+Tap a citation to return to the transcript and seek to that excerpt when
+audio is available. Next checks that the cited text still exists in the
+current transcript before opening it. A long transcript may use selected
+excerpts, which the answer labels. The active paired server needs the chat
+endpoint and an applied summary provider.
 
 ## Recording from CV1
 
@@ -381,6 +397,6 @@ pending. Archive search on the active server also requires a server update.
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
 | Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Silence-based grouping and editing summary/translation profiles remain open. |
-| Upstream product screens | Paired archive search can open a recording at the matching transcript line. Verify it on the iPhone with an updated server. Next is source-linked chat, followed by editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
+| Upstream product screens | Paired archive search and single-recording chat can open a recording at the matching transcript line. Verify both on the iPhone with an updated server. Chat across recordings, editing/folders, named speakers, tasks, daily recaps, memory and integrations need corresponding server support. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |
