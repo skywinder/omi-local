@@ -9,6 +9,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'paired_library.dart';
+import 'recording_chat_page.dart';
 import 'recording_page.dart';
 import 'settings_labels.dart';
 
@@ -105,7 +106,32 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
     final l = context.l10n;
     final hits = _hits.values.toList()..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     return Scaffold(
-      appBar: AppBar(title: Text(l.searchConversations)),
+      appBar: AppBar(
+        title: Text(l.searchConversations),
+        actions: [
+          IconButton(
+            tooltip: pairedSettingsLabel(context, 'archiveChatTitle'),
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (chatContext) => RecordingChatPage.archive(
+                  library: widget.library,
+                  onOpenSource: (id, match) => Navigator.of(chatContext).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => RecordingPage(
+                        library: widget.library,
+                        id: id,
+                        initialMatch: match,
+                        verifyInitialExcerpt: true,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

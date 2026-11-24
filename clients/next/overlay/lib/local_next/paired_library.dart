@@ -592,12 +592,13 @@ class PairedLibrary {
     return error is Map && error['reason'] == 'offline_route_blocked';
   }
 
-  String _chatPath(String id) {
+  String _chatPath(String? id) {
+    if (id == null) return '/v1/local/conversations/chat';
     _conversation(id);
     return '/v1/local/conversations/$id/chat';
   }
 
-  Future<RecordingChatPageData?> readRecordingChat(String id, {int? before}) async {
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before}) async {
     if (!isSignedIn) throw LibraryFailure.key;
     try {
       final page = await _request(
@@ -621,18 +622,36 @@ class PairedLibrary {
   }
 
   Future<RecordingChatTurn> askRecordingChat({
-    required String id,
+    required String? id,
     required String turnId,
     required String? previous,
     required String binding,
     required String question,
+    List<RecordingChatTurn> history = const [],
   }) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    final payload = {'id': turnId, 'previous': previous, 'provider_binding': binding, 'question': question};
+    final payload = {
+      'id': turnId,
+      if (id != null) 'previous': previous,
+      'provider_binding': binding,
+      'question': question,
+      if (id == null)
+        'history': [
+          for (final turn in history.take(3)) {'question': turn.question, 'answer': turn.answer},
+        ],
+    };
     try {
       final turn = await _request(
         _chatPath(id),
         (response) async {
+          if (id == null && response.statusCode == HttpStatus.unprocessableEntity) {
+            final error = await _json(response, 4096);
+            if (error is Map) {
+              if (error['detail'] == 'archive_chat_no_match') throw RecordingChatFailure.noMatches;
+              if (error['detail'] == 'archive_chat_scan_limited') throw RecordingChatFailure.scanLimited;
+            }
+            throw RecordingChatFailure.unavailable;
+          }
           if (response.statusCode == HttpStatus.conflict || await _blockedOffline(response)) {
             throw RecordingChatFailure.changed;
           }

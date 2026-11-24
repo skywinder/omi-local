@@ -38,10 +38,17 @@ String recordingStatus(BuildContext context, ServerConversation row) {
 }
 
 class RecordingPage extends StatefulWidget {
-  const RecordingPage({super.key, required this.library, required this.id, this.initialMatch});
+  const RecordingPage({
+    super.key,
+    required this.library,
+    required this.id,
+    this.initialMatch,
+    this.verifyInitialExcerpt = false,
+  });
   final PairedLibrary library;
   final String id;
   final TranscriptMatchSnippet? initialMatch;
+  final bool verifyInitialExcerpt;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
@@ -56,6 +63,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Directory? temp;
   Duration? _initialPosition;
   bool opening = false;
+  bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
       (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
@@ -64,7 +72,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final loaded = _RecordingDetail(await widget.library.detail(widget.id));
     final match = widget.initialMatch;
     if (match != null) {
-      _focusMatch(loaded, match);
+      final found = _focusMatch(loaded, match, verifyExcerpt: widget.verifyInitialExcerpt);
+      _initialExcerptUnavailable = widget.verifyInitialExcerpt && !found;
     }
     return loaded;
   }
@@ -290,6 +299,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       ],
                     ),
                     if (canPlay) _playbackControls(),
+                    if (_initialExcerptUnavailable)
+                      ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
                     if (opening) const LinearProgressIndicator(),
                     Expanded(
                       child: TabBarView(

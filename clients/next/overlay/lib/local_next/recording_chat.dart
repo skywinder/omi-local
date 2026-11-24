@@ -1,6 +1,6 @@
 import 'package:omi/models/chat_evidence_reference.dart';
 
-enum RecordingChatFailure implements Exception { changed, unavailable }
+enum RecordingChatFailure implements Exception { changed, unavailable, noMatches, scanLimited }
 
 class RecordingChatProvider {
   const RecordingChatProvider({required this.binding, required this.host, required this.model});
@@ -23,9 +23,10 @@ class RecordingChatTurn {
     required this.answer,
     required this.references,
     required this.contextLimited,
+    this.scanLimited = false,
   });
 
-  factory RecordingChatTurn.fromJson(Map<String, dynamic> json, String recordingId) => RecordingChatTurn(
+  factory RecordingChatTurn.fromJson(Map<String, dynamic> json, String? recordingId) => RecordingChatTurn(
     id: json['id'] as String,
     question: json['question'] as String,
     answer: json['answer'] as String,
@@ -36,10 +37,12 @@ class RecordingChatTurn {
           (ref) =>
               ref.kind == ChatEvidenceReferenceKind.conversationSegment &&
               ref.state == ChatEvidenceReferenceState.available &&
-              ref.conversationId == recordingId,
+              ref.conversationId != null &&
+              (recordingId == null || ref.conversationId == recordingId),
         )
         .toList(),
     contextLimited: json['context_limited'] as bool,
+    scanLimited: json['scan_limited'] == true,
   );
 
   final String id;
@@ -47,6 +50,7 @@ class RecordingChatTurn {
   final String answer;
   final List<ChatEvidenceReference> references;
   final bool contextLimited;
+  final bool scanLimited;
 }
 
 class RecordingChatPageData {
@@ -57,7 +61,7 @@ class RecordingChatPageData {
     required this.hasTranscript,
   });
 
-  factory RecordingChatPageData.fromJson(Map<String, dynamic> json, String recordingId) => RecordingChatPageData(
+  factory RecordingChatPageData.fromJson(Map<String, dynamic> json, String? recordingId) => RecordingChatPageData(
     turns: (json['turns'] as List)
         .cast<Map<String, dynamic>>()
         .map((turn) => RecordingChatTurn.fromJson(turn, recordingId))

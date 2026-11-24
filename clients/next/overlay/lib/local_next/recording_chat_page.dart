@@ -12,9 +12,11 @@ import 'recording_chat.dart';
 import 'settings_labels.dart';
 
 class RecordingChatPage extends StatefulWidget {
-  const RecordingChatPage({super.key, required this.id, required this.library});
-  final String id;
+  const RecordingChatPage({super.key, required String this.id, required this.library}) : onOpenSource = null;
+  const RecordingChatPage.archive({super.key, required this.library, required this.onOpenSource}) : id = null;
+  final String? id;
   final PairedLibrary library;
+  final void Function(String, TranscriptMatchSnippet)? onOpenSource;
 
   @override
   State<RecordingChatPage> createState() => _RecordingChatPageState();
@@ -32,6 +34,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
   bool _busy = true;
   bool _unsupported = false;
   bool _hasTranscript = false;
+  bool get _archive => widget.id == null;
 
   @override
   void initState() {
@@ -55,9 +58,9 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         if (!earlier) {
           _provider = page.provider;
           _hasTranscript = page.hasTranscript;
-          _turns.clear();
+          if (!_archive) _turns.clear();
         }
-        _turns.addAll(page.turns);
+        if (!_archive) _turns.addAll(page.turns);
         if (_attempt != null && _turns.any((turn) => turn.id == _attempt!.id)) {
           _input.clear();
           _attempt = null;
@@ -76,8 +79,11 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(l.askOmi),
-        content: Text('${pairedSettingsLabel(context, 'recordingChatConsent')}\n\n${provider.model}\n${provider.host}'),
+        title: Text(_archive ? pairedSettingsLabel(context, 'archiveChatTitle') : l.askOmi),
+        content: Text(
+          '${pairedSettingsLabel(context, _archive ? 'archiveChatConsent' : 'recordingChatConsent')}'
+          '\n\n${provider.model}\n${provider.host}',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.send)),
@@ -108,6 +114,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         previous: _turns.firstOrNull?.id,
         binding: provider.binding,
         question: question,
+        history: _archive ? _turns : const [],
       );
       if (!mounted) return;
       setState(() {
@@ -138,16 +145,21 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
     final notice = switch (_error) {
       LibraryFailure.key => l.invalidKey,
       RecordingChatFailure.changed => pairedSettingsLabel(context, 'recordingChatChanged'),
+      RecordingChatFailure.noMatches => pairedSettingsLabel(context, 'archiveChatNoMatches'),
+      RecordingChatFailure.scanLimited => pairedSettingsLabel(context, 'archiveChatScanLimited'),
       _ when _error != null => l.couldNotLoadPage,
       _ when _busy => null,
-      _ when _unsupported => pairedSettingsLabel(context, 'recordingChatUnsupported'),
+      _ when _unsupported => pairedSettingsLabel(
+        context,
+        _archive ? 'archiveChatUnsupported' : 'recordingChatUnsupported',
+      ),
       _ when !_hasTranscript => l.noTranscriptAvailable,
       _ when provider == null => pairedSettingsLabel(context, 'recordingChatNoProvider'),
       _ => null,
     };
     return Scaffold(
       appBar: AppBar(
-        title: Text(l.askOmi),
+        title: Text(_archive ? pairedSettingsLabel(context, 'archiveChatTitle') : l.askOmi),
         actions: [IconButton(icon: const Icon(Icons.refresh), tooltip: l.refresh, onPressed: _busy ? null : _load)],
       ),
       body: SafeArea(
@@ -206,21 +218,32 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         child: SelectableText(turn.answer),
       ),
       if (turn.contextLimited) ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatPartialContext'))),
+      if (turn.scanLimited) ListTile(title: Text(pairedSettingsLabel(context, 'archiveChatScanLimited'))),
       for (final reference in turn.references)
         ListTile(
           leading: const Icon(Icons.notes),
           title: Text(reference.summary ?? context.l10n.viewTranscript, maxLines: 3, overflow: TextOverflow.ellipsis),
-          subtitle: reference.startMs == null ? null : Text(OmiDuration.offset(reference.startMs! / 1000)),
+          subtitle: Text(
+            [
+              if (_archive && reference.title?.isNotEmpty == true) reference.title!,
+              if (reference.startMs != null) OmiDuration.offset(reference.startMs! / 1000),
+            ].join(' · '),
+          ),
           onTap: reference.segmentId == null && reference.startMs == null
               ? null
-              : () => Navigator.of(context).pop(
-                  TranscriptMatchSnippet(
+              : () {
+                  final match = TranscriptMatchSnippet(
                     text: reference.summary ?? '',
                     segmentId: reference.segmentId,
                     start: reference.startMs == null ? null : reference.startMs! / 1000,
                     startMs: reference.startMs,
-                  ),
-                ),
+                  );
+                  if (_archive) {
+                    widget.onOpenSource?.call(reference.conversationId!, match);
+                  } else {
+                    Navigator.of(context).pop(match);
+                  }
+                },
         ),
       const Divider(),
     ],

@@ -36,6 +36,16 @@ def recording(uid, conversation_id):
     return snapshot.update_time, conversations._prepare_conversation_for_read(data, uid) or {}
 
 
+def sources_current(uid, revisions):
+    documents = [_recording(uid, identifier) for identifier in revisions]
+    current = {
+        snapshot.id: snapshot.update_time
+        for snapshot in db.get_all(documents, field_paths=['is_locked', 'local_chat_deleting'], retry=None, timeout=6)
+        if _available(snapshot.to_dict())
+    }
+    return current == revisions
+
+
 def _turns(uid, conversation_id):
     return _recording(uid, conversation_id).collection('local_chat')
 

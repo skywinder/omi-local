@@ -156,6 +156,7 @@ print(json.dumps({
         '/v1/local/audio/parts',
         '/v1/local/conversations/{conversation_id}/audio',
         '/v1/local/conversations/search',
+        '/v1/local/conversations/chat',
         '/v1/local/conversations/{conversation_id}/chat',
         '/v1/local/preview',
         '/v1/local/processing',

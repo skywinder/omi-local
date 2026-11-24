@@ -105,8 +105,8 @@ class Processing(Settings):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         operation = path.removeprefix('/api/processing/')
-        if method == 'POST' and operation == 'recording-chat':
-            return answer_recording(self.registry, body)
+        if method == 'POST' and operation in {'recording-chat', 'archive-chat'}:
+            return answer_recording(self.registry, body, archive=operation == 'archive-chat')
         if method == 'POST' and operation == 'live-tuning':
             return self.live_tuning_next_session(body)
         if method == 'POST' and operation in {'save', 'probe', 'models'}:

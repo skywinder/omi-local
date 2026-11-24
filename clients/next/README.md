@@ -67,8 +67,7 @@ usable. Changing the default HTTP base would leave account identity, side
 effects and state semantics spread across upstream providers and native startup.
 
 Close the capture and replay acceptance gates before switching everyday use to
-Next. Verify archive search and chat about one recording on the iPhone.
-Use the archive search contract when adding chat across recordings. Connect
+Next. Verify archive search and both chat modes on the iPhone. Connect
 Home v3 once Local can represent a recording in progress, a queued upload and
 a server-side finish with their distinct identifiers and transitions.
 
@@ -175,6 +174,18 @@ audio is available. Next checks that the cited text still exists in the
 current transcript before opening it. A long transcript may use selected
 excerpts, which the answer labels. The active paired server needs the chat
 endpoint and an applied summary provider.
+
+## Chat across the archive
+
+Open **Search conversations** and tap **Ask about the archive**. The server
+scans saved transcripts belonging to this pairing, selects excerpts that
+match the question's words, and checks source versions before and after
+inference. The model can receive excerpts, recording titles and dates and
+recent turns after confirmation. Tap a citation to open the matching
+recording. Follow-up context lasts while the chat page is open.
+
+The screen reports when the scan reaches its time limit. Search by meaning,
+a persistent index and archive chat history are separate parity items.
 
 ## Recording from CV1
 

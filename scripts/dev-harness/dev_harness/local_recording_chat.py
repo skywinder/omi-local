@@ -1,4 +1,4 @@
-"""Inference for one recording through the applied summary provider."""
+"""Recording and archive inference through the applied summary provider."""
 
 import hashlib
 import json
@@ -23,7 +23,7 @@ def chat_provider(registry):
     return {'provider': provider}
 
 
-def answer_recording(registry, body):
+def answer_recording(registry, body, *, archive=False):
     provider, profile = _provider(registry)
     if provider is None:
         raise SettingsError('Recording chat needs an applied summary provider.', status=409)
@@ -41,11 +41,24 @@ def answer_recording(registry, body):
                        and isinstance(turn['answer'], str) and 0 < len(turn['answer']) <= 2600 for turn in history)):
         raise SettingsError('Invalid recording chat context.')
 
+    recordings = body.get('recordings')
+    if archive and (
+        not isinstance(recordings, list) or len(recordings) != len(sources)
+        or not all(isinstance(row, dict) and set(row) == {'recording', 'title', 'started_at'}
+                   and type(row['recording']) is int and 1 <= row['recording'] <= len(sources)
+                   and isinstance(row['title'], str) and len(row['title']) <= 160
+                   and isinstance(row['started_at'], str) and len(row['started_at']) <= 48 for row in recordings)
+    ):
+        raise SettingsError('Invalid archive source metadata.')
     settings = profile['settings']
+    transcript = [
+        {'source': index, 'text': text, **(recordings[index - 1] if archive else {})}
+        for index, text in enumerate(sources, 1)
+    ]
     message = {
         'question': question,
         'previous_turns': history,
-        'transcript': [{'source': index, 'text': text} for index, text in enumerate(sources, 1)],
+        'transcript': transcript,
     }
     payload = {
         'model': provider['model'],
@@ -57,7 +70,8 @@ def answer_recording(registry, body):
                            'question, say so. Use the language of the question. Return only JSON with an '
                            '"answer" string (at most 2600 characters) and a "sources" array of up to 8 '
                            'integer source numbers from the supplied transcript. Cite evidence supporting the '
-                           'answer. Leave the array empty if there is no evidence.',
+                           'answer. Leave the array empty if there is no evidence.'
+                           + (' Keep recordings separate when describing what happened in each conversation.' if archive else ''),
             },
             {'role': 'user', 'content': json.dumps(message, ensure_ascii=False)},
         ],

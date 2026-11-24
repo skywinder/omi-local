@@ -324,6 +324,20 @@ def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkey
     ]
     citations[:] = [2]
     assert phone_request(cfg, '/recording-chat', payload=body)[0] == 502
+    assert phone_request(cfg, '/archive-chat', method='GET') == (200, data)
+    assert phone_request(cfg, '/archive-chat', payload=body)[0] == 400
+    body['sources'] = ['We accepted the plan.', 'We confirmed it later.']
+    body['recordings'] = [
+        {'recording': 1, 'title': 'First meeting', 'started_at': '2026-05-01T12:00:00+00:00'},
+        {'recording': 2, 'title': 'Second meeting', 'started_at': '2026-05-08T12:00:00+00:00'},
+    ]
+    assert phone_request(cfg, '/archive-chat', payload=body) == (200, {
+        'answer': 'The plan was accepted.', 'sources': [2],
+    })
+    assert json.loads(sent[-1]['messages'][1]['content'])['transcript'] == [
+        {'source': index, 'text': line, **recording}
+        for index, (line, recording) in enumerate(zip(body['sources'], body['recordings']), 1)
+    ]
 
 
 def test_phone_remote_profile_roundtrip_reuses_keys_revision_and_activation(cfg, monkeypatch):
