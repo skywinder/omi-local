@@ -6,7 +6,7 @@ import httpx
 
 from .local_providers import Registry, SettingsError
 from .local_provider_probe import probe
-from .local_recording_chat import answer_recording, chat_provider, suggest_tasks
+from .local_recording_chat import answer_recording, chat_provider, daily_recap, suggest_tasks
 from . import local_summary_regeneration
 
 
@@ -111,6 +111,8 @@ class Processing(Settings):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         operation = path.removeprefix('/api/processing/')
+        if method == 'POST' and operation == 'daily-recap':
+            return daily_recap(self.registry, body)
         if method == 'POST' and operation == 'regenerate-summary':
             return local_summary_regeneration.regenerate(self.registry, body)
         if method == 'POST' and operation == 'summary-settings':

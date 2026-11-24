@@ -498,6 +498,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                     self.send_json({'error': 'Summary settings are unavailable.'}, 503)
             elif path in {
                 '/api/processing/recording-chat', '/api/processing/archive-chat', '/api/processing/task-suggestions',
+                '/api/processing/daily-recap',
             } and processing is not None:
                 if not self.allowed(request='processing') or not self.processing_allowed():
                     return self.reject('Доступ только через сопряжённый сервер.')

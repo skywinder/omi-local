@@ -178,6 +178,17 @@ except summary_db.SummaryChanged:
     pass
 transaction.update.assert_not_called()
 
+from routers import local_daily_recaps
+from datetime import timedelta
+
+spring = {'day': '2026-03-29', 'start': '2026-03-28T23:00:00Z', 'end': '2026-03-29T22:00:00Z'}
+assert local_daily_recaps._day(local_daily_recaps.DayInput(**spring)).end - datetime(
+    2026, 3, 28, 23, tzinfo=timezone.utc,
+) == timedelta(hours=23)
+assert client.post('/v1/local/daily-recaps/preview', json=spring).status_code == 401
+invalid = {**spring, 'end': '2026-03-31T22:00:00Z'}
+assert client.post('/v1/local/daily-recaps/preview', json=invalid, headers=headers).status_code == 422
+
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
     'routers.payment', 'routers.stt', 'routers.tts', 'routers.desktop_realtime',
@@ -239,6 +250,8 @@ print(json.dumps({
         '/v1/local/processing/profiles/{profile_id}',
         '/v1/users/available-languages',
         '/v1/users/daily-summaries',
+        '/v1/local/daily-recaps/preview',
+        '/v1/local/daily-recaps/generate',
         '/v1/users/language',
         '/v1/users/me/subscription',
         '/v1/users/onboarding',

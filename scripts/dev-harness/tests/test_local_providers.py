@@ -402,6 +402,33 @@ def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkey
     ]
 
 
+def test_daily_recap_sends_only_selected_excerpts_to_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-daily-key'})
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': state['profiles'][-1]['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/daily-recap', method='GET')
+    assert status == 200
+    assert http_request(cfg, '/api/processing/daily-recap', method='GET')[0] == 403
+    calls = []
+
+    def complete(_registry, profile, payload):
+        assert registry.key(profile) == 'fixture-daily-key'
+        calls.append(json.loads(payload['messages'][-1]['content']))
+        return {'headline': 'A day', 'overview': 'An overview', 'highlights': [], 'decisions': []}
+
+    monkeypatch.setattr(local_recording_chat, '_complete', complete)
+    excerpt = {'source': 1, 'title': 'Meeting', 'text': 'Saved evidence.', 'kind': 'recap'}
+    request = {'binding': '0' * 64, 'sources': [excerpt]}
+    assert phone_request(cfg, '/daily-recap', payload=request)[0] == 409
+    assert not calls
+    request['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/daily-recap', payload=request)[0] == 200
+    assert calls == [[excerpt]]
+
+
 def test_task_suggestions_use_only_the_confirmed_model(cfg, monkeypatch):
     from dev_harness import local_recording_chat
 

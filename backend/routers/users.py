@@ -113,6 +113,7 @@ from utils.cloud_tasks import (
     verify_account_deletion_cloud_tasks_oidc,
 )
 from utils.executors import cleanup_executor, db_executor, llm_executor, run_blocking
+from utils.env_loader import is_offline_runtime
 from utils.log_sanitizer import sanitize
 from utils.local_transcription_status import local_transcription_status
 from utils.local_transport_auth import require_paired_owner
@@ -339,6 +340,7 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
         profile['local_tasks_version'] = 1
         profile['local_task_suggestions_version'] = 1
         profile['local_summary_regeneration_version'] = 1
+        profile['local_daily_recaps_version'] = 1
     return profile
 
 
@@ -1752,6 +1754,9 @@ def get_daily_summaries(
     Returns summaries in reverse chronological order.
     """
     summaries = daily_summaries_db.get_daily_summaries(uid, limit=limit, offset=offset)
+    if is_offline_runtime():
+        from database.local_daily_recaps import public_summary
+        summaries = [public_summary(summary) for summary in summaries]
     return {'summaries': summaries}
 
 

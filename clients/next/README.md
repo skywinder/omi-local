@@ -160,6 +160,15 @@ you confirm the destination. The current recap stays available until the
 replacement is published. A concurrent transcript or recap edit requires a
 refresh. Very large or preview-only transcripts are outside this request.
 
+## Daily recaps
+
+Open **Daily Recaps** from the archive and select a date. Next previews the
+available recordings and shows the applied summary model and host before
+you confirm. Generation uses saved recording recaps or transcript excerpts,
+and the summary links highlights and decisions back to their recordings.
+Next marks incomplete coverage. A new local generation replaces the same
+day's local recap. Existing recaps stay in the same archive.
+
 ## Archive search
 
 Open **Search conversations** in the archive. Search covers saved transcripts,

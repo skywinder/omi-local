@@ -42,6 +42,8 @@ _ALLOWED_HTTP = frozenset(
         ("HEAD", "/v1/health"),
         ("GET", "/v1/users/available-languages"),
         ("GET", "/v1/users/daily-summaries"),
+        ("POST", "/v1/local/daily-recaps/preview"),
+        ("POST", "/v1/local/daily-recaps/generate"),
         ("GET", "/v1/users/me/subscription"),
         ("GET", "/v1/users/people"),
         ("GET", "/v1/users/private-cloud-sync"),

@@ -16,6 +16,7 @@ import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'daily_recap.dart';
 import 'live_preview.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
@@ -80,6 +81,7 @@ class PairedLibrary {
   bool tasksAvailable = false;
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
+  bool dailyRecapsAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -104,6 +106,7 @@ class PairedLibrary {
     tasksAvailable = false;
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
+    dailyRecapsAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -448,6 +451,7 @@ class PairedLibrary {
     tasksAvailable = data['local_tasks_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
+    dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -648,6 +652,49 @@ class PairedLibrary {
 
   Future<RecordingSummaryOptions> readSummaryOptions(String id) async =>
       RecordingSummaryOptions.fromJson(await _summaryRequest(id));
+
+  Future<List<LocalDailyRecap>> listDailyRecaps(int offset) async {
+    final data = await _dailyRecapRequest('/v1/users/daily-summaries', query: {'limit': '20', 'offset': '$offset'});
+    return (data['summaries'] as List).cast<Map<String, dynamic>>().map(LocalDailyRecap.fromJson).toList();
+  }
+
+  Future<DailyRecapPreview> previewDailyRecap(DateTime date) async =>
+      DailyRecapPreview.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/preview', body: dailyRecapDay(date)));
+
+  Future<LocalDailyRecap> generateDailyRecap(DateTime date, DailyRecapPreview preview, String id) async =>
+      LocalDailyRecap.fromJson(
+        await _dailyRecapRequest(
+          '/v1/local/daily-recaps/generate',
+          body: {
+            'request_id': id,
+            ...dailyRecapDay(date),
+            'revision': preview.revision,
+            'provider_binding': preview.provider!.binding,
+          },
+          timeout: const Duration(seconds: 84),
+        ),
+      );
+
+  Future<Map<String, dynamic>> _dailyRecapRequest(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? body,
+    Duration timeout = _deadline,
+  }) async {
+    if (!isSignedIn || !dailyRecapsAvailable) throw DailyRecapFailure.unavailable;
+    final result = await _request(
+      path,
+      (response) async => await _json(response, 2 << 20) as Map<String, dynamic>,
+      query: query,
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      statusFailure: (status) =>
+          status == HttpStatus.conflict ? DailyRecapFailure.changed : DailyRecapFailure.unavailable,
+      overallTimeout: timeout,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return result;
+  }
 
   Future<void> regenerateSummary(String id, SummaryRegeneration request) async {
     final result = await _summaryRequest(

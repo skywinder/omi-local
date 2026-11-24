@@ -6,6 +6,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
 import 'local_tasks_page.dart';
 import 'recording_edit.dart';
@@ -309,6 +310,14 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                             onPressed: () => Navigator.of(
                               context,
                             ).push(MaterialPageRoute<void>(builder: (_) => LocalTasksPage(library: library))),
+                          ),
+                        if (library.dailyRecapsAvailable)
+                          ActionChip(
+                            avatar: const Icon(Icons.calendar_view_day_outlined),
+                            label: Text(l.dailyRecaps),
+                            onPressed: () => Navigator.of(
+                              context,
+                            ).push(MaterialPageRoute<void>(builder: (_) => DailyRecapsPage(library: library))),
                           ),
                         if (library.folderManagementAvailable)
                           ActionChip(
