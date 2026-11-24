@@ -1,4 +1,5 @@
-platform :ios, '15.1'
+minimum_ios = '15.1'
+platform :ios, minimum_ios
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 project 'Runner', {'Debug-dev' => :debug, 'Profile-dev' => :release, 'Release-dev' => :release}
 
@@ -29,9 +30,15 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-    next unless target.name == 'permission_handler_apple'
     target.build_configurations.each do |config|
-      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'PERMISSION_MICROPHONE=1']
+      settings = config.build_settings
+      declared = settings['IPHONEOS_DEPLOYMENT_TARGET']
+      if !declared || Gem::Version.new(declared) < Gem::Version.new(minimum_ios)
+        settings['IPHONEOS_DEPLOYMENT_TARGET'] = minimum_ios
+      end
+      if target.name == 'permission_handler_apple'
+        settings['GCC_PREPROCESSOR_DEFINITIONS'] = ['$(inherited)', 'PERMISSION_MICROPHONE=1']
+      end
     end
   end
 end

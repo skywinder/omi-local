@@ -5,6 +5,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -15,7 +16,7 @@ sys.path.insert(0, str(NEXT))
 spec = importlib.util.spec_from_file_location('next_iphone', NEXT / 'iphone.py')
 iphone = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(iphone)
-from ios_prepare import prepare_info
+from ios_prepare import prepare_info, prepare_scheme
 sys.path.remove(str(NEXT))
 
 
@@ -45,6 +46,19 @@ def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):
     actual = plistlib.loads(manifest.read_bytes())
     assert 'WKCompanionAppBundleIdentifier' not in actual
     assert actual['CFBundleDisplayName'] == iphone.NAME
+
+
+def test_scheme_builds_the_runner_it_launches(tmp_path):
+    scheme = tmp_path / 'dev.xcscheme'
+    scheme.write_text('<Scheme><BuildAction><PreActions/></BuildAction><LaunchAction>'
+                      '<BuildableProductRunnable><BuildableReference BlueprintName="Runner" BlueprintIdentifier="A"/>'
+                      '</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release-dev"/></Scheme>')
+    prepare_scheme(scheme)
+    actual = ET.parse(scheme)
+    build = actual.find('BuildAction/BuildActionEntries/BuildActionEntry/BuildableReference')
+    assert build.attrib == {'BlueprintName': 'Runner', 'BlueprintIdentifier': 'A'}
+    assert actual.find('BuildAction/PreActions') is None
+    assert actual.find('ProfileAction').get('buildConfiguration') == 'Profile-dev'
 
 
 @pytest.mark.skipif(sys.platform != 'darwin', reason='macOS signing tools')

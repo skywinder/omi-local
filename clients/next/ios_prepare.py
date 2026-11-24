@@ -5,6 +5,7 @@ import plistlib
 import shutil
 import subprocess
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 
 HERE = Path(__file__).resolve().parent
@@ -64,6 +65,9 @@ def prepare_project(project_file):
         config_list['defaultConfigurationName'] = 'Release-dev'
         for ref in kept_configs:
             settings = objects[ref]['buildSettings']
+            # The simulator artifact runs on the host. Current Xcode lipo rejects
+            # Flutter 3.44's multi-arch verification when given a generic simulator.
+            settings['ARCHS[sdk=iphonesimulator*]'] = '$(NATIVE_ARCH_ACTUAL)'
             for key in list(settings):
                 if key.startswith(('DEVELOPMENT_TEAM', 'CODE_SIGN_ENTITLEMENTS', 'PROVISIONING_PROFILE',
                                    'SWIFT_OBJC_BRIDGING_HEADER')):
@@ -106,6 +110,24 @@ def prepare_info(runner):
     (runner / 'Info.plist').write_bytes(plistlib.dumps(info))
 
 
+def prepare_scheme(path):
+    scheme = ET.parse(path)
+    build = scheme.find('BuildAction')
+    runner = scheme.find('LaunchAction/BuildableProductRunnable/BuildableReference')
+    if build is None or runner is None or runner.get('BlueprintName') != 'Runner':
+        raise ValueError('Expected a dev scheme that launches Runner')
+    # CocoaPods builds the engine in Runner's normal build phase. The donor's
+    # SPM-only preaction cannot substitute for an actual Runner build action.
+    build[:] = []
+    entries = ET.SubElement(build, 'BuildActionEntries')
+    entry = ET.SubElement(entries, 'BuildActionEntry', {
+        key: 'YES' for key in ('buildForTesting', 'buildForRunning', 'buildForProfiling',
+                              'buildForArchiving', 'buildForAnalyzing')})
+    ET.SubElement(entry, 'BuildableReference', runner.attrib)
+    scheme.find('ProfileAction').set('buildConfiguration', 'Profile-dev')
+    scheme.write(path, encoding='utf-8', xml_declaration=True)
+
+
 def prepare(app):
     if (app.parent / 'upstream-revision').read_text().strip() != json.loads((HERE / 'upstream.json').read_text())['commit']:
         raise ValueError('Prepare the pinned disposable app with prepare.py')
@@ -119,6 +141,8 @@ def prepare(app):
     for scheme in (ios / 'Runner.xcodeproj' / 'xcshareddata' / 'xcschemes').glob('*.xcscheme'):
         if scheme.name != 'dev.xcscheme':
             scheme.unlink()
+        else:
+            prepare_scheme(scheme)
 
 
 if __name__ == '__main__':
