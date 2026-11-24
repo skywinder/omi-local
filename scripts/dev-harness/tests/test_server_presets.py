@@ -27,6 +27,14 @@ def decode(env):
     return json.loads(base64.b64decode(env[server_presets.CHILD_ENV]))
 
 
+def test_default_must_name_an_existing_private_preset(tmp_path):
+    write_presets(tmp_path)
+    env, _ = server_presets.launch_environment(tmp_path, environ={}, default_server='home')
+    assert decode(env)['default'] == 'home'
+    with pytest.raises(LocalEnvError, match='must be present'):
+        server_presets.launch_environment(tmp_path, environ={}, default_server='missing')
+
+
 @pytest.mark.parametrize('source', ['catalog', 'single-env'])
 def test_runtime_provisioning_requires_only_stdlib_without_site_packages(tmp_path, source):
     if source == 'catalog':

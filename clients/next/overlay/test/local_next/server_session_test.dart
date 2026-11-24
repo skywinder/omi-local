@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -67,6 +68,44 @@ void main() {
   final keyA = List.filled(43, 'A').join(), keyB = List.filled(43, 'B').join();
   const primary = '100.64.0.1', secondary = '100.64.0.2';
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
+  test('startup default retries a failed verification and respects explicit disconnect', () async {
+    var available = false, attempts = 0;
+    final catalog = NextServerCatalog(
+      openPair: (address, key) => _Pair(address, key, (_) async {
+        attempts++;
+        if (!available) throw LibraryFailure.unavailable;
+      }),
+    );
+    final preset = base64Encode(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'default': 'lab',
+          'servers': [
+            {'id': 'lab', 'name': 'Lab', 'url': primary, 'key': keyA},
+          ],
+        }),
+      ),
+    );
+    final first = NextServerSession(catalog, readPresets: () async => preset);
+    await first.initialize();
+    expect(first.failure, LibraryFailure.unavailable);
+    expect(first.active, isNull);
+    first.dispose();
+    available = true;
+    final second = NextServerSession(catalog, readPresets: () async => null);
+    await second.initialize();
+    expect(second.activeId, 'lab');
+    expect(attempts, 2);
+    await second.disconnect();
+    second.dispose();
+    final third = NextServerSession(catalog, readPresets: () async => preset);
+    addTearDown(third.dispose);
+    await third.initialize();
+    expect(third.active, isNull);
+    expect(attempts, 2);
+  });
 
   testWidgets(
     'a rejected probe or active capture preserves the old server, then an explicit switch retires its routes and retains both pairings',

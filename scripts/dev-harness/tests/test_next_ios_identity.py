@@ -87,7 +87,8 @@ def test_only_opted_in_physical_launch_receives_validated_catalog(tmp_path, monk
     monkeypatch.setattr(iphone.subprocess, 'run', lambda command, **kw: observe(command, kw.get('env')))
     monkeypatch.setattr(iphone, 'select_iphone', lambda: {'hardwareProperties': {'udid': 'fixture-device'}})
     monkeypatch.setattr(iphone, 'attest', lambda *unused: {'bundle': iphone.BUNDLE})
-    iphone.run(SimpleNamespace(simulator=False, install=install, with_server_presets=presets, repository=tmp_path))
+    iphone.run(SimpleNamespace(simulator=False, install=install, with_server_presets=presets,
+                               default_server=None, usb=False, repository=tmp_path))
     assert any(args[:3] == ['flutter', 'build', 'ios'] for args in commands)
     assert any(args[:5] == ['xcrun', 'devicectl', 'device', 'install', 'app'] for args in commands) == install
     assert len(payloads) == int(presets)
@@ -104,6 +105,36 @@ def test_device_change_or_invalid_preset_source_prevents_install(tmp_path, monke
     monkeypatch.setattr(iphone, 'select_iphone', lambda: phone)
     with pytest.raises(iphone.LocalEnvError, match='Cannot prepare private server presets'):
         iphone.install(tmp_path, False, phone, with_presets=True, preset_file=str(tmp_path / 'absent'))
+
+
+def test_usb_install_uploads_default_only_to_next_private_cache(tmp_path, monkeypatch):
+    key = 'fixture'.ljust(43, 'x')
+    catalog = tmp_path / 'private.env'
+    catalog.write_text('OMI_SERVER_lab_NAME=Lab\nOMI_SERVER_lab_URL=100.64.0.1:21000\n'
+                       f'OMI_SERVER_lab_KEY={key}\n')
+    catalog.chmod(0o600)
+    phone = {'hardwareProperties': {'udid': 'fixture-device'}}
+    monkeypatch.setattr(iphone, 'select_usb_iphone', lambda: phone)
+    commands, temporary = [], []
+
+    def output(command, **kwargs):
+        assert key not in ' '.join(command)
+        commands.append(command)
+        if '--upload' in command:
+            path = Path(command[command.index('--upload') + 1])
+            temporary.append(path)
+            assert path.stat().st_mode & 0o777 == 0o600
+            payload = json.loads(base64.b64decode(path.read_bytes()))
+            assert payload['default'] == 'lab' and payload['servers'][0]['key'] == key
+        return b''
+
+    monkeypatch.setattr(iphone, 'output', output)
+    iphone.install_usb(tmp_path / 'Runner.app', phone, preset_file=str(catalog),
+                       default_server='lab', with_presets=True)
+    assert [command[6] for command in commands] == ['--bundle', '--exists', '--bundle_id']
+    assert commands[-1][-1] == '/Library/Caches/omilocal-next-server-preset.b64'
+    assert commands[-1][7] == iphone.BUNDLE
+    assert len(temporary) == 1 and not temporary[0].exists()
 
 
 def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):

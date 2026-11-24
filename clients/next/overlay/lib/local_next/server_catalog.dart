@@ -24,9 +24,10 @@ class NextSavedServer {
 }
 
 class NextServerSnapshot {
-  const NextServerSnapshot._(this.servers, this.activeId, this._delivery, this._groups);
+  const NextServerSnapshot._(this.servers, this.activeId, this.startupDefaultId, this._delivery, this._groups);
   final List<NextSavedServer> servers;
   final String? activeId;
+  final String? startupDefaultId;
   final bool _delivery;
   final bool _groups;
   NextSavedServer? get _active => servers.where((s) => s.id == activeId).firstOrNull;
@@ -47,6 +48,7 @@ class _Catalog {
   final servers = <String, _Fields>{};
   final seenPresets = <String>{};
   String? activeId;
+  String? startupDefaultId;
   bool delivery = false;
   bool groups = false;
   int activeRevision = 0;
@@ -66,6 +68,7 @@ class _Catalog {
     ],
     'seen_presets': seenPresets.toList(),
     'active': activeId,
+    if (startupDefaultId != null) 'startup_default': startupDefaultId,
     'active_revision': activeRevision,
     'delivery_version': delivery ? 2 : 0,
     if (groups) 'group_delivery_version': 1,
@@ -133,11 +136,16 @@ class NextServerCatalog {
         catalog.seenPresets.add(id);
       }
       catalog.activeId = value['active'] as String?;
+      catalog.startupDefaultId = value['startup_default'] as String?;
       catalog.activeRevision = (value['active_revision'] as int?) ?? 0;
       if (catalog.activeRevision < 0) throw LibraryFailure.storage;
       catalog.delivery = value['delivery_version'] == 2;
       catalog.groups = catalog.delivery && value['group_delivery_version'] == 1;
       if (catalog.activeId == null ? catalog.delivery : !catalog.servers.containsKey(catalog.activeId)) {
+        throw LibraryFailure.storage;
+      }
+      if (catalog.startupDefaultId != null &&
+          (catalog.activeId != null || !catalog.servers.containsKey(catalog.startupDefaultId))) {
         throw LibraryFailure.storage;
       }
       return catalog;
@@ -181,6 +189,7 @@ class NextServerCatalog {
     return NextServerSnapshot._(
       List.unmodifiable(catalog.servers.entries.map((e) => _entry(catalog, e.key, e.value))),
       catalog.activeId,
+      catalog.startupDefaultId,
       catalog.delivery,
       catalog.groups,
     );
@@ -248,6 +257,7 @@ class NextServerCatalog {
         if (!verified.isSignedIn) throw LibraryFailure.key;
         catalog.servers[entry.id] = entry._fields;
         catalog.activeId = entry.id;
+        catalog.startupDefaultId = null;
         catalog.activeRevision++;
         catalog.delivery = verified.audioDelivery;
         catalog.groups = verified.conversationGroups;
@@ -271,20 +281,26 @@ class NextServerCatalog {
     if (id == catalog.activeId) throw LibraryFailure.unavailable;
     await _checkRelease(PairedLibrary(fields.address, fields.key).audioOwnerId, beforeReplace);
     catalog.servers.remove(id);
+    if (catalog.startupDefaultId == id) catalog.startupDefaultId = null;
     if (_presetId.hasMatch(id)) catalog.seenPresets.add(id);
     await _write(catalog);
   });
 
   Future<void> importPresets(String encoded) async {
     final presets = <String, _Fields>{};
+    String? defaultId;
     try {
       if (encoded.length > 44 * 1024) throw LibraryFailure.malformed;
       final bytes = base64Decode(encoded);
       if (bytes.length > 32 * 1024) throw LibraryFailure.malformed;
       final doc = jsonDecode(utf8.decode(bytes));
-      if (doc is! Map || doc.length != 2 || doc['version'] != 1 || doc['servers'] is! List) {
+      if (doc is! Map ||
+          doc.keys.any((key) => !const {'version', 'servers', 'default'}.contains(key)) ||
+          doc['version'] != 1 ||
+          doc['servers'] is! List) {
         throw LibraryFailure.malformed;
       }
+      defaultId = doc['default'] as String?;
       final rows = doc['servers'] as List;
       if (rows.isEmpty || rows.length > 16) throw LibraryFailure.malformed;
       for (final row in rows) {
@@ -297,6 +313,7 @@ class NextServerCatalog {
         if (!_presetId.hasMatch(id) || presets.containsKey(id)) throw LibraryFailure.malformed;
         presets[id] = _fields(name, row['url'] as String, row['key'] as String);
       }
+      if (defaultId != null && !presets.containsKey(defaultId)) throw LibraryFailure.malformed;
     } catch (_) {
       throw LibraryFailure.malformed;
     }
@@ -308,6 +325,7 @@ class NextServerCatalog {
         if (!catalog.servers.containsKey(entry.key) &&
             !catalog.servers.values.any((v) => v.address == entry.value.address)) {
           catalog.servers[entry.key] = entry.value;
+          if (entry.key == defaultId && catalog.activeId == null) catalog.startupDefaultId = entry.key;
         }
         changed = true;
       }

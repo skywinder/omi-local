@@ -144,14 +144,19 @@ def load_presets(root, *, environ=None, single_env_file=None, required=False):
         raise LocalEnvError('Cannot prepare the existing private pairing settings.') from None
 
 
-def launch_environment(root, *, environ=None, single_env_file=None, required=False):
+def launch_environment(root, *, environ=None, single_env_file=None, required=False, default_server=None):
     """Return runtime child environment and redactions; never print either."""
     source = os.environ if environ is None else environ
     profiles = load_presets(root, environ=source, single_env_file=single_env_file, required=required)
     result = clean_environment(source)
     hidden = []
+    envelope = {'version': 1, 'servers': profiles}
+    if default_server is not None:
+        if default_server not in {profile['id'] for profile in profiles}:
+            raise LocalEnvError('The default server ID must be present in the private presets.')
+        envelope['default'] = default_server
     if profiles:
-        raw = json.dumps({'version': 1, 'servers': profiles}, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        raw = json.dumps(envelope, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         if len(raw) > MAX_BYTES:
             raise LocalEnvError('Server preset payload exceeds 32 KiB.')
         payload = base64.b64encode(raw).decode('ascii')

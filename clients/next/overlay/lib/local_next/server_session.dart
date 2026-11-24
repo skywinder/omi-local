@@ -78,7 +78,12 @@ class NextServerSession extends ChangeNotifier {
       if (_disposed) return;
       servers = snapshot.servers;
       final restored = snapshot.restoreActive();
-      if (restored != null) _publish(restored, snapshot.activeId!);
+      if (restored != null) {
+        _publish(restored, snapshot.activeId!);
+      } else {
+        final preset = servers.where((entry) => entry.id == snapshot.startupDefaultId).firstOrNull;
+        if (preset != null) await _connect(preset);
+      }
     });
   }
 
@@ -144,38 +149,42 @@ class NextServerSession extends ChangeNotifier {
   Future<void> connect({String? id, required String name, required String address, required String key}) async {
     await _run(() async {
       final entry = await catalog.prepare(id: id, name: name, address: address, key: key);
-      final candidate = entry.open();
-      PairedLibrary? held;
-      try {
-        try {
-          await candidate.verify();
-        } on LibraryFailure {
-          rethrow;
-        } catch (_) {
-          throw LibraryFailure.unavailable;
-        }
-        if (_disposed) return;
-        final old = active;
-        if (old != null) {
-          if (!old.ownerChange.tryHold()) throw ServerSelectionFailure.recording;
-          held = old;
-        }
-        final publishing = _publishing = Completer<void>();
-        try {
-          await catalog.activate(entry, candidate, beforeReplace: _checkOutbox);
-          if (_disposed) return;
-          failure = null;
-          _publish(candidate, entry.id);
-        } finally {
-          _publishing = null;
-          publishing.complete();
-        }
-        await _reload();
-      } finally {
-        if (active != candidate) candidate.close();
-        if (active == held) held?.ownerChange.release();
-      }
+      await _connect(entry);
     });
+  }
+
+  Future<void> _connect(NextSavedServer entry) async {
+    final candidate = entry.open();
+    PairedLibrary? held;
+    try {
+      try {
+        await candidate.verify();
+      } on LibraryFailure {
+        rethrow;
+      } catch (_) {
+        throw LibraryFailure.unavailable;
+      }
+      if (_disposed) return;
+      final old = active;
+      if (old != null) {
+        if (!old.ownerChange.tryHold()) throw ServerSelectionFailure.recording;
+        held = old;
+      }
+      final publishing = _publishing = Completer<void>();
+      try {
+        await catalog.activate(entry, candidate, beforeReplace: _checkOutbox);
+        if (_disposed) return;
+        failure = null;
+        _publish(candidate, entry.id);
+      } finally {
+        _publishing = null;
+        publishing.complete();
+      }
+      await _reload();
+    } finally {
+      if (active != candidate) candidate.close();
+      if (active == held) held?.ownerChange.release();
+    }
   }
 
   Future<void> disconnect() async {

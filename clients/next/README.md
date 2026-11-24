@@ -134,6 +134,19 @@ The launcher reads the file selected by `OMI_LOCAL_SERVER_PRESETS_FILE`, or
 no preset file. The launch handoff imports entries once into Keychain and keeps
 manual edits and previous deletions. Select a saved entry to connect.
 
+To connect a newly imported preset automatically, pass its ID with
+`--default-server` along with `--install --with-server-presets`. Next verifies
+the pairing and restores it from its Keychain on subsequent launches. If the
+first verification fails, Next keeps the saved server and retries at the next
+launch. A verified server already selected on the phone takes precedence.
+Explicit Disconnect clears the automatic connection.
+
+When the Xcode developer tunnel is unavailable, add `--usb` to install the
+attested app and copy the one-use preset into its private cache via
+`ios-deploy`. Open Next once after installation. The app consumes the file
+and removes it from the cache. The address and key are supplied by the private
+preset file at runtime.
+
 ## Server status
 
 Open **Server status** from the archive to see confirmed paired access, audio

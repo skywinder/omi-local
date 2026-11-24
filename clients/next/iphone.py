@@ -15,7 +15,7 @@ from prepare import HERE, PIN, ROOT
 
 sys.path.insert(0, str(ROOT / 'scripts/dev-harness'))
 from dev_harness.launch_iphone import select_iphone, LocalEnvError
-from dev_harness.server_presets import FILE_ENV, clean_environment, launch_environment
+from dev_harness.server_presets import CHILD_ENV, FILE_ENV, clean_environment, launch_environment
 
 
 def isolate_host_environment():
@@ -100,7 +100,7 @@ def boot_simulator():
     return identifier
 
 
-def install(app, simulator, device, *, with_presets=False, preset_file=None):
+def install(app, simulator, device, *, with_presets=False, preset_file=None, default_server=None):
     if simulator:
         output(['xcrun', 'simctl', 'install', device, app])
         output(['xcrun', 'simctl', 'launch', device, BUNDLE])
@@ -114,7 +114,7 @@ def install(app, simulator, device, *, with_presets=False, preset_file=None):
         if preset_file is not None:
             source[FILE_ENV] = preset_file
         try:
-            runtime, _ = launch_environment(ROOT, environ=source, required=True)
+            runtime, _ = launch_environment(ROOT, environ=source, required=True, default_server=default_server)
         except LocalEnvError:
             raise LocalEnvError('Cannot prepare private server presets; check the file and its permissions.') from None
         runtime.pop(FILE_ENV, None)
@@ -125,16 +125,62 @@ def install(app, simulator, device, *, with_presets=False, preset_file=None):
             raise ValueError('Device did not confirm ' + command[0])
 
 
+def select_usb_iphone():
+    events = output(['ios-deploy', '--detect', '--no-wifi', '--timeout', '4', '--json'], timeout=12).decode().strip()
+    decoder = json.JSONDecoder()
+    phones = set()
+    while events:
+        event, end = decoder.raw_decode(events)
+        events = events[end:].lstrip()
+        device = event.get('Device', {})
+        identifier = device.get('DeviceIdentifier')
+        if (event.get('Event') == 'DeviceDetected' and event.get('Interface') == 'USB'
+                and device.get('DeviceClass') == 'iPhone' and identifier):
+            phones.add(identifier)
+    if len(phones) != 1:
+        raise ValueError('Connect exactly one trusted iPhone over USB')
+    return {'hardwareProperties': {'udid': phones.pop()}}
+
+
+def install_usb(app, device, *, preset_file=None, default_server=None, with_presets=False):
+    payload = None
+    if with_presets:
+        source = dict(os.environ)
+        if preset_file is not None:
+            source[FILE_ENV] = preset_file
+        runtime, _ = launch_environment(ROOT, environ=source, required=True, default_server=default_server)
+        payload = runtime[CHILD_ENV]
+    if select_usb_iphone() != device:
+        raise ValueError('The selected USB iPhone changed after attestation')
+    args = ['ios-deploy', '--id', device['hardwareProperties']['udid'], '--no-wifi', '--timeout', '15']
+    output([*args, '--bundle', str(app)], timeout=120)
+    output([*args, '--exists', '--bundle_id', BUNDLE], timeout=30)
+    if payload is not None:
+        with tempfile.TemporaryDirectory() as work:
+            private = Path(work) / 'startup-preset'
+            private.touch(mode=0o600)
+            private.write_text(payload, encoding='ascii')
+            output([*args, '--bundle_id', BUNDLE, '--upload', str(private), '--to',
+                    '/Library/Caches/omilocal-next-server-preset.b64'], timeout=30)
+
+
 def run(args):
     if args.with_server_presets and (not args.install or args.simulator):
         raise ValueError('--with-server-presets requires a physical iPhone --install')
+    if args.default_server and not args.with_server_presets:
+        raise ValueError('--default-server requires --with-server-presets')
+    if args.usb and (not args.install or args.simulator):
+        raise ValueError('--usb requires a physical iPhone --install')
     preset_file = isolate_host_environment()
     env = dict(os.environ)
     sim = args.simulator
     config = 'Debug-dev' if sim else 'Profile-dev'
     device = None
     if args.install:
-        device = boot_simulator() if sim else select_iphone()
+        if sim:
+            device = boot_simulator()
+        else:
+            device = select_usb_iphone() if args.usb else select_iphone()
     app = Path(output([sys.executable, str(HERE / 'prepare.py'), args.repository]).decode().strip())
     version = json.loads(output(['flutter', '--version', '--machine'], env=env))
     if version['frameworkVersion'] != PIN['flutter']:
@@ -170,8 +216,14 @@ def run(args):
     print('Local commit', commit, '| upstream', PIN['commit'])
     print(json.dumps(proof, ensure_ascii=False), flush=True)
     if args.install:
-        install(product, sim, device, with_presets=args.with_server_presets, preset_file=preset_file)
-        print('Omi Local Next installed and launched.')
+        settings = dict(with_presets=args.with_server_presets, preset_file=preset_file,
+                        default_server=args.default_server)
+        if args.usb:
+            install_usb(product, device, **settings)
+            print('Omi Local Next installed. Open it on the iPhone to finish startup.')
+        else:
+            install(product, sim, device, **settings)
+            print('Omi Local Next installed and launched.')
 
 
 if __name__ == '__main__':
@@ -181,6 +233,8 @@ if __name__ == '__main__':
     parser.add_argument('--install', action='store_true')
     parser.add_argument('--with-server-presets', action='store_true',
                         help='import private server presets on the separately installed iPhone app’s launch')
+    parser.add_argument('--default-server', help='connect a newly imported preset ID on first launch')
+    parser.add_argument('--usb', action='store_true', help='install through ios-deploy without starting a debugger')
     try:
         run(parser.parse_args())
     except (LocalEnvError, ValueError, OSError, subprocess.SubprocessError) as exc:

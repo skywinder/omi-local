@@ -10,18 +10,35 @@ import shared_preferences_foundation
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private static let maxPresetBytes = 4 * ((32_768 + 2) / 3)
+
   private var launchSettings: [String: String]? = {
     let field = "OMI_LOCAL_SERVER_PRESETS_B64"
-    let maxEncodedBytes = 4 * ((32_768 + 2) / 3)
     defer {
       unsetenv(field)
       unsetenv("OMI_LOCAL_MAC_URL")
       unsetenv("OMI_LOCAL_MAC_KEY")
     }
-    guard let raw = getenv(field), strnlen(raw, maxEncodedBytes + 1) <= maxEncodedBytes,
+    guard let raw = getenv(field), strnlen(raw, AppDelegate.maxPresetBytes + 1) <= AppDelegate.maxPresetBytes,
           let encoded = String(validatingCString: raw), !encoded.isEmpty else { return nil }
     return ["server_presets_b64": encoded]
   }()
+
+  // A trusted USB installer can hand off the same envelope without a debugger
+  // connection. Caches are private to this app and excluded from iOS backups.
+  private static func takeUSBPreset() -> [String: String]? {
+    let files = FileManager.default
+    guard let cache = files.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+    let url = cache.appendingPathComponent("omilocal-next-server-preset.b64", isDirectory: false)
+    guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+          values.isRegularFile == true, values.isSymbolicLink != true else { return nil }
+    defer { try? files.removeItem(at: url) }
+    guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    defer { try? handle.close() }
+    guard let data = try? handle.read(upToCount: maxPresetBytes + 1), data.count <= maxPresetBytes,
+          let encoded = String(data: data, encoding: .utf8), !encoded.isEmpty else { return nil }
+    return ["server_presets_b64": encoded]
+  }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     let registry = engineBridge.pluginRegistry
@@ -32,7 +49,8 @@ import shared_preferences_foundation
           reply(FlutterMethodNotImplemented)
           return
         }
-        let settings = self?.launchSettings
+        let usb = Self.takeUSBPreset()
+        let settings = self?.launchSettings ?? usb
         self?.launchSettings = nil
         reply(settings)
       }
