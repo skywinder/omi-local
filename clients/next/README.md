@@ -169,6 +169,15 @@ and the summary links highlights and decisions back to their recordings.
 Next marks incomplete coverage. A new local generation replaces the same
 day's local recap. Existing recaps stay in the same archive.
 
+## Goals
+
+Open **Goals** from the archive to create a goal or review progress. A target
+and unit are optional. **Log progress** saves a note, with an optional new
+value for goals with a metric. Open the same action from a recording to link
+it as the source, including when you reached the recording from a daily
+recap. Next loads the current goal before editing and asks you to reopen it
+if a concurrent change invalidates that version.
+
 ## Archive search
 
 Open **Search conversations** in the archive. Search covers saved transcripts,

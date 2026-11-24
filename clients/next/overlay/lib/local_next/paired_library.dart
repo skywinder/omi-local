@@ -12,12 +12,14 @@ import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/action_item.dart';
 import 'package:omi/backend/schema/folder.dart';
+import 'package:omi/backend/schema/gen/goals_wire.g.dart';
 import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'daily_recap.dart';
 import 'live_preview.dart';
+import 'local_goal.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
 import 'recording_summary.dart';
@@ -82,6 +84,7 @@ class PairedLibrary {
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
   bool dailyRecapsAvailable = false;
+  bool goalsAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -107,6 +110,7 @@ class PairedLibrary {
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
     dailyRecapsAvailable = false;
+    goalsAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -452,6 +456,7 @@ class PairedLibrary {
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
+    goalsAvailable = data['local_goals_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -656,6 +661,45 @@ class PairedLibrary {
   Future<List<LocalDailyRecap>> listDailyRecaps(int offset) async {
     final data = await _dailyRecapRequest('/v1/users/daily-summaries', query: {'limit': '20', 'offset': '$offset'});
     return (data['summaries'] as List).cast<Map<String, dynamic>>().map(LocalDailyRecap.fromJson).toList();
+  }
+
+  Future<List<GeneratedGoalResponse>> listGoals() async {
+    final data = await _goalRequest('/v1/goals/all', query: {'include_ended': 'true'});
+    return (data as List).cast<Map<String, dynamic>>().map(GeneratedGoalResponse.fromJson).toList();
+  }
+
+  Future<LocalGoalDetail> readGoal(String id) async =>
+      LocalGoalDetail.fromJson(await _goalRequest(_goalPath(id)) as Map<String, dynamic>);
+
+  Future<void> createGoal(Map<String, Object?> body) async {
+    await _goalRequest('/v1/local/goals', body: body);
+  }
+
+  Future<void> logGoalProgress(String id, Map<String, Object?> body) async {
+    await _goalRequest('${_goalPath(id)}/progress', body: body);
+  }
+
+  String _goalPath(String id) {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) throw LocalGoalFailure.invalid;
+    return '/v1/local/goals/$id';
+  }
+
+  Future<dynamic> _goalRequest(String path, {Map<String, String>? query, Map<String, Object?>? body}) async {
+    if (!isSignedIn || !goalsAvailable) throw LocalGoalFailure.unavailable;
+    final data = await _request(
+      path,
+      (response) => _json(response, 2 << 20),
+      query: query,
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      statusFailure: (status) => switch (status) {
+        HttpStatus.conflict => LocalGoalFailure.conflict,
+        400 || 422 => LocalGoalFailure.invalid,
+        _ => LocalGoalFailure.unavailable,
+      },
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return data;
   }
 
   Future<DailyRecapPreview> previewDailyRecap(DateTime date) async =>

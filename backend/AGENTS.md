@@ -86,6 +86,10 @@ one transaction, preserving user titles and unrelated recording data.
 Paired daily recaps use the canonical daily summary collection. Start/end
 are the phone's local calendar midnights converted to UTC. The archive
 snapshot is checked again before publication, including additions to that day.
+Paired goals use the canonical goal and progress-event collections. An event
+checks the goal revision and any linked recording inside the same transaction
+that writes progress and its daily history. Paired routes skip hosted goal
+wakeups.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

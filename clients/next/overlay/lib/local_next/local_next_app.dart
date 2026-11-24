@@ -8,6 +8,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'archive.dart';
 import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
+import 'local_goals_page.dart';
 import 'local_tasks_page.dart';
 import 'recording_edit.dart';
 import 'archive_search_page.dart';
@@ -318,6 +319,14 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                             onPressed: () => Navigator.of(
                               context,
                             ).push(MaterialPageRoute<void>(builder: (_) => DailyRecapsPage(library: library))),
+                          ),
+                        if (library.goalsAvailable)
+                          ActionChip(
+                            avatar: const Icon(Icons.flag_outlined),
+                            label: Text(l.goals),
+                            onPressed: () => Navigator.of(
+                              context,
+                            ).push(MaterialPageRoute<void>(builder: (_) => LocalGoalsPage(library: library))),
                           ),
                         if (library.folderManagementAvailable)
                           ActionChip(

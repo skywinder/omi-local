@@ -27,6 +27,7 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/people"),
         ("POST", "/v1/local/action-items"),
         ("GET", "/v1/goals/all"),
+        ("POST", "/v1/local/goals"),
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),
         ("GET", "/v1/local/preview"),
@@ -61,6 +62,15 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() == 'GET' and (
+        path == '/v1/local/goals/{goal_id}' or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}', path)
+    ):
+        return True
+    if method.upper() == 'POST' and (
+        path == '/v1/local/goals/{goal_id}/progress'
+        or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}/progress', path)
+    ):
+        return True
     if method.upper() in {'GET', 'POST'} and (
         path == '/v1/local/conversations/{conversation_id}/regenerate-summary'
         or re.fullmatch(

@@ -189,6 +189,18 @@ assert client.post('/v1/local/daily-recaps/preview', json=spring).status_code ==
 invalid = {**spring, 'end': '2026-03-31T22:00:00Z'}
 assert client.post('/v1/local/daily-recaps/preview', json=invalid, headers=headers).status_code == 422
 
+from routers import local_goals
+
+assert client.post('/v1/local/goals', json={}).status_code == 401
+assert client.get('/v1/local/goals/legacy-goal').status_code == 401
+assert client.post('/v1/local/goals/legacy-goal/progress', json={}).status_code == 401
+assert client.post('/v1/local/goals', headers=headers, json={
+    'request_id': documents[0].id, 'title': 'Fixture', 'current': 2,
+}).status_code == 422
+assert client.post('/v1/local/goals/legacy-goal/progress', headers=headers, json={
+    'request_id': documents[0].id, 'expected_revision': 'old', 'note': '   ',
+}).status_code == 422
+
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
     'routers.payment', 'routers.stt', 'routers.tts', 'routers.desktop_realtime',
@@ -222,6 +234,9 @@ print(json.dumps({
         '/v1/conversations',
         '/v1/conversations/{conversation_id}',
         '/v1/goals/all',
+        '/v1/local/goals',
+        '/v1/local/goals/{goal_id}',
+        '/v1/local/goals/{goal_id}/progress',
         '/v1/health',
         '/v1/local/status',
         '/v1/local/audio/parts',

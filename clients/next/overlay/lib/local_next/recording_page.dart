@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'paired_library.dart';
 import 'folder_picker.dart';
+import 'local_goals_page.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_search.dart';
@@ -452,6 +453,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => LocalGoalsPage(library: widget.library, conversationId: loaded.row.id),
+                      ),
+                    ),
                     _RecordingEditAction.summary => _regenerateSummary(),
                     _RecordingEditAction.taskSuggestions => Navigator.of(context).push<void>(
                       MaterialPageRoute(
@@ -460,6 +466,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.goalsAvailable)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.goalProgress,
+                        child: Text(pairedSettingsLabel(context, 'localGoalLog')),
+                      ),
                     if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
                       PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
                     if (widget.library.tasksAvailable)
@@ -593,7 +604,17 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 }
 
-enum _RecordingEditAction { title, star, transcript, folder, task, taskFromLine, taskSuggestions, summary }
+enum _RecordingEditAction {
+  title,
+  star,
+  transcript,
+  folder,
+  task,
+  taskFromLine,
+  taskSuggestions,
+  summary,
+  goalProgress,
+}
 
 class _RecordingDetail {
   _RecordingDetail(this.row) : lines = row.transcriptSegments {
