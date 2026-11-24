@@ -389,6 +389,20 @@ The Mac enumerated an iPhone over USB. CoreDevice had no eligible connected
 phone at installation preflight, so installation and device playback remain
 pending. Archive search on the active server also requires a server update.
 
+Single-recording chat passed the Next analyzer and 54 tests, the offline
+backend suite and all 478 existing mobile transport tests. An isolated
+Firestore and harness run exercised model confirmation, transcript owner
+scope, invalid citations, encrypted history, follow-up turns, retry and
+recording deletion. The Flutter test confirmed that tapping a citation returns
+to the matched line after refreshing the transcript.
+
+The signed `Profile-dev` package from `7de7940` passed independent signature
+and entitlement verification. Its executable SHA-256 begins with
+`029125a367a5cda5`. The signed search package `0c2eb38` remains available for
+rollback. Physical installation remains pending while Xcode cannot open the
+iPhone connection. The active paired server needs the chat update before
+physical chat acceptance.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
