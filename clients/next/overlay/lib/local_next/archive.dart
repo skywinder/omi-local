@@ -37,6 +37,17 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> refresh() => _load(append: false);
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
+  ServerConversation? rowById(String id) => _rows[id];
+
+  void refreshAfterFolderChange({String? deletedId}) {
+    if (_disposed) return;
+    if (deletedId != null && folder?.id == deletedId) folder = null;
+    if (busy) {
+      _refreshStarred = true;
+    } else {
+      unawaited(refresh());
+    }
+  }
 
   Future<void> filterStarred(bool value) async {
     if (_disposed || busy || _starredOnly == value) return;
@@ -159,10 +170,17 @@ class PairedArchiveProvider extends ChangeNotifier {
 }
 
 class PairedArchiveFeed extends StatelessWidget {
-  const PairedArchiveFeed({super.key, required this.archive, required this.onOpen, required this.errorText});
+  const PairedArchiveFeed({
+    super.key,
+    required this.archive,
+    required this.onOpen,
+    required this.errorText,
+    this.selection,
+  });
   final PairedArchiveProvider archive;
   final ValueChanged<String> onOpen;
   final String Function(BuildContext context, Object? failure) errorText;
+  final Set<String>? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -201,7 +219,12 @@ class PairedArchiveFeed extends StatelessWidget {
                 if (row == null) {
                   return DateListItem(key: ValueKey(entry.day), date: entry.day, isFirst: index == 0);
                 }
-                return _ArchiveRow(key: ValueKey(row.id), row: row, onOpen: onOpen);
+                return _ArchiveRow(
+                  key: ValueKey(row.id),
+                  row: row,
+                  onOpen: onOpen,
+                  selected: selection?.contains(row.id),
+                );
               },
             ),
           ),
@@ -212,9 +235,10 @@ class PairedArchiveFeed extends StatelessWidget {
 }
 
 class _ArchiveRow extends StatelessWidget {
-  const _ArchiveRow({super.key, required this.row, required this.onOpen});
+  const _ArchiveRow({super.key, required this.row, required this.onOpen, this.selected});
   final ServerConversation row;
   final ValueChanged<String> onOpen;
+  final bool? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +288,10 @@ class _ArchiveRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (row.starred) Icon(Icons.star, size: 17, semanticLabel: context.l10n.starred),
+                if (selected != null)
+                  Icon(selected! ? Icons.check_box : Icons.check_box_outline_blank)
+                else if (row.starred)
+                  Icon(Icons.star, size: 17, semanticLabel: context.l10n.starred),
               ],
             ),
           ),

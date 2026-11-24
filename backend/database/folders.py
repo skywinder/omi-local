@@ -7,10 +7,86 @@ from google.api_core.exceptions import NotFound
 from google.cloud import firestore
 from google.cloud.firestore_v1 import FieldFilter
 
-from ._client import db
+from ._client import db, run_transactional
 from database.document_ids import system_folder_doc_id
 
 logger = logging.getLogger(__name__)
+
+
+@firestore.transactional
+def _local_reorder(transaction, uid, expected, ordered):
+    collection = db.collection('users').document(uid).collection('folders')
+    rows = list(collection.order_by('order').stream(transaction=transaction, timeout=6))
+    current = [row.id for row in rows]
+    if current == ordered:
+        return True
+    if current != expected:
+        return False
+    by_id = {row.id: row for row in rows}
+    for order, key in enumerate(ordered):
+        transaction.update(by_id[key].reference, {'order': order, 'updated_at': firestore.SERVER_TIMESTAMP})
+    return True
+
+
+def reorder_local_folders(uid, expected, ordered):
+    return run_transactional(db, _local_reorder, uid, expected, ordered)
+
+
+@firestore.transactional
+def _local_delete(transaction, uid, folder_id):
+    owner = db.collection('users').document(uid)
+    target = owner.collection('folders').document(folder_id)
+    snapshot = target.get(transaction=transaction, timeout=6)
+    if not snapshot.exists:
+        return 'ok'
+    if (snapshot.to_dict() or {}).get('is_system'):
+        return 'system'
+    query = owner.collection('conversations').where(filter=FieldFilter('folder_id', '==', folder_id))
+    rows = list(query.select([]).limit(451).stream(transaction=transaction, timeout=8))
+    if len(rows) > 450:
+        return 'too_many'
+    for row in rows:
+        transaction.update(row.reference, {'folder_id': None, 'folder_user_set': True})
+    transaction.delete(target)
+    return 'ok'
+
+
+def delete_local_folder(uid, folder_id):
+    return run_transactional(db, _local_delete, uid, folder_id)
+
+
+@firestore.transactional
+def _local_bulk_move(transaction, uid, expected, folder_id):
+    owner = db.collection('users').document(uid)
+    if folder_id is not None and not owner.collection('folders').document(folder_id).get(
+        transaction=transaction, timeout=6,
+    ).exists:
+        return False
+    refs = [owner.collection('conversations').document(key) for key in expected]
+    rows = list(db.get_all(
+        refs, field_paths=['folder_id', 'folder_user_set', 'status', 'is_locked', 'local_chat_deleting'],
+        transaction=transaction, timeout=8,
+    ))
+    pending = []
+    for row in rows:
+        fields = row.to_dict()
+        if (fields is None or fields.get('status') not in {None, 'completed'}
+                or fields.get('is_locked') or fields.get('local_chat_deleting')):
+            return False
+        current = fields.get('folder_id')
+        if current not in {expected[row.id], folder_id}:
+            return False
+        if current != folder_id or not fields.get('folder_user_set'):
+            pending.append(row.reference)
+    if len(rows) != len(refs):
+        return False
+    for ref in pending:
+        transaction.update(ref, {'folder_id': folder_id, 'folder_user_set': True})
+    return True
+
+
+def bulk_move_local_recordings(uid, expected, folder_id):
+    return run_transactional(db, _local_bulk_move, uid, expected, folder_id)
 
 # System folders that are created for new users
 SYSTEM_FOLDERS: List[Dict[str, Any]] = [

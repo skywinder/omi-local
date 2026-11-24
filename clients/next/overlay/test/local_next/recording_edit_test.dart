@@ -95,6 +95,54 @@ class _EditableLibrary extends PairedLibrary {
   }
 }
 
+class _ManagedLibrary extends _EditableLibrary {
+  _ManagedLibrary() {
+    foldersAvailable = true;
+    folderManagementAvailable = true;
+  }
+
+  final ordered = ['first', 'second'];
+  final moves = <String?>[];
+
+  @override
+  Future<List<Folder>> readFolders() async => [
+    for (final id in ordered)
+      Folder(
+        id: id,
+        name: id,
+        color: '#6B7280',
+        icon: 'folder',
+        createdAt: DateTime.utc(2026),
+        updatedAt: DateTime.utc(2026),
+        order: ordered.indexOf(id),
+        conversationCount: 0,
+        isDefault: false,
+        isSystem: false,
+      ),
+  ];
+
+  @override
+  Future<void> reorderFolders(List<String> expected, List<String> replacement) async {
+    expect(expected, ordered);
+    ordered
+      ..clear()
+      ..addAll(replacement);
+  }
+
+  @override
+  Future<void> bulkMoveFolders(Map<String, String?> expected, String? destination) async {
+    expect(expected, {_id: currentFolder});
+    moves.add(destination);
+    currentFolder = destination;
+  }
+
+  @override
+  Future<void> deleteFolder(String id) async {
+    ordered.remove(id);
+    if (currentFolder == id) currentFolder = null;
+  }
+}
+
 Future<void> _menu(WidgetTester tester, String label) async {
   await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
   await tester.pumpAndSettle();
@@ -103,6 +151,52 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('bulk folder control moves selected rows and confirms folder removal without removing the row', (
+    tester,
+  ) async {
+    final library = _ManagedLibrary();
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select recordings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to Folder · 1/100'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'second'));
+    await tester.pumpAndSettle();
+    expect(library.moves, ['second']);
+    await tester.tap(find.text('Folders'));
+    await tester.pumpAndSettle();
+    Finder menu(String folder) => find.descendant(
+      of: find.widgetWithText(ListTile, folder),
+      matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+    );
+    await tester.tap(menu('second'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move up'));
+    await tester.pumpAndSettle();
+    expect(library.ordered, ['second', 'first']);
+    await tester.tap(menu('second'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(library.currentFolder, 'second');
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Delete')));
+    await tester.pumpAndSettle();
+    expect(library.currentFolder, isNull);
+    expect(library.ordered, ['first']);
+    await tester.tap(find.text('All recordings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Original title'), findsOneWidget);
+  });
+
   testWidgets('paired folders can be created, renamed, selected, and cleared on a recording', (tester) async {
     final library = _EditableLibrary()..foldersAvailable = true;
     addTearDown(library.close);

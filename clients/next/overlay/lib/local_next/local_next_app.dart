@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/ui/omi_theme.dart';
 import 'package:omi/ui/omi_tokens.dart';
@@ -6,6 +7,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
 import 'folder_picker.dart';
+import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'paired_library.dart';
@@ -115,6 +117,45 @@ class LocalNextLibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LocalNextLibraryPage> {
   late PairedArchiveProvider _archive;
+  Map<String, String?>? _selection;
+  bool _moving = false;
+
+  Future<void> _moveSelected() async {
+    final library = widget.library;
+    final archive = _archive;
+    final selected = _selection;
+    if (_moving || selected == null || selected.isEmpty) return;
+    setState(() => _moving = true);
+    try {
+      final destination = await pickLocalFolder(context, library, moving: true);
+      if (!mounted || widget.library != library || destination == null) return;
+      await library.bulkMoveFolders(selected, destination.folder?.id);
+      if (!mounted || widget.library != library) return;
+      setState(() => _selection = null);
+      archive.refreshAfterFolderChange();
+    } catch (error) {
+      if (mounted && widget.library == library) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    } finally {
+      if (mounted && widget.library == library) setState(() => _moving = false);
+    }
+  }
+
+  void _select(String id) {
+    final selection = _selection;
+    final row = _archive.rowById(id);
+    if (_moving || selection == null || row == null || row.status != ConversationStatus.completed || row.isLocked) {
+      return;
+    }
+    setState(() {
+      if (selection.containsKey(id)) {
+        selection.remove(id);
+      } else if (selection.length < 100) {
+        selection[id] = row.folderId;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -133,6 +174,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   void didUpdateWidget(LocalNextLibraryPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.library != widget.library) {
+      _selection = null;
+      _moving = false;
       _archive.dispose();
       _attach();
     }
@@ -149,6 +192,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     final l = context.l10n;
     final library = widget.library;
     final archive = _archive;
+    final selection = _selection;
     final serverName = widget.serverName ?? library.origin.authority;
     return Scaffold(
       appBar: AppBar(
@@ -223,29 +267,47 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
               padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
               child: Wrap(
                 spacing: OmiSpacing.sm,
-                children: [
-                  FilterChip(
-                    label: Text(l.starred),
-                    selected: archive.starredOnly,
-                    onSelected: archive.busy ? null : archive.filterStarred,
-                  ),
-                  if (library.foldersAvailable)
-                    ActionChip(
-                      avatar: const Icon(Icons.folder_outlined),
-                      label: Text(archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders')),
-                      onPressed: archive.busy
-                          ? null
-                          : () async {
-                              final choice = await pickLocalFolder(
-                                context,
-                                library,
-                                moving: false,
-                                onRename: archive.renameFolder,
-                              );
-                              if (choice != null) await archive.filterFolder(choice.folder);
-                            },
-                    ),
-                ],
+                children: selection != null
+                    ? [
+                        ActionChip(
+                          label: Text(l.cancel),
+                          onPressed: _moving ? null : () => setState(() => _selection = null),
+                        ),
+                        ActionChip(
+                          label: Text('${l.moveToFolder} · ${selection.length}/100'),
+                          onPressed: selection.isEmpty || _moving ? null : _moveSelected,
+                        ),
+                      ]
+                    : [
+                        FilterChip(
+                          label: Text(l.starred),
+                          selected: archive.starredOnly,
+                          onSelected: archive.busy ? null : archive.filterStarred,
+                        ),
+                        if (library.foldersAvailable)
+                          ActionChip(
+                            avatar: const Icon(Icons.folder_outlined),
+                            label: Text(archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders')),
+                            onPressed: archive.busy
+                                ? null
+                                : () async {
+                                    final choice = await pickLocalFolder(
+                                      context,
+                                      library,
+                                      moving: false,
+                                      onRename: archive.renameFolder,
+                                      onDelete: (id) => archive.refreshAfterFolderChange(deletedId: id),
+                                    );
+                                    if (choice != null) await archive.filterFolder(choice.folder);
+                                  },
+                          ),
+                        if (library.folderManagementAvailable)
+                          ActionChip(
+                            avatar: const Icon(Icons.checklist),
+                            label: Text(pairedSettingsLabel(context, 'localFolderSelect')),
+                            onPressed: () => setState(() => _selection = {}),
+                          ),
+                      ],
               ),
             ),
           ),
@@ -253,11 +315,14 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
             child: PairedArchiveFeed(
               archive: _archive,
               errorText: pairingFailureText,
-              onOpen: (id) => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => RecordingPage(library: library, id: id, onEdited: archive.applyEdit),
-                ),
-              ),
+              selection: selection?.keys.toSet(),
+              onOpen: selection != null
+                  ? _select
+                  : (id) => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => RecordingPage(library: library, id: id, onEdited: archive.applyEdit),
+                      ),
+                    ),
             ),
           ),
         ],

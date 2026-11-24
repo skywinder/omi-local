@@ -16,18 +16,20 @@ Future<LocalFolderChoice?> pickLocalFolder(
   PairedLibrary library, {
   required bool moving,
   ValueChanged<Folder>? onRename,
+  ValueChanged<String>? onDelete,
 }) => showModalBottomSheet<LocalFolderChoice>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
-  builder: (_) => _FolderPicker(library: library, moving: moving, onRename: onRename),
+  builder: (_) => _FolderPicker(library: library, moving: moving, onRename: onRename, onDelete: onDelete),
 );
 
 class _FolderPicker extends StatefulWidget {
-  const _FolderPicker({required this.library, required this.moving, this.onRename});
+  const _FolderPicker({required this.library, required this.moving, this.onRename, this.onDelete});
   final PairedLibrary library;
   final bool moving;
   final ValueChanged<Folder>? onRename;
+  final ValueChanged<String>? onDelete;
 
   @override
   State<_FolderPicker> createState() => _FolderPickerState();
@@ -35,6 +37,59 @@ class _FolderPicker extends StatefulWidget {
 
 class _FolderPickerState extends State<_FolderPicker> {
   late Future<List<Folder>> _folders = widget.library.readFolders();
+  bool _busy = false;
+  Object? _error;
+
+  Future<void> _change(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+      if (mounted) {
+        setState(() {
+          _folders = widget.library.readFolders();
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error;
+          if (error == RecordingEditFailure.conflict) _folders = widget.library.readFolders();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reorder(List<Folder> rows, int from, int to) {
+    final expected = rows.map((folder) => folder.id).toList();
+    final ordered = [...expected];
+    ordered.insert(to, ordered.removeAt(from));
+    return _change(() => widget.library.reorderFolders(expected, ordered));
+  }
+
+  Future<void> _delete(Folder folder) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(folder.name),
+        content: Text(pairedSettingsLabel(context, 'localFolderDeleteConfirm')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.l10n.cancel)),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.l10n.delete)),
+        ],
+      ),
+    );
+    if (approved != true || !mounted) return;
+    await _change(() async {
+      await widget.library.deleteFolder(folder.id);
+      if (mounted) widget.onDelete?.call(folder.id);
+    });
+  }
 
   Future<void> _edit([Folder? folder]) => showDialog<void>(
     context: context,
@@ -66,13 +121,14 @@ class _FolderPickerState extends State<_FolderPicker> {
             trailing: IconButton(
               tooltip: pairedSettingsLabel(context, 'localFolderCreate'),
               icon: const Icon(Icons.create_new_folder_outlined),
-              onPressed: _edit,
+              onPressed: _busy ? null : _edit,
             ),
           ),
           ListTile(
             title: Text(widget.moving ? context.l10n.noFolder : pairedSettingsLabel(context, 'localAllFolders')),
-            onTap: () => Navigator.of(context).pop(const LocalFolderChoice(null)),
+            onTap: _busy ? null : () => Navigator.of(context).pop(const LocalFolderChoice(null)),
           ),
+          if (_error != null) ListTile(title: Text(recordingEditError(context, _error!))),
           Expanded(
             child: FutureBuilder<List<Folder>>(
               future: _folders,
@@ -98,12 +154,40 @@ class _FolderPickerState extends State<_FolderPicker> {
                     return ListTile(
                       leading: const Icon(Icons.folder_outlined),
                       title: Text(folder.name),
-                      onTap: () => Navigator.of(context).pop(LocalFolderChoice(folder)),
-                      trailing: IconButton(
-                        tooltip: pairedSettingsLabel(context, 'localFolderRename'),
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _edit(folder),
-                      ),
+                      onTap: _busy ? null : () => Navigator.of(context).pop(LocalFolderChoice(folder)),
+                      trailing: widget.library.folderManagementAvailable && !widget.moving
+                          ? PopupMenuButton<_FolderAction>(
+                              enabled: !_busy,
+                              onSelected: (action) => switch (action) {
+                                _FolderAction.rename => _edit(folder),
+                                _FolderAction.up => _reorder(rows, index, index - 1),
+                                _FolderAction.down => _reorder(rows, index, index + 1),
+                                _FolderAction.delete => _delete(folder),
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: _FolderAction.rename,
+                                  child: Text(pairedSettingsLabel(context, 'localFolderRename')),
+                                ),
+                                if (index > 0)
+                                  PopupMenuItem(
+                                    value: _FolderAction.up,
+                                    child: Text(pairedSettingsLabel(context, 'localFolderUp')),
+                                  ),
+                                if (index + 1 < rows.length)
+                                  PopupMenuItem(
+                                    value: _FolderAction.down,
+                                    child: Text(pairedSettingsLabel(context, 'localFolderDown')),
+                                  ),
+                                if (!folder.isSystem)
+                                  PopupMenuItem(value: _FolderAction.delete, child: Text(context.l10n.delete)),
+                              ],
+                            )
+                          : IconButton(
+                              tooltip: pairedSettingsLabel(context, 'localFolderRename'),
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () => _edit(folder),
+                            ),
                     );
                   },
                 );
@@ -115,3 +199,5 @@ class _FolderPickerState extends State<_FolderPicker> {
     ),
   );
 }
+
+enum _FolderAction { rename, up, down, delete }

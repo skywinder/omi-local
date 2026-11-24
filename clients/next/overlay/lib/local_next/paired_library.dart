@@ -73,6 +73,7 @@ class PairedLibrary {
   bool audioDelivery;
   bool recordingEdits = false;
   bool foldersAvailable = false;
+  bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
@@ -92,6 +93,7 @@ class PairedLibrary {
     audioPlayback = false;
     recordingEdits = false;
     foldersAvailable = false;
+    folderManagementAvailable = false;
     for (final client in _clients) {
       client.close(force: true);
     }
@@ -425,7 +427,8 @@ class PairedLibrary {
     audioDelivery = data['local_audio_delivery_version'] == 2;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
-    foldersAvailable = data['local_folders_version'] == 1;
+    folderManagementAvailable = data['local_folders_version'] == 2;
+    foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
 
   static final _archiveId = RegExp(r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$');
@@ -618,6 +621,40 @@ class PairedLibrary {
       bodyType: ContentType.json,
       readHttpErrors: true,
     );
+  }
+
+  Future<void> reorderFolders(List<String> expected, List<String> ordered) =>
+      _changeFolders('/reorder', {'expected': expected, 'ordered': ordered});
+
+  Future<void> bulkMoveFolders(Map<String, String?> expected, String? folderId) =>
+      _changeFolders('/move', {'expected': expected, 'folder_id': folderId});
+
+  Future<void> deleteFolder(String id) async {
+    if (!_folderId.hasMatch(id)) throw LibraryFailure.malformed;
+    await _changeFolders('/$id', null);
+  }
+
+  Future<void> _changeFolders(String suffix, Map<String, Object?>? body) async {
+    if (!isSignedIn || !folderManagementAvailable) throw LibraryFailure.unavailable;
+    await _request(
+      '/v1/local/folders$suffix',
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) {
+          final data = await _json(response, 4096);
+          if (data is Map && data['detail'] == 'local_folder_too_many') {
+            throw RecordingEditFailure.folderTooLarge;
+          }
+          throw RecordingEditFailure.conflict;
+        }
+        if (response.statusCode != HttpStatus.noContent) throw LibraryFailure.unavailable;
+      },
+      method: body == null ? 'DELETE' : 'POST',
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+      overallTimeout: const Duration(seconds: 35),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
   }
 
   Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) async {

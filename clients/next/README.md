@@ -206,8 +206,11 @@ Tap **Folders** in the archive to create or rename a folder or filter the
 archive. A folder filter can be combined with **Starred**. In a finished
 recording, use **Move to Folder** to select a folder or remove the assignment.
 The paired server uses the existing owner-scoped folder collection and
-preserves manual assignments on replay. Folder deletion, ordering and bulk
-moves are tracked separately.
+preserves manual assignments on replay. Open a folder's menu to change its
+order or delete it. Deleting a regular folder leaves its recordings unfiled
+in the archive. Use **Select recordings** to move up to 100 recordings at a
+time. A folder with more than 450 recordings needs to be partly emptied
+before deletion so the server can commit the move and delete together.
 
 ## Recording from CV1
 

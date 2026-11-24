@@ -6,7 +6,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'settings_labels.dart';
 
-enum RecordingEditFailure implements Exception { conflict, unavailable }
+enum RecordingEditFailure implements Exception { conflict, unavailable, folderTooLarge }
 
 class RecordingEdit {
   const RecordingEdit.title(String this.expected, String this.value) : field = 'title', segmentId = null;
@@ -31,6 +31,7 @@ class RecordingEdit {
 
 String recordingEditError(BuildContext context, Object error) => switch (error) {
   RecordingEditFailure.conflict => pairedSettingsLabel(context, 'recordingEditConflict'),
+  RecordingEditFailure.folderTooLarge => pairedSettingsLabel(context, 'localFolderTooLarge'),
   _ => pairedSettingsLabel(context, 'recordingEditUnavailable'),
 };
 

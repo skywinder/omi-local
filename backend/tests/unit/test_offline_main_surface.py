@@ -162,6 +162,8 @@ print(json.dumps({
         '/v1/local/conversations/{conversation_id}/edit',
         '/v1/local/folders',
         '/v1/local/folders/{folder_id}',
+        '/v1/local/folders/move',
+        '/v1/local/folders/reorder',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',
