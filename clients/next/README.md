@@ -548,6 +548,18 @@ The Mac reported no iPhone on USB, and Xcode found no connected eligible
 iPhone. Physical verification also requires the task suggestion routes on the
 paired server and an applied summary model.
 
+Shared summary templates passed the Next analyzer and 63 tests, the offline
+backend suite, and the legacy mobile transport suite. The isolated paired
+API and fixture model verified revision conflicts, save without inference,
+and an actual summary request using the selected default. Generating a new
+summary for an existing recording must use the edited transcript and preserve
+its user title.
+
+The `Profile-dev` package from `200e141` passed independent signature and
+entitlement verification. Its executable SHA-256 begins with
+`d8256f02545ec364`. Package `902cfa3` was verified and retained for rollback.
+Xcode found no eligible connected iPhone for installation.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
