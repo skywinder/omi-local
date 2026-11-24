@@ -51,6 +51,195 @@ Future<PairedLibrary> _serve(Future<void> Function(HttpRequest) handler) async {
 }
 
 void main() {
+  test('editor probes and saves prepared network adapters, preserves key identity, deletes by revision only', () async {
+    int revision = 7;
+    final prepared = _profile('stt', 'local', 'Prepared local', revision: 1);
+    final remote = {
+      'id': 'remote',
+      'name': 'Remote',
+      'stage': 'stt',
+      'kind': 'openai-compatible',
+      'has_key': true,
+      'can_edit': true,
+      'configuration_revision': 3,
+      'settings': {
+        'provider_url': 'https://stt.example:443/v1',
+        'language': 'en',
+        'model': 'm0',
+        'device': 'cpu',
+        'diarization_model': 'none',
+      },
+    };
+    final cards = <Map<String, dynamic>>[prepared, remote];
+    final seen = <({String method, String path, Map body})>[];
+    final library = await _serve((request) async {
+      final path = request.uri.path;
+      final body = request.method == 'GET'
+          ? <String, dynamic>{}
+          : jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+      seen.add((method: request.method, path: path, body: body));
+      if (path.endsWith('/models') || path.endsWith('/probe')) {
+        request.response.write(
+          jsonEncode({
+            'state': 'available',
+            'message': 'private diagnostic',
+            'latency_ms': 12,
+            'models': ['m0', 'm1'],
+          }),
+        );
+        return;
+      }
+      if (path.endsWith('/save')) {
+        final card = Map<String, dynamic>.from(body['profile'] as Map);
+        card['id'] ??= 'added';
+        card['can_edit'] = true;
+        card['has_key'] = body['clear_key'] != true && (card['id'] == 'remote' || body['api_key'] != null);
+        card['configuration_revision'] = ++revision;
+        cards.removeWhere((old) => old['id'] == card['id']);
+        cards.add(card);
+      } else if (request.method == 'DELETE') {
+        cards.removeWhere((card) => card['id'] == request.uri.pathSegments.last);
+        revision++;
+      }
+      request.response.write(
+        jsonEncode({
+          'revision': revision,
+          'profiles': cards,
+          'effective': {'live': null, 'stt': prepared, 'diarization': null, 'summary': null, 'translation': null},
+        }),
+      );
+    });
+    final client = library.processingClient();
+    var data = await client.fetch();
+    final original = data.profiles.singleWhere((p) => p.id == 'remote');
+    expect(original.editableDraft!.device, 'cpu');
+    expect(original.hasKey, isTrue);
+    expect(data.active(NextProcessingStage.stt)!.editableDraft, isNull);
+    expect(data.canDelete(data.profiles.first), isFalse);
+    const edited = NextProcessingDraft(
+      stage: NextProcessingStage.stt,
+      id: 'remote',
+      name: 'Remote updated',
+      endpoint: 'https://stt.example:443/next/v1',
+      model: 'm1',
+    );
+    const changed = NextProcessingDraft(
+      stage: NextProcessingStage.stt,
+      id: 'remote',
+      name: 'Remote',
+      endpoint: 'https://stt.example/v1',
+    );
+    expect(edited.needsKeyDecision(original), isFalse);
+    expect(changed.needsKeyDecision(original), isTrue); // Explicit default port is part of the registry identity.
+    await expectLater(client.models(data, changed), throwsA(NextProcessingFailure.invalid));
+    final catalog = await client.models(data, changed, apiKey: ' fixture-replacement ');
+    expect(catalog.models, ['m0', 'm1']);
+    expect(catalog.latencyMs, 12);
+    expect(seen.last.body.containsKey('revision'), isFalse);
+    expect(seen.last.body['api_key'], 'fixture-replacement');
+    final check = await client.probe(data, edited, clearKey: true);
+    expect(check.state, NextProbeState.available);
+    expect(seen.last.body['clear_key'], isTrue);
+    expect(seen.last.body.containsKey('api_key'), isFalse);
+    data = await client.save(data, edited);
+    expect(data.active(NextProcessingStage.stt)!.id, 'local');
+    final saved = data.profiles.singleWhere((p) => p.id == 'remote');
+    expect(saved.hasKey, isTrue);
+    expect(saved.editableDraft!.model, 'm1');
+    expect(seen.last.body.keys, unorderedEquals(['revision', 'profile']));
+    expect(seen.last.body['revision'], 7);
+    expect(seen.last.body['profile']['settings']['device'], 'cpu');
+    const added = NextProcessingDraft(
+      stage: NextProcessingStage.diarization,
+      name: 'Speakers',
+      endpoint: 'https://diarization.example',
+      minSpeakers: 2,
+      maxSpeakers: 4,
+    );
+    data = await client.save(data, added);
+    expect(seen.last.body['profile']['settings'], {
+      'base_url': 'https://diarization.example',
+      'min_speakers': 2,
+      'max_speakers': 4,
+    });
+    expect(seen.last.body['profile'].containsKey('id'), isFalse);
+    final addedCard = data.profiles.singleWhere((p) => p.id == 'added');
+    expect(addedCard.hasKey, isFalse);
+    data = await client.delete(data, addedCard);
+    expect(seen.last.method, 'DELETE');
+    expect(seen.last.path, '/v1/local/processing/profiles/added');
+    expect(seen.last.body, {'revision': 9});
+    expect(data.active(NextProcessingStage.diarization), isNull);
+    expect(seen.map((r) => r.path.split('/').last), ['processing', 'models', 'probe', 'save', 'save', 'added']);
+  });
+
+  test('prepared IDs and active drafts remain guarded; wrong save confirmation requires refresh', () async {
+    final live = {
+      'id': 'live',
+      'stage': 'live',
+      'kind': 'external',
+      'name': 'Live',
+      'can_edit': true,
+      'has_key': true,
+      'settings': {'url': 'wss://capture.example/asr'},
+    };
+    final locked = {
+      ...live,
+      'id': 'locked',
+      'name': 'Host-managed',
+      'settings': {'url': 'wss://capture.example/asr', 'python': 'private'},
+    };
+    final base = {
+      'revision': 1,
+      'profiles': [live, locked],
+      'effective': {'live': live},
+    };
+    final calls = <NextDraftOperation>[];
+    final client = NextProcessingClient(
+      read: () async => base,
+      activatePrepared: (_) async => throw StateError('unexpected'),
+      draftRequest: (op, body, id) async {
+        calls.add(op);
+        return {
+          'revision': 2,
+          'profiles': [live, locked],
+          'effective': {'live': live},
+        };
+      },
+    );
+    var data = await client.fetch();
+    final active = data.profiles.first, host = data.profiles.last;
+    expect(active.canEdit, isTrue);
+    expect(host.canEdit, isFalse);
+    final legacy = NextProcessingSettings.fromJson({
+      'revision': 1,
+      'profiles': [
+        {
+          ...live,
+          'settings': {'url': 'wss://capture.example/asr?auth=fixture'},
+        },
+      ],
+      'effective': {'live': null},
+    });
+    expect(legacy.profiles.single.editableDraft, isNull);
+    await expectLater(client.delete(data, active), throwsA(NextProcessingFailure.invalid));
+    await expectLater(client.delete(data, host), throwsA(NextProcessingFailure.invalid));
+    const pretendsEditable = NextProcessingDraft(
+      stage: NextProcessingStage.live,
+      id: 'locked',
+      name: 'Host-managed',
+      endpoint: 'wss://capture.example/asr',
+    );
+    await expectLater(client.save(data, pretendsEditable), throwsA(NextProcessingFailure.invalid));
+    await expectLater(client.models(data, active.editableDraft!), throwsA(NextProcessingFailure.invalid));
+    expect(calls, isEmpty);
+    await expectLater(client.save(data, active.editableDraft!), throwsA(NextProcessingFailure.indeterminate));
+    await expectLater(client.save(data, active.editableDraft!), throwsA(NextProcessingFailure.conflict));
+    expect(calls, [NextDraftOperation.save]);
+    data = await client.fetch();
+    expect(data.revision, 1);
+  });
+
   test(
     'reads prepared and effective profiles and activates only the explicitly confirmed revision on its paired server',
     () async {

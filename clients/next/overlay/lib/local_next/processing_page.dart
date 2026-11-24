@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'processing.dart';
+import 'processing_editor.dart';
 import 'settings_labels.dart';
 
 class LocalNextProcessingPage extends StatefulWidget {
@@ -98,25 +99,44 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
     await _request(() => widget.client.activate(settings, stage, id));
   }
 
-  String _problem(BuildContext context, NextProcessingFailure failure) => switch (failure) {
-    NextProcessingFailure.unsupported => pairedSettingsLabel(context, 'localProcessingUnsupported'),
-    NextProcessingFailure.unauthorized => context.l10n.invalidKey,
-    NextProcessingFailure.conflict => pairedSettingsLabel(context, 'processingConflict'),
-    NextProcessingFailure.indeterminate => pairedSettingsLabel(context, 'processingIndeterminate'),
-    NextProcessingFailure.invalid => pairedSettingsLabel(context, 'providerMisconfigured'),
-    NextProcessingFailure.unavailable => pairedSettingsLabel(context, 'providerUnavailable'),
-  };
+  Future<void> _edit(NextProcessingSettings state, NextProcessingStage stage, [NextProcessingProfile? profile]) async {
+    final client = widget.client;
+    if (_busy || state != _settings || !stage.canCreateDraft || (profile != null && !profile.canEdit)) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => NextProcessingEditor(
+          client: client,
+          settings: state,
+          stage: stage,
+          profile: profile,
+          serverLabel: widget.serverLabel,
+          isCurrentClient: () => mounted && widget.client == client,
+        ),
+      ),
+    );
+    // The server can accept a save even if the editor closes before the response arrives.
+    if (mounted && widget.client == client && ModalRoute.of(context)?.isCurrent == true) await _refresh();
+  }
 
-  String _stageName(BuildContext context, NextProcessingStage stage) {
-    final l = context.l10n;
-    return switch (stage) {
-      NextProcessingStage.live => l.liveTranscript,
-      NextProcessingStage.stt => '${l.transcription} · ${pairedSettingsLabel(context, 'localProcessingFinished')}',
-      NextProcessingStage.diarization =>
-        '${pairedSettingsLabel(context, 'diarization')} · ${pairedSettingsLabel(context, 'localProcessingFinished')}',
-      NextProcessingStage.summary => l.summary,
-      NextProcessingStage.translation => pairedSettingsLabel(context, 'liveTranslation'),
-    };
+  Future<void> _delete(NextProcessingSettings state, NextProcessingProfile profile) async {
+    final client = widget.client;
+    if (_busy || !state.canDelete(profile)) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final l = context.l10n;
+        return AlertDialog(
+          title: Text(l.delete),
+          content: Text(l.deleteItemConfirmation(profile.name)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l.delete)),
+          ],
+        );
+      },
+    );
+    if (!mounted || widget.client != client || confirmed != true || state != _settings) return;
+    await _request(() => client.delete(state, profile));
   }
 
   Widget _stage(BuildContext context, NextProcessingSettings state, NextProcessingStage stage) {
@@ -138,7 +158,7 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_stageName(context, stage), style: Theme.of(context).textTheme.titleMedium),
+            Text(processingStageLabel(context, stage), style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text('${l.active} · ${effective?.name ?? l.off}', key: ValueKey('next-${stage.name}-active')),
             if (effective != null) Text(effective.kind, style: Theme.of(context).textTheme.bodySmall),
@@ -170,10 +190,34 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
               ),
               if (pending) Text(pairedSettingsLabel(context, 'localProcessingPending')),
               const SizedBox(height: 8),
-              FilledButton(
-                key: ValueKey('next-${stage.name}-confirm'),
-                onPressed: enabled ? () => _activate(stage) : null,
-                child: Text(l.confirm),
+              Wrap(
+                spacing: 8,
+                children: [
+                  FilledButton(
+                    key: ValueKey('next-${stage.name}-confirm'),
+                    onPressed: enabled ? () => _activate(stage) : null,
+                    child: Text(l.confirm),
+                  ),
+                  if (stage.canCreateDraft)
+                    TextButton.icon(
+                      key: ValueKey('next-${stage.name}-add'),
+                      onPressed: _busy ? null : () => _edit(state, stage),
+                      icon: const Icon(Icons.add),
+                      label: Text(l.add),
+                    ),
+                  if (selected != null && selected.canEdit)
+                    TextButton(
+                      key: ValueKey('next-${stage.name}-edit'),
+                      onPressed: _busy ? null : () => _edit(state, stage, selected),
+                      child: Text(l.edit),
+                    ),
+                  if (selected != null && state.canDelete(selected))
+                    TextButton(
+                      key: ValueKey('next-${stage.name}-delete'),
+                      onPressed: _busy ? null : () => _delete(state, selected),
+                      child: Text(l.delete),
+                    ),
+                ],
               ),
             ] else
               Text(pairedSettingsLabel(context, 'processingServerManaged')),
@@ -198,7 +242,7 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
           Text(widget.serverLabel, style: Theme.of(context).textTheme.titleMedium),
           if (_busy) const LinearProgressIndicator(),
           if (_failure case final failure?) ...[
-            Text(_problem(context, failure)),
+            Text(processingFailureLabel(context, failure)),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton(onPressed: _busy ? null : _refresh, child: Text(l.refresh)),

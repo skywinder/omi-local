@@ -15,10 +15,13 @@ same Local audio journal source and upload receipt protocol.
 
 Use current upstream Flutter for the product UI and the paired Local server for
 recordings and processing. Keep the established Local app available during the
-transition. Selective backports still suit a small standalone fix such as an
-atomic index write. Between the October 28 and November 24 original revisions,
-1,250 files changed under `app/`. Copying each new screen and its providers into
-the September snapshot would also give Local ownership of their future fixes.
+transition and use it for urgent fixes to the current capture workflow. A
+self-contained widget or bug fix is cheaper to backport when its data and tests
+already exist in Local. Product features that span screens, models and state are
+cheaper to keep current in Next. Between the October 28 and November 24 original
+revisions, 1,250 files changed under `app/`. Even the subsequent pin update from
+`4ff5502` to `ba4d7ac` touched 114 files there. Next accepted that update through
+its pinned source, compatibility checks and a separately signed iPhone build.
 
 At the detail milestone, seventeen upstream Dart files were imported directly
 by the Next overlay. Seven of those
@@ -49,13 +52,31 @@ Chat about one recording needs a source-scoped transcript, a selected model,
 and an answer linked to the source. A summary generator alone provides none of
 the chat session or citation contract.
 
+Keep the connection-specific state and authorization in the paired client.
+Give each enabled upstream provider the data operations it needs through a
+constructor or an adapter. The original's `createProductionConversationProvider`
+accepts a custom `ApiSend` and signed-in predicate, a candidate for list and
+detail. The list provider's search, cache and account callbacks also need to
+follow pairing identity when that provider is enabled. Capture remains on the
+shared Local journal, with live preview as a separate stream. For provider
+settings, status and future product screens, use paired server capabilities to
+decide which actions to offer. A missing capability keeps the rest of the archive
+usable. Changing the default HTTP base would leave account identity, side
+effects and state semantics spread across upstream providers and native startup.
+
+Close the capture and replay acceptance gates before switching everyday use to
+Next. Match saved server selection and status with Local. Then ship archive
+search and a source-linked conversation assistant as separate features. Connect
+Home v3 once Local can represent a recording in progress, a queued upload and
+a server-side finish with their distinct identifiers and transitions.
+
 Evaluate each upstream update with a clean materialization, the server
 contracts for enabled features, and the same screen on an older paired server.
 Changes to Flutter, native startup, or BLE need their own verification.
 Repeated edits inside upstream widgets or new Next-only versions of whole
 product pages signal that the integration boundary needs to move into their
-provider or API. Exercise that boundary on a second upstream revision before
-claiming the update procedure is proven.
+provider or API. Keep the pin and any upstream compatibility edits reviewable
+together. Run this check again as each product feature adds new dependencies.
 
 ## Prepare and verify
 
@@ -128,8 +149,13 @@ and translation cards show the configurations already published on the server.
 Select a prepared profile and confirm while capture is idle. Confirmation
 uses the registry revision read by the screen and waits for the effective
 profile returned by the server. After a conflict or an uncertain result,
-refresh before confirming again. Create, edit and probe profile drafts through
-the Local processing library.
+refresh before confirming again. Next can create, edit and test drafts for
+external Live STT, OpenAI-compatible final STT and Mycelia diarization, and list
+available models for final STT. The connection test reads provider metadata.
+Saving a draft leaves the effective profile in place. A saved credential can
+be replaced or removed without displaying its value. Editable inactive drafts
+can be deleted after confirmation. Native model paths and summary and
+translation drafts remain server-managed.
 
 ## Updating the original
 
@@ -206,6 +232,15 @@ screen. The launcher reused that exact package and CoreDevice confirmed its
 installation and launch on the physical iPhone. The device inventory showed
 both apps, and the running Next process matched its own installed bundle.
 
+The processing draft editor passed the Next analyzer and all 34 Flutter tests.
+The focused harness and paired-auth Python suite passed all 70 tests. These
+cover separate save and activation, key handling, the STT model catalogue, and
+deletion of an inactive draft with the current revision. Read-only Bastion
+checks confirmed the registry and the deployed routes. The new editor's iOS
+build was blocked by insufficient stable free space on the Mac, with less
+than 1 GiB available during verification. Device acceptance and writes to a
+test profile on a running server remain open.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
@@ -213,7 +248,7 @@ both apps, and the running Next process matched its own installed bundle.
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles and displays the effective summary/translation configuration. Draft editing, silence tuning and the live speaker limit remain separate work. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages network-adapter drafts and displays the effective summary/translation configuration. Silence tuning and the live speaker limit remain separate work. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

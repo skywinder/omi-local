@@ -16,6 +16,8 @@ KEYS = (
     'localProcessingHelp',
     'localProcessingUnsupported',
     'localProcessingPending',
+    'localProcessingProbe',
+    'localProcessingKeyHelp',
     'providerMisconfigured',
     'providerUnavailable',
 )
@@ -25,15 +27,27 @@ KEYS = (
 PROCESSING_MESSAGES = {
     'en': {
         'processingPublished': 'Active shows the profile published on the server. Live Transcript shows whether speech recognition is running.',
-        'processingConflict': 'The server rejected the change because the settings changed or processing is busy. Refresh before applying another profile.',
-        'processingIndeterminate': 'The server may have applied the change. Refresh to check the active profile.',
+        'processingConflict': 'Settings changed or the server is busy. Refresh before trying again.',
+        'processingIndeterminate': 'The server may have applied the change. Refresh to verify the result.',
         'processingServerManaged': 'Manage this stage in the server’s web library.',
+        'processingKeyChanged': 'This address belongs to a different server. Enter its key or choose to remove the saved key.',
+        'processingMinSpeakers': 'Minimum speakers',
+        'processingMaxSpeakers': 'Maximum speakers',
+        'processingProbeReady': 'Connection test passed.',
+        'processingNoModels': 'The server listed no models. Enter the model name manually.',
+        'processingLanguageCode': 'Enter auto or a two- or three-letter language code.',
     },
     'ru': {
         'processingPublished': 'Активный профиль выбран на сервере. Работу распознавания речи можно проверить на экране «Живая расшифровка».',
-        'processingConflict': 'Сервер отклонил запрос из-за изменения настроек или текущей обработки. Обновите страницу перед следующим переключением.',
-        'processingIndeterminate': 'Сервер мог применить изменение. Обновите страницу, чтобы проверить активный профиль.',
+        'processingConflict': 'Настройки изменились или сервер занят. Обновите страницу перед повторной попыткой.',
+        'processingIndeterminate': 'Сервер мог применить изменение. Обновите страницу и проверьте результат.',
         'processingServerManaged': 'Настройки этого этапа доступны в веб-библиотеке сервера.',
+        'processingKeyChanged': 'Указан другой сервер. Введите его ключ или выберите удаление сохранённого ключа.',
+        'processingMinSpeakers': 'Минимум говорящих',
+        'processingMaxSpeakers': 'Максимум говорящих',
+        'processingProbeReady': 'Связь с провайдером проверена.',
+        'processingNoModels': 'Сервер не вернул список моделей. Введите название модели вручную.',
+        'processingLanguageCode': 'Введите auto или код языка из двух или трёх строчных букв.',
     },
 }
 

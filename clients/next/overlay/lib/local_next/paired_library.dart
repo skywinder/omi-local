@@ -120,6 +120,7 @@ class PairedLibrary {
     Map<String, String>? query,
     Uint8List? body,
     ContentType? bodyType,
+    String? method,
     Duration? overallTimeout,
     Object Function(int status)? statusFailure,
   }) async {
@@ -127,7 +128,7 @@ class PairedLibrary {
     final uri = origin.replace(path: path, queryParameters: query);
     final client = _directClient();
     Future<T> send() async {
-      final req = await client.openUrl(body == null ? 'GET' : 'POST', uri).timeout(_deadline);
+      final req = await client.openUrl(method ?? (body == null ? 'GET' : 'POST'), uri).timeout(_deadline);
       req.followRedirects = false;
       req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_key');
       if (body != null) {
@@ -196,31 +197,77 @@ class PairedLibrary {
   NextProcessingClient processingClient({bool Function()? permitsActivation}) => NextProcessingClient(
     read: readProcessing,
     activatePrepared: activateProcessing,
+    draftRequest: requestProcessingDraft,
     permitsActivation: permitsActivation,
   );
 
-  Future<Map<String, dynamic>> readProcessing() => _processing();
+  Future<Map<String, dynamic>> readProcessing() => _processing('');
 
-  Future<Map<String, dynamic>> activateProcessing(Map<String, dynamic> body) => _processing(body: body);
+  Future<Map<String, dynamic>> activateProcessing(Map<String, dynamic> body) => _processing(
+    '/activate',
+    body: body,
+    writes: true,
+    profileBound: true,
+    // The paired router allows preparation of a local provider for up to 700 seconds.
+    timeout: const Duration(seconds: 720),
+  );
 
-  Future<Map<String, dynamic>> _processing({Map<String, dynamic>? body}) async {
-    final activating = body != null;
+  Future<Map<String, dynamic>> requestProcessingDraft(
+    NextDraftOperation operation,
+    Map<String, dynamic> body,
+    String? profileId,
+  ) async {
+    if (operation == NextDraftOperation.delete) {
+      final revision = body['revision'];
+      if (profileId == null ||
+          !RegExp(r'^[a-zA-Z0-9_-]{1,64}$').hasMatch(profileId) ||
+          body.length != 1 ||
+          revision is! int ||
+          revision < 0) {
+        throw NextProcessingFailure.invalid;
+      }
+      return _processing(
+        '/profiles/$profileId',
+        method: 'DELETE',
+        body: body,
+        writes: true,
+        profileBound: true,
+        timeout: const Duration(seconds: 60),
+      );
+    }
+    if (profileId != null) throw NextProcessingFailure.invalid;
+    return _processing(
+      '/${operation.name}',
+      body: body,
+      writes: operation == NextDraftOperation.save,
+      timeout: const Duration(seconds: 60),
+    );
+  }
+
+  Future<Map<String, dynamic>> _processing(
+    String suffix, {
+    Map<String, dynamic>? body,
+    String? method,
+    bool writes = false,
+    bool profileBound = false,
+    Duration timeout = _deadline,
+  }) async {
     try {
       final payload = body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body)));
       if (payload != null && payload.length > 64 * 1024) throw NextProcessingFailure.invalid;
       final data = await _request(
-        activating ? '/v1/local/processing/activate' : '/v1/local/processing',
+        '/v1/local/processing$suffix',
         (response) => _json(response, 2 * 1024 * 1024),
         body: payload,
         bodyType: ContentType.json,
-        // The paired router allows preparation of a local provider for up to 700 seconds.
-        overallTimeout: activating ? const Duration(seconds: 720) : _deadline,
+        method: method,
+        overallTimeout: timeout,
         statusFailure: (status) => switch (status) {
-          404 when activating => NextProcessingFailure.conflict,
+          404 when profileBound => NextProcessingFailure.conflict,
           404 || 405 || 501 => NextProcessingFailure.unsupported,
           409 => NextProcessingFailure.conflict,
           400 || 403 || 413 || 422 => NextProcessingFailure.invalid,
-          _ => activating ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable,
+          _ => writes ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable,
         },
       );
       if (_closed) throw NextProcessingFailure.unauthorized;
@@ -230,7 +277,7 @@ class PairedLibrary {
       rethrow;
     } catch (error) {
       if (_closed || error == LibraryFailure.key) throw NextProcessingFailure.unauthorized;
-      throw activating ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable;
+      throw writes ? NextProcessingFailure.indeterminate : NextProcessingFailure.unavailable;
     }
   }
 

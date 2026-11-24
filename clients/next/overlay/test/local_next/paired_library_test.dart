@@ -223,4 +223,57 @@ void main() {
     await expectLater(library.readProcessing(), throwsA(NextProcessingFailure.unauthorized));
     expect(seen, hasLength(4));
   });
+
+  test('processing drafts send exact JSON methods, keep redirects local and classify lost writes', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final received = <({String method, String path, Object? body})>[];
+    server.listen((request) async {
+      final response = request.response;
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      expect(request.headers.contentType?.mimeType, 'application/json');
+      expect(request.contentLength, greaterThan(0));
+      final body = jsonDecode(await utf8.decoder.bind(request).join());
+      received.add((method: request.method, path: request.uri.path, body: body));
+      if (request.uri.path.endsWith('/probe')) {
+        await response.redirect(Uri.parse('/untrusted'), status: HttpStatus.temporaryRedirect);
+        return;
+      }
+      response.statusCode = HttpStatus.serviceUnavailable;
+      response.write(jsonEncode({'outcome': 'indeterminate'}));
+      await response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    final draft = {
+      'profile': {'name': 'Fixture'},
+      'api_key': 'synthetic-provider-key',
+    };
+    await expectLater(
+      library.requestProcessingDraft(NextDraftOperation.probe, draft, null),
+      throwsA(NextProcessingFailure.unavailable),
+    );
+    await expectLater(
+      library.requestProcessingDraft(NextDraftOperation.save, {...draft, 'revision': 8}, null),
+      throwsA(NextProcessingFailure.indeterminate),
+    );
+    await expectLater(
+      library.requestProcessingDraft(NextDraftOperation.delete, {'revision': 8}, 'bad/id'),
+      throwsA(NextProcessingFailure.invalid),
+    );
+    await expectLater(
+      library.requestProcessingDraft(NextDraftOperation.delete, {'revision': 8}, 'prepared-1'),
+      throwsA(NextProcessingFailure.indeterminate),
+    );
+    expect(received.map((event) => (event.method, event.path)), [
+      ('POST', '/v1/local/processing/probe'),
+      ('POST', '/v1/local/processing/save'),
+      ('DELETE', '/v1/local/processing/profiles/prepared-1'),
+    ]);
+    expect(received.map((event) => event.body), [
+      draft,
+      {...draft, 'revision': 8},
+      {'revision': 8},
+    ]);
+  });
 }
