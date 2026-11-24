@@ -635,6 +635,14 @@ with a fixture recognizer, Firestore import and range playback all passed.
 The current Live transcript still covers the capture session. Resetting its
 display at a saved conversation boundary and physical acceptance remain open.
 
+The separate `Profile-dev` package from `7c64a8d` passed signature,
+provisioning and entitlement verification. Its executable SHA-256 begins
+with `cbf5a434c37ed460`. Signed rollback `5c2f56b` was verified separately.
+The offline and legacy transport gates passed before the build. Device
+installation is blocked until a paired iPhone becomes available to Xcode.
+On the device, verify capture through Stop and the saved archive in version 2,
+then repeat with silence splitting on a paired server with grouping enabled.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
