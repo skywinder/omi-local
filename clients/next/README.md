@@ -85,6 +85,23 @@ python3 clients/next/iphone.py /path/to/omi --install
 Use `--simulator --install` for a simulator. A device install requires a paired,
 available iPhone and a provisioning profile for the Next bundle.
 
+## Recording from CV1
+
+Pair Next with your Local server, open **Connect Device**, and choose the
+wearable. After the link is ready, start from the CV1 button or the recording
+control in Next. A single press starts or stops. A double press during capture
+publishes the saved prefix and keeps listening. Mute pauses audio until resumed.
+The app shows link state separately from the first audio written to disk.
+
+Switching between CV1 and the phone microphone seals the previous source first.
+A link reconnect preserves current Start, Stop or Mute intent during this app
+run. Next remembers the accessory across launches. Capture starts idle after a
+cold launch. It can reconnect without prompting when Bluetooth permission was
+previously granted. The new bridge uses CoreBluetooth read and notification
+operations for the pinned CV1 services.
+Recovery from the wearable's offline ring has separate custody requirements.
+See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
+
 ## Updating the original
 
 Fetch the original repository, inspect changes under `app/` since the recorded
@@ -124,13 +141,19 @@ The updated detail client at `f459b5b` also built successfully in Xcode for the
 simulator. Its bundle identity and signature passed attestation. The installed
 simulator app used for the pairing-form observation was the earlier build.
 
+After CV1 integration, the Next analyzer and all 17 Flutter tests passed. These
+include rejected device selection, button-driven handoff from a held phone
+seal, retired subscription events, Opus custody and link recovery. The Local
+offline suite and all 478 transport tests passed. The native Swift tests verify
+button decoding, subscription fencing and Runner identity.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Pinned November 24 Flutter app, independent Runner identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
 | Pairing and library | Dedicated paired startup, conversation list, detail, transcript and pending rows. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
-| CV1 | The shared Dart Opus assembler in `213bfb1` passes fragmentation, counter-wrap and loss tests. Libopus decoded the assembled 18-byte MTU-23 fixture. Pending native registration and connection, button/Stop/mute intent, reconnect and input arbitration. The wire has no end marker, so an unconfirmed last packet is discarded on stop or loss. Test this behavior on the device before enabling capture. |
+| CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
 | Processing | Existing server owns Live/final STT, diarization, summaries and translation. Port the client status, provider selection and live transcript/translation controls. |
 | Upstream product screens | Enable conversation search and source-linked chat first, then editing/folders, named speakers, tasks, daily recaps, memory and integrations with corresponding server modules. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. Reconcile `sky-dev` at `a3de2ab` (onboarding and processing), `origin/main` at `329796d`, and the November live-recording and summary repair line through `f1563e2`. Confirm the installed build separately. |
