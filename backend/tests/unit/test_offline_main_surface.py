@@ -199,6 +199,7 @@ print(json.dumps({
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',
+        '/v1/local/processing/summary-settings',
         '/v1/local/processing/save',
         '/v1/local/processing/probe',
         '/v1/local/processing/models',

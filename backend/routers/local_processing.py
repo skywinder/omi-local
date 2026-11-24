@@ -50,7 +50,7 @@ def error(message: str, status: int, *, outcome: str | None = None) -> JSONRespo
                         status_code=status, headers={'Cache-Control': 'no-store'})
 
 
-async def forward(request: Request, suffix: str = '') -> JSONResponse:
+async def forward(request: Request, suffix: str = '', *, request_limit: int = REQUEST_LIMIT) -> JSONResponse:
     origin = library_origin()
     body = None
     if request.method != 'GET':
@@ -59,12 +59,12 @@ async def forward(request: Request, suffix: str = '') -> JSONResponse:
             return error('Ожидается запрос JSON.', 400)
         data = bytearray()
         try:
-            if int(request.headers.get('content-length', '0')) > REQUEST_LIMIT:
+            if int(request.headers.get('content-length', '0')) > request_limit:
                 return error('Запрос настроек слишком большой.', 413)
             async with asyncio.timeout(15):
                 async for chunk in request.stream():
                     data.extend(chunk)
-                    if len(data) > REQUEST_LIMIT:
+                    if len(data) > request_limit:
                         return error('Запрос настроек слишком большой.', 413)
         except (TimeoutError, ValueError):
             return error('Не удалось прочитать запрос настроек.', 400)
@@ -112,6 +112,12 @@ async def read_processing(request: Request) -> JSONResponse:
 @router.get('/v1/local/processing/live-tuning', dependencies=[Depends(require_processing)])
 async def read_live_tuning(request: Request) -> JSONResponse:
     return await forward(request, '/live-tuning')
+
+
+@router.get('/v1/local/processing/summary-settings', dependencies=[Depends(require_processing)])
+@router.post('/v1/local/processing/summary-settings', dependencies=[Depends(require_processing)])
+async def summary_settings(request: Request) -> JSONResponse:
+    return await forward(request, '/summary-settings', request_limit=1024 * 1024)
 
 
 @router.post('/v1/local/processing/live-tuning', dependencies=[Depends(require_processing)])

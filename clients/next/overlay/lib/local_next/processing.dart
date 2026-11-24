@@ -302,6 +302,7 @@ class NextProcessingClient {
     required Future<Map<String, dynamic>> Function() read,
     required Future<Map<String, dynamic>> Function(Map<String, dynamic>) activatePrepared,
     Future<Map<String, dynamic>> Function(NextDraftOperation, Map<String, dynamic>, String?)? draftRequest,
+    this.summaryTemplatesRequest,
     this.permitsActivation,
   }) : _read = read,
        _activate = activatePrepared,
@@ -311,6 +312,7 @@ class NextProcessingClient {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>) _activate;
   final Future<Map<String, dynamic>> Function(NextDraftOperation, Map<String, dynamic>, String?)? _draftRequest;
   final bool Function()? permitsActivation;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>?)? summaryTemplatesRequest;
   NextProcessingSettings? _confirmed;
   Future<NextProcessingSettings>? _reading;
   bool _writing = false;

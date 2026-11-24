@@ -47,6 +47,8 @@ class Settings:
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         if method == 'POST':
+            if path == '/api/settings/summary-settings':
+                return self.registry.summary_settings(body)
             if path == '/api/settings/live-tuning':
                 return self.live_tuning(body)
             if path == '/api/settings/save':
@@ -105,6 +107,8 @@ class Processing(Settings):
         if not isinstance(body, dict):
             raise SettingsError('Ожидается объект настроек.')
         operation = path.removeprefix('/api/processing/')
+        if method == 'POST' and operation == 'summary-settings':
+            return self.registry.summary_settings(body)
         if method == 'POST' and operation in {'recording-chat', 'archive-chat'}:
             return answer_recording(self.registry, body, archive=operation == 'archive-chat')
         if method == 'POST' and operation == 'task-suggestions':

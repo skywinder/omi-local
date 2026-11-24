@@ -54,6 +54,73 @@ Future<void> _selectLive(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('shared summary templates can be created with an explicit default and saved against their revision', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final recording = ValueNotifier(false);
+    addTearDown(recording.dispose);
+    final writes = <Map<String, dynamic>>[];
+    final client = NextProcessingClient(
+      read: () async => _state(),
+      activatePrepared: (_) async => throw StateError('Unexpected provider change'),
+      summaryTemplatesRequest: (body) async {
+        if (body != null) {
+          writes.add(body);
+          if (writes.length == 1) throw NextProcessingFailure.conflict;
+          return {...body, 'revision': 11};
+        }
+        return {
+          'revision': writes.isEmpty ? 9 : 10,
+          'default_template_id': 'standard',
+          'templates': [
+            {'id': 'standard', 'name': 'Standard recap', 'prompt': 'Summarize accurately.'},
+          ],
+        };
+      },
+    );
+    await _open(tester, client, recording);
+    final link = find.text('Summary Template');
+    await tester.scrollUntilVisible(link, 150);
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ListTile, 'Standard recap'), findsOneWidget);
+    final fields = find.byType(TextField);
+    final save = find.widgetWithText(FilledButton, 'Save Changes');
+    Future<void> enterDraft() async {
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      await tester.enterText(fields.first, 'Decisions');
+      await tester.enterText(fields.last, 'List decisions and owners.');
+      await tester.ensureVisible(find.byType(SwitchListTile));
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(save);
+    }
+
+    await enterDraft();
+    expect(writes, isEmpty);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(writes.single['revision'], 9);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add'));
+    await enterDraft();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    final saved = writes.last;
+    expect(saved['revision'], 10);
+    final row = (saved['templates'] as List).last as Map;
+    expect(row['name'], 'Decisions');
+    expect(row['prompt'], 'List decisions and owners.');
+    expect(saved['default_template_id'], row['id']);
+  });
+
   testWidgets('prepared selection remains a draft until recording stops and the owner explicitly confirms', (
     tester,
   ) async {

@@ -29,6 +29,11 @@ ENGINE_FIELDS = {'provider_url', 'model', 'language', 'compute_type', 'batch_siz
 SPEAKER_FIELDS = {'speaker_model', 'speaker_python', 'speaker_device', 'speaker_threads', 'speaker_count', 'speaker_revision'}
 LIVE_FIELDS = {'url', 'python', 'model_dir', 'chunk_seconds', 'language', 'diarization'}
 NAME_LIMIT = 100
+DEFAULT_SUMMARY_TEMPLATE = {
+    'id': 'standard',
+    'name': 'Стандартное резюме',
+    'prompt': 'Summarize the recording accurately. Preserve decisions, important facts and explicit action items.',
+}
 
 
 class SettingsError(ValueError):
@@ -36,6 +41,31 @@ class SettingsError(ValueError):
         super().__init__(message)
         self.status = status
         self.field = field
+
+
+def summary_templates(state):
+    return state.get('summary_templates', {
+        'default_template_id': DEFAULT_SUMMARY_TEMPLATE['id'],
+        'templates': [DEFAULT_SUMMARY_TEMPLATE],
+    })
+
+
+def validate_summary_templates(templates, default):
+    if not isinstance(templates, list) or not 1 <= len(templates) <= 24:
+        raise SettingsError('Добавьте от 1 до 24 шаблонов.')
+    ids = set()
+    for item in templates:
+        if (not isinstance(item, dict) or set(item) != {'id', 'name', 'prompt'}
+                or not all(isinstance(value, str) for value in item.values())
+                or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', item['id']) or item['id'] in ids
+                or not item['name'].strip() or not item['name'].isprintable() or len(item['name']) > 100
+                or not item['prompt'].strip() or len(item['prompt']) > 8000
+                or any(ord(char) < 32 and char not in '\n\r\t' or 0xD800 <= ord(char) <= 0xDFFF
+                       for char in item['prompt'])):
+            raise SettingsError('Проверьте название и текст шаблона.')
+        ids.add(item['id'])
+    if not isinstance(default, str) or default not in ids:
+        raise SettingsError('Выберите существующий шаблон по умолчанию.')
 
 
 def read_json(path, default=None):
@@ -296,8 +326,41 @@ class Registry:
         return self._translation(state) if stage == 'translation' else deepcopy(state['effective'].get(stage))
 
     def pipeline(self):
-        effective = self._load()['effective']
-        return {stage: deepcopy(effective.get(stage)) for stage in ('stt', 'diarization', 'summary')}
+        state = self._load()
+        pipeline = {stage: deepcopy(state['effective'].get(stage)) for stage in ('stt', 'diarization', 'summary')}
+        if pipeline['summary']:
+            config = summary_templates(state)
+            template = next(item for item in config['templates'] if item['id'] == config['default_template_id'])
+            if template != DEFAULT_SUMMARY_TEMPLATE:
+                pipeline['summary']['template'] = deepcopy(template)
+        return pipeline
+
+    def summary_settings(self, body=None):
+        if body is None:
+            return self._summary_settings(self._load())
+        templates, default = body.get('templates'), body.get('default_template_id')
+        validate_summary_templates(templates, default)
+        with self._edit(body.get('revision')) as state:
+            state['summary_templates'] = {'templates': templates, 'default_template_id': default}
+            state['revision'] += 1
+            atomic_json(self.path, state)
+            return self._summary_settings(state)
+
+    @staticmethod
+    def _summary_settings(state):
+        active = state['effective'].get('summary')
+        profiles = ([active] if active else []) + [
+            profile for profile in state['profiles']
+            if profile['stage'] == 'summary' and (not active or profile['id'] != active['id'])
+        ]
+        return {
+            **summary_templates(state), 'revision': state['revision'],
+            'profiles': [
+                {'id': profile['id'], 'name': profile['name'], 'model': profile['settings']['model']}
+                for profile in profiles
+            ],
+            'default_profile_id': active['id'] if active else None,
+        }
 
     def key(self, snapshot):
         ref = snapshot.get('credential_ref') if snapshot else None

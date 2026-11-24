@@ -4,6 +4,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'processing.dart';
 import 'processing_editor.dart';
 import 'settings_labels.dart';
+import 'summary_templates_page.dart';
 
 class LocalNextProcessingPage extends StatefulWidget {
   const LocalNextProcessingPage({
@@ -255,6 +256,19 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
             const SizedBox(height: 8),
             for (final stage in NextProcessingStage.values)
               if (state.supports(stage)) _stage(context, state, stage),
+            if (widget.client.summaryTemplatesRequest case final request?)
+              ListTile(
+                title: Text(l.summaryTemplate),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy
+                    ? null
+                    : () async {
+                        await Navigator.of(
+                          context,
+                        ).push<void>(MaterialPageRoute(builder: (_) => SummaryTemplatesPage(request: request)));
+                        if (mounted) await _refresh();
+                      },
+              ),
           ],
         ],
       ),

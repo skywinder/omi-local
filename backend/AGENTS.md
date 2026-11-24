@@ -78,6 +78,8 @@ the create transaction. A task suggestion uses bounded transcript excerpts with
 the confirmed summary provider and does not write a task. Accepting a suggestion
 compares its source text digest and uses the original recording revision in the
 create transaction. The paired task path has no hosted task side effects.
+Paired summary template settings use the harness's shared provider revision.
+The backend only forwards the catalog to the configured loopback library.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

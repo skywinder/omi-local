@@ -285,6 +285,35 @@ def phone_request(cfg, operation='', **kwargs):
                         overrides={'X-Omiloc-Request': 'processing'}, **kwargs)
 
 
+def test_shared_summary_catalog_preserves_drafts_and_pins_only_the_applied_default(cfg):
+    registry = Registry(cfg)
+    assert http_request(cfg, '/api/processing/summary-settings', method='GET')[0] == 403
+    code, initial = phone_request(cfg, '/summary-settings', method='GET')
+    assert code == 200 and initial['revision'] == 0 and initial['default_template_id'] == 'standard'
+    assert initial['default_profile_id'] is None
+    prepared = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-summary-key'})
+    identifier = prepared['profiles'][-1]['id']
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': identifier},
+                      prepare=lambda _, publish: publish())
+    before = registry.pipeline()['summary']
+    assert 'template' not in before
+    custom = {'id': 'decisions', 'name': 'Decisions', 'prompt': 'List decisions.\nInclude owners.'}
+    body = {'revision': 2, 'templates': [*initial['templates'], custom], 'default_template_id': 'standard'}
+    status, result = phone_request(cfg, '/summary-settings', payload=body)
+    assert status == 200 and result['revision'] == 3
+    assert result['default_profile_id'] == identifier
+    assert 'fixture-summary-key' not in json.dumps(result)
+    assert registry.pipeline()['summary'] == before
+    assert phone_request(cfg, '/summary-settings', payload=body)[0] == 409
+    updated = {**body, 'revision': 3, 'default_template_id': custom['id']}
+    assert phone_request(cfg, '/summary-settings', payload={**updated, 'default_template_id': 'missing'})[0] == 400
+    assert phone_request(cfg, '/summary-settings', payload=updated)[0] == 200
+    after = registry.pipeline()['summary']
+    assert after['template'] == custom and registry.key(after) == 'fixture-summary-key'
+    assert registry.snapshot('summary') == before
+    assert 'template' not in before
+
+
 def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkeypatch):
     from dev_harness import local_recording_chat
 

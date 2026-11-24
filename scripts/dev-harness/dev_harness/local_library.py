@@ -374,7 +374,8 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 return self.send_json({'error': 'Настройки недоступны.'}, 503)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                if (not 0 < length <= 64 * 1024 or self.headers.get('Transfer-Encoding')
+                limit = 1024 * 1024 if self.path in ('/api/processing/summary-settings', '/api/settings/summary-settings') else 64 * 1024
+                if (not 0 < length <= limit or self.headers.get('Transfer-Encoding')
                         or self.headers.get_content_type() != 'application/json'):
                     raise SettingsError('Некорректный запрос настроек.')
                 if hasattr(self.connection, 'settimeout'):
@@ -458,6 +459,15 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json(runtime.snapshot())
             elif path == '/api/settings' and settings is not None:
                 self.send_json(settings.read())
+            elif path in ('/api/settings/summary-settings', '/api/processing/summary-settings') and settings is not None:
+                phone = path.startswith('/api/processing/')
+                if phone and (not self.allowed(request='processing') or not self.processing_allowed()):
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(settings.registry.summary_settings())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
             elif path == '/api/settings/live-tuning' and settings is not None:
                 from .local_providers import SettingsError
                 try:

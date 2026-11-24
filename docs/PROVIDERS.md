@@ -160,6 +160,13 @@ and return an empty answer; set **Model reasoning → Off** on the card, which a
 `chat_template_kwargs: {"enable_thinking": false}` to the request. Leave the
 default for servers that reject unknown fields.
 
+In Next, open **Processing → Summary Template** to add or edit a named prompt
+and select the default. The paired server uses the same revisioned catalog as
+the newer Omi Local client. The default is saved with each new processing job
+when its provider profile is selected. Changing the catalog does not rerun
+existing recordings or change the prompt of a job that already has a profile.
+The catalog can be edited before applying a summary provider.
+
 ## Live translation
 
 Translation uses the connected server's active **Summarization** model by default,

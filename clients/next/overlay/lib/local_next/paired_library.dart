@@ -301,10 +301,14 @@ class PairedLibrary {
     read: readProcessing,
     activatePrepared: activateProcessing,
     draftRequest: requestProcessingDraft,
+    summaryTemplatesRequest: requestSummaryTemplates,
     permitsActivation: permitsActivation,
   );
 
   Future<Map<String, dynamic>> readProcessing() => _processing('');
+
+  Future<Map<String, dynamic>> requestSummaryTemplates(Map<String, dynamic>? body) =>
+      _processing('/summary-settings', body: body, writes: body != null, payloadLimit: 1024 * 1024);
 
   Future<({int revision, int speakers})?> readLiveTuning() async {
     try {
@@ -398,10 +402,11 @@ class PairedLibrary {
     bool writes = false,
     bool profileBound = false,
     Duration timeout = _deadline,
+    int payloadLimit = 64 * 1024,
   }) async {
     try {
       final payload = body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body)));
-      if (payload != null && payload.length > 64 * 1024) throw NextProcessingFailure.invalid;
+      if (payload != null && payload.length > payloadLimit) throw NextProcessingFailure.invalid;
       final data = await _request(
         '/v1/local/processing$suffix',
         (response) => _json(response, 2 * 1024 * 1024),

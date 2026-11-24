@@ -146,6 +146,14 @@ Next refreshes diagnostics while the screen is visible in the foreground.
 Older servers without the endpoint show an unavailable-diagnostics state.
 Polling ends when the screen closes and resumes when foreground access returns.
 
+## Summary templates
+
+Open **Processing → Summary Template** to add or edit a named prompt. Enable
+**Use for new recordings** to make it the default when the server snapshots the
+applied summary provider for future jobs. If another client saved in the
+meantime, refresh before editing the shared catalog again. The editor works
+with Omi Local servers that implement the same summary settings route.
+
 ## Archive search
 
 Open **Search conversations** in the archive. Search covers saved transcripts,
