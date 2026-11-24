@@ -316,6 +316,13 @@ backend rerun passed 170 tests. Loopback tests covered independent saved and
 current-stream limits, continued audio delivery, and refresh after an uncertain
 write. Provider acknowledgment was exercised with a simulated Live server.
 
+The signed `Profile-dev` package from `266bb45` uses `org.omilocal.next` and
+the pinned Omi revision `ba4d7ac`. Its executable SHA-256 begins with
+`b65984945ced0f6e`. The previous package `1921fd6` was preserved and rechecked
+for local rollback. The connected iPhone initially needed an unlock. After
+unlock the host still saw the iPhone on USB, but CoreDevice did not have a
+connected tunnel for installation. The signed package is ready for a retry.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
