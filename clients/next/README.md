@@ -54,12 +54,14 @@ the chat session or citation contract.
 
 Keep the connection-specific state and authorization in the paired client.
 Give each enabled upstream provider the data operations it needs through a
-constructor or an adapter. The original's `createProductionConversationProvider`
-accepts a custom `ApiSend` and signed-in predicate, a candidate for list and
-detail. The list provider's search, cache and account callbacks also need to
-follow pairing identity when that provider is enabled. Capture remains on the
-shared Local journal, with live preview as a separate stream. For provider
-settings, status and future product screens, use paired server capabilities to
+constructor or an adapter. The archive uses upstream `ConversationApi` for
+list and detail with a custom, paired `ApiSend`. Next owns paging state because
+the production `ConversationProvider` also writes its shared archive cache,
+reconciles Spotlight, and observes cloud merge notifications. The archive
+composes Omi's day headers and state tiles, with row actions limited to opening a
+recording. Capture remains on the shared Local journal, with live preview as a
+separate stream. For provider settings, status and future product screens, use
+paired server capabilities to
 decide which actions to offer. A missing capability keeps the rest of the archive
 usable. Changing the default HTTP base would leave account identity, side
 effects and state semantics spread across upstream providers and native startup.
@@ -241,10 +243,21 @@ build was blocked by insufficient stable free space on the Mac, with less
 than 1 GiB available during verification. Device acceptance and writes to a
 test profile on a running server remain open.
 
+The paired archive now uses the upstream `ConversationApi` for both reads and
+shows Omi's day headers and state tiles. List and detail keep Local recording
+metadata. Paging uses the count of consumed records and the server end marker
+when available, with an offset fallback for older servers. The paired transport
+allows only the archive's two GET routes, rejects redirects and clears the
+session on credential rejection. All 38 Next Flutter tests and the analyzer
+passed, including local-day ordering, interrupted pagination, opening details,
+malformed rows and credential revocation. The source adapters applied
+deterministically at both `4ff5502` and `ba4d7ac`. A live Bastion archive probe
+was blocked at SSH authentication, before any HTTP request.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Dedicated paired startup, conversation list, detail, transcript and pending rows. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
+| Pairing and library | Dedicated paired startup. Upstream API for paginated archive and detail, with original day headers and state tiles over Local status. Remaining Local parity includes multiple saved profiles, launch presets, and server status. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |

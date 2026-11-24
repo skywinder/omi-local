@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
@@ -19,7 +19,7 @@ class _ExistingRecording extends PairedLibrary {
   final List<Map<String, dynamic>> sections;
 
   @override
-  Future<GeneratedConversation> detail(String id) async => GeneratedConversation.fromJson({
+  Future<ServerConversation> detail(String id) async => ServerConversation.fromJson({
     'id': id,
     'created_at': '2026-01-01T00:00:00Z',
     'started_at': null,

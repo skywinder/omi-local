@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:omi/backend/schema/conversation.dart';
-import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
-import 'package:omi/backend/schema/structured.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/pages/conversation_detail/conversation_summary_selection.dart';
 import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
@@ -19,15 +17,15 @@ import 'package:path_provider/path_provider.dart';
 import 'paired_library.dart';
 import 'recording_search.dart';
 
-String recordingTitle(BuildContext context, GeneratedConversation row) => row.externalData?['local_recording'] is Map
+String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
     ? context.l10n.recording
     : row.structured.title.trim().isEmpty
     ? context.l10n.untitledConversation
     : row.structured.title;
 
-String recordingStatus(BuildContext context, GeneratedConversation row) {
-  final local = row.externalData?['local_recording'];
-  return switch (local is Map ? local['status'] : row.status) {
+String recordingStatus(BuildContext context, ServerConversation row) {
+  final local = row.externalIntegration?.localRecording;
+  return switch (local == null ? row.status.name : local['status']) {
     'failed' => context.l10n.processingFailed,
     'pending' => context.l10n.statusPending,
     'processing' => context.l10n.statusProcessing,
@@ -53,9 +51,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   AudioPlayer? player;
   Directory? temp;
   bool opening = false;
-  bool _canPlay(GeneratedConversation row) =>
+  bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
-      (row.externalData?['local_recording'] is Map || row.externalData?['local_transcript'] is Map);
+      (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
 
   Future<_RecordingDetail> _load() async => _RecordingDetail(await widget.library.detail(widget.id));
 
@@ -255,7 +253,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 class _RecordingDetail {
-  _RecordingDetail(this.row) : lines = row.transcriptSegments.map(TranscriptSegment.fromGenerated).toList() {
+  _RecordingDetail(this.row) : lines = row.transcriptSegments {
     // Some older recordings carry no segment ID or repeat one. Give those rows
     // distinct keys for the transcript viewport without changing valid citations.
     final reserved = <String, int>{};
@@ -276,18 +274,13 @@ class _RecordingDetail {
     }
   }
 
-  final GeneratedConversation row;
+  final ServerConversation row;
   final List<TranscriptSegment> lines;
   final sources = <TranscriptSegment>[];
   late final summary = ConversationSummarySelection.firstParty(
-    ServerConversation(
-      id: row.id,
-      createdAt: row.createdAt,
-      structured: Structured.fromGenerated(row.structured),
-      transcriptSegments: sources,
-    ),
+    ServerConversation(id: row.id, createdAt: row.createdAt, structured: row.structured, transcriptSegments: sources),
   );
-  bool get pending => row.externalData?['local_recording'] is Map;
+  bool get pending => row.externalIntegration?.localRecording != null;
 }
 
 class _Summary extends StatelessWidget {

@@ -58,7 +58,9 @@ void main() {
       await response.close();
     });
     final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    expect(library.isSignedIn, isFalse);
     await library.verify();
+    expect(library.isSignedIn, isTrue);
     expect(library.audioDelivery, isTrue);
     expect(library.audioPlayback, isTrue);
     final page = await library.list(0);
@@ -75,6 +77,7 @@ void main() {
     await expectLater(library.uploadPart(part, 'other pairing'), throwsA(LibraryFailure.key));
     expect(await library.uploadPart(part, library.audioOwnerId), {'stored': true});
     library.close();
+    expect(library.isSignedIn, isFalse);
     await expectLater(library.detail(id), throwsA(LibraryFailure.key));
     expect(seen, [
       '/v1/users/profile',
@@ -83,6 +86,120 @@ void main() {
       '/v1/local/conversations/$id/audio',
       '/v1/local/audio/parts',
     ]);
+  });
+
+  test('archive uses paired headers, preserves pending rows and advances the storage offset', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final offsets = <String?>[];
+    final ownership = <String?>[];
+    final pending = {
+      ...row,
+      'structured': {'title': 'Запись', 'overview': ''},
+      'status': 'processing',
+      'external_data': {
+        'local_recording': {'status': 'pending', 'duration_seconds': 12},
+      },
+    };
+    server.listen((r) async {
+      final response = r.response;
+      if (r.uri.path == '/v1/users/profile') {
+        response.write('{"uid":"alice"}');
+      } else if (r.uri.path == '/v1/conversations') {
+        offsets.add(r.uri.queryParameters['offset']);
+        ownership.add(r.headers.value('x-omi-home-ownership'));
+        if (r.headers.value(HttpHeaders.authorizationHeader) != 'Bearer $key' ||
+            r.uri.queryParameters['statuses'] != 'processing,completed,failed' ||
+            r.uri.queryParameters['include_discarded'] != 'true' ||
+            r.uri.queryParameters['limit'] != '30') {
+          response.statusCode = 403;
+        } else {
+          switch (offsets.last) {
+            case '0':
+              response.headers.set('x-omi-list-truncated', 'true'); // Older Local server.
+              response.write(
+                jsonEncode([
+                  pending,
+                  {...row, 'id': 'outside/paired/archive'},
+                ]),
+              );
+            case '2':
+              response.headers.set('x-omi-conversation-page-size', '3');
+              response.headers.set('x-omi-has-more', 'true');
+              response.write('[]');
+            case '5':
+              response.headers.set('x-omi-has-more', 'false');
+              response.headers.set('x-omi-list-truncated', 'true');
+              response.write(jsonEncode([row]));
+            case '6':
+              response.write('[{"broken":true}]');
+            case '7':
+              response.headers.set('x-omi-has-more', 'true');
+              response.write('[]');
+            default:
+              response.statusCode = 404;
+          }
+        }
+      } else {
+        response.write(jsonEncode(row)); // A stale / wrong detail response.
+      }
+      await response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    await library.verify();
+    final first = await library.list(0);
+    expect(first.rows.single.externalIntegration?.localRecording?['status'], 'pending');
+    expect(first.rows.single.structured.title, 'Запись');
+    expect((first.consumed, first.more, first.partial), (2, true, true));
+    final hidden = await library.list(first.consumed);
+    expect(hidden.rows, isEmpty);
+    expect((hidden.consumed, hidden.more, hidden.partial), (3, true, false));
+    final last = await library.list(first.consumed + hidden.consumed);
+    expect((last.consumed, last.more, last.partial), (1, false, true));
+    await expectLater(library.list(6), throwsA(LibraryFailure.malformed));
+    expect((await library.list(7)).more, isFalse);
+    expect(offsets, ['0', '2', '5', '6', '7']);
+    expect(ownership, everyElement(isNull));
+    await expectLater(library.detail('00000000-0000-4000-8000-000000000002'), throwsA(LibraryFailure.malformed));
+  });
+
+  test('archive rejects unauthenticated owners and never follows redirects or replays after 401', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final other = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    addTearDown(() => other.close(force: true));
+    var forwarded = false;
+    var reads = 0;
+    other.listen((r) {
+      forwarded = true;
+      r.response.close();
+    });
+    server.listen((r) async {
+      if (r.uri.path == '/v1/users/profile') {
+        r.response.write('{"uid":"alice"}');
+      } else if (++reads == 1) {
+        await r.response.redirect(Uri.parse('http://127.0.0.1:${other.port}/v1/conversations'));
+        return;
+      } else {
+        r.response.statusCode = 401;
+      }
+      await r.response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    var rejections = 0;
+    library.onKeyRejected = () => rejections++;
+    await expectLater(library.list(0), throwsA(LibraryFailure.key));
+    expect(reads, 0);
+    await library.verify();
+    await expectLater(library.list(0), throwsA(LibraryFailure.unavailable));
+    expect(library.isSignedIn, isTrue);
+    await expectLater(library.detail(id), throwsA(LibraryFailure.key));
+    await expectLater(library.list(0), throwsA(LibraryFailure.key));
+    expect(library.isSignedIn, isFalse);
+    expect(rejections, 1);
+    expect(reads, 2);
+    expect(forwarded, isFalse);
   });
 
   test('restored custody permits journaling but a revoked key stops upload before any audio leaves', () async {

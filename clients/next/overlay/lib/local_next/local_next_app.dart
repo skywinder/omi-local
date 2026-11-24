@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
 import 'package:omi/l10n/app_localizations.dart';
-import 'package:omi/ui/components/omi_page_states.dart';
-import 'package:omi/ui/components/omi_partial_notice.dart';
-import 'package:omi/ui/format/omi_date_format.dart';
 import 'package:omi/ui/omi_theme.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'archive.dart';
 import 'capture_panel.dart';
 import 'paired_library.dart';
 import 'processing_page.dart';
@@ -134,7 +131,7 @@ class _PairingState extends State<_Pairing> {
   @override
   Widget build(BuildContext context) {
     final paired = library;
-    if (paired != null) return _LibraryPage(key: ObjectKey(paired), library: paired, disconnect: _disconnect);
+    if (paired != null) return LocalNextLibraryPage(key: ObjectKey(paired), library: paired, disconnect: _disconnect);
     final l = context.l10n;
     return Scaffold(
       appBar: AppBar(title: const Text('Omi Local Next')),
@@ -170,147 +167,91 @@ class _PairingState extends State<_Pairing> {
   }
 }
 
-class _LibraryPage extends StatefulWidget {
-  const _LibraryPage({super.key, required this.library, required this.disconnect});
+class LocalNextLibraryPage extends StatefulWidget {
+  const LocalNextLibraryPage({super.key, required this.library, required this.disconnect});
   final PairedLibrary library;
   final Future<void> Function() disconnect;
   @override
-  State<_LibraryPage> createState() => _LibraryPageState();
+  State<LocalNextLibraryPage> createState() => _LibraryPageState();
 }
 
-class _LibraryPageState extends State<_LibraryPage> {
-  final rows = <GeneratedConversation>[];
-  bool busy = false, more = false, partial = false;
-  int offset = 0;
-  Object? failure;
+class _LibraryPageState extends State<LocalNextLibraryPage> {
+  late PairedArchiveProvider _archive;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _attach();
   }
 
-  Future<void> _load({bool append = false}) async {
-    if (busy) return;
-    setState(() {
-      busy = true;
-      failure = null;
-    });
-    try {
-      if (!widget.library.verified) {
-        await widget.library.verify();
-        if (!mounted) return;
-      }
-      final result = await widget.library.list(append ? offset : 0);
-      if (!mounted) return;
-      setState(() {
-        if (!append) {
-          rows.clear();
-          offset = 0;
-          partial = false;
-        }
-        final seen = rows.map((c) => c.id).toSet();
-        rows.addAll(result.rows.where((c) => seen.add(c.id)));
-        offset += result.consumed;
-        more = result.more;
-        partial |= result.partial;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        failure = error;
-        if (error == LibraryFailure.key) {
-          rows.clear();
-          offset = 0;
-          more = false;
-        }
-      });
-    } finally {
-      if (mounted) setState(() => busy = false);
+  void _attach() {
+    _archive = PairedArchiveProvider(widget.library)..addListener(_changed);
+    _archive.refresh();
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  void didUpdateWidget(LocalNextLibraryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.library != widget.library) {
+      _archive.dispose();
+      _attach();
     }
+  }
+
+  @override
+  void dispose() {
+    _archive.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    final error = failure;
+    final library = widget.library;
     return Scaffold(
       appBar: AppBar(
         title: Text(l.conversations),
         actions: [
-          if (!widget.library.audioDelivery)
+          if (!library.audioDelivery)
             IconButton(
               tooltip: l.processing,
               icon: const Icon(Icons.tune),
               onPressed: () {
-                final client = widget.library.processingClient();
+                final client = library.processingClient();
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => LocalNextProcessingPage(
                       client: client,
-                      serverLabel: widget.library.origin.authority,
+                      serverLabel: library.origin.authority,
                       isRecording: () => false,
                     ),
                   ),
                 );
               },
             ),
-          IconButton(tooltip: l.refresh, onPressed: busy ? null : _load, icon: const Icon(Icons.refresh)),
+          IconButton(
+            tooltip: l.refresh,
+            onPressed: _archive.busy ? null : _archive.refresh,
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(tooltip: l.disconnect, onPressed: widget.disconnect, icon: const Icon(Icons.link_off)),
         ],
       ),
       body: Column(
         children: [
-          if (widget.library.audioDelivery)
-            LocalNextCapturePanel(key: ValueKey(widget.library.audioOwnerId), library: widget.library),
+          if (library.audioDelivery) LocalNextCapturePanel(key: ValueKey(library.audioOwnerId), library: library),
           Expanded(
-            child: rows.isEmpty
-                ? busy
-                      ? const OmiLoadingState()
-                      : error != null
-                      ? OmiErrorState(message: failureText(context, error), onRetry: _load)
-                      : partial
-                      ? OmiErrorState(message: l.couldNotLoadPage, onRetry: _load)
-                      : OmiEmptyState(icon: Icons.forum_rounded, title: l.noConversationsYet)
-                : Column(
-                    children: [
-                      if (busy) const LinearProgressIndicator(),
-                      if (partial || error != null)
-                        OmiPartialNotice(
-                          onRetry: _load,
-                          message: error == null ? l.couldNotLoadPage : failureText(context, error),
-                        ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _load,
-                          child: ListView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: rows.length + (more ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index == rows.length) {
-                                return TextButton(
-                                  onPressed: busy ? null : () => _load(append: true),
-                                  child: Text(l.showMore),
-                                );
-                              }
-                              final row = rows[index];
-                              return ListTile(
-                                title: Text(recordingTitle(context, row)),
-                                subtitle: Text(
-                                  '${OmiDateFormat.of(context).dateTime((row.startedAt ?? row.createdAt).toLocal())} · ${recordingStatus(context, row)}',
-                                ),
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => RecordingPage(library: widget.library, id: row.id),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            child: PairedArchiveFeed(
+              archive: _archive,
+              errorText: failureText,
+              onOpen: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RecordingPage(library: library, id: id),
+                ),
+              ),
+            ),
           ),
         ],
       ),

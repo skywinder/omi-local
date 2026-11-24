@@ -5,7 +5,10 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:omi/backend/schema/gen/conversation_wire.g.dart';
+import 'package:http/http.dart' as http;
+import 'package:omi/backend/http/api/conversations.dart';
+import 'package:omi/backend/http/api_result.dart';
+import 'package:omi/backend/schema/conversation.dart';
 
 import 'live_preview.dart';
 import 'processing.dart';
@@ -26,6 +29,8 @@ class PairedLibrary {
   void Function()? onKeyRejected;
   bool _closed = false;
   bool verified = false;
+  bool get isSignedIn => verified && !_closed;
+  late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
   Future<void>? _checking;
   final _clients = <HttpClient>{};
   final _previews = <WebSocket>{};
@@ -123,6 +128,7 @@ class PairedLibrary {
     String? method,
     Duration? overallTimeout,
     Object Function(int status)? statusFailure,
+    bool readHttpErrors = false,
   }) async {
     if (_closed) throw LibraryFailure.key;
     final uri = origin.replace(path: path, queryParameters: query);
@@ -142,7 +148,7 @@ class PairedLibrary {
         _rejectKey();
         throw LibraryFailure.key;
       }
-      if (status != 200) throw statusFailure?.call(status) ?? LibraryFailure.unavailable;
+      if (status != 200 && !readHttpErrors) throw statusFailure?.call(status) ?? LibraryFailure.unavailable;
       return read(response);
     }
 
@@ -183,14 +189,18 @@ class PairedLibrary {
     }
   }
 
-  Future<dynamic> _json(HttpClientResponse response, int limit) async {
+  Future<Uint8List> _bytes(HttpClientResponse response, int limit) async {
+    if (response.contentLength > limit) throw LibraryFailure.malformed;
     final bytes = BytesBuilder(copy: false);
     await for (final chunk in response.timeout(_deadline)) {
       if (bytes.length + chunk.length > limit) throw LibraryFailure.malformed;
       bytes.add(chunk);
     }
-    return jsonDecode(utf8.decode(bytes.takeBytes()));
+    return bytes.takeBytes();
   }
+
+  Future<dynamic> _json(HttpClientResponse response, int limit) async =>
+      jsonDecode(utf8.decode(await _bytes(response, limit)));
 
   Future<void> verify() => _checking ??= _verify().whenComplete(() => _checking = null);
 
@@ -290,39 +300,121 @@ class PairedLibrary {
     audioPlayback = data['local_audio_playback_version'] == 1;
   }
 
-  Future<({List<GeneratedConversation> rows, int consumed, bool partial, bool more})> list(int offset) =>
-      _request('/v1/conversations', (response) async {
-        final value = await _json(response, 8 << 20);
-        if (value is! List) throw LibraryFailure.malformed;
-        final rows = <GeneratedConversation>[];
-        for (final item in value) {
-          if (item is! Map<String, dynamic>) continue;
-          try {
-            rows.add(GeneratedConversation.fromJson(item));
-          } on FormatException {
-            continue;
+  static final _archiveId = RegExp(r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$');
+  static const _archivePath = '/v1/conversations';
+  static const _archiveStatuses = [
+    ConversationStatus.processing,
+    ConversationStatus.completed,
+    ConversationStatus.failed,
+  ];
+
+  Future<http.Response> _sendArchive(ApiRequest request) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    final uri = Uri.parse(request.url);
+    if (request.method != 'GET' ||
+        request.body.isNotEmpty ||
+        uri.origin != origin.origin ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasFragment) {
+      throw LibraryFailure.address;
+    }
+    final collection = uri.path == _archivePath;
+    final query = uri.queryParameters;
+    if (collection) {
+      if (query.length != 4 ||
+          uri.queryParametersAll.values.any((values) => values.length != 1) ||
+          query['limit'] != '$pageSize' ||
+          query['include_discarded'] != 'true' ||
+          query['statuses'] != 'processing,completed,failed' ||
+          (int.tryParse(query['offset'] ?? '') ?? -1) < 0) {
+        throw LibraryFailure.malformed;
+      }
+    } else if (uri.pathSegments.length != 3 || uri.hasQuery || uri.path != _conversation(uri.pathSegments.last)) {
+      throw LibraryFailure.malformed;
+    }
+    // Only the paired origin's bearer header is supplied by _request. Hosted Home ownership,
+    // cache and other headers generated for the cloud app have no meaning on this server.
+    return _request(
+      uri.path,
+      (response) async {
+        if (response.statusCode != 200) {
+          if (response.statusCode < 300) throw LibraryFailure.unavailable;
+          return http.Response('', response.statusCode);
+        }
+        final headers = <String, String>{'content-type': 'application/json; charset=utf-8'};
+        if (collection) {
+          for (final name in ['x-omi-list-truncated', 'x-omi-conversation-page-size', 'x-omi-has-more']) {
+            final values = response.headers[name];
+            if (values != null && values.length == 1) headers[name] = values.single;
           }
         }
-        if (value.isNotEmpty && rows.isEmpty) throw LibraryFailure.malformed;
-        final truncated = response.headers.value('X-Omi-List-Truncated') == 'true';
-        return (
-          rows: rows,
-          consumed: value.length,
-          partial: truncated || rows.length != value.length,
-          more: value.isNotEmpty && (value.length >= pageSize || truncated),
-        );
-      }, query: {'limit': '$pageSize', 'offset': '$offset', 'statuses': 'processing,completed,failed'});
-
-  static String _conversation(String id) {
-    if (!RegExp(r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$').hasMatch(id)) throw LibraryFailure.malformed;
-    return '/v1/conversations/$id';
+        return http.Response.bytes(await _bytes(response, collection ? 8 << 20 : 24 << 20), 200, headers: headers);
+      },
+      query: collection ? query : null,
+      readHttpErrors: true,
+      overallTimeout: _deadline,
+    );
   }
 
-  Future<GeneratedConversation> detail(String id) => _request(_conversation(id), (response) async {
-    final value = await _json(response, 24 << 20);
-    if (value is! Map<String, dynamic> || value['id'] != id) throw LibraryFailure.malformed;
-    return GeneratedConversation.fromJson(value);
-  });
+  static LibraryFailure _archiveFailure(ApiProblem problem) => switch (problem.kind) {
+    ApiProblemKind.authTerminal || ApiProblemKind.forbidden => LibraryFailure.key,
+    ApiProblemKind.decode => LibraryFailure.malformed,
+    _ => LibraryFailure.unavailable,
+  };
+
+  Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(int offset) async {
+    if (offset < 0) throw LibraryFailure.malformed;
+    var storageCount = 0;
+    bool? hasMore;
+    final result = await _archive.list(
+      limit: pageSize,
+      offset: offset,
+      statuses: _archiveStatuses,
+      includeDiscarded: true,
+      onStorageCount: (value) => storageCount = value,
+      onPageHeaders: (headers) => hasMore = headers.hasMore,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    switch (result) {
+      case ApiFailure(:final problem):
+        throw _archiveFailure(problem);
+      case ApiSuccess(:final data, :final rejectedRows, :final truncated):
+        final rows = data.where((row) => _archiveId.hasMatch(row.id)).toList();
+        if (data.isNotEmpty && rows.isEmpty) throw LibraryFailure.malformed;
+        final received = data.length + rejectedRows;
+        if (storageCount < received || storageCount > pageSize) throw LibraryFailure.malformed;
+        return (
+          rows: rows,
+          consumed: storageCount,
+          partial: truncated || rows.length != received,
+          // Older Local servers only signal a cut-short read, without an end-of-list header.
+          more: storageCount > 0 && (hasMore ?? (storageCount >= pageSize || truncated)),
+        );
+    }
+  }
+
+  static String _conversation(String id) {
+    if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+    return '$_archivePath/$id';
+  }
+
+  Future<ServerConversation> detail(String id) async {
+    _conversation(id);
+    try {
+      final result = await _archive.byId(id);
+      if (!isSignedIn) throw LibraryFailure.key;
+      switch (result) {
+        case ApiFailure(:final problem):
+          throw _archiveFailure(problem);
+        case ApiSuccess(:final data):
+          if (data.id != id) throw LibraryFailure.malformed;
+          return data;
+      }
+    } on TypeError {
+      // Domain model normalization also rejects incompatible JSON field types.
+      throw LibraryFailure.malformed;
+    }
+  }
 
   Future<Map<String, dynamic>> uploadPart(Uint8List body, String serverId) async {
     if (serverId != audioOwnerId || _closed) throw LibraryFailure.key;
