@@ -528,9 +528,17 @@ and entitlement verification. Its executable SHA-256 begins with
 Xcode found no eligible iPhone. Physical checks require installation and the
 paired server's tasks update.
 
-Task suggestions passed through an isolated Firestore, the harness and a
-fixture model. Verification covered owner scope, provider binding, source
-validation, no writes during generation, replay and transcript edits.
+Task suggestions passed the Next analyzer and 62 tests, the offline backend
+suite, and the legacy mobile transport suite. An isolated Firestore run
+through the harness and a fixture model covered owner scope, provider binding,
+source validation, no writes during generation, replay and transcript edits.
+
+The signed `Profile-dev` package from `902cfa3` passed independent signature
+and entitlement verification. Its executable SHA-256 begins with
+`b841474757284997`. Package `0aff19a` was verified and retained for rollback.
+The Mac reported no iPhone on USB, and Xcode found no connected eligible
+iPhone. Physical verification also requires the task suggestion routes on the
+paired server and an applied summary model.
 
 | Area | Status and next verification |
 | --- | --- |
