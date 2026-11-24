@@ -638,10 +638,12 @@ display at a saved conversation boundary and physical acceptance remain open.
 The separate `Profile-dev` package from `7c64a8d` passed signature,
 provisioning and entitlement verification. Its executable SHA-256 begins
 with `cbf5a434c37ed460`. Signed rollback `5c2f56b` was verified separately.
-The offline and legacy transport gates passed before the build. Device
-installation is blocked until a paired iPhone becomes available to Xcode.
-On the device, verify capture through Stop and the saved archive in version 2,
-then repeat with silence splitting on a paired server with grouping enabled.
+The offline and legacy transport gates passed before the build. The
+attested package was installed via USB with `ios-deploy` on November 25
+and the separate bundle was confirmed present. Xcode's developer tunnel was
+unavailable. Recording acceptance is pending. On the device, verify capture
+through Stop and the saved archive in version 2, then repeat with silence
+splitting on a paired server with grouping enabled.
 
 | Area | Status and next verification |
 | --- | --- |
