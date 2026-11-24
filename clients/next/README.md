@@ -108,6 +108,9 @@ Debug-dev simulator app for `org.omilocal.next`. Its signature, identity and
 entitlements passed verification. This required reconciling the original watch
 marker, dev scheme and Pod deployment settings with the Next target. An iPhone
 build, installation and end-to-end microphone/CV1 acceptance remain open.
+On the test simulator the launcher reused the attested artifact and installation
+succeeded. The installed executable matched the original SHA-256. Startup is
+indeterminate because the launch request and independent screen observation timed out.
 
 | Area | Status and next verification |
 | --- | --- |
