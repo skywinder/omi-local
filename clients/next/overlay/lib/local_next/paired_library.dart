@@ -11,6 +11,7 @@ import 'package:omi/backend/http/api/conversations.dart';
 import 'package:omi/backend/http/api_result.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/folder.dart';
+import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -72,6 +73,7 @@ class PairedLibrary {
   bool audioPlayback = false;
   bool audioDelivery;
   bool recordingEdits = false;
+  bool speakerLabelsAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -92,6 +94,7 @@ class PairedLibrary {
     audioDelivery = false;
     audioPlayback = false;
     recordingEdits = false;
+    speakerLabelsAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -427,6 +430,7 @@ class PairedLibrary {
     audioDelivery = data['local_audio_delivery_version'] == 2;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
+    speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -588,6 +592,42 @@ class PairedLibrary {
   }
 
   static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+
+  Person _decodePerson(dynamic data) {
+    final row = data as Map<String, dynamic>;
+    final id = row['id'] as String;
+    final name = row['name'] as String;
+    if (!_folderId.hasMatch(id) || name.trim().isEmpty) throw LibraryFailure.malformed;
+    final originTime = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    return Person(
+      id: id,
+      name: name,
+      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ?? originTime,
+      updatedAt: DateTime.tryParse(row['updated_at'] as String? ?? '') ?? originTime,
+    );
+  }
+
+  Future<List<Person>> readLocalPeople() async {
+    if (!isSignedIn || !speakerLabelsAvailable) throw LibraryFailure.unavailable;
+    final people = await _request('/v1/local/people', (response) async {
+      final raw = await _json(response, 512 << 10) as List;
+      return raw.map(_decodePerson).toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    });
+    if (!isSignedIn) throw LibraryFailure.key;
+    return people;
+  }
+
+  Future<Person> createLocalPerson(String name) async {
+    if (!isSignedIn || !speakerLabelsAvailable) throw LibraryFailure.unavailable;
+    final person = await _request(
+      '/v1/local/people',
+      (response) async => _decodePerson(await _json(response, 16 << 10)),
+      body: Uint8List.fromList(utf8.encode(jsonEncode({'name': name}))),
+      bodyType: ContentType.json,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return person;
+  }
 
   Folder _decodeFolder(dynamic body) {
     final folder = Folder.fromJson(body as Map<String, dynamic>);

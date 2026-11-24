@@ -69,6 +69,9 @@ assignment as user-owned, including when the user removes the folder.
 Folder ordering compares the complete current order. Bulk moves check every
 recording before updating any. Removing a folder clears its assignments and
 deletes the folder within one Firestore transaction.
+Paired speaker labels read the owner's names without voice samples. A manual
+assignment compares each included segment ID and prior assignment in the
+recording transaction. Keep recognition and training outside this route.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

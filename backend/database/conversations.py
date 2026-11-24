@@ -1108,6 +1108,37 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
                 return 'conflict', None
         row['folder_id'] = value
         patch = {'folder_id': value, 'folder_user_set': True}
+    elif field == 'speaker':
+        segments = row.get('transcript_segments')
+        if not isinstance(segments, list):
+            return 'segment_unavailable', None
+        if value['person_id'] is not None:
+            person = owner.collection('people').document(value['person_id'])
+            if not person.get(transaction=transaction, timeout=6).exists:
+                return 'conflict', None
+        seen = set()
+        changed = []
+        for segment in segments:
+            if not isinstance(segment, dict) or segment.get('id') not in expected:
+                continue
+            identifier = segment['id']
+            if identifier in seen:
+                return 'segment_unavailable', None
+            seen.add(identifier)
+            current = {'person_id': segment.get('person_id'), 'is_user': bool(segment.get('is_user'))}
+            if current != expected[identifier] and current != value:
+                return 'conflict', None
+            if current != value:
+                changed.append(segment)
+        if len(seen) != len(expected):
+            return 'segment_unavailable', None
+        if changed:
+            for segment in changed:
+                segment.update(value, speaker_identity_status='user' if value['is_user'] else 'unknown')
+            transaction.update(ref, _prepare_conversation_for_write(
+                {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
+            ))
+        return 'ok', row
     elif field == 'segment_text':
         segments = row.get('transcript_segments')
         if not isinstance(segments, list):

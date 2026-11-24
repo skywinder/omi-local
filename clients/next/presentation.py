@@ -111,12 +111,14 @@ def apply_presentation(repository, revision, app):
         ("import 'package:omi/providers/people_provider.dart';\n", ''),
         ("import 'package:provider/provider.dart';\n", ''),
         ("import 'package:omi/utils/platform/platform_manager.dart';\n", ''),
-        ('  final bool followLatest;', '  final bool followLatest;\n  final bool showTranslationNotice;'),
-        ('    this.followLatest = false,', '    this.followLatest = false,\n    this.showTranslationNotice = true,'),
+        ('  final bool followLatest;',
+         '  final bool followLatest;\n  final bool showTranslationNotice;\n  final List<Person> localPeople;'),
+        ('    this.followLatest = false,',
+         '    this.followLatest = false,\n    this.showTranslationNotice = true,\n    this.localPeople = const [],'),
         ('_buildTranslationNotice(),', 'if (widget.showTranslationNotice) _buildTranslationNotice(),', 2),
         ('final people = context.watch<PeopleProvider?>()?.people ?? SharedPreferencesUtil().cachedPeople;',
-         'const people = <Person>[];'),
-        # No editing or hosted analytics in the read-only transcript.
+         'final people = widget.localPeople;'),
+        # Only the injected paired callback can open speaker editing.
         ('if (data.speakerId == omiSpeakerId && !data.isUser) return ExcludeSemantics(child: child);',
          'if (widget.editSegment == null || (data.speakerId == omiSpeakerId && !data.isUser)) return child;'),
         ('data.speakerId == omiSpeakerId\n                                  ? null',

@@ -13,6 +13,9 @@ class RecordingEdit {
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
   const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
+  const RecordingEdit.speaker(Map<String, Object?> this.expected, Map<String, Object?> this.value)
+    : field = 'speaker',
+      segmentId = null;
 
   final String field;
   final String? segmentId;

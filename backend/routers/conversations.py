@@ -53,7 +53,7 @@ from models.conversation_enums import ConversationStatus, ConversationVisibility
 from models.conversation_photo import ConversationPhoto
 from models.geolocation import Geolocation
 from models.app import App
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from models.transcript_segment import TranscriptSegment
 from models.other import Person
 from models.shared import StatusResponse
@@ -323,8 +323,27 @@ class LocalFolderEdit(BaseModel):
     value: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
 
 
+class LocalSpeakerAssignment(BaseModel):
+    person_id: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
+    is_user: bool = Field(strict=True)
+
+    @model_validator(mode='after')
+    def single_identity(self):
+        if self.is_user and self.person_id is not None:
+            raise ValueError('Assign either self or a person')
+        return self
+
+
+class LocalSpeakerEdit(BaseModel):
+    field: Literal['speaker']
+    expected: dict[Annotated[str, Field(min_length=1, max_length=256)], LocalSpeakerAssignment] = Field(
+        min_length=1, max_length=250,
+    )
+    value: LocalSpeakerAssignment
+
+
 LocalRecordingEdit = Annotated[
-    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit, Field(discriminator='field'),
+    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit | LocalSpeakerEdit, Field(discriminator='field'),
 ]
 
 
@@ -343,7 +362,10 @@ def patch_local_recording(
         if isinstance(edit, LocalTitleEdit):
             value = value.strip()
     status, row = conversations_db.patch_local_recording(
-        uid, conversation_id, edit.field, edit.expected, value,
+        uid, conversation_id, edit.field,
+        {key: assignment.model_dump() for key, assignment in edit.expected.items()}
+        if isinstance(edit, LocalSpeakerEdit) else edit.expected,
+        edit.value.model_dump() if isinstance(edit, LocalSpeakerEdit) else value,
         edit.segment_id if isinstance(edit, LocalSegmentEdit) else None,
     )
     if status == 'not_found':

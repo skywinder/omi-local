@@ -212,6 +212,14 @@ in the archive. Use **Select recordings** to move up to 100 recordings at a
 time. A folder with more than 450 recordings needs to be partly emptied
 before deletion so the server can commit the move and delete together.
 
+## Name a speaker
+
+Tap the speaker label in a finished transcript to choose a person, add a
+name, mark yourself or clear the label. The picker can apply the same choice
+to the matching speaker group within this recording. Names use the paired
+server's existing people collection. Assignments preserve segment text and
+timestamps. Automatic recognition and voice samples are tracked separately.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the

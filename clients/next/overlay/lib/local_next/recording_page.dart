@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/person.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/pages/conversation_detail/conversation_summary_selection.dart';
 import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
@@ -22,6 +23,7 @@ import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_search.dart';
 import 'settings_labels.dart';
+import 'speaker_picker.dart';
 
 String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
     ? context.l10n.recording
@@ -69,6 +71,63 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Duration? _initialPosition;
   bool opening = false;
   bool _editing = false;
+  final _people = <String, Person>{};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.library.speakerLabelsAvailable) unawaited(_loadPeople());
+  }
+
+  Future<void> _loadPeople() async {
+    try {
+      final people = await widget.library.readLocalPeople();
+      if (mounted) {
+        setState(() {
+          for (final person in people) {
+            _people.putIfAbsent(person.id, () => person);
+          }
+        });
+      }
+    } catch (_) {
+      // A failed directory read leaves the transcript available.
+    }
+  }
+
+  Future<void> _labelSpeaker(_RecordingDetail loaded, String id) async {
+    final line = loaded.sources.where((segment) => segment.id == id).firstOrNull;
+    if (line == null) return;
+    final group = loaded.lines
+        .where((segment) => segment.speakerId == line.speakerId && segment.speakerIdScope == line.speakerIdScope)
+        .toList();
+    final canGroup =
+        line.speakerId >= 0 && group.length > 1 && group.length <= 250 && group.every(loaded.sources.contains);
+    final choice = await showModalBottomSheet<SpeakerChoice>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => LocalSpeakerPicker(library: widget.library, canGroup: canGroup),
+    );
+    if (!mounted || choice == null) return;
+    final person = choice.person;
+    if (person != null) _people[person.id] = person;
+    try {
+      await _save(
+        RecordingEdit.speaker(
+          {
+            for (final segment in choice.group ? group : [line])
+              segment.id: {'person_id': segment.personId, 'is_user': segment.isUser},
+          },
+          {'person_id': person?.id, 'is_user': choice.isUser},
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
   bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
@@ -441,6 +500,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                                 )
                               : TranscriptWidget(
                                   segments: loaded.lines,
+                                  localPeople: _people.values.toList(),
+                                  editSegment: canEdit && widget.library.speakerLabelsAvailable && !opening && !_editing
+                                      ? (id, _) => _labelSpeaker(loaded, id)
+                                      : null,
                                   isConversationDetail: true,
                                   bottomMargin: OmiSpacing.md,
                                   onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,

@@ -23,6 +23,8 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/folders"),
         ("POST", "/v1/local/folders/reorder"),
         ("POST", "/v1/local/folders/move"),
+        ("GET", "/v1/local/people"),
+        ("POST", "/v1/local/people"),
         ("GET", "/v1/goals/all"),
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),
