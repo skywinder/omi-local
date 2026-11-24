@@ -56,7 +56,7 @@ def main():
         extract(args.repository.resolve(), build, 'app/ios')
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
     shutil.copytree(HERE / 'overlay', app, dirs_exist_ok=True)
-    for name in ('local_audio_journal.dart', 'local_opus_preroll.dart'):
+    for name in ('local_audio_journal.dart', 'local_opus_preroll.dart', 'cv1_opus_frame_assembler.dart'):
         relative = Path('lib/services/capture') / name
         if subprocess.check_output(['git', '-C', args.repository, 'ls-tree', revision, 'app/' + str(relative)]):
             raise ValueError(f'Upstream now supplies {relative}; reconcile its implementation before updating')
