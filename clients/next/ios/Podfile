@@ -16,7 +16,7 @@ target 'Runner' do
   use_modular_headers!
   flutter_install_ios_engine_pod(__dir__)
   plugins = JSON.parse(File.read(File.join(__dir__, '..', '.flutter-plugins-dependencies')))
-  allowed = %w[audio_session device_info_plus flutter_secure_storage flutter_sound just_audio path_provider_foundation permission_handler_apple shared_preferences_foundation]
+  allowed = %w[audio_session device_info_plus flutter_secure_storage flutter_sound just_audio path_provider_foundation permission_handler_apple share_plus shared_preferences_foundation]
   resolved = plugins.fetch('plugins').fetch('ios').to_h { |p| [p.fetch('name'), p] }
   allowed.each do |name|
     p = resolved.fetch(name)

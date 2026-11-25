@@ -7,6 +7,7 @@ import flutter_sound
 import just_audio
 import path_provider_foundation
 import permission_handler_apple
+import share_plus
 import shared_preferences_foundation
 
 @main
@@ -73,6 +74,7 @@ import shared_preferences_foundation
       ("PermissionHandlerPlugin", PermissionHandlerPlugin.self),
       ("JustAudioPlugin", JustAudioPlugin.self),
       ("PathProviderPlugin", PathProviderPlugin.self),
+      ("FPPSharePlusPlugin", FPPSharePlusPlugin.self),
       ("SharedPreferencesPlugin", SharedPreferencesPlugin.self)
     ]
     for (name, plugin) in plugins {

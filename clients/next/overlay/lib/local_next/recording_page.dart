@@ -22,6 +22,7 @@ import 'folder_picker.dart';
 import 'local_goals_page.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
+import 'recording_export.dart';
 import 'conversation_categories.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
@@ -306,6 +307,22 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     return loaded;
   }
 
+  final _menu = GlobalKey();
+
+  Future<void> _export(ServerConversation row) async {
+    final box = _menu.currentContext?.findRenderObject() as RenderBox?;
+    try {
+      await shareLocalConversation(
+        row,
+        summaryLabel: context.l10n.summary,
+        transcriptLabel: context.l10n.transcriptTab,
+        origin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+      );
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+    }
+  }
+
   Future<void> _regenerateSummary() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -497,11 +514,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
           appBar: AppBar(
             title: Text(row == null ? l.conversations : recordingTitle(context, row)),
             actions: [
-              if (canEdit)
+              if (loaded != null && (canEdit || !loaded.pending))
                 PopupMenuButton<_RecordingEditAction>(
+                  key: _menu,
                   enabled: !opening && !_editing,
                   icon: Icon(loaded.row.starred ? Icons.star : Icons.more_horiz),
                   onSelected: (action) => switch (action) {
+                    _RecordingEditAction.export => _export(loaded.row),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
@@ -522,49 +541,53 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
-                    if (widget.library.goalsAvailable)
+                    if (!loaded.pending)
+                      PopupMenuItem(value: _RecordingEditAction.export, child: Text('${l.share} · TXT')),
+                    if (canEdit) ...[
+                      if (widget.library.goalsAvailable)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.goalProgress,
+                          child: Text(pairedSettingsLabel(context, 'localGoalLog')),
+                        ),
+                      if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
+                        PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
+                      if (widget.library.tasksAvailable)
+                        PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
+                      if (widget.library.tasksAvailable && loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.taskFromLine,
+                          child: Text(pairedSettingsLabel(context, 'localTaskFromLine')),
+                        ),
+                      if (widget.library.tasksAvailable &&
+                          widget.library.taskSuggestionsAvailable &&
+                          loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.taskSuggestions,
+                          child: Text(pairedSettingsLabel(context, 'localTaskSuggest')),
+                        ),
+                      if (widget.library.foldersAvailable)
+                        PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
+                      if (widget.library.recordingCategories)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.category,
+                          child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
+                        ),
                       PopupMenuItem(
-                        value: _RecordingEditAction.goalProgress,
-                        child: Text(pairedSettingsLabel(context, 'localGoalLog')),
+                        value: _RecordingEditAction.title,
+                        child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
                       ),
-                    if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
-                      PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
-                    if (widget.library.tasksAvailable)
-                      PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
-                    if (widget.library.tasksAvailable && loaded.sources.isNotEmpty)
                       PopupMenuItem(
-                        value: _RecordingEditAction.taskFromLine,
-                        child: Text(pairedSettingsLabel(context, 'localTaskFromLine')),
+                        value: _RecordingEditAction.star,
+                        child: Text(
+                          pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
+                        ),
                       ),
-                    if (widget.library.tasksAvailable &&
-                        widget.library.taskSuggestionsAvailable &&
-                        loaded.sources.isNotEmpty)
-                      PopupMenuItem(
-                        value: _RecordingEditAction.taskSuggestions,
-                        child: Text(pairedSettingsLabel(context, 'localTaskSuggest')),
-                      ),
-                    if (widget.library.foldersAvailable)
-                      PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
-                    if (widget.library.recordingCategories)
-                      PopupMenuItem(
-                        value: _RecordingEditAction.category,
-                        child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
-                      ),
-                    PopupMenuItem(
-                      value: _RecordingEditAction.title,
-                      child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
-                    ),
-                    PopupMenuItem(
-                      value: _RecordingEditAction.star,
-                      child: Text(
-                        pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
-                      ),
-                    ),
-                    if (loaded.sources.isNotEmpty)
-                      PopupMenuItem(
-                        value: _RecordingEditAction.transcript,
-                        child: Text(pairedSettingsLabel(context, 'recordingEditTranscript')),
-                      ),
+                      if (loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.transcript,
+                          child: Text(pairedSettingsLabel(context, 'recordingEditTranscript')),
+                        ),
+                    ],
                   ],
                 ),
               if (loaded != null && loaded.lines.isNotEmpty)
@@ -692,6 +715,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 enum _RecordingEditAction {
+  export,
   title,
   star,
   transcript,
