@@ -37,10 +37,11 @@ DEFAULT_SUMMARY_TEMPLATE = {
 
 
 class SettingsError(ValueError):
-    def __init__(self, message, *, status=400, field=None):
+    def __init__(self, message, *, status=400, field=None, code=None):
         super().__init__(message)
         self.status = status
         self.field = field
+        self.diagnostic_code = code
 
 
 def summary_templates(state):
@@ -377,7 +378,8 @@ class Registry:
             return ''
         vault = read_json(self.secrets_path, {})
         if ref not in vault:
-            raise SettingsError('API-ключ этого задания недоступен. Настройте провайдера снова.', status=409)
+            raise SettingsError('API-ключ этого задания недоступен. Настройте провайдера снова.',
+                                status=409, code='credential_missing')
         key = vault[ref]
         auth_headers(key)
         return key

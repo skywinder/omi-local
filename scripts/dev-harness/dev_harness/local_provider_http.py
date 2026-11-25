@@ -15,6 +15,18 @@ PRIVATE_NETWORKS = tuple(ipaddress.ip_network(value) for value in (
 ))
 
 
+class ProviderResponseError(ValueError):
+    """A fixed diagnostic and a safe code, without a provider URL or body."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.diagnostic_code = code
+
+
+def rejected_response(status):
+    return ProviderResponseError(f'http_{status}', 'Сервер отклонил запрос. Проверьте адрес, ключ и модель.')
+
+
 def private_address(value):
     address = ipaddress.ip_address(value)
     return any(address.version == network.version and address in network for network in PRIVATE_NETWORKS)
@@ -48,12 +60,12 @@ def validate_url(value, *, websocket=False):
                 raise ValueError()
         return value.rstrip('/')
     except (ValueError, TypeError, OSError):
-        raise ValueError(message) from None
+        raise ProviderResponseError('configuration', message) from None
 
 
 def auth_headers(key):
     if not isinstance(key, str) or len(key) > 8192 or any(ord(c) < 32 or ord(c) > 126 for c in key):
-        raise ValueError('Недопустимый API-ключ.')
+        raise ProviderResponseError('configuration', 'Недопустимый API-ключ.')
     return {'Authorization': 'Bearer ' + key} if key else {}
 
 
@@ -67,8 +79,10 @@ def metadata_get(client, url, *, limit=2 * 1024 * 1024, deadline_seconds=15):
     with client.stream('GET', url) as response:
         for chunk in response.iter_bytes():
             size += len(chunk)
-            if size > limit or time.monotonic() > deadline:
-                raise ValueError('Ответ сервера слишком большой.')
+            if time.monotonic() > deadline:
+                raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
+            if size > limit:
+                raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
             chunks.append(chunk)
         return httpx.Response(response.status_code, content=b''.join(chunks))
 
@@ -90,42 +104,44 @@ def post_json(client, url, *, limit=2 * 1024 * 1024, deadline_seconds=180, **kwa
         with client.stream('POST', url, headers={'Accept-Encoding': 'identity'},
                            timeout=httpx.Timeout(**timeout), follow_redirects=False, **kwargs) as response:
             if not 200 <= response.status_code < 300:
-                raise ValueError('Сервер отклонил запрос. Проверьте адрес, ключ и модель.')
+                raise rejected_response(response.status_code)
             if response.headers.get('Content-Encoding', 'identity').lower().strip() not in {'', 'identity'}:
-                raise ValueError('Сервер вернул неподдерживаемый ответ.')
+                raise ProviderResponseError('response_encoding', 'Сервер вернул неподдерживаемый ответ.')
             body = bytearray()
             for chunk in response.iter_bytes():
                 if time.monotonic() > deadline:
-                    raise ValueError('Превышено время ожидания ответа сервера.')
+                    raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
                 if len(chunk) > limit - len(body):
-                    raise ValueError('Ответ сервера слишком большой.')
+                    raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
                 body.extend(chunk)
             if time.monotonic() > deadline:
-                raise ValueError('Превышено время ожидания ответа сервера.')
+                raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
             # Deliberately discard upstream headers, request URL and credentials.
             return json_response(httpx.Response(response.status_code, content=bytes(body)), limit=limit)
+    except httpx.TimeoutException:
+        raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.') from None
     except (httpx.HTTPError, OSError):
-        raise ValueError('Не удалось получить ответ сервера.') from None
+        raise ProviderResponseError('connection', 'Не удалось получить ответ сервера.') from None
 
 
 def json_response(response, *, limit=2 * 1024 * 1024):
     if not 200 <= response.status_code < 300:
-        raise ValueError('Сервер отклонил запрос. Проверьте адрес, ключ и модель.')
+        raise rejected_response(response.status_code)
     if len(response.content) > limit:
-        raise ValueError('Ответ сервера слишком большой.')
+        raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
     try:
         value = response.json()
-        if not isinstance(value, dict):
-            raise ValueError()
-        return value
     except (ValueError, TypeError):
-        raise ValueError('Сервер вернул неподдерживаемый ответ.') from None
+        raise ProviderResponseError('invalid_json', 'Сервер вернул неподдерживаемый ответ.') from None
+    if not isinstance(value, dict):
+        raise ProviderResponseError('invalid_provider_response', 'Сервер вернул неподдерживаемый ответ.')
+    return value
 
 
 def model_ids(data):
     rows = data.get('data')
     if not isinstance(rows, list):
-        raise ValueError('Сервер не предоставил список моделей.')
+        raise ProviderResponseError('invalid_provider_response', 'Сервер не предоставил список моделей.')
     return sorted({row['id'] for row in rows[:2000] if isinstance(row, dict)
                    and isinstance(row.get('id'), str) and 0 < len(row['id']) <= 256
                    and row['id'].strip() and row['id'].isprintable()})

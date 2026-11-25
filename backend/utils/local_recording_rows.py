@@ -18,6 +18,20 @@ from utils.env_loader import is_offline_runtime
 from utils.local_transport_auth import load_pairing, local_tunnel_enabled
 from utils.other.local_storage import local_storage_root_from_env
 
+_FAILURE_STAGES = frozenset({'prepare', 'stt', 'diarization', 'summary', 'import'})
+_FAILURE_CODES = frozenset({
+    'configuration', 'connection', 'credential_missing', 'database_preflight_failed', 'disk_full', 'import_failed',
+    'invalid_audio', 'invalid_checkpoint', 'invalid_diarization', 'invalid_json', 'invalid_provider_response',
+    'invalid_summary', 'invalid_transcript', 'io_error', 'output_limit', 'response_encoding', 'response_too_large',
+    'storage_access', 'summary_model_unavailable', 'timeout', 'unknown',
+})
+
+
+def _safe_failure_code(value):
+    if isinstance(value, str) and (value in _FAILURE_CODES or re.fullmatch(r'http_[1-5][0-9]{2}', value)):
+        return value
+    return None
+
 
 def _optional_json(path: Path) -> dict:
     try:
@@ -65,16 +79,39 @@ def _failed_stages(results, queue):
         key = manifest.get('capture_key')
         if not isinstance(key, str) or key not in failed or manifest.get('profile') != queue[key].get('profile'):
             continue
+        try:
+            written = path.stat().st_mtime
+        except OSError:
+            continue
+        attempt_started = queue[key].get('attempt_started_at')
+        if type(attempt_started) in (float, int) and written < attempt_started:
+            continue
+        if key in stages and stages[key][0] >= written:
+            continue
         entries = _optional_json(path)
         for stage in ('stt', 'diarization', 'summary'):
             entry = entries.get(stage)
             if isinstance(entry, dict) and entry.get('status') == 'failed':
-                code = entry.get('error_code')
-                stages[key] = {'stage': stage}
-                if isinstance(code, str) and re.fullmatch(r'http_[1-5][0-9]{2}|timeout|connection|output_limit|invalid_json', code):
-                    stages[key]['code'] = code
+                code = _safe_failure_code(entry.get('error_code'))
+                stages[key] = (written, {'stage': stage, **({'code': code} if code else {})})
                 break
-    return stages
+    return {key: value for key, (_, value) in stages.items()}
+
+
+def _saved_failure(job, checkpoint):
+    failure = job.get('failure')
+    failure = failure if isinstance(failure, dict) else {}
+    stage = failure.get('stage')
+    code = _safe_failure_code(failure.get('code'))
+    # Explicit preflight/import errors describe the latest attempt even if a previous stage checkpoint survived.
+    if isinstance(stage, str) and stage in _FAILURE_STAGES:
+        value = {'stage': stage}
+    else:
+        value = dict(checkpoint)
+    if code and value.get('code') in (None, 'unknown'):
+        value['code'] = code
+    value['attempts'] = job['attempts'] if type(job.get('attempts')) is int else 0
+    return value
 
 
 def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[dict]:
@@ -143,8 +180,7 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[
                 transcript_segments=[], discarded=False, deferred=False,
                 external_data={'local_recording': {'status': status, 'duration_seconds': duration,
                                                   **({'origin': origin} if (origin := _origin(metadata)) else {}),
-                                                  **({'failure': {**failures.get(key, {}),
-                                                      'attempts': job.get('attempts') if type(job.get('attempts')) is int else 0}}
+                                                  **({'failure': _saved_failure(job, failures.get(key, {}))}
                                                      if status == 'failed' else {})}},
             ).model_dump())
         except (ValueError, KeyError, TypeError, OSError, OverflowError):

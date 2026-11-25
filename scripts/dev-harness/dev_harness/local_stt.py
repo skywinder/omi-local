@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import uuid
+import wave
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -23,6 +24,11 @@ from .local_capture_wav import read_wave
 
 class TranscriptionError(ValueError):
     """Diagnostics contain no transcript, user identifier or subprocess output."""
+
+    def __init__(self, message, *, code=None, stage=None):
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.diagnostic_stage = stage
 
 
 class TranscriptionBusy(TranscriptionError):
@@ -287,13 +293,23 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
     command = [sys.executable, '-m', 'scripts.import_local_transcript']
     if result_dir is not None:
         command.append(str(result_dir))
-    completed = subprocess.run(command, cwd=cfg.repo_root / 'backend', env=env, capture_output=True, text=True, timeout=60)
-    if completed.returncode:
-        raise TranscriptionError('Local database/import preflight failed; result retained for retry')
+    stage = 'import' if result_dir is not None else 'prepare'
+    code = 'import_failed' if result_dir is not None else 'database_preflight_failed'
     try:
-        return json.loads(completed.stdout)
+        completed = subprocess.run(command, cwd=cfg.repo_root / 'backend', env=env,
+                                   capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise TranscriptionError('Local database/import timed out', code='timeout', stage=stage) from None
+    if completed.returncode:
+        raise TranscriptionError('Local database/import preflight failed; result retained for retry',
+                                 code=code, stage=stage)
+    try:
+        result = json.loads(completed.stdout)
     except ValueError:
-        raise TranscriptionError('Local import returned an invalid response') from None
+        raise TranscriptionError('Local import returned an invalid response', code=code, stage=stage) from None
+    if not isinstance(result, dict):
+        raise TranscriptionError('Local import returned an invalid response', code=code, stage=stage)
+    return result
 
 
 def check_model(engine: EngineConfig) -> Path:
@@ -479,7 +495,12 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
     if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
         raise TranscriptionError('Use the paired local Mac offline stack')
     audio = Path(audio_path).expanduser().resolve()
-    manifest = inspect_audio(audio)
+    try:
+        manifest = inspect_audio(audio)
+    except TranscriptionError as error:
+        raise TranscriptionError(str(error), code='invalid_audio', stage='prepare') from None
+    except (ValueError, TypeError, KeyError, EOFError, wave.Error):
+        raise TranscriptionError('Saved WAV or its capture metadata is invalid', code='invalid_audio', stage='prepare') from None
     engine = engine or EngineConfig.load(cfg)
     manifest['profile'] = engine.profile()
     identity = manifest['audio_sha256'] + json.dumps(engine.profile(), sort_keys=True)

@@ -668,7 +668,9 @@ def test_selected_pipeline_retries_only_failed_stage_and_pins_routes(tmp_path, m
         local_stt.transcribe(settings, str(audio), engine=engine)
     root = settings.layout.services_dir / 'local-transcripts'
     folder = next(path for path in root.iterdir() if path.is_dir())
-    assert json.loads((folder / 'processing.json').read_text())['summary']['status'] == 'failed'
+    failed = json.loads((folder / 'processing.json').read_text())['summary']
+    assert failed['status'] == 'failed' and failed['error_code'] == 'http_503'
+    assert 'private server response' not in (folder / 'processing.json').read_text()
     assert (folder / 'asr.json').exists() and (folder / 'diarized.json').exists()
     assert not (folder / 'audio.json').exists() and not imported
     state_path = settings.layout.state_root / 'providers.json'

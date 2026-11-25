@@ -52,9 +52,11 @@ def test_elapsed_budget_stops_a_trickling_body_without_sleep(monkeypatch):
     assert body.reads == 3 and body.closed
 
 
-@pytest.mark.parametrize('status,headers', [(503, {}), (307, {'Location': 'https://other.example/'}),
-                                         (200, {'Content-Encoding': 'gzip'})])
-def test_rejected_status_redirect_or_encoding_never_reads_private_body(status, headers):
+@pytest.mark.parametrize('status,headers,code', [
+    (401, {}, 'http_401'), (503, {}, 'http_503'), (307, {'Location': 'https://other.example/'}, 'http_307'),
+    (200, {'Content-Encoding': 'gzip'}, 'response_encoding'),
+])
+def test_rejected_status_redirect_or_encoding_never_reads_private_body(status, headers, code):
     body = Body([b'synthetic private transcript'])
     requests = []
     def respond(request):
@@ -66,6 +68,7 @@ def test_rejected_status_redirect_or_encoding_never_reads_private_body(status, h
             transport.post_json(client, 'https://provider.example/v1')
     assert len(requests) == 1 and body.reads == 0 and body.closed
     assert 'private' not in str(error.value) and 'provider.example' not in str(error.value)
+    assert error.value.diagnostic_code == code
 
 
 def test_successful_post_keeps_request_shape_and_private_transport_options(monkeypatch):
@@ -93,6 +96,7 @@ def test_network_errors_cannot_expose_credentials_or_provider_body():
             transport.post_json(client, 'https://provider.example/v1')
     assert str(error.value) == 'Не удалось получить ответ сервера.'
     assert error.value.__suppress_context__
+    assert error.value.diagnostic_code == 'connection'
 
 
 @pytest.mark.parametrize('stage', ['legacy-stt', 'selected-stt', 'diarization', 'summary', 'translation'])

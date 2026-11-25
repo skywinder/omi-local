@@ -5,12 +5,14 @@ providers; model credentials never enter cache, logs, or Conversation metadata.
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import math
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 from time import monotonic
 
@@ -31,6 +33,10 @@ CONVERSATION_CATEGORIES = (
 class PipelineError(ValueError):
     """A fixed diagnostic; provider bodies and content never become errors."""
 
+    def __init__(self, message, *, code=None):
+        super().__init__(message)
+        self.diagnostic_code = code
+
 
 class SummaryTooLong(PipelineError):
     """The provider can retry with a more concise answer."""
@@ -41,9 +47,11 @@ def failure_code(error):
     seen = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
+        if code := getattr(error, 'diagnostic_code', None):
+            return code
         if isinstance(error, httpx.HTTPStatusError):
             return f'http_{error.response.status_code}'
-        if isinstance(error, (TimeoutError, httpx.TimeoutException)):
+        if isinstance(error, (TimeoutError, httpx.TimeoutException, subprocess.TimeoutExpired)):
             return 'timeout'
         if isinstance(error, httpx.NetworkError):
             return 'connection'
@@ -51,25 +59,34 @@ def failure_code(error):
             return 'output_limit'
         if isinstance(error, json.JSONDecodeError):
             return 'invalid_json'
+        if isinstance(error, OSError):
+            if error.errno in {errno.ENOSPC, errno.EDQUOT}:
+                return 'disk_full'
+            if isinstance(error, PermissionError):
+                return 'storage_access'
+            return 'io_error'
         error = error.__cause__ or error.__context__
     return 'unknown'
 
 
 def _read(path):
     if path.is_symlink() or path.stat().st_size > 32 * 1024 * 1024:
-        raise PipelineError('Invalid processing checkpoint')
-    value = json.loads(path.read_text())
+        raise PipelineError('Invalid processing checkpoint', code='invalid_checkpoint')
+    try:
+        value = json.loads(path.read_text())
+    except (ValueError, UnicodeError):
+        raise PipelineError('Invalid processing checkpoint', code='invalid_checkpoint') from None
     if not isinstance(value, dict):
-        raise PipelineError('Invalid processing checkpoint')
+        raise PipelineError('Invalid processing checkpoint', code='invalid_checkpoint')
     return value
 
 
 def validate_transcript(raw, duration):
     """Reject malformed provider output before a later stage receives text."""
     if not isinstance(raw, dict) or not isinstance(raw.get('segments'), list):
-        raise PipelineError('Invalid timed transcript')
+        raise PipelineError('Invalid timed transcript', code='invalid_transcript')
     if not raw['segments'] and raw.get('outcome') != 'no_speech':
-        raise PipelineError('Invalid empty transcript')
+        raise PipelineError('Invalid empty transcript', code='invalid_transcript')
     previous = 0
     for segment in raw['segments']:
         try:
@@ -92,7 +109,7 @@ def validate_transcript(raw, duration):
                         or not 0 <= a <= b <= duration + 0.1):
                     raise ValueError()
         except (ValueError, TypeError, KeyError):
-            raise PipelineError('Invalid timed transcript') from None
+            raise PipelineError('Invalid timed transcript', code='invalid_transcript') from None
 
 
 def remote_diarization(snapshot, key, audio, folder, manifest, raw):
@@ -101,19 +118,22 @@ def remote_diarization(snapshot, key, audio, folder, manifest, raw):
     endpoint = transport.validate_url(settings['base_url']) + '/diarize'
     params = {field: settings[field] for field in ('min_speakers', 'max_speakers') if settings.get(field)}
     if any(type(value) is not int or not 1 <= value <= 32 for value in params.values()):
-        raise PipelineError('Invalid speaker count')
+        raise PipelineError('Invalid speaker count', code='configuration')
     if params.get('min_speakers', 1) > params.get('max_speakers', 32):
-        raise PipelineError('Invalid speaker count')
+        raise PipelineError('Invalid speaker count', code='configuration')
     try:
         with tempfile.TemporaryDirectory(dir=folder, prefix='.speakers-') as temporary:
             copied = Path(temporary) / 'audio.wav'
             shutil.copyfile(audio, copied)
             if stt_install.digest(copied) != manifest['audio_sha256']:
-                raise PipelineError('WAV changed during diarization preparation')
+                raise PipelineError('WAV changed during diarization preparation', code='invalid_audio')
             with transport.client(key=key, timeout=3600) as client, copied.open('rb') as source:
                 report = transport.post_json(client, endpoint, limit=32 * 1024 * 1024,
                                              deadline_seconds=3600, params=params,
                                              files={'file': ('audio.wav', source, 'audio/wav')})
+    except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError):
+        raise PipelineError('Diarization request failed; transcription retained') from None
+    try:
         segments = report['segments']
         if not isinstance(segments, list):
             raise ValueError()
@@ -130,8 +150,8 @@ def remote_diarization(snapshot, key, audio, folder, manifest, raw):
             turns.append((start, min(end, manifest['duration_seconds']), labels[label]))
         return {**raw, 'segments': local_diarization.reconcile(raw['segments'], turns),
                 'diarization': {'turns': turns, 'speakers': len(labels)}}
-    except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError):
-        raise PipelineError('Diarization request failed; transcription retained') from None
+    except (ValueError, KeyError, TypeError):
+        raise PipelineError('Invalid diarization segments; transcription retained', code='invalid_diarization') from None
 
 
 def text_chunks(text, limit=SUMMARY_CHARS):
@@ -154,7 +174,7 @@ def validate_summary(value):
     if (not isinstance(value, dict) or not isinstance(value.get('title'), str)
             or not isinstance(value.get('overview'), str) or not value['title'].strip()
             or not value['overview'].strip()):
-        raise PipelineError('Summary provider returned an invalid result')
+        raise PipelineError('Summary provider returned an invalid result', code='invalid_summary')
     title, overview = value['title'].strip(), value['overview'].strip()
     if len(title) > 300 or len(overview) > 4000:
         raise SummaryTooLong('Summary exceeded the publication limit')
@@ -180,7 +200,7 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
     language = settings.get('language', 'auto')
     template = snapshot.get('template')
     if not isinstance(model, str) or not model or not re.fullmatch(r'[a-z]{2,3}|auto', language):
-        raise PipelineError('Invalid summary settings')
+        raise PipelineError('Invalid summary settings', code='configuration')
     cache = folder / 'summaries'
     cache.mkdir(mode=0o700, exist_ok=True)
 
@@ -205,7 +225,7 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
         def complete(instructions, *, json_mode=False):
             budget = 180 if deadline is None else min(180, deadline - monotonic())
             if budget <= 0:
-                raise PipelineError('Summary processing deadline elapsed')
+                raise PipelineError('Summary processing deadline elapsed', code='timeout')
             with transport.client(key=key, timeout=budget) as client:
                 body = {'model': model, 'messages': [{'role': 'system', 'content': instructions},
                                                      {'role': 'user', 'content': part}],
@@ -224,14 +244,17 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
                         + '\nReturn only the JSON object, starting with {"title":'
                     )
                 body = transport.post_json(client, endpoint, json=body, deadline_seconds=budget)
-            choice = body['choices'][0]
-            if choice.get('finish_reason') == 'length':
+            try:
+                choice = body['choices'][0]
+                reason = choice.get('finish_reason')
+            except (AttributeError, IndexError, KeyError, TypeError):
+                raise PipelineError('Invalid summary response envelope', code='invalid_provider_response') from None
+            if reason == 'length':
                 raise SummaryTooLong('Summary exceeded the provider response budget')
-            if choice.get('finish_reason') not in (None, 'stop'):
-                raise ValueError()
-            content = choice['message']['content']
-            if not isinstance(content, str):
-                raise ValueError()
+            message = choice.get('message')
+            content = message.get('content') if isinstance(message, dict) else None
+            if reason not in (None, 'stop') or not isinstance(content, str):
+                raise PipelineError('Invalid summary response envelope', code='invalid_provider_response')
             # Some compatible servers wrap otherwise valid JSON in a code fence.
             content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content.strip())
             return validate_summary(json.loads(content))
@@ -306,7 +329,8 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
                 if (engine.engine not in {'whisperx', 'parakeet-mlx'}
                         or engine.diarization_model == 'none'
                         or engine.diarization_model != diarization['settings'].get('speaker_model')):
-                    raise PipelineError('The selected STT provider does not supply this embedded diarization')
+                    raise PipelineError('The selected STT provider does not supply this embedded diarization',
+                                        code='configuration')
                 return raw  # Migrated legacy STT already produced speaker labels.
             if diarization['kind'] == 'pyannote':
                 adapter = lambda piece, _cache, info, part: local_speakers(engine, piece, _cache, info, part)
@@ -314,16 +338,17 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
                 key = engine.provider_key('diarization')
                 adapter = lambda piece, cache, info, part: remote_diarization(diarization, key, piece, cache, info, part)
             else:
-                raise PipelineError('Unsupported diarization provider')
+                raise PipelineError('Unsupported diarization provider', code='configuration')
             if local_stt_windows.needed(manifest):
                 return local_stt_windows.run(audio, folder, manifest, 'diarization', adapter, write, speakers=True)
             return adapter(audio, folder, manifest, raw)
         raw = stage('diarization', folder / 'diarized.json', diarize)
     summary = pipeline.get('summary')
     if summary:
-        if summary['kind'] != 'openai-compatible':
-            raise PipelineError('Unsupported summary provider')
-        structured = stage('summary', folder / 'summary.json', lambda:
-                           summarize(summary, engine.provider_key('summary'), raw, folder, write))
+        def summarize_recording():
+            if summary['kind'] != 'openai-compatible':
+                raise PipelineError('Unsupported summary provider', code='configuration')
+            return summarize(summary, engine.provider_key('summary'), raw, folder, write)
+        structured = stage('summary', folder / 'summary.json', summarize_recording)
         raw = {**raw, 'structured': structured}
     return {**raw, 'processing': processing}

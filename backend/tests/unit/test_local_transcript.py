@@ -312,6 +312,17 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     assert pending[0]['external_data'] == {'local_recording': expected}
     assert rows.local_recording_rows('another-owner') == []
     assert 'never-return' not in str(pending) and str(storage) not in str(pending)
+    if state == 'failed':
+        job = {'state': state, 'profile': {'api_key': 'never-return'}, 'attempts': 3,
+               'attempt_started_at': (processing / 'processing.json').stat().st_mtime + 1,
+               'failure': {'stage': 'import', 'code': 'import_failed', 'detail': 'never-return'}}
+        queue.write_text(json.dumps({key: job}))
+        failure = rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['failure']
+        assert failure == {'stage': 'import', 'code': 'import_failed', 'attempts': 3}
+        job['failure'] = {'stage': ['never-return'], 'code': 'never-return'}
+        queue.write_text(json.dumps({key: job}))
+        failure = rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['failure']
+        assert failure == {'attempts': 3}
     queue.write_text(json.dumps({key: {'state': 'completed'}}))
     assert rows.local_recording_rows('synthetic-owner') == []
     # Manual import also retires the projection even if no queue job exists.
