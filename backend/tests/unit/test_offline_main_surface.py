@@ -186,6 +186,24 @@ local_tasks.local_recording_chat.sources_current.return_value = False
 assert client.post(suggestion_path, json=prompt, headers=headers).status_code == 409
 local_tasks.action_items.create_action_item.assert_not_called()
 
+# A grouped archive can keep the full transcript in a result file.
+grouped_ref, grouped_tx = MagicMock(), MagicMock()
+grouped_ref.get.return_value.to_dict.return_value = {
+    'status': 'completed', 'external_data': {'local_transcript': {'segment_storage': 'result-file'}},
+    'structured': {'category': 'education'}, 'transcript_segments': [{'id': 'first', 'text': 'Excerpt'}],
+}
+grouped_db = main.conversations.conversations_db
+old_db = grouped_db.db
+grouped_db.db = MagicMock()
+grouped_db.db.collection.return_value.document.return_value.collection.return_value.document.return_value = grouped_ref
+for field in ('speaker', 'segment_text'):
+    assert grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', field, '', '', None)[0] == 'segment_unavailable'
+grouped_tx.update.assert_not_called()
+outcome, _ = grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', 'category', 'education', 'work', None)
+assert outcome == 'ok'
+grouped_tx.update.assert_called_once_with(grouped_ref, {'user_category': 'work', 'structured.category': 'work'})
+grouped_db.db = old_db
+
 from routers import local_summary
 from database import local_summary as summary_db
 

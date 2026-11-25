@@ -1075,10 +1075,14 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     ref = owner.collection(conversations_collection).document(conversation_id)
     snapshot = ref.get(transaction=transaction, timeout=6)
     raw = snapshot.to_dict()
-    if not raw or raw.get('is_locked') or raw.get('local_chat_deleting'):
+    if not raw or is_soft_deleted(raw) or raw.get('is_locked') or raw.get('local_chat_deleting'):
         return 'not_found', None
     if raw.get('status') not in {None, 'completed'}:
         return 'not_ready', None
+    storage = (raw.get('external_data') or {}).get('local_transcript') or {}
+    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
+        # Firestore contains only a preview. Transcript edits need the file-backed source.
+        return 'segment_unavailable', None
     row = _prepare_conversation_for_read(raw, uid)
     if row is None:
         return 'not_found', None

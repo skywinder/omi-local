@@ -365,20 +365,6 @@ For backend updates, compare the shared archive and processing contracts in
 [Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
 deployments have separate authentication and audio processing boundaries.
 
-On November 25 Next advanced to original Omi `6f771e1`. The Flutter analyzer
-and 73 Next tests passed. The legacy transport app suite and offline backend
-suite passed. Bastion now serves the optional transcript-free archive page,
-pagination headers and owner-scoped audio playback. Its first ten cards used
-54,991 bytes versus 118,001 for the full list. The detail transcript, second
-page and authenticated WAV range passed through the live paired ingress.
-See [backend compatibility](../../docs/BACKEND_PARITY.md) for the rollout.
-The signed `Profile-dev` package at `b5cd86c` passed signature, entitlements
-and hash verification (executable SHA-256 starts with `08ad47ff6fbc53e4`).
-USB and Xcode found no eligible iPhone for this package.
-Bastion's configured summary model classified a synthetic compiler discussion
-as `technology`. Its category and emoji survived import and regeneration.
-The regeneration path respects an existing owner category and title.
-
 ## Migration ledger
 
 The [feature inventory and port estimates](FEATURES.md) compare the original
@@ -722,7 +708,7 @@ The archive category milestone matches all 33 category keys in the pinned Omi
 source. The analyzer and all 73 Next tests passed, as did the offline and
 legacy transport gates. An isolated paired API and Firestore verified category
 edits, stale edit conflicts, and preservation after a later processing write.
-Bastion's deployed profile does not yet advertise category edits. The separately
+At the November 24 category milestone, Bastion's profile did not advertise category edits. The separately
 signed `35bbf19` package passed independent verification, with executable
 SHA-256 prefix `a96020e4202fcfc6`. No eligible iPhone was available to install it.
 
@@ -731,7 +717,21 @@ response body. An isolated Firestore run paged across an imported conversation
 and a pending local WAV, including the pending recording's detail. Contract
 tests covered a full final page and a truncated query without a false
 end-of-list signal. The 73 existing Next tests passed against the pinned client.
-This change does not require a new iPhone build. Bastion was not updated.
+The pagination milestone was server-only. Its first verification used the isolated deployment.
+
+On November 25 Next advanced to original Omi `6f771e1`. The Flutter analyzer
+and 73 Next tests passed. The legacy transport app suite and offline backend
+suite passed. Bastion now serves the optional transcript-free archive page,
+pagination headers and owner-scoped audio playback. Its first ten cards used
+54,991 bytes versus 118,001 for the full list. The detail transcript, second
+page and authenticated WAV range passed through the live paired ingress.
+See [backend compatibility](../../docs/BACKEND_PARITY.md) for the rollout.
+The signed `Profile-dev` package at `b5cd86c` passed signature, entitlements
+and hash verification (executable SHA-256 starts with `08ad47ff6fbc53e4`).
+USB and Xcode found no eligible iPhone for this package.
+Bastion's configured summary model classified a synthetic compiler discussion
+as `technology`. Its category and emoji survived import and regeneration.
+The regeneration path respects an existing owner category and title.
 
 | Area | Status and next verification |
 | --- | --- |

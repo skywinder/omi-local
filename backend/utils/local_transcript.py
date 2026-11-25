@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+from pathlib import Path
 import re
 from unicodedata import category as unicode_category
 import uuid
@@ -156,3 +159,58 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                                             'profile': manifest['profile'],
                                             **({'stages': stages} if (stages := stage_outcomes(raw)) is not None else {})}},
     )
+
+
+# Reserve Firestore document space for summary metadata and subsequent user edits.
+GROUPED_INLINE_TRANSCRIPT_BYTES = 512 * 1024
+
+
+def grouped_import_document(conversation: Conversation, manifest: dict, raw_path: Path) -> dict:
+    document = conversation.model_dump()
+    if 'conversation_group' not in manifest:
+        return document
+    segments = document['transcript_segments']
+    estimated = 0
+    for segment in segments:
+        estimated += len(json.dumps(segment, ensure_ascii=True).encode())
+        if estimated > GROUPED_INLINE_TRANSCRIPT_BYTES:
+            with raw_path.open('rb') as stream:
+                checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+            local = document['external_data']['local_transcript']
+            local.update(segment_storage='result-file', segment_preview=True,
+                         segment_count=len(segments), segment_source_sha256=checksum)
+            document['transcript_segments'] = [{**segments[0], 'text': segments[0]['text'][:180]}]
+            break
+    return document
+
+
+def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
+    """Resolve only a validated imported local result under the paired owner's service directory."""
+    local = (document.get('external_data') or {}).get('local_transcript') or {}
+    if local.get('segment_storage') != 'result-file':
+        return document
+    key = local.get('result_key')
+    if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{64}', key):
+        raise ValueError('Invalid transcript reference')
+    if document['id'] != str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key)):
+        raise ValueError('Conversation reference mismatch')
+    folder = root / key
+    if folder.is_symlink() or folder.resolve().parent != root.resolve():
+        raise ValueError('Invalid result folder')
+    manifest_path, raw_path = folder / 'manifest.json', folder / 'audio.json'
+    if manifest_path.is_symlink() or raw_path.is_symlink() or manifest_path.stat().st_size > 1024 * 1024:
+        raise ValueError('Invalid result file')
+    manifest = json.loads(manifest_path.read_bytes())
+    if (manifest.get('result_key') != key or manifest.get('audio_sha256') != local.get('audio_sha256')
+            or not isinstance(manifest.get('conversation_group'), dict)):
+        raise ValueError('Recording source mismatch')
+    with raw_path.open('rb') as stream:
+        if hashlib.file_digest(stream, 'sha256').hexdigest() != local.get('segment_source_sha256'):
+            raise ValueError('Recording transcript has changed')
+        stream.seek(0)
+        raw = json.load(stream)
+    full = build_conversation(raw, manifest)
+    if len(full.transcript_segments) != local.get('segment_count'):
+        raise ValueError('Incomplete transcript')
+    return {**document, 'transcript_segments': [s.model_dump() for s in full.transcript_segments],
+            'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}

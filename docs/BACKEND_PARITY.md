@@ -62,8 +62,9 @@ Firestore and Auth export preceded the app restart.
 
 ## Next slices
 
-1. Align paired category edits and classification with the Bastion processing
-   pipeline, including owner overrides when summaries regenerate.
+1. Verify manual category edits through the live paired app after the active capture
+   finishes. The configured model already produced and imported a category and
+   subject emoji from synthetic text. Regenerating protects the owner category.
 2. Check the existing client and Next on the same physical iPhone against the
    updated archive and playback routes, then verify new microphone and CV1 audio.
 

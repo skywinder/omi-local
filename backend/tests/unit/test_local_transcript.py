@@ -313,3 +313,35 @@ def test_pending_projection_obeys_filters_and_merged_page_offsets():
     completed = [{'id': 'completed', 'created_at': now.replace(day=16)}]
     assert merge_local_recording_page(completed, pending, offset=0, limit=1) == pending
     assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
+
+
+def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path):
+    import json
+    from utils.local_transcript import grouped_import_document, hydrate_grouped_transcript
+
+    data = manifest()
+    data.update(conversation_group={'start_sample': 0, 'end_sample': 192000},
+                duration_seconds=12000)
+    folder = tmp_path / data['result_key']
+    folder.mkdir()
+    transcript = {'segments': [{'text': 'Синтетическая реплика ' * 15 + str(i), 'start': i, 'end': i + 1}
+                                for i in range(1500)]}
+    raw_path = folder / 'audio.json'
+    raw_path.write_text(json.dumps(transcript))
+    (folder / 'manifest.json').write_text(json.dumps(data))
+    conversation = build_conversation(transcript, data)
+    card = grouped_import_document(conversation, data, raw_path)
+    assert len(json.dumps(card, default=str)) < 4096
+    assert len(card['transcript_segments']) == 1
+    assert card['external_data']['local_transcript']['segment_preview'] is True
+    card['starred'] = True
+    card['structured']['overview'] = 'Updated summary'
+    full = hydrate_grouped_transcript(card, tmp_path)
+    assert full['starred'] and full['structured']['overview'] == 'Updated summary'
+    assert not full['external_data']['local_transcript']['segment_preview']
+    assert [s['text'] for s in full['transcript_segments']] == [s['text'] for s in transcript['segments']]
+    assert full['transcript_segments'][-1]['id'] == conversation.transcript_segments[-1].id
+    raw_path.write_text('{"segments": []}')
+    with pytest.raises(ValueError, match='changed'):
+        hydrate_grouped_transcript(card, tmp_path)
+    assert len(grouped_import_document(conversation, manifest(), raw_path)['transcript_segments']) == 1500

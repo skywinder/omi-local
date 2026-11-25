@@ -67,7 +67,9 @@ submitted context. Trusted-host deletion marks the source unavailable to
 in-flight chat before enumerating the recording's child collections.
 Paired recording edits accept JSON on the local edit route. They compare the
 prior field or transcript digest in the write transaction, preserve segment
-identity and use the existing transcript storage encoder. The trusted-host
+identity and use the existing transcript storage encoder. Large grouped imports store
+a checksummed result-file reference. Hydrate that file for detail and metadata edit
+responses. Segment and speaker writes must reject a stored preview. The trusted-host
 importer preserves edits on replay through create-if-absent.
 Paired folder management shares the Omi folder collection. A recording move
 checks the destination within the recording mutation transaction and marks the

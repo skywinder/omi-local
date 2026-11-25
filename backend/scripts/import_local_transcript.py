@@ -18,7 +18,7 @@ import main as backend_main
 from database._client import get_firestore_client
 from database import conversations as conversations_db
 from utils.conversations import lifecycle
-from utils.local_transcript import build_conversation
+from utils.local_transcript import build_conversation, grouped_import_document
 
 
 def main() -> int:
@@ -42,14 +42,17 @@ def main() -> int:
         manifest = json.loads((folder / 'manifest.json').read_text())
         raw = json.loads((folder / 'audio.json').read_text())
         conversation = build_conversation(raw, manifest)
-        payload = conversation.model_dump(mode='json')
+        payload = grouped_import_document(conversation, manifest, folder / 'audio.json')
+        local = payload['external_data']['local_transcript']
         # Raw + manifest are the replay source. A repeat uses create-if-absent,
         # preserving edits, and checks provenance before reporting success.
-        created = lifecycle.create_completed_conversation(owner, conversation.model_dump(), idempotent=True)
+        created = lifecycle.create_completed_conversation(owner, payload, idempotent=True)
         saved = conversations_db.get_conversation(owner, conversation.id)
-        if not saved or saved.get('status') != 'completed' or saved.get('external_data') != payload['external_data']:
+        if (not saved or saved.get('status') != 'completed'
+                or (saved.get('external_data') or {}).get('local_transcript') != local):
             raise ValueError('Conversation persistence was not verified')
-        print(json.dumps({'import': 'passed', 'created': created, 'segments': len(saved['transcript_segments'])}))
+        count = local.get('segment_count', len(saved['transcript_segments']))
+        print(json.dumps({'import': 'passed', 'created': created, 'segments': count}))
         return 0
     except Exception as error:
         print(json.dumps({'import': 'failed', 'error_type': type(error).__name__}))

@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import os
+from pathlib import Path
 import re
 from unicodedata import normalize
 
@@ -298,6 +300,22 @@ class LocalArchiveSearchPage(BaseModel):
 _LOCAL_ARCHIVE_ID = re.compile(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}')
 
 
+def _paired_detail(row: dict, uid: str) -> dict:
+    local = (row.get('external_data') or {}).get('local_transcript') or {}
+    if local.get('segment_storage') != 'result-file':
+        return row
+    from utils.local_transcript import hydrate_grouped_transcript
+    from utils.local_transport_auth import load_pairing, local_tunnel_enabled
+
+    if not local_tunnel_enabled() or load_pairing()['owner_uid'] != uid or row.get('is_locked'):
+        raise HTTPException(404, 'Local recording unavailable')
+    try:
+        root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
+        return hydrate_grouped_transcript(row, root)
+    except (ValueError, OSError, KeyError, TypeError):
+        raise HTTPException(503, 'Full local transcript unavailable') from None
+
+
 class LocalTitleEdit(BaseModel):
     field: Literal['title']
     expected: str = Field(pattern=r'^[a-f0-9]{64}$', description='SHA-256 of the original UTF-8 title')
@@ -380,7 +398,7 @@ def patch_local_recording(
     if status != 'ok':
         raise HTTPException(409, 'local_recording_edit_conflict')
     response.headers['Cache-Control'] = 'no-store'
-    return {'status': 'Ok', 'conversation': row}
+    return {'status': 'Ok', 'conversation': _paired_detail(row, uid)}
 
 
 @router.post('/v1/local/conversations/search', response_model=LocalArchiveSearchPage, tags=['local'])
@@ -889,7 +907,7 @@ def get_conversation_by_id(
             raise HTTPException(status_code=404, detail="Conversation not found")
     # Local transcript reads never dispatch cloud enrichment or first-open work.
     if is_offline_runtime():
-        return conversation
+        return _paired_detail(conversation, uid)
     # Lazy processing: a desktop conversation stored raw (deferred) for a freemium/Neo user is
     # enriched on first open. Other conversations are returned unchanged.
     if conversation.get('deferred'):
