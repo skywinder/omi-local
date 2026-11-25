@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import ExitStack
 import threading
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -8,7 +9,7 @@ import pytest
 from omi_live import SessionGate, TrackedNativeCalls
 
 
-@pytest.mark.parametrize('override, capacity', [(None, 2), ('1', 1)])
+@pytest.mark.parametrize('override, capacity', [(None, 2), ('1', 1), ('3', 3), ('4', 4)])
 def test_admission_and_reuse(monkeypatch, override, capacity):
     if override is None:
         monkeypatch.delenv('WLK_MAX_SESSIONS', raising=False)
@@ -37,25 +38,29 @@ def test_admission_and_reuse(monkeypatch, override, capacity):
                 extra.receive_json()
             assert stopped.value.code == 4409
 
-    with TestClient(app) as client, client.websocket_connect('/asr') as first:
-        first.send_bytes(b'first')
-        assert first.receive_bytes() == b'first'
-        if capacity == 2:
-            with client.websocket_connect('/asr') as second:
-                second.send_bytes(b'second')
-                assert second.receive_bytes() == b'second'
-                assert_busy(client)
-                second.send_bytes(b'')
-                assert second.receive_json() == {'type': 'ready_to_stop'}
-        else:
+    with TestClient(app) as client, ExitStack() as opened:
+        sockets = [opened.enter_context(client.websocket_connect('/asr')) for _ in range(capacity - 1)]
+        with client.websocket_connect('/asr') as last:
+            for index, socket in enumerate([*sockets, last]):
+                frame = index.to_bytes(2, 'little')
+                socket.send_bytes(frame)
+                assert socket.receive_bytes() == frame
             assert_busy(client)
-        first.send_bytes(b'continued')
-        assert first.receive_bytes() == b'continued'
-        first.send_bytes(b'')
-        assert first.receive_json() == {'type': 'ready_to_stop'}
+            last.send_bytes(b'')
+            assert last.receive_json() == {'type': 'ready_to_stop'}
+        for socket in sockets:
+            socket.send_bytes(b'continued')
+            assert socket.receive_bytes() == b'continued'
         with client.websocket_connect('/asr') as reopened:
             reopened.send_bytes(b'new')
             assert reopened.receive_bytes() == b'new'
+
+
+@pytest.mark.parametrize('override', ['0', '5', '2.5'])
+def test_rejects_invalid_limit(monkeypatch, override):
+    monkeypatch.setenv('WLK_MAX_SESSIONS', override)
+    with pytest.raises(ValueError, match='integer from 1 to 4'):
+        SessionGate()
 
 
 def test_cancelled_stream_keeps_slot_until_native_inference_finishes(monkeypatch):

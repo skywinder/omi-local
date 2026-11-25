@@ -10,8 +10,8 @@ from pathlib import Path
 class SessionGate:
     def __init__(self):
         limit = os.environ.get('WLK_MAX_SESSIONS', '2')
-        if limit not in ('1', '2'):
-            raise ValueError('WLK_MAX_SESSIONS must be 1 or 2')
+        if limit not in ('1', '2', '3', '4'):
+            raise ValueError('WLK_MAX_SESSIONS must be an integer from 1 to 4')
         self.capacity = int(limit)
         self.active = 0
 
