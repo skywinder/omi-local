@@ -428,6 +428,20 @@ Run the Next checks, legacy transport checks, and iOS build and device checks
 for the changed inputs. Each enabled feature needs a compatible server endpoint
 or a detectable capability on the paired server. Record the results below.
 
+From the Local worktree, set `omi_source` to the original Omi checkout. These
+commands compare source revisions without changing the paired server or its data.
+
+```sh
+pin=$(jq -r .commit clients/next/upstream.json)
+git -C "$omi_source" fetch origin main
+git -C "$omi_source" log --first-parent --oneline "$pin"..FETCH_HEAD -- app/ backend/
+git -C "$omi_source" diff --stat "$pin" FETCH_HEAD -- app/ backend/
+```
+
+After selecting a revision, update the pin and run
+`bash clients/next/check.sh "$omi_source"` with the pinned Flutter SDK.
+Keep pairing, audio delivery, Live, and archive reads on the user's own server.
+
 For backend updates, compare the shared archive and processing contracts in
 [Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
 deployments have separate authentication and audio processing boundaries.
@@ -825,7 +839,7 @@ Phone-microphone speech and repeated-start reliability still need a separate che
 
 | Area | Status and next verification |
 | --- | --- |
-| Base and installation identity | Upstream Flutter is pinned to November 25 revision `6f771e1`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
+| Base and installation identity | Upstream Flutter is pinned to November 26 revision `782a793`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
 | Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default Bastion preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
