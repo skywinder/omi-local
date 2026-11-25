@@ -721,7 +721,7 @@ This change does not require a new iPhone build. Bastion was not updated.
 
 | Area | Status and next verification |
 | --- | --- |
-| Base and installation identity | Upstream Flutter is pinned to November 24 revision `ba4d7ac`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
+| Base and installation identity | Upstream Flutter is pinned to November 25 revision `6f771e1`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
 | Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default Bastion preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
