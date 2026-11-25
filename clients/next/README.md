@@ -1,6 +1,6 @@
 # Omi Local Next
 
-Omi Local Next is the primary development client for the paired Omi Local server on `sky-dev`.
+Omi Local Next is the primary development client for the paired Omi Local server.
 Its iOS application identifier is `org.omilocal.next`. Pair it with the server's
 app key in its own Keychain. The existing app owns its pending phone recordings.
 

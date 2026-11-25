@@ -99,7 +99,7 @@ docker compose version
 For a new checkout of the main branch:
 
 ```bash
-git clone --branch main https://github.com/vquaron/omi-local.git omiloc
+git clone --branch main https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./omiloc --runtime docker bootstrap --device cpu --transport local
 ./omiloc --runtime docker up

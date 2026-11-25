@@ -15,25 +15,27 @@ explicitly selected servers.
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iPhone client for new development on `sky-dev`. It builds from a pinned Omi Flutter revision and installs alongside Omi Local. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client for new development. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 
-- **CV1 recording controls:** start and finish sessions with the device button;
-  mute audio without ending the recording.
-- **Audio library:** browse recordings, search by date, source, or transcript
-  prefix, adjust playback speed, and seek to transcript timestamps.
-- **Delivery recovery:** retain received audio on the iPhone until the paired
-  server acknowledges its saved part. See [delivery boundaries](docs/RECORDING_DURABILITY.md).
-- **Local transcription:** prepare local models for final transcripts and an
-  experimental live preview.
-- **Provider settings:** select independent Live STT, final transcription,
-  diarization, and summary providers in the library; select transcription and
-  diarization on iPhone or through profile JSON too. See [Providers](docs/PROVIDERS.md).
-- **Mac-local storage:** open audio and transcript folders in Finder through the
-  library's **Folders** section, currently labeled **Папки**.
-- **Flutter development workflow:** run the iPhone app with hot reload using the
-  included Debug launcher.
+- **Record from CV1 or the phone mic.** Start, stop and mute from the app, or finish one conversation while keeping CV1 listening. Optional reconnection and auto-start respect an explicit Stop or Mute. Live shows the source, elapsed time, CV1 battery and connection diagnostics.
+- **Keep audio through connection loss.** The mobile outbox retains received audio until the paired server confirms storage. It can deliver ordered parts as one conversation. Next can reopen recent archive cards offline, with audio and full transcripts fetched from the server. See [delivery guarantees and limits](docs/RECORDING_DURABILITY.md).
+- **Follow the live transcript.** Browse incoming text without losing your place. Choose speech and silence settings, show speaker labels where supported, and use live translation with a configured provider.
+- **Review and share saved recordings.** Search the archive and open the matching transcript. Jump to a timestamp, follow the active line during playback, and share audio or text. Edit supported recording fields, name speakers, and organize recordings into folders and emoji categories.
+- **See what happened during processing.** The archive shows pending recordings, stage outcomes, and failures with recovery guidance. Retry supported failures from the recording. Configure live transcription, final transcription, diarization and summaries separately.
+- **Work with conversations.** Choose summary templates, ask a configured model about a recording or the archive, create tasks with links to source quotes, and work with daily recaps and goals. See the [Next client guide](clients/next/README.md) for server requirements and current limits.
+- **Host your own library.** Run on a Mac or with Docker on CPU or NVIDIA GPU. Pair by Tailscale or authenticated ngrok. A standalone WhisperLiveKit deployment can serve up to four configured sessions. The original Local iPhone client remains available for existing workflows.
+
+The [Next feature comparison](clients/next/FEATURES.md) and [migration ledger](clients/next/README.md#migration-ledger) cover implementation details, device checks, and remaining gaps. See the [full Next change history](https://github.com/skywinder/omi-local/compare/329796d...85b817a) for individual commits.
+
+## Screenshots
+
+The web library shown here is running against synthetic demo data.
+
+| Live monitor | Saved recording |
+| --- | --- |
+| ![Live transcript, input source and provider status](docs/screenshots/live.png) | ![Saved recording with a player, speaker labels and timestamped transcript](docs/screenshots/archive.png) |
 
 ## Requirements
 
@@ -60,7 +62,7 @@ provisioning and Developer Mode requirements.
 ### 1. Start the Mac services
 
 ```bash
-git clone https://github.com/vquaron/omi-local.git omiloc
+git clone https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./omiloc bootstrap
 ./omiloc up
@@ -136,7 +138,7 @@ Install and start Docker Engine or Docker Desktop with Compose **2.32 or later**
 From a new checkout of `main`:
 
 ```bash
-git clone --branch main https://github.com/vquaron/omi-local.git omiloc
+git clone --branch main https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./omiloc --runtime docker bootstrap --device cpu --transport local
 ./omiloc --runtime docker up
@@ -329,9 +331,8 @@ speech fixture retain their original text.
 
 Read [AGENTS.md](AGENTS.md) and the relevant component guide before changing code.
 Use the standalone repository's commands, add regression tests for bug fixes,
-and describe your verification in the pull request. Report reproducible problems
-through [GitHub Issues](https://github.com/vquaron/omi-local/issues), with secrets
-and personal recording content removed.
+and describe your verification in the pull request. Remove secrets and personal
+recording content from reports.
 
 ## License and acknowledgements
 
