@@ -36,6 +36,25 @@ class SummaryTooLong(PipelineError):
     """The provider can retry with a more concise answer."""
 
 
+def failure_code(error):
+    # Project only bounded codes. Provider messages can contain transcript excerpts.
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, httpx.HTTPStatusError):
+            return f'http_{error.response.status_code}'
+        if isinstance(error, (TimeoutError, httpx.TimeoutException)):
+            return 'timeout'
+        if isinstance(error, httpx.NetworkError):
+            return 'connection'
+        if isinstance(error, SummaryTooLong):
+            return 'output_limit'
+        if isinstance(error, json.JSONDecodeError):
+            return 'invalid_json'
+        error = error.__cause__ or error.__context__
+    return 'unknown'
+
+
 def _read(path):
     if path.is_symlink() or path.stat().st_size > 32 * 1024 * 1024:
         raise PipelineError('Invalid processing checkpoint')
@@ -183,7 +202,7 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
         if path.exists():
             return validate_summary(_read(path))
 
-        def complete(instructions):
+        def complete(instructions, *, json_mode=False):
             budget = 180 if deadline is None else min(180, deadline - monotonic())
             if budget <= 0:
                 raise PipelineError('Summary processing deadline elapsed')
@@ -196,6 +215,14 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
                     # thinking otherwise consumes the whole answer budget. Opt-in only:
                     # strict OpenAI-compatible servers reject unknown fields.
                     body['chat_template_kwargs'] = {'enable_thinking': False}
+                if json_mode:
+                    body['response_format'] = {'type': 'json_object'}
+                    body['messages'][1]['content'] = (
+                        'Summarize the recording in the following JSON data. Return exactly one JSON object '
+                        'with title and overview. Apply the system template to the values of these fields.\n'
+                        + json.dumps({'recording': part}, ensure_ascii=False)
+                        + '\nReturn only the JSON object, starting with {"title":'
+                    )
                 body = transport.post_json(client, endpoint, json=body, deadline_seconds=budget)
             choice = body['choices'][0]
             if choice.get('finish_reason') == 'length':
@@ -212,6 +239,8 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None):
         try:
             try:
                 result = complete(system)
+            except json.JSONDecodeError:
+                result = complete(system, json_mode=True)
             except SummaryTooLong:
                 result = complete(
                     system + '\nRewrite concisely. Use at most 100 characters for the title and 1800 for the overview.',
@@ -253,8 +282,8 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
                 value = validate_summary(value)
             if not path.exists():
                 write(path, value)
-        except Exception:
-            processing[name]['status'] = 'failed'
+        except Exception as error:
+            processing[name].update(status='failed', error_code=failure_code(error))
             write(status_path, processing)
             raise
         processing[name]['status'] = 'ready'

@@ -212,3 +212,10 @@ An unreadable queue or import receipt cannot make Conversations unavailable;
 audio without readable processing state remains visible as a saved recording.
 The foreground list refreshes every five seconds. Physical long-session and
 background reliability still require device verification.
+
+For a failed recording the web library displays the stage, attempt count and saved
+provider error class. Older checkpoints can identify a stage without a specific
+cause. Invalid summary JSON gets one structured retry on the selected model.
+To requeue an exhausted job, create an empty `.retry-processing` file in that
+completed capture's directory. The watcher consumes it using the saved provider
+profile and reuses validated stage checkpoints.

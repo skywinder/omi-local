@@ -117,6 +117,13 @@ class ListenSessionRuntime:
         self.session_id = str(uuid.uuid4())
         self.original_codec = request.codec
         self.offline_runtime = is_offline_runtime()
+        self.local_recording_origin = {}
+        if self.offline_runtime:
+            from utils.offline_audio_capture import RECORDING_ORIGIN_HEADER, local_recording_origin
+            headers = request.websocket.headers
+            self.local_recording_origin = local_recording_origin(
+                headers.get('x-app-platform'), headers.get(RECORDING_ORIGIN_HEADER), request.source,
+            )
         self.client_conversation_id = _normalize_client_conversation_id(request.client_conversation_id)
         self.recording_session_id = self.client_conversation_id or str(uuid.uuid4())
         self.recording_session_ids_by_conversation: Dict[str, str] = {}

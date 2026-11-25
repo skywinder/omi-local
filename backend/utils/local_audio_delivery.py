@@ -18,8 +18,10 @@ from utils import local_conversation_groups as groups
 from utils.offline_audio_capture import (
     CAPTURE_DIRECTORY,
     METADATA_NAME,
+    RECORDING_ORIGIN_HEADER,
     OfflineAudioCapture,
     create_offline_audio_capture,
+    local_recording_origin,
     _atomic_json,
 )
 from utils.opus_preroll import decode_fresh_audio, validate_preroll
@@ -51,6 +53,9 @@ def initialize_local_capture(
             input_codec=codec,
             sample_rate=sample_rate,
             channels=channels,
+            origin=local_recording_origin(
+                headers.get('x-app-platform'), headers.get(RECORDING_ORIGIN_HEADER), source,
+            ) if offline else None,
         )
     )
     return preview_only, sink
@@ -152,6 +157,8 @@ def accept_part(
     *,
     decoder_factory: Callable[[], object] | None = None,
     check_capacity: Callable[[Path], None] | None = None,
+    phone_platform: str | None = None,
+    origin_header: str | None = None,
 ) -> dict:
     """Return a receipt only after a whole immutable part is durably published.
 
@@ -159,13 +166,14 @@ def accept_part(
     repeated uploads converge on the exact body checksum, including lost ACKs.
     """
     header, frames = parse_part(body)
+    origin = local_recording_origin(phone_platform, origin_header, header['source'])
     digest = hashlib.sha256(body).hexdigest()
     if header['version'] == 3:
-        return _accept_grouped(header, frames, digest, root, decoder_factory, check_capacity)
+        return _accept_grouped(header, frames, digest, root, decoder_factory, check_capacity, origin)
     capture_root = root / CAPTURE_DIRECTORY
     capture_root.mkdir(parents=True, exist_ok=True)
     _sync_directory(root)
-    return _store_audio(header, frames, digest, root, capture_root / header['id'], decoder_factory, check_capacity)
+    return _store_audio(header, frames, digest, root, capture_root / header['id'], decoder_factory, check_capacity, origin)
 
 
 def _check_neighbors(parts, index, start, sample_count):
@@ -179,7 +187,7 @@ def _check_neighbors(parts, index, start, sample_count):
         raise DeliveryConflict('Grouped audio conflicts with the following part')
 
 
-def _accept_grouped(header, frames, digest, root, decoder_factory, check_capacity):
+def _accept_grouped(header, frames, digest, root, decoder_factory, check_capacity, origin):
     group_root = root / 'grouped-recordings'
     group = group_root / header['recording_id']
     parts = group / 'parts'
@@ -216,12 +224,12 @@ def _accept_grouped(header, frames, digest, root, decoder_factory, check_capacit
         else:
             if finish_path.exists() and index >= groups.read_json(finish_path)['index']:
                 raise DeliveryConflict('Part beyond conversation finish')
-            _store_audio(header, frames, digest, root, parts / str(index), decoder_factory, check_capacity)
+            _store_audio(header, frames, digest, root, parts / str(index), decoder_factory, check_capacity, origin)
         groups.advance_group(root, group, config)
         return receipt
 
 
-def _store_audio(header, frames, digest, root, target, decoder_factory, check_capacity):
+def _store_audio(header, frames, digest, root, target, decoder_factory, check_capacity, origin):
     capture_root = target.parent
     grouped = header['version'] == 3
     existing = _receipt(target, header['id'], digest, grouped=grouped)
@@ -248,7 +256,8 @@ def _store_audio(header, frames, digest, root, target, decoder_factory, check_ca
     staging_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='part-', dir=staging_root) as temporary:
         capture = OfflineAudioCapture(
-            session_id=header['id'], source=header['source'], input_codec=header['codec'], root=Path(temporary)
+            session_id=header['id'], source=header['source'], input_codec=header['codec'], root=Path(temporary),
+            origin=origin,
         )
         capture.session_dir.chmod(0o700)
         capture.started_at = header['started_at']

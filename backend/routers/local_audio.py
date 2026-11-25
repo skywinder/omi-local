@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from routers.listen.local_status import require_local_status
 from utils.executors import run_blocking, storage_executor
 from utils.local_audio_delivery import DeliveryConflict, MAX_BODY_BYTES, MAX_PCM_BYTES, accept_part
+from utils.offline_audio_capture import RECORDING_ORIGIN_HEADER
 from utils.other.local_storage import local_storage_root_from_env
 
 DISK_RESERVE_BYTES = 128 * 1024 * 1024
@@ -39,13 +40,14 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
     publication = threading.Lock()
     pending_publications: set[asyncio.Task] = set()
 
-    def store_part(body: bytes, root: Path) -> dict:
+    def store_part(body: bytes, root: Path, phone_platform: str | None, origin_header: str | None) -> dict:
         with publication:
-            return accept_part(body, root, check_capacity=require_new_part_capacity)
+            return accept_part(body, root, check_capacity=require_new_part_capacity,
+                               phone_platform=phone_platform, origin_header=origin_header)
 
-    async def publish_part(body: bytes, root: Path) -> dict:
+    async def publish_part(body: bytes, root: Path, phone_platform: str | None, origin_header: str | None) -> dict:
         try:
-            return await run_blocking(storage_executor, store_part, body, root)
+            return await run_blocking(storage_executor, store_part, body, root, phone_platform, origin_header)
         finally:
             admission.release()
 
@@ -77,7 +79,8 @@ def build_local_audio_router(authenticate: Callable) -> APIRouter:
                     # The permit follows the actual disk work. HTTP timeout or
                     # cancellation must not admit more bodies while its worker
                     # still owns memory or waits for the publication lock.
-                    task = asyncio.create_task(publish_part(bytes(body), root))
+                    task = asyncio.create_task(publish_part(bytes(body), root, request.headers.get('x-app-platform'),
+                                                           request.headers.get(RECORDING_ORIGIN_HEADER)))
                     pending_publications.add(task)
                     task.add_done_callback(publication_finished)
                     owns_admission = False

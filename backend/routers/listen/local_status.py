@@ -163,7 +163,7 @@ async def preview_snapshot(uid: str) -> dict:
             continue
         text = preview.segment.text if preview is not None else ''
         result['sessions'].append({
-            **capture,
+            **capture, 'origin': getattr(session, 'local_recording_origin', {}),
             # This ephemeral preview token already identifies the draft on iPhone;
             # it is not the persisted recording or owner's identifier.
             'preview_id': preview.segment.id if preview is not None else None,

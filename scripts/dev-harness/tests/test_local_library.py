@@ -80,6 +80,22 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+@pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [
+    ('phone', {'phone_platform': 'android', 'phone_model': 'Test Pixel'}, 'Микрофон телефона', 'Android · Test Pixel'),
+    ('phone', {}, 'Микрофон телефона', ''),
+    ('omi', {'phone_platform': 'ios', 'phone_model': 'iPhone Test', 'wearable_name': 'Upstairs'}, 'Omi · Upstairs', 'iPhone Test'),
+])
+def test_catalogue_and_detail_include_recording_origin(library, source, origin, expected_source, expected_phone):
+    metadata_path = library.captures / 'synthetic-session' / 'metadata.json'
+    metadata = json.loads(metadata_path.read_text())
+    metadata_path.write_text(json.dumps({**metadata, 'source': source, 'origin': origin}))
+    record, = json.loads(request(library, '/api/recordings')[2])['recordings']
+    detail = json.loads(request(library, f'/api/recordings/{record["id"]}')[2])
+    for item in (record, detail):
+        assert item['source'] == expected_source
+        assert item['phone'] == expected_phone
+
+
 def test_pipeline_projection_keeps_partial_transcript_and_safe_summary(library):
     folder = library.transcripts / 'result'
     raw = folder / 'audio.json'

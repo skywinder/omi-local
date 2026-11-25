@@ -233,6 +233,16 @@ def test_busy_and_interrupt_do_not_exhaust_retries_and_failures_are_bounded(setu
     assert job['state'] == 'failed' and job['attempts'] == 3
     assert (folder / 'audio.wav').is_file() and not documents
 
+    # Only the explicitly marked job is retried, with its saved profile.
+    profile = job['profile']
+    marker = folder / '.retry-processing'
+    marker.touch()
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *args, **kwargs: 0)
+    worker.tick(1001)
+    [retried] = watch.read_queue(cfg).values()
+    assert retried['state'] == 'completed' and retried['profile'] == profile
+    assert retried['attempts'] == 1 and not marker.exists()
+
 
 def test_reenable_preserves_backlog_boundary(setup):
     cfg, calls, _, _ = setup

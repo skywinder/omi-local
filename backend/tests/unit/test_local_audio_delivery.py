@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import struct
 import uuid
@@ -236,8 +237,12 @@ def test_group_order_loss_replay_and_two_rotations_make_one_conversation(tmp_pat
     spans = [pcm[:300 * 32000], pcm[300 * 32000:600 * 32000], pcm[600 * 32000:]]
     bodies = [group_message(recording, i, i * 300 * 16000, span) for i, span in enumerate(spans)]
     end = group_message(recording, 3, 0, finish=True)
-    for body in [end, bodies[2], bodies[0], bodies[2]]:
+    origin = {'phone_model': 'Test Pixel'}
+    header = base64.urlsafe_b64encode(json.dumps(origin).encode()).decode()
+    for body in [end, bodies[2]]:
         accept_part(body, tmp_path)
+    accept_part(bodies[0], tmp_path, phone_platform='android', origin_header=header)
+    accept_part(bodies[2], tmp_path)
     progress = tmp_path / 'grouped-recordings' / recording / 'progress.json'
     assert json.loads(progress.read_text())['waiting_for_parts'] is True
     assert not list((tmp_path / 'listen-captures').glob('*/audio.wav'))
@@ -246,6 +251,7 @@ def test_group_order_loss_replay_and_two_rotations_make_one_conversation(tmp_pat
     assert json.loads(progress.read_text())['completed']
     audio_path, = (tmp_path / 'listen-captures').glob('*/audio.wav')
     group = json.loads(audio_path.with_name('metadata.json').read_text())['conversation_group']
+    assert json.loads(audio_path.with_name('metadata.json').read_text())['origin'] == {'phone_platform': 'android', **origin}
     assert group['end_sample'] == len(pcm) // 2
     assert 'speech_end_sample' not in group  # Explicit Stop retains the whole waveform for inference.
     with wave.open(str(audio_path)) as audio:

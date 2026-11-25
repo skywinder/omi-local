@@ -144,6 +144,24 @@ def safe_file(path, root):
     return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
 
 
+def recording_origin_labels(metadata):
+    origin = metadata.get('origin')
+    origin = origin if isinstance(origin, dict) else {}
+
+    def display_label(field):
+        value = origin.get(field)
+        return value if isinstance(value, str) and 0 < len(value) <= 80 and value.isprintable() else ''
+
+    platform = {'android': 'Android', 'ios': 'iPhone'}.get(str(origin.get('phone_platform')), '')
+    model = display_label('phone_model')
+    phone = model if model and model.startswith(platform) else ' · '.join(filter(None, (platform, model)))
+    source = 'Микрофон телефона'
+    if metadata.get('source') == 'omi':
+        wearable = display_label('wearable_name')
+        source = f'Omi · {wearable}' if wearable else 'Omi CV1'
+    return {'source': source, 'phone': phone}
+
+
 class Library:
     def __init__(self, services):
         self.captures = services / 'storage' / 'listen-captures'
@@ -231,6 +249,9 @@ class Library:
                                             'ready', 'processing', 'pending', 'failed', 'disabled', 'no_speech'}:
                                         continue
                                     processing[stage] = {'status': entry['status']}
+                                    code = entry.get('error_code')
+                                    if isinstance(code, str) and re.fullmatch(r'http_[1-5][0-9]{2}|timeout|connection|output_limit|invalid_json|unknown', code):
+                                        processing[stage]['error_code'] = code
                                     for field in ('provider_name', 'model'):
                                         value = entry.get(field)
                                         if isinstance(value, str) and len(value) <= 256:
@@ -260,8 +281,9 @@ class Library:
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
-                                      'source': 'CV1' if meta.get('source') == 'omi' else 'iPhone',
+                                      **recording_origin_labels(meta),
                                       'duration': duration, 'status': state, 'segments': segments,
+                                      'attempts': job.get('attempts', 0),
                                       'summary': summary, 'processing': processing,
                                       'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):

@@ -1183,3 +1183,23 @@ def test_capture_rf64_extracts_final_pcm_after_riff_limit_and_rejects_truncation
     with pytest.raises(wave.Error, match='Invalid'):
         with audio.open('rb') as stream, read_wave(stream):
             pass
+
+
+def test_invalid_summary_retries_same_model_with_json_mode(tmp_path, monkeypatch):
+    from dev_harness import local_pipeline
+
+    requests = []
+
+    def respond(_client, _url, *, json, **kwargs):
+        requests.append(json)
+        content = '{"title":"Fixture","overview":"Recovered"}' if 'response_format' in json else 'plain prose'
+        return {'choices': [{'finish_reason': 'stop', 'message': {'content': content}}]}
+
+    monkeypatch.setattr(local_pipeline.transport, 'post_json', respond)
+    snapshot = {'settings': {'base_url': 'https://summary.example/v1', 'model': 'fixture'}}
+    summary = local_pipeline.summarize_text(snapshot, '', 'Synthetic transcript', tmp_path, local_stt.atomic_json)
+    assert summary['overview'] == 'Recovered'
+    assert len(requests) == 2 and 'response_format' not in requests[0]
+    assert requests[1]['response_format'] == {'type': 'json_object'}
+    assert requests[1]['model'] == requests[0]['model']
+    assert 'Synthetic transcript' in requests[1]['messages'][1]['content']

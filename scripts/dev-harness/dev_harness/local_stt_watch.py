@@ -182,6 +182,13 @@ class Worker:
             self.save()
 
         for key, job in self.jobs.items():
+            # A local operator can requeue one exhausted capture with its original profile.
+            retry = paths[key] / '.retry-processing'
+            if retry.is_file() and not retry.is_symlink():
+                if job['state'] == 'failed':
+                    job.update(state='pending', attempts=0, retry_at=0)
+                    self.save()
+                retry.unlink(missing_ok=True)
             if job['state'] != 'pending' or job['retry_at'] > clock():
                 continue
             job.update(state='processing', attempts=job['attempts'] + 1)

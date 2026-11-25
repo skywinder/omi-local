@@ -1,7 +1,7 @@
 import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
 import {mountSettings} from '/settings.mjs';
-import {renderProcessing} from '/recording-processing.mjs';
+import {processingFailure, renderProcessing} from '/recording-processing.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -33,7 +33,7 @@ function showView(view = state.view) {
 
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
-  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.summary?.title || ''} ${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${r.source}`.toLocaleLowerCase('ru-RU').includes(query));
+  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.summary?.title || ''} ${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${[r.phone, r.source].filter(Boolean).join(' · ')}`.toLocaleLowerCase('ru-RU').includes(query));
   $('count').textContent = state.records.length;
   const fragment = document.createDocumentFragment();
   let previous = '';
@@ -46,7 +46,7 @@ function renderList() {
     top.append(node('span', 'recording-length', formatTime(r.duration)));
     button.append(top, node('p', 'recording-preview', r.preview || statuses[r.status]));
     const bottom = node('span', 'recording-bottom');
-    bottom.append(node('span', 'source', r.source), node('span', '', statuses[r.status]));
+    bottom.append(node('span', 'source', [r.phone, r.source].filter(Boolean).join(' · ')), node('span', '', processingFailure(r) || statuses[r.status]));
     button.append(bottom);
     button.addEventListener('click', () => select(r.id));
     fragment.append(button);
@@ -100,7 +100,7 @@ async function select(id, open = true) {
     showView();
     $('recording-date').textContent = day(record.started_at).toLocaleUpperCase('ru-RU');
     $('recording-title').textContent = `Запись в ${hour(record.started_at)}`;
-    $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
+    $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
     $('player-title').textContent = `${record.source} · ${hour(record.started_at)}`;
     $('duration').textContent = formatTime(record.duration);
     $('seek').max = record.duration;
@@ -149,7 +149,7 @@ async function refresh() {
       const record = await get(`/api/recordings/${id}`);
       if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing]))) {
         state.detail = record;
-        $('recording-meta').replaceChildren(node('span', 'meta-pill', record.source), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
+        $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);
       }
     }

@@ -139,3 +139,18 @@ test('diarization distinguishes service readiness, labels, degradation and lost 
   await settle();
   assert.doesNotMatch(ui.root.textContent, /Метки получены|Сервис готов/);
 });
+
+test('live source distinguishes two internal microphones and an attached CV1', async () => {
+  const {liveSourceLabel} = await import('./live.mjs');
+  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_platform: 'ios'}}), 'iPhone · Встроенный микрофон');
+  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_model: 'Pixel 5a'}}), 'Pixel 5a · Встроенный микрофон');
+  assert.equal(liveSourceLabel({source: 'omi', origin: {phone_model: 'iPhone Air'}}), 'iPhone Air · Omi CV1');
+  assert.equal(liveSourceLabel({source: 'phone'}), 'Встроенный микрофон');
+});
+
+test('recording failure identifies the failed stage even with a saved transcript', async () => {
+  const {processingFailure} = await import('./recording-processing.mjs');
+  const record = {status: 'failed', attempts: 3, processing: {stt: {status: 'ready'}, summary: {status: 'failed', error_code: 'invalid_json'}}};
+  assert.match(processingFailure(record), /Суммаризация.*JSON.*3/);
+  assert.match(processingFailure({...record, processing: {}}), /Этап сбоя не сохранён/);
+});

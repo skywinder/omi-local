@@ -16,6 +16,13 @@ export function audioActivity(current, previous, now, lastProgress) {
     progress, tone: now - progress >= 5000 ? 'waiting' : 'active'};
 }
 
+export function liveSourceLabel(session) {
+  const input = session.source === 'omi' ? 'Omi CV1' : session.source === 'phone' ? 'Встроенный микрофон' : 'Другой вход';
+  const platform = {ios: 'iPhone', android: 'Android'}[session.origin?.phone_platform];
+  const phone = session.origin?.phone_model || platform;
+  return [phone, input].filter(Boolean).join(' · ');
+}
+
 function element(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
@@ -60,7 +67,7 @@ export function mountLiveMonitor(root) {
     badge.dataset.tone = activity.tone;
     const sessions = data.backend === 'ready' ? (data.sessions || []) : [];
     const live = data.live_transcript || {}, final = data.final_stt || {};
-    fields.audio.value.textContent = sessions.length ? [...new Set(sessions.map(s => s.source === 'omi' ? 'CV1' : 'Микрофон iPhone'))].join(' + ') : 'Нет активной записи';
+    fields.audio.value.textContent = sessions.length ? [...new Set(sessions.map(liveSourceLabel))].join(' + ') : 'Нет активной записи';
     fields.audio.detail.textContent = sessions.length ? `${formatTime(data.capture.audio_seconds || 0)} получено · ${data.capture.frames_received || 0} кадров` : activity.label;
     fields.live.value.textContent = live.provider || 'Live STT';
     fields.live.detail.textContent = `${states[live.state] || 'Неизвестно'} · отправлено обновлений: ${live.updates || 0}`;
@@ -86,7 +93,7 @@ export function mountLiveMonitor(root) {
         : 'Нет связи с сервером. Live-текст недоступен; повторяем проверку.'));
       for (const session of sessions) {
         const block = element('div', 'live-session');
-        if (sessions.length > 1) block.append(element('p', 'eyebrow', session.source === 'omi' ? 'CV1' : 'МИКРОФОН IPHONE'));
+        block.append(element('p', 'eyebrow', liveSourceLabel(session)));
         block.append(element('p', session.text ? 'live-text' : 'live-empty', session.text || 'Звук принимается. Ожидаем распознанную речь…'));
         if (session.text_truncated) block.append(element('p', 'monitor-note', 'Показана последняя часть длинного черновика. Полный финальный текст будет доступен после остановки.'));
         fragment.append(block);

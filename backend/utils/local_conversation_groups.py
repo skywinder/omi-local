@@ -117,6 +117,7 @@ def _publish(root, group, config, first_index, start, end, speech_end):
         folder.mkdir(mode=0o700)
         samples = 0
         started = ended = None
+        origin = None
         with _conversation_wav(folder / 'audio.wav', end - start) as out:
             for index in itertools.count(first_index):
                 part = group / 'parts' / str(index)
@@ -130,6 +131,7 @@ def _publish(root, group, config, first_index, start, end, speech_end):
                         part_time = datetime.fromisoformat(info['started_at'].replace('Z', '+00:00'))
                         if started is None:
                             started = (part_time + timedelta(seconds=left / RATE)).isoformat()
+                            origin = info.get('origin')
                         ended = (part_time + timedelta(seconds=right / RATE)).isoformat()
                         inp.setpos(left)
                         remaining = right - left
@@ -148,7 +150,8 @@ def _publish(root, group, config, first_index, start, end, speech_end):
             os.fsync(audio.fileno())
         meta = _capture_metadata(session_id=identifier, source=config['source'], input_codec=config['codec'],
                                  started_at=started, ended_at=ended, frames_received=None,
-                                 encoded_bytes=None, decoded_pcm_bytes=samples * 2, decode_errors=0, status='completed')
+                                 encoded_bytes=None, decoded_pcm_bytes=samples * 2, decode_errors=0, status='completed',
+                                 origin=origin)
         meta['conversation_group'] = provenance
         _atomic_json(folder / 'metadata.json', meta)
         sync_dir(folder)
@@ -209,6 +212,9 @@ def advance_group(root: Path, group: Path, config: dict):
             'source': config['source'], 'started_at': (group_start + timedelta(seconds=start / RATE)).isoformat(),
             'duration_seconds': (state['next_sample'] - start) / RATE,
         }
+        open_index = state['open_index']
+        if open_index is not None:
+            state['waiting_row']['origin'] = read_json(parts / str(open_index) / 'metadata.json').get('origin')
     else:
         state.pop('waiting_row', None)
     _atomic_json(progress_path, state)
