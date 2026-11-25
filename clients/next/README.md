@@ -372,6 +372,12 @@ pagination headers and owner-scoped audio playback. Its first ten cards used
 54,991 bytes versus 118,001 for the full list. The detail transcript, second
 page and authenticated WAV range passed through the live paired ingress.
 See [backend compatibility](../../docs/BACKEND_PARITY.md) for the rollout.
+The signed `Profile-dev` package at `b5cd86c` passed signature, entitlements
+and hash verification (executable SHA-256 starts with `08ad47ff6fbc53e4`).
+USB and Xcode found no eligible iPhone for this package.
+Bastion's configured summary model classified a synthetic compiler discussion
+as `technology`. Its category and emoji survived import and regeneration.
+The regeneration path respects an existing owner category and title.
 
 ## Migration ledger
 

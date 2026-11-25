@@ -8,6 +8,7 @@ from google.cloud import firestore
 
 from database import conversations
 from database._client import db, run_transactional
+from utils.local_transcript import summary_labels
 
 
 class SummaryUnavailable(ValueError):
@@ -105,12 +106,18 @@ def _publish(transaction, uid, conversation_id, revision, candidate, publication
     if current != revision:
         raise SummaryChanged()
     structured = raw.get('structured')
+    labels = summary_labels(candidate, user_category=raw.get('user_category'))
     if isinstance(structured, dict):
-        patch = {'structured.overview': candidate['overview']}
+        patch = {f'structured.{key}': value for key, value in labels.items()}
+        patch['structured.overview'] = candidate['overview']
         if 'user_title' not in raw or not isinstance(raw['user_title'], str):
             patch['structured.title'] = candidate['title']
     else:
-        patch = {'structured': {'title': raw.get('user_title') or candidate['title'], 'overview': candidate['overview']}}
+        patch = {'structured': {
+            **labels, 'title': raw.get('user_title') or candidate['title'], 'overview': candidate['overview'],
+        }}
+        if raw.get('user_category'):
+            patch['structured']['category'] = raw['user_category']
     patch['local_summary_publication'] = publication
     transaction.update(ref, patch)
     return publication

@@ -200,14 +200,20 @@ summary_db._ref = lambda *_: reference
 reference.get.return_value.to_dict.return_value = raw
 _, revision = summary_db.source(raw, 'fixture-owner')
 publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
-candidate = {'title': 'Generated title', 'overview': 'New recap'}
+candidate = {'title': 'Generated title', 'overview': 'New recap', 'category': 'education', 'emoji': '📚'}
 reply = summary_db._publish.to_wrap(
     transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication,
 )
 assert reply == publication
 transaction.update.assert_called_once_with(reference, {
-    'structured.overview': 'New recap', 'local_summary_publication': publication,
+    'structured.overview': 'New recap', 'structured.category': 'education', 'structured.emoji': '📚',
+    'local_summary_publication': publication,
 })
+transaction.reset_mock()
+raw['user_category'] = 'family'
+summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication)
+assert 'structured.category' not in transaction.update.call_args.args[1]
+assert transaction.update.call_args.args[1]['structured.emoji'] == '📚'
 transaction.reset_mock()
 raw['transcript_segments'][0]['text'] = 'New edit.'
 try:

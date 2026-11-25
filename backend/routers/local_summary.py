@@ -53,6 +53,8 @@ class Regenerated(BaseModel):
 
 
 class Candidate(BaseModel):
+    category: str | None = None
+    emoji: str | None = None
     title: str = Field(min_length=1, max_length=300)
     overview: str = Field(min_length=1, max_length=4000)
     model: str = Field(min_length=1, max_length=300)

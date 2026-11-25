@@ -100,6 +100,23 @@ def stage_outcomes(raw: dict) -> dict | None:
     return stages
 
 
+def summary_labels(summary: dict, *, user_category: str | None = None) -> dict:
+    """Return validated classifier fields for a new or regenerated recording summary."""
+    labels = {}
+    category = summary.get('category')
+    if not user_category and isinstance(category, str) and category in CategoryEnum._value2member_map_:
+        labels['category'] = category
+    emoji = summary.get('emoji')
+    if isinstance(emoji, str) and 0 < len(emoji) <= 12:
+        kinds = [unicode_category(char) for char in emoji]
+        if 'So' in kinds and all(
+            kind in {'So', 'Sk'} or char in {'\u200d', '\ufe0f'}
+            for char, kind in zip(emoji, kinds)
+        ):
+            labels['emoji'] = emoji
+    return labels
+
+
 def build_conversation(raw: dict, manifest: dict) -> Conversation:
     digest = manifest['audio_sha256']
     if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
@@ -127,17 +144,7 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
             raise ValueError('Invalid local recording summary')
         structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
-        category = summary.get('category')
-        if isinstance(category, str) and category in CategoryEnum._value2member_map_:
-            structured['category'] = category
-        emoji = summary.get('emoji')
-        if isinstance(emoji, str) and 0 < len(emoji) <= 12:
-            kinds = [unicode_category(char) for char in emoji]
-            if 'So' in kinds and all(
-                kind in {'So', 'Sk'} or char in {'\u200d', '\ufe0f'}
-                for char, kind in zip(emoji, kinds)
-            ):
-                structured['emoji'] = emoji
+        structured.update(summary_labels(summary))
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
         finished_at=started + timedelta(seconds=duration),
