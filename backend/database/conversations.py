@@ -732,6 +732,8 @@ def get_conversations_without_photos(
     folder_id: Optional[str] = None,
     starred: Optional[bool] = None,
     budget: Optional[ListReadBudget] = None,
+    *,
+    list_fields_only: bool = False,
 ):
     """
     Same as get_conversations but without loading photos.
@@ -745,6 +747,13 @@ def get_conversations_without_photos(
     instead of pretending to be complete.
     """
     conversations_ref = db.collection('users').document(uid).collection(conversations_collection)
+    if list_fields_only:
+        from models.conversation import Conversation
+
+        # Preserve card fields and Local edit overrides without downloading or
+        # decompressing transcript bytes for every row in a page.
+        fields = set(Conversation.model_fields) - {'transcript_segments', 'transcript_segments_compressed'}
+        conversations_ref = conversations_ref.select(sorted(fields | {'user_title', 'user_category'}))
     if not include_discarded:
         conversations_ref = conversations_ref.where(filter=FieldFilter('discarded', '==', False))
     if sources:

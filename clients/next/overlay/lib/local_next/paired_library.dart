@@ -522,7 +522,7 @@ class PairedLibrary {
         }
         return http.Response.bytes(await _bytes(response, collection ? 8 << 20 : 24 << 20), 200, headers: headers);
       },
-      query: collection ? query : null,
+      query: collection ? {...query, 'list_fields_only': 'true'} : null,
       readHttpErrors: true,
       overallTimeout: _deadline,
     );

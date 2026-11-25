@@ -89,7 +89,9 @@ archive_fixture = {
     'id': '00000000-0000-4000-8000-000000000042', 'structured': {'title': 'Fixture'},
     'created_at': time, 'started_at': time, 'finished_at': time, 'status': 'completed',
 }
-def read_archive(uid, limit, offset, *, budget, **filters):
+projection_requests = []
+def read_archive(uid, limit, offset, *, budget, list_fields_only, **filters):
+    projection_requests.append(list_fields_only)
     assert uid == 'fixture-owner' and limit == 2
     if offset:
         budget.mark_exhausted('documents')
@@ -105,6 +107,9 @@ assert first_archive.status_code == 200, first_archive.text
 assert first_archive.json()[0]['id'] == archive_fixture['id']
 assert first_archive.headers['X-Omi-Conversation-Page-Size'] == '1'
 assert first_archive.headers['X-Omi-Has-More'] == 'false'
+cards = client.get('/v1/conversations?limit=1&list_fields_only=true', headers=archive_headers)
+assert cards.status_code == 200 and cards.json()[0]['id'] == archive_fixture['id']
+assert projection_requests == [False, True]
 cut_archive = client.get('/v1/conversations?limit=1&offset=1', headers=archive_headers)
 assert cut_archive.status_code == 200 and cut_archive.json() == []
 assert cut_archive.headers['X-Omi-List-Truncated'] == 'true'

@@ -322,6 +322,7 @@ void main() {
       if (r.uri.path == '/v1/users/profile') {
         response.write('{"uid":"alice"}');
       } else if (r.uri.path == '/v1/conversations') {
+        expect(r.uri.queryParameters['list_fields_only'], 'true');
         offsets.add(r.uri.queryParameters['offset']);
         ownership.add(r.headers.value('x-omi-home-ownership'));
         if (r.headers.value(HttpHeaders.authorizationHeader) != 'Bearer $key' ||
@@ -357,6 +358,7 @@ void main() {
           }
         }
       } else {
+        expect(r.uri.queryParameters, isEmpty);
         response.write(jsonEncode(row)); // A stale / wrong detail response.
       }
       await response.close();

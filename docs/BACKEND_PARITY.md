@@ -1,7 +1,6 @@
 # Omi Local backend compatibility
 
-Comparison baseline is the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593),
-also pinned by Next. The existing Local client and the Next client can use
+The initial comparison used the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593). Next now pins [6f771e1](https://github.com/BasedHardware/omi/commit/6f771e1f5f50768ed7a7c8fd539b1f4b5ef426ed). The existing Local client and the Next client can use
 the same paired deployment. Bastion has its own deployed revision and is
 checked separately from this worktree.
 
@@ -38,17 +37,35 @@ reads both page headers through the original Conversation API adapter.
 The original's indexed Home, opaque cursors, translation on open, and
 first-open background work require their own contracts.
 
+## Card and detail reads
+
+Next adds `list_fields_only=true` to its paired archive request. Firestore
+projects the Conversation fields plus Local title and category overrides and
+skips both stored transcript fields. Next opens the full detail by ID.
+The existing Local app still receives the full list. Older paired servers
+accept the extra query parameter and serve their existing response.
+
+## Bastion acceptance, November 25
+
+Bastion now serves page metadata, projected cards and authenticated WAV ranges.
+A ten-row page measured 118,001 bytes for the existing client and 54,991 bytes
+for Next, with matching IDs and summaries. The next ten rows had distinct
+IDs. Opening a saved recording returned its original transcript. Its first 44
+WAV bytes returned HTTP 206 with a RIFF/WAVE header. The same audio request
+without the paired key returned 401.
+
+The deployment retained the active image and its existing Compose overlays,
+including the waiting-for-parts rows and host-specific provider code. The
+release directory recorded in the app container's Compose config-file label
+contains the reviewed file hashes and `rollback.sh` for this change. A fresh
+Firestore and Auth export preceded the app restart.
+
 ## Next slices
 
-1. Compare the shared list/detail fields used by both clients, then bring the
-   original's lightweight list projection to paired reads with legacy client
-   coverage. Keep transcript content on the detail route for callers that need it.
-2. Verify WAV playback on an isolated paired runtime, including old recordings,
-   authenticated range requests and fallback on a deployment without playback.
-   Record the capabilities of the deployment before pointing a phone at it.
-3. Work through processing and optional product features using the same route,
-   model and lifecycle comparison. Update capability checks alongside each
-   added behavior.
+1. Align paired category edits and classification with the Bastion processing
+   pipeline, including owner overrides when summaries regenerate.
+2. Check the existing client and Next on the same physical iPhone against the
+   updated archive and playback routes, then verify new microphone and CV1 audio.
 
 Run `make test-offline` for the archive adapter and the offline HTTP surface.
 Run `make test-transport-unit` for transport/auth and offline route coverage.

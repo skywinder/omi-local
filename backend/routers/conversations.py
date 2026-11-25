@@ -760,6 +760,7 @@ def get_conversations(
     end_date: Optional[datetime] = Query(None, description="Filter by end date (inclusive)"),
     folder_id: Optional[str] = Query(None, description="Filter by folder ID"),
     starred: Optional[bool] = Query(None, description="Filter by starred status"),
+    list_fields_only: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if start_date is not None and end_date is not None and _ensure_aware(start_date) > _ensure_aware(end_date):
@@ -800,7 +801,8 @@ def get_conversations(
         from utils.local_recording_rows import read_local_archive_page
 
         conversations, has_more = read_local_archive_page(
-            conversations_db.get_conversations_without_photos, uid, limit, offset, budget=budget, **filters,
+            conversations_db.get_conversations_without_photos, uid, limit, offset, budget=budget,
+            list_fields_only=list_fields_only, **filters,
         )
         if response is not None:
             response.headers['X-Omi-Conversation-Page-Size'] = str(len(conversations))

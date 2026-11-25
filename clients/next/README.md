@@ -365,6 +365,14 @@ For backend updates, compare the shared archive and processing contracts in
 [Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
 deployments have separate authentication and audio processing boundaries.
 
+On November 25 Next advanced to original Omi `6f771e1`. The Flutter analyzer
+and 73 Next tests passed. The legacy transport app suite and offline backend
+suite passed. Bastion now serves the optional transcript-free archive page,
+pagination headers and owner-scoped audio playback. Its first ten cards used
+54,991 bytes versus 118,001 for the full list. The detail transcript, second
+page and authenticated WAV range passed through the live paired ingress.
+See [backend compatibility](../../docs/BACKEND_PARITY.md) for the rollout.
+
 ## Migration ledger
 
 The [feature inventory and port estimates](FEATURES.md) compare the original
