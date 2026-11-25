@@ -7,8 +7,11 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    private var cv1: NextCV1? = null
+
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        cv1 = NextCV1(applicationContext, engine.dartExecutor.binaryMessenger)
         MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/environment")
             .setMethodCallHandler { call, result ->
                 if (call.method != "takeLocalMacSettings") {
@@ -17,6 +20,12 @@ class MainActivity : FlutterActivity() {
                     result.success(takeDebugPreset()?.let { mapOf("server_presets_b64" to it) })
                 }
             }
+    }
+
+    override fun cleanUpFlutterEngine(engine: FlutterEngine) {
+        cv1?.dispose()
+        cv1 = null
+        super.cleanUpFlutterEngine(engine)
     }
 
     private fun takeDebugPreset(): String? {

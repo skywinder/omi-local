@@ -11,16 +11,27 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'capture.dart';
 import 'cv1_capture.dart';
 import 'cv1_transport.dart';
+import 'device_diagnostics_page.dart';
 import 'live_preview.dart';
 import 'live_view.dart';
+import 'live_tuning.dart';
 import 'paired_library.dart';
+import 'processing_page.dart';
+import 'server_status_page.dart';
 import 'settings_labels.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
-  const LocalNextCapturePanel({required this.library, required this.serverName, this.onDelivered, super.key});
+  const LocalNextCapturePanel({
+    required this.library,
+    required this.serverName,
+    this.onDelivered,
+    this.openServers,
+    super.key,
+  });
   final PairedLibrary library;
   final String serverName;
   final VoidCallback? onDelivered;
+  final VoidCallback? openServers;
 
   @override
   State<LocalNextCapturePanel> createState() => _CapturePanelState();
@@ -35,10 +46,12 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   LocalAudioJournal? _journal;
   int _deliveryRevision = 0;
   NextCaptureInputs? _inputs;
-  final _hasCv1 = defaultTargetPlatform == TargetPlatform.iOS;
+  final _hasCv1 = {TargetPlatform.iOS, TargetPlatform.android}.contains(defaultTargetPlatform);
   bool _storageFailed = false;
   bool _closed = false;
   int? _groupSilence;
+  Cv1DoubleTapAction _doubleTap = Cv1DoubleTapAction.checkpoint;
+  static const _doubleTapKey = 'next.cv1.doubleTap';
   SharedPreferences? _groupPrefs;
   String get _groupPrefKey => 'next.capture.groupSilence.${widget.library.audioOwnerId}';
 
@@ -60,6 +73,10 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
         _groupPrefs = await SharedPreferences.getInstance();
         final value = _groupPrefs?.getInt(_groupPrefKey);
         if (LocalAudioJournal.groupSilenceChoices.contains(value)) _groupSilence = value;
+        final gesture = _groupPrefs?.getString(_doubleTapKey);
+        _doubleTap =
+            Cv1DoubleTapAction.values.where((action) => action.name == gesture).firstOrNull ??
+            Cv1DoubleTapAction.checkpoint;
       } catch (_) {
         // Audio capture remains available with the default part settings.
       }
@@ -83,8 +100,9 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
           FlutterPhoneMicrophone(),
           preview: NextLivePreview(library.audioOwnerId, library.connectPreview),
         ),
-        _hasCv1 ? IosCv1Transport() : const UnavailableCv1Transport(),
+        _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
+        doubleTapAction: () => _doubleTap,
       );
       journal.retry();
     } catch (_) {
@@ -136,20 +154,40 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
       inputs: inputs,
       serverLabel: widget.serverName,
       hasCv1: _hasCv1,
+      openServers: widget.openServers,
       library: widget.library,
       groupSilence: _groupSilence,
       onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
+      doubleTap: _doubleTap,
+      onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
     );
   }
 
-  Future<void> _setGroupSilence(int? seconds) async {
+  Future<bool> _setDoubleTap(Cv1DoubleTapAction action) async {
     final prefs = _groupPrefs;
-    if (prefs == null || _captureBusy() || !widget.library.ownerChange.permitsCapture) return;
+    if (prefs == null || _captureBusy()) return false;
+    try {
+      if (await prefs.setString(_doubleTapKey, action.name) && mounted) {
+        setState(() => _doubleTap = action);
+        return true;
+      }
+    } catch (_) {
+      // Keep the last confirmed gesture if the preference cannot be saved.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.failedToSaveCheckConnection)));
+    }
+    return false;
+  }
+
+  Future<bool> _setGroupSilence(int? seconds) async {
+    final prefs = _groupPrefs;
+    if (prefs == null || _captureBusy() || !widget.library.ownerChange.permitsCapture) return false;
     try {
       final saved = seconds == null ? await prefs.remove(_groupPrefKey) : await prefs.setInt(_groupPrefKey, seconds);
       if (saved && mounted) {
         setState(() => _groupSilence = seconds);
-        return;
+        return true;
       }
     } catch (_) {
       // Report failure without changing the setting for the next recording.
@@ -157,18 +195,25 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.couldNotLoadPage)));
     }
+    return false;
   }
 }
 
 /// Both inputs share one journal. Only an explicit Start can take it from the other source.
 class NextCaptureInputs extends ChangeNotifier {
-  NextCaptureInputs(this.phone, Cv1Transport transport, {this.ownerChange}) {
+  NextCaptureInputs(
+    this.phone,
+    Cv1Transport transport, {
+    this.ownerChange,
+    Cv1DoubleTapAction Function()? doubleTapAction,
+  }) {
     cv1 = NextCv1Capture(
       phone.journal,
       phone.owner,
       canStart: () => permitsNewRecording && !switching && !_phoneOwns && !phone.active && !phone.busy,
       permitsStartRequest: () => permitsNewRecording,
       onStartRequested: _claimCv1,
+      doubleTapAction: doubleTapAction,
       preview: phone.preview,
     );
     connection = Cv1Connection(transport, cv1);
@@ -269,6 +314,9 @@ class LocalNextCaptureControls extends StatelessWidget {
     this.library,
     this.groupSilence,
     this.onGroupSilence,
+    this.doubleTap = Cv1DoubleTapAction.checkpoint,
+    this.onDoubleTap,
+    this.openServers,
     super.key,
   });
   final NextCaptureInputs inputs;
@@ -276,7 +324,183 @@ class LocalNextCaptureControls extends StatelessWidget {
   final bool hasCv1;
   final PairedLibrary? library;
   final int? groupSilence;
-  final Future<void> Function(int?)? onGroupSilence;
+  final Future<bool> Function(int?)? onGroupSilence;
+  final Cv1DoubleTapAction doubleTap;
+  final Future<bool> Function(Cv1DoubleTapAction)? onDoubleTap;
+  final VoidCallback? openServers;
+
+  void _openDiagnostics(BuildContext context, Listenable capture) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NextDeviceDiagnosticsPage(
+          link: inputs.connection,
+          capture: capture,
+          captureBusy: () => inputs.hasCaptureInProgress,
+        ),
+      ),
+    );
+  }
+
+  String _boundary(BuildContext context, int? seconds) => switch (seconds) {
+    null => pairedSettingsLabel(context, 'groupCaptureLegacy'),
+    0 => pairedSettingsLabel(context, 'groupCaptureSingle'),
+    _ => '${pairedSettingsLabel(context, 'groupCaptureSilence')} · ${seconds}s',
+  };
+
+  void _settings(BuildContext context, Listenable capture, PairedLibrary library) {
+    var boundary = groupSilence;
+    var gesture = doubleTap;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) {
+          final l = context.l10n;
+          final journal = inputs.phone.journal;
+          final link = inputs.connection;
+          String gestureLabel(Cv1DoubleTapAction value) => switch (value) {
+            Cv1DoubleTapAction.checkpoint => pairedSettingsLabel(context, 'nextCheckpoint'),
+            Cv1DoubleTapAction.stop => l.endAndProcess,
+            Cv1DoubleTapAction.mute => l.deviceOnboardingMuteUnmute,
+            Cv1DoubleTapAction.off => l.off,
+          };
+          void open(Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+          return Scaffold(
+            appBar: AppBar(title: Text(pairedSettingsLabel(context, 'nextMobileSettings'))),
+            body: StatefulBuilder(
+              builder: (context, refresh) => ListenableBuilder(
+                listenable: Listenable.merge([capture, link, journal]),
+                builder: (context, _) => ListView(
+                  children: [
+                    if (hasCv1) ...[
+                      ListTile(
+                        leading: const Icon(Icons.bluetooth),
+                        title: const Text('Omi CV1'),
+                        subtitle: Text(cv1PhaseLabel(context, link.phase)),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          if (link.phase == Cv1LinkPhase.idle || link.phase == Cv1LinkPhase.failed) {
+                            unawaited(link.scan());
+                          }
+                          unawaited(_devices(context));
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.monitor_heart_outlined),
+                        title: Text(l.deviceDiagnostics),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openDiagnostics(context, capture),
+                      ),
+                      if (onDoubleTap != null)
+                        ListTile(
+                          leading: const Icon(Icons.touch_app_outlined),
+                          title: Text(l.doubleTap),
+                          subtitle: Text(gestureLabel(gesture)),
+                          trailing: PopupMenuButton<Cv1DoubleTapAction>(
+                            tooltip: l.edit,
+                            enabled: !inputs.hasCaptureInProgress,
+                            initialValue: gesture,
+                            onSelected: (action) async {
+                              final saved = await onDoubleTap!(action);
+                              if (saved && context.mounted) refresh(() => gesture = action);
+                            },
+                            itemBuilder: (context) => [
+                              for (final action in Cv1DoubleTapAction.values)
+                                PopupMenuItem(value: action, child: Text(gestureLabel(action))),
+                            ],
+                          ),
+                        ),
+                    ],
+                    ListTile(
+                      leading: const Icon(Icons.mic_none),
+                      title: Text(l.recording),
+                      subtitle: Text(
+                        inputs.phone.active
+                            ? l.phone
+                            : inputs.cv1.active
+                            ? 'Omi CV1'
+                            : l.off,
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.cloud_upload_outlined),
+                      title: Text(pairedSettingsLabel(context, 'nextPhoneOutbox')),
+                      subtitle: Text(
+                        journal.pendingParts == 0
+                            ? pairedSettingsLabel(context, 'nextOutboxHealthy')
+                            : '${l.nPending(journal.pendingParts)} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB',
+                      ),
+                      trailing: journal.deliveryFailed
+                          ? TextButton(onPressed: journal.retry, child: Text(l.retry))
+                          : null,
+                    ),
+                    if (library.conversationGroups && onGroupSilence != null)
+                      ListTile(
+                        leading: const Icon(Icons.call_split),
+                        title: Text(pairedSettingsLabel(context, 'groupCaptureLabel')),
+                        subtitle: Text(_boundary(context, boundary)),
+                        trailing: PopupMenuButton<int>(
+                          key: const ValueKey('next-recording-boundaries'),
+                          tooltip: l.edit,
+                          enabled: !inputs.hasCaptureInProgress && library.ownerChange.permitsCapture,
+                          initialValue: boundary ?? -1,
+                          onSelected: (value) async {
+                            if (inputs.hasCaptureInProgress || !library.ownerChange.permitsCapture) return;
+                            final selected = value == -1 ? null : value;
+                            final saved = await onGroupSilence!(selected);
+                            if (saved && context.mounted) refresh(() => boundary = selected);
+                          },
+                          itemBuilder: (context) => [
+                            for (final value in [-1, ...LocalAudioJournal.groupSilenceChoices])
+                              PopupMenuItem(value: value, child: Text(_boundary(context, value == -1 ? null : value))),
+                          ],
+                        ),
+                      ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.dns_outlined),
+                      title: Text(pairedSettingsLabel(context, 'localMacServers')),
+                      subtitle: Text(serverLabel),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: openServers,
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.health_and_safety_outlined),
+                      title: Text(pairedSettingsLabel(context, 'serverStatus')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => open(NextServerStatusPage(library: library, serverName: serverLabel)),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.tune),
+                      title: Text(l.processing),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => open(
+                        LocalNextProcessingPage(
+                          client: library.processingClient(
+                            permitsActivation: () => !inputs.hasCaptureInProgress && library.ownerChange.permitsCapture,
+                          ),
+                          serverLabel: serverLabel,
+                          capture: capture,
+                          isRecording: () => inputs.hasCaptureInProgress,
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.groups_outlined),
+                      title: Text(pairedSettingsLabel(context, 'liveSpeakerLimit')),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => showModalBottomSheet<void>(
+                        context: context,
+                        builder: (_) => NextLiveTuningSheet(library: library),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _devices(BuildContext context) async {
     final connection = inputs.connection;
@@ -324,7 +548,12 @@ class LocalNextCaptureControls extends StatelessWidget {
                       },
                     ),
                 ],
-                if (connection.operationFailed || connection.phase == Cv1LinkPhase.failed)
+                if (connection.permissionDenied)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(pairedSettingsLabel(context, 'nextCv1ScanPermission')),
+                  )
+                else if (connection.operationFailed || connection.phase == Cv1LinkPhase.failed)
                   Padding(padding: const EdgeInsets.all(16), child: Text(l.connectionFailed)),
                 if (connection.phase == Cv1LinkPhase.unavailable)
                   Padding(padding: const EdgeInsets.all(16), child: Text(l.bluetoothNeeded)),
@@ -377,22 +606,12 @@ class LocalNextCaptureControls extends StatelessWidget {
                   icon: Icon(cv1.intent == Cv1CaptureIntent.muted ? Icons.mic_off : Icons.mic),
                   onPressed: inputs.switching ? null : cv1.toggleMute,
                 ),
-              if (library?.conversationGroups == true && onGroupSilence != null)
-                PopupMenuButton<int>(
-                  tooltip: pairedSettingsLabel(context, 'groupCaptureLabel'),
+              if (library case final paired?)
+                IconButton(
+                  key: const ValueKey('next-mobile-settings'),
+                  tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
                   icon: const Icon(Icons.settings_outlined),
-                  enabled: !inputs.hasCaptureInProgress && library?.ownerChange.permitsCapture == true,
-                  initialValue: groupSilence ?? -1,
-                  onSelected: (value) => unawaited(onGroupSilence!(value == -1 ? null : value)),
-                  itemBuilder: (context) => [
-                    PopupMenuItem(value: -1, child: Text(pairedSettingsLabel(context, 'groupCaptureLegacy'))),
-                    PopupMenuItem(value: 0, child: Text(pairedSettingsLabel(context, 'groupCaptureSingle'))),
-                    for (final seconds in LocalAudioJournal.groupSilenceChoices.where((value) => value > 0))
-                      PopupMenuItem(
-                        value: seconds,
-                        child: Text('${pairedSettingsLabel(context, 'groupCaptureSilence')} · ${seconds}s'),
-                      ),
-                  ],
+                  onPressed: () => _settings(context, captureState, paired),
                 ),
               if (hasCv1)
                 TextButton.icon(
@@ -403,15 +622,8 @@ class LocalNextCaptureControls extends StatelessWidget {
                         ? l.connectDevice
                         : [
                             'CV1',
-                            switch (link.phase) {
-                              Cv1LinkPhase.idle => l.disconnected,
-                              Cv1LinkPhase.unavailable => l.bluetoothNeeded,
-                              Cv1LinkPhase.scanning => l.searchingForDevices,
-                              Cv1LinkPhase.connecting => l.deviceConnecting,
-                              Cv1LinkPhase.ready => l.connected,
-                              Cv1LinkPhase.reconnecting => l.reconnecting,
-                              Cv1LinkPhase.failed => l.connectionFailed,
-                            },
+                            cv1PhaseLabel(context, link.phase),
+                            if (link.diagnostics?.battery case final battery?) '$battery%',
                             if (cv1.intent == Cv1CaptureIntent.muted)
                               l.muted
                             else if (cv1.active && cv1.linked)

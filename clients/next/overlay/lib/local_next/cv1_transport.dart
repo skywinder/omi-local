@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'cv1_capture.dart';
 
@@ -14,6 +15,8 @@ sealed class Cv1TransportEvent {
     if (message is! Map) return null;
     // StandardMessageCodec delivers typed bytes without changing the GATT frame.
     switch (message) {
+      case {'type': 'diagnostics', 'generation': final int generation, 'values': final Map values} when generation > 0:
+        return Cv1DiagnosticsEvent(generation, Cv1Diagnostics.fromWire(values));
       case {'type': 'device', 'id': final String id, 'name': final String name} when id.isNotEmpty:
         return Cv1DeviceFound(id, name);
       case {'type': 'state', 'phase': final String phaseName, 'generation': final int gen} when gen >= 0:
@@ -39,6 +42,65 @@ sealed class Cv1TransportEvent {
     return null;
   }
 }
+
+class Cv1Diagnostics {
+  const Cv1Diagnostics({
+    this.name,
+    this.firmware,
+    this.hardware,
+    this.model,
+    this.manufacturer,
+    this.battery,
+    this.rssi,
+    this.led,
+    this.gain,
+    this.charging,
+    this.ledWritable = false,
+    this.gainWritable = false,
+  });
+
+  final String? name, firmware, hardware, model, manufacturer;
+  final int? battery, rssi, led, gain;
+  final bool? charging;
+  final bool ledWritable, gainWritable;
+
+  factory Cv1Diagnostics.fromWire(Map values) {
+    int? number(String key, int min, int max) {
+      final value = values[key];
+      return value is int && value >= min && value <= max ? value : null;
+    }
+
+    String? text(String key) {
+      final value = values[key];
+      return value is String && value.isNotEmpty && value.length <= 80 ? value : null;
+    }
+
+    return Cv1Diagnostics(
+      name: text('name'),
+      firmware: text('firmware'),
+      hardware: text('hardware'),
+      model: text('model'),
+      manufacturer: text('manufacturer'),
+      battery: number('battery', 0, 100),
+      rssi: number('rssi', -127, -1),
+      led: number('led', 0, 100),
+      gain: number('gain', 0, 100),
+      charging: values['charging'] is bool ? values['charging'] as bool : null,
+      ledWritable: values['ledWritable'] == true,
+      gainWritable: values['gainWritable'] == true,
+    );
+  }
+}
+
+final class Cv1DiagnosticsEvent extends Cv1TransportEvent {
+  const Cv1DiagnosticsEvent(this.generation, this.values);
+
+  final int generation;
+  final Cv1Diagnostics values;
+}
+
+typedef Cv1Sample = ({DateTime at, int value});
+typedef Cv1Transition = ({DateTime at, Cv1LinkPhase phase});
 
 final class Cv1DeviceFound extends Cv1TransportEvent {
   const Cv1DeviceFound(this.id, this.name);
@@ -80,7 +142,14 @@ abstract interface class Cv1Transport {
   Future<void> close();
 }
 
-class IosCv1Transport implements Cv1Transport {
+abstract interface class Cv1DiagnosticsTransport {
+  Future<void> sampleDiagnostics();
+  Future<void> writeSetting(int generation, String field, int value);
+}
+
+class Cv1PermissionDenied implements Exception {}
+
+class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport {
   static const _methods = MethodChannel('org.omilocal.next/cv1');
   static const _events = EventChannel('org.omilocal.next/cv1.events');
 
@@ -92,7 +161,24 @@ class IosCv1Transport implements Cv1Transport {
       .cast<Cv1TransportEvent>();
 
   @override
-  Future<void> scan() => _methods.invokeMethod<void>('scan');
+  Future<void> scan() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final legacy = await _methods.invokeMethod<bool>('usesLegacyScanPermission') == true;
+      final permissions = legacy
+          ? [Permission.locationWhenInUse]
+          : [Permission.bluetoothScan, Permission.bluetoothConnect];
+      final choices = await permissions.request();
+      if (choices.values.any((value) => !value.isGranted)) throw Cv1PermissionDenied();
+    }
+    await _methods.invokeMethod<void>('scan');
+  }
+
+  @override
+  Future<void> sampleDiagnostics() => _methods.invokeMethod<void>('sampleDiagnostics');
+
+  @override
+  Future<void> writeSetting(int generation, String field, int value) =>
+      _methods.invokeMethod<void>('writeSetting', {'generation': generation, 'field': field, 'value': value});
 
   @override
   Future<void> connect(String id) => _methods.invokeMethod<void>('connect', {'id': id});
@@ -148,7 +234,22 @@ class Cv1Connection extends ChangeNotifier {
   final _devices = <String, Cv1DeviceFound>{};
   Cv1LinkPhase phase = Cv1LinkPhase.idle;
   bool operationFailed = false;
+  bool permissionDenied = false;
   bool audioFailed = false;
+  int? codec;
+  Cv1Diagnostics? diagnostics;
+  DateTime? connectedAt;
+  int reconnections = 0;
+  bool _wasConnected = false;
+  String? _selected;
+  final _battery = <Cv1Sample>[];
+  final _rssi = <Cv1Sample>[];
+  final _transitions = <Cv1Transition>[];
+
+  List<Cv1Sample> get batteryHistory => List.unmodifiable(_battery);
+  List<Cv1Sample> get rssiHistory => List.unmodifiable(_rssi);
+  List<Cv1Transition> get transitions => List.unmodifiable(_transitions);
+
   int _generation = 0;
   bool _closing = false;
   Future<void>? _close;
@@ -164,19 +265,64 @@ class Cv1Connection extends ChangeNotifier {
     return _transport.scan();
   });
 
-  Future<void> connect(String id) => _command(() => _transport.connect(id));
+  Future<void> connect(String id) => _command(() {
+    if (_selected != id) {
+      _selected = id;
+      _wasConnected = false;
+      reconnections = 0;
+      _battery.clear();
+      _rssi.clear();
+      _transitions.clear();
+    }
+    return _transport.connect(id);
+  });
+
+  Future<void> sampleDiagnostics() async {
+    final transport = _transport;
+    if (_closing || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return;
+    try {
+      await (transport as Cv1DiagnosticsTransport).sampleDiagnostics();
+    } catch (_) {
+      // The next refresh may succeed. A read failure does not change capture ownership.
+    }
+  }
+
+  Future<bool> writeSetting(String field, int value) async {
+    final transport = _transport;
+    if (_closing || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return false;
+    final generation = _generation;
+    try {
+      await (transport as Cv1DiagnosticsTransport).writeSetting(generation, field, value);
+      return !_closing && generation == _generation;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _sample(List<Cv1Sample> history, int? value) {
+    if (value == null) return;
+    final now = DateTime.now();
+    if (history.isNotEmpty) {
+      final last = history.last;
+      if (last.value == value && now.difference(last.at) < const Duration(seconds: 6)) return;
+    }
+    history.add((at: now, value: value));
+    if (history.length > 120) history.removeAt(0);
+  }
 
   Future<void> disconnect() => _command(_transport.disconnect);
 
   Future<void> _command(Future<void> Function() command) async {
     if (_closing) return;
     operationFailed = false;
+    permissionDenied = false;
     try {
       final pending = command();
       notifyListeners();
       await pending;
-    } catch (_) {
+    } catch (error) {
       if (_closing) return;
+      permissionDenied = error is Cv1PermissionDenied;
       operationFailed = true;
       notifyListeners();
     }
@@ -196,23 +342,43 @@ class Cv1Connection extends ChangeNotifier {
       case Cv1TransportState():
         if (event.generation < _generation) return;
         final wasReady = phase == Cv1LinkPhase.ready && event.generation == _generation;
+        if (phase != event.phase) {
+          _transitions.add((at: DateTime.now(), phase: event.phase));
+          if (_transitions.length > 24) _transitions.removeAt(0);
+        }
         phase = event.phase;
         _generation = event.generation;
         if (phase == Cv1LinkPhase.ready && event.codec != null) {
+          codec = event.codec;
           if (!wasReady) {
+            if (_wasConnected) reconnections++;
+            _wasConnected = true;
+            connectedAt = DateTime.now();
+            diagnostics = null;
             // Native starts with audio notifications disabled on every link.
             _nativeSubscription = null;
             _wantsAudio = false;
             audioFailed = false;
           }
           _capture.handle(Cv1LinkReady(_generation, event.codec!));
+          if (!wasReady) unawaited(sampleDiagnostics());
         } else {
+          connectedAt = null;
+          codec = null;
+          diagnostics = null;
           _nativeSubscription = null;
           audioFailed = false;
           _capture.handle(Cv1LinkLost(_generation));
         }
         _demandChanged();
         notifyListeners();
+      case Cv1DiagnosticsEvent():
+        if (phase == Cv1LinkPhase.ready && event.generation == _generation) {
+          diagnostics = event.values;
+          _sample(_battery, event.values.battery);
+          _sample(_rssi, event.values.rssi);
+          notifyListeners();
+        }
       case Cv1RawAudio():
         if (phase == Cv1LinkPhase.ready &&
             event.generation == _generation &&

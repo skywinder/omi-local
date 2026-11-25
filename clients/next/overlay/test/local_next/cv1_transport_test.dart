@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/cv1_capture.dart';
@@ -37,7 +38,7 @@ class _Radio implements Cv1Transport {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Dart and iOS exchange generation and subscription on the same audio command', () async {
+  test('Dart and the native bridge exchange generation and subscription on the same audio command', () async {
     const channel = MethodChannel('org.omilocal.next/cv1');
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     final received = <MethodCall>[];
@@ -47,7 +48,9 @@ void main() {
     });
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    final transport = IosCv1Transport();
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final transport = ChannelCv1Transport();
     await transport.scan();
     await transport.connect('example-device');
     await transport.setAudio(4, 7, true);
@@ -70,6 +73,50 @@ void main() {
     expect(Cv1TransportEvent.fromMessage({'type': 'audio', 'generation': 4, 'bytes': bytes}), isNull);
     final rejected = Cv1TransportEvent.fromMessage({'type': 'state', 'phase': 'ready', 'generation': 5, 'codec': 1});
     expect((rejected! as Cv1TransportState).phase, Cv1LinkPhase.failed);
+  });
+
+  test('CV1 diagnostics reject invalid measurements and retire with the link generation', () async {
+    final folder = await Directory.systemTemp.createTemp('next-cv1-diagnostics-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _Radio();
+    final connection = Cv1Connection(radio, capture);
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20));
+      final first = Cv1TransportEvent.fromMessage({
+        'type': 'diagnostics',
+        'generation': 1,
+        'values': {'battery': 75, 'rssi': -63, 'firmware': 'fixture-fw', 'led': 30, 'ledWritable': true},
+      })!;
+      radio.stream.add(first);
+      expect(connection.diagnostics?.battery, 75);
+      expect(connection.diagnostics?.ledWritable, isTrue);
+      expect(connection.rssiHistory.single.value, -63);
+      expect(connection.connectedAt, isNotNull);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
+      expect(connection.connectedAt, isNull);
+      expect(connection.diagnostics, isNull);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 3, codec: 21));
+      radio.stream.add(first);
+      expect(connection.diagnostics, isNull);
+      final fresh = Cv1TransportEvent.fromMessage({
+        'type': 'diagnostics',
+        'generation': 3,
+        'values': {'battery': 101, 'rssi': -73, 'gain': '4'},
+      })!;
+      radio.stream.add(fresh);
+      expect(connection.diagnostics?.battery, isNull);
+      expect(connection.diagnostics?.gain, isNull);
+      expect(connection.rssiHistory.map((sample) => sample.value), [-63, -73]);
+      expect(connection.reconnections, 1);
+    } finally {
+      await connection.close();
+      connection.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
   });
 
   test('Stop and Start while enabling supersede the subscription, even on the same link', () async {

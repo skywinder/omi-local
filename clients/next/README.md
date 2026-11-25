@@ -120,8 +120,21 @@ adb install -r /path/to/app-debug.apk
 
 Use the exact APK path printed by the build. Android uses the separate
 `org.omilocal.next` package with its own saved servers and audio outbox. The
-debug build supports the archive, playback, server settings and foreground
-phone microphone with Live preview. The native CV1 bridge is iOS-only.
+debug build supports the archive, playback, server settings, phone microphone
+with Live preview, and CV1 discovery and capture. Grant the Android Nearby
+devices permission when scanning for a CV1. Physical background recording
+requires separate verification.
+
+## Mobile settings and diagnostics
+
+Open the gear in **Conversations** for recording boundaries, the local upload
+queue, saved servers, processing, Live speaker settings and Omi CV1 diagnostics.
+The device view reads battery, signal, firmware and hardware details when
+reported by the wearable. It shows session connection events and up to 120
+battery and signal measurements. The charts show elapsed time for those samples.
+LED brightness and microphone gain require the matching CV1 firmware feature
+and a confirmed Bluetooth write. Configure double tap in the same screen.
+The default preserves the existing behavior of saving the current audio part.
 
 ## Saved servers
 

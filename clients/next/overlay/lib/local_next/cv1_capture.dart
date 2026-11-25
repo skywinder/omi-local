@@ -30,6 +30,8 @@ final class Cv1Button extends Cv1CaptureEvent {
   final int code;
 }
 
+enum Cv1DoubleTapAction { checkpoint, stop, mute, off }
+
 enum Cv1CaptureIntent { stopped, recording, muted }
 
 enum Cv1CaptureProblem { unsupportedCodec, storage, sourceSwitch }
@@ -41,6 +43,7 @@ class NextCv1Capture extends ChangeNotifier {
     required this.canStart,
     this.permitsStartRequest,
     this.onStartRequested,
+    this.doubleTapAction,
     this.preview,
   });
 
@@ -49,6 +52,7 @@ class NextCv1Capture extends ChangeNotifier {
   final bool Function() canStart;
   final bool Function()? permitsStartRequest;
   final Future<void> Function()? onStartRequested;
+  final Cv1DoubleTapAction Function()? doubleTapAction;
   final NextLivePreview? preview;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
@@ -237,8 +241,17 @@ class NextCv1Capture extends ChangeNotifier {
       } else if (codecSupported && (permitsStartRequest?.call() ?? true)) {
         unawaited(_startFromButton());
       }
-    } else if (code == 2 && _intent == Cv1CaptureIntent.recording) {
-      _checkpoint();
+    } else if (code == 2 && active) {
+      switch (doubleTapAction?.call() ?? Cv1DoubleTapAction.checkpoint) {
+        case Cv1DoubleTapAction.checkpoint:
+          if (_intent == Cv1CaptureIntent.recording) _checkpoint();
+        case Cv1DoubleTapAction.stop:
+          unawaited(stop());
+        case Cv1DoubleTapAction.mute:
+          toggleMute();
+        case Cv1DoubleTapAction.off:
+          break;
+      }
     }
   }
 

@@ -316,6 +316,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
               library: library,
               serverName: serverName,
               onDelivered: _archive.refreshAfterRecording,
+              openServers: widget.openServers,
             ),
           Align(
             alignment: AlignmentDirectional.centerStart,

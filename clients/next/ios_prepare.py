@@ -2,11 +2,12 @@
 import argparse
 import json
 import plistlib
-import re
 import shutil
 import subprocess
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+from cv1_protocol import cv1_feature_masks, cv1_uuids
 
 
 HERE = Path(__file__).resolve().parent
@@ -151,9 +152,8 @@ def prepare(app):
     prepare_project(ios / 'Runner.xcodeproj' / 'project.pbxproj')
     prepare_info(runner)
     shutil.copyfile(HERE / 'ios' / 'AppDelegate.swift', runner / 'AppDelegate.swift')
-    models = (app / 'lib/services/devices/models.dart').read_text()
     (runner / 'NextCV1.swift').write_text((HERE / 'ios/NextCV1.swift').read_text() + '\n' +
-                                         (HERE / 'ios/CV1Protocol.swift').read_text() + '\n' + cv1_uuids(models))
+                                         (HERE / 'ios/CV1Protocol.swift').read_text() + '\n' + swift_cv1_uuids(app))
     shutil.copyfile(HERE / 'ios' / 'Podfile', ios / 'Podfile')
     # Runner is the only target in this disposable project.
     for scheme in (ios / 'Runner.xcodeproj' / 'xcshareddata' / 'xcschemes').glob('*.xcscheme'):
@@ -163,15 +163,10 @@ def prepare(app):
             prepare_scheme(scheme)
 
 
-def cv1_uuids(models):
-    names = {'audioService': 'omiServiceUuid', 'audio': 'audioDataStreamCharacteristicUuid',
-             'codec': 'audioCodecCharacteristicUuid', 'buttonService': 'buttonServiceUuid',
-             'button': 'buttonTriggerCharacteristicUuid'}
-    constants = []
-    for name, upstream in names.items():
-        match, = re.findall(rf"^const String {upstream} = '([a-f0-9]{{8}}(?:-[a-f0-9]{{4}}){{3}}-[a-f0-9]{{12}})';$",
-                            models, re.MULTILINE)
-        constants.append(f'  static let {name} = CBUUID(string: "{match}")')
+def swift_cv1_uuids(app):
+    constants = [f'  static let {name} = CBUUID(string: "{value}")'
+                 for name, value in cv1_uuids(app).items()]
+    constants.extend(f'  static let {name} = {value}' for name, value in cv1_feature_masks(app).items())
     return 'private enum CV1UUID {\n' + '\n'.join(constants) + '\n}\n'
 
 

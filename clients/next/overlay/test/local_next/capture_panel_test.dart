@@ -7,8 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/capture.dart';
 import 'package:omi/local_next/capture_panel.dart';
+import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/device_diagnostics_page.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport {
@@ -95,6 +97,60 @@ class _Microphone implements NextPhoneMicrophone {
 }
 
 void main() {
+  testWidgets('device diagnostics show real samples, hide unsupported writes and clear a lost link', (tester) async {
+    final journal = LocalAudioJournal(
+      directory: Directory('unused-device-diagnostics'),
+      upload: (body, owner) async => <String, dynamic>{},
+    );
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _Wire();
+    final connection = Cv1Connection(radio, capture);
+    final busy = ValueNotifier(false);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: NextDeviceDiagnosticsPage(link: connection, capture: busy, captureBusy: () => busy.value),
+        ),
+      );
+      expect(find.textContaining('Connect an Omi CV1'), findsOneWidget);
+      radio.emit(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20));
+      radio.emit(
+        const Cv1DiagnosticsEvent(
+          1,
+          Cv1Diagnostics(battery: 72, rssi: -66, firmware: 'fixture firmware', led: 30, ledWritable: true),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('72%'), findsWidgets);
+      expect(find.text('-66 dBm'), findsWidgets);
+      expect(find.text('fixture firmware'), findsOneWidget);
+      expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNotNull);
+      expect(find.text('Mic Gain'), findsNothing);
+      busy.value = true;
+      await tester.pump();
+      expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNull);
+      radio.emit(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
+      await tester.pump();
+      expect(find.text('fixture firmware'), findsNothing);
+      expect(find.text('LED Brightness'), findsNothing);
+      expect(find.textContaining('Connect an Omi CV1'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final closing = connection.close();
+      await tester.pump();
+      await closing;
+      connection.dispose();
+      final stopped = capture.close();
+      await tester.pump();
+      await stopped;
+      capture.dispose();
+      journal.dispose();
+      busy.dispose();
+    }
+  });
+
   testWidgets('a paired CV1 waits for the phone seal, respects mute and leaves phone recording on reconnect', (
     tester,
   ) async {
@@ -102,7 +158,12 @@ void main() {
     final mic = _Microphone();
     final wire = _Wire();
     final ownerChange = NextOwnerChangeGate();
-    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire, ownerChange: ownerChange);
+    final inputs = NextCaptureInputs(
+      NextPhoneCapture(journal, 'fixture', mic),
+      wire,
+      ownerChange: ownerChange,
+      doubleTapAction: () => Cv1DoubleTapAction.stop,
+    );
     ownerChange.attachCapture(() => inputs.hasCaptureInProgress);
     await tester.pumpWidget(
       MaterialApp(
@@ -158,7 +219,7 @@ void main() {
       await tester.tap(find.byTooltip('Unmute'));
       await tester.pumpAndSettle();
       expect(wire.subscriptions.last, isTrue);
-      await tester.tap(cv1Button);
+      wire.emit(Cv1RawButton(wire.generation, 2));
       await tester.pumpAndSettle();
       expect(inputs.cv1.active, isFalse);
       expect(wire.subscriptions.last, isFalse);

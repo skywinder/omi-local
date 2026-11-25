@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 
+from cv1_protocol import cv1_feature_masks, cv1_uuids
 from prepare import HERE, PIN
 
 PLUGINS = {
@@ -35,7 +36,14 @@ def prepare_native(app):
     shutil.copyfile(HERE / 'android/AndroidManifest.xml', main / 'AndroidManifest.xml')
     activity = main / 'kotlin/org/omilocal/next/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(HERE / 'android/MainActivity.kt', activity)
+    for source in ('MainActivity.kt', 'NextCV1.kt'):
+        shutil.copyfile(HERE / 'android' / source, activity.parent / source)
+    constants = [f'    val {name} = java.util.UUID.fromString("{value}")'
+                 for name, value in cv1_uuids(app).items()]
+    constants.extend(f'    const val {name} = {value}' for name, value in cv1_feature_masks(app).items())
+    (activity.parent / 'Cv1Uuid.kt').write_text(
+        'package org.omilocal.next\n\ninternal object Cv1Uuid {\n' + '\n'.join(constants) + '\n}\n'
+    )
 
     # Keep the pinned Dart graph. Flutter's Gradle loader and embedding must see
     # the same reduced set of native plugins for this standalone build.
