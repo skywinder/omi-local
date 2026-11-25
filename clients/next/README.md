@@ -371,8 +371,9 @@ after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
 Omi transcript list and shows where live processing runs. Translation can use
-one target or two languages selected for the paired server. Stop remains
-available on the Live screen.
+one target or two languages selected for the paired server. The Live screen
+shows the current input and elapsed time. For CV1 it also offers Mute, Unmute,
+and Finish conversation and keep listening. Stop is available for either input.
 
 Next sends a frame to the paired `/v4/listen` preview socket after the journal
 flushes it to disk. The separate part upload owns retention and durable
@@ -387,10 +388,10 @@ when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
 current stream shows its separately acknowledged limit. **Conversation
-boundaries** in the capture controls selects one recording per part, one
-conversation until Stop, or separation after a chosen silent interval.
-The grouped options appear on a compatible paired server and apply to the next
-recording. Conversation publication follows the server's durable sample clock.
+boundaries** is available in capture settings and Live settings. It selects
+one recording per part, one conversation until Stop, or separation after a
+chosen silent interval. The grouped options appear on a compatible paired
+server. A saved change applies to the next recording. Conversation publication follows the server's durable sample clock.
 Live drafts still represent the capture session.
 
 ## Processing profiles

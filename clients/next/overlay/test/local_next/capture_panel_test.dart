@@ -10,8 +10,10 @@ import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/local_next/device_diagnostics_page.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1DiagnosticsTransport {
   void Function(Cv1TransportEvent)? _listener;
@@ -179,6 +181,81 @@ void main() {
       capture.dispose();
       journal.dispose();
       busy.dispose();
+    }
+  });
+
+  testWidgets('CV1 elapsed time and mute stay available in Live, and silence saves for the next recording', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    var now = DateTime.utc(2026);
+    final journal = _Journal(clock: () => now);
+    final mic = _Microphone();
+    final wire = _Wire();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
+    final preview = NextLivePreview('fixture', (owner, source, codec) async => throw const SocketException('offline'));
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic, preview: preview), wire);
+    final changes = <int?>[];
+    final boundary = ValueNotifier<int?>(null);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: LocalNextCaptureControls(
+              inputs: inputs,
+              library: pair,
+              groupSilence: boundary,
+              onGroupSilence: (value) async {
+                changes.add(value);
+                boundary.value = value;
+                return true;
+              },
+            ),
+          ),
+        ),
+      );
+      wire.ready();
+      await inputs.startCv1();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+      await tester.pumpAndSettle();
+      expect(find.text('CV1 · 00:00'), findsOneWidget);
+      now = now.add(const Duration(seconds: 7));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('CV1 · 00:07'), findsOneWidget);
+      await tester.tap(find.byTooltip('Mute'));
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.intent, Cv1CaptureIntent.muted);
+      await tester.tap(find.byTooltip('Unmute'));
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Conversation boundaries'), findsOneWidget);
+      expect(find.textContaining('Applies to the next recording.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('next-recording-boundaries')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Split after silence · 30s'));
+      await tester.pumpAndSettle();
+      expect(changes, [30]);
+      expect(find.textContaining('Split after silence · 30s'), findsOneWidget);
+      expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop'));
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.active, isFalse);
+    } finally {
+      journal.seal.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      boundary.dispose();
+      await mic.audioSession.close();
     }
   });
 

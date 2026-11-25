@@ -22,6 +22,8 @@ class LocalNextLiveButton extends StatefulWidget {
     this.isMuted,
     required this.onStop,
     this.inputNotice,
+    this.captureControls,
+    this.captureSettings,
     required this.serverLabel,
     this.library,
   });
@@ -32,6 +34,8 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function()? isMuted;
   final Future<void> Function() onStop;
   final String? Function(BuildContext)? inputNotice;
+  final WidgetBuilder? captureControls;
+  final WidgetBuilder? captureSettings;
   final String serverLabel;
   final PairedLibrary? library;
 
@@ -215,6 +219,7 @@ class _LivePageState extends State<_LivePage> {
                     builder: (_) => NextLiveTuningSheet(library: library),
                   ),
                 ),
+              if (view.captureSettings case final settings?) settings(context),
               Expanded(
                 child: ListenableBuilder(
                   listenable: view.preview,
@@ -281,6 +286,7 @@ class _LivePageState extends State<_LivePage> {
                     ),
                   ),
                 Expanded(child: _Transcript(lines: preview.lines)),
+                if (view.captureControls case final controls? when recording) controls(context),
               ],
             ),
           ),

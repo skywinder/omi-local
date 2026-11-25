@@ -33,6 +33,7 @@ KEYS = (
 PROCESSING_MESSAGES = {
     'en': {
         'nextCheckpoint': 'Save current audio part',
+        'nextBoundaryAppliesLater': 'Applies to the next recording.',
         'nextRetryProcessing': 'Retry processing',
         'nextRetryQueued': 'Queued for processing',
         'nextFinishContinue': 'Finish conversation and keep listening',
@@ -172,6 +173,7 @@ PROCESSING_MESSAGES = {
     },
     'ru': {
         'nextCheckpoint': 'Сохранить текущую часть аудио',
+        'nextBoundaryAppliesLater': 'Применится к следующей записи.',
         'nextRetryProcessing': 'Повторить обработку',
         'nextRetryQueued': 'Запись поставлена в очередь',
         'nextFinishContinue': 'Завершить разговор и продолжить слушать',
