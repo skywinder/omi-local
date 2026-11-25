@@ -805,3 +805,7 @@ Phone-microphone speech and repeated-start reliability still need a separate che
 | Upstream product screens | Paired search, chat, folders, manual speaker labels, tasks, manually generated daily recaps, and manual goal progress are available in Next. Task suggestions cite a transcript line and require individual acceptance. These features need physical verification with an updated server. Scheduled recaps, goal suggestions and lifecycle, semantic retrieval, persistent archive chat history, automatic speaker recognition, memory and integrations remain open. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. The local `sky-dev` onboarding and processing commit `a3de2ab` was merged into Next. The existing offline permissions flow, CV1 reconnect guards, pending archive and opt-in summary settings cover its functional changes. Track the later recording and summary repair branches separately. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |
+
+Paired Live sessions send the same optional platform and model headers as durable audio
+uploads. The Live monitor labels the paired phone and its selected input independently.
+Clients that omit the optional headers still stream normally.

@@ -23,7 +23,14 @@ void abortPairedPreview(WebSocket socket) {
 
 /// Upgrade a dedicated, paired HTTP client. The SDK's WebSocket.connect does
 /// not disable HttpClientRequest.followRedirects before sending its headers.
-Future<WebSocket> upgradePairedPreview(HttpClient client, Uri origin, String key, String source, String codec) async {
+Future<WebSocket> upgradePairedPreview(
+  HttpClient client,
+  Uri origin,
+  String key,
+  String source,
+  String codec, {
+  Map<String, String> audioOrigin = const {},
+}) async {
   const timeout = Duration(seconds: 15);
   Socket? detached;
   try {
@@ -63,6 +70,10 @@ Future<WebSocket> upgradePairedPreview(HttpClient client, Uri origin, String key
       ..set(HttpHeaders.upgradeHeader, 'websocket')
       ..set('Sec-WebSocket-Key', nonce)
       ..set('Sec-WebSocket-Version', '13');
+    for (final name in const ['X-App-Platform', 'X-Omi-Local-Recording-Origin']) {
+      final value = audioOrigin[name];
+      if (value != null) req.headers.set(name, value);
+    }
     final response = await req.close().timeout(timeout);
     final headers = response.headers;
     final connection = (headers[HttpHeaders.connectionHeader] ?? const <String>[])

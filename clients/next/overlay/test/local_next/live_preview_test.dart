@@ -19,6 +19,7 @@ class _Server {
       requests.add(request.uri);
       expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer fixture');
       expect(request.headers.value('X-Omi-Local-Audio-Outbox'), '1');
+      expect(request.headers.value('X-App-Platform'), 'ios');
       final ws = await WebSocketTransformer.upgrade(request, compression: CompressionOptions.compressionOff);
       sockets.add(ws);
       ws.listen(received.add);
@@ -40,7 +41,14 @@ class _Server {
     expect(owner, 'paired');
     final client = HttpClient()..findProxy = (_) => 'DIRECT';
     try {
-      return await upgradePairedPreview(client, origin, 'fixture', source, codec);
+      return await upgradePairedPreview(
+        client,
+        origin,
+        'fixture',
+        source,
+        codec,
+        audioOrigin: const {'X-App-Platform': 'ios'},
+      );
     } finally {
       client.close();
     }

@@ -262,10 +262,11 @@ class PairedLibrary {
   Future<WebSocket> connectPreview(String serverId, String source, String codec) async {
     if (_closed || serverId != audioOwnerId) throw LibraryFailure.key;
     if (!verified) await verify();
+    final audioOrigin = await _audioOrigin;
     if (_closed || !audioDelivery) throw LibraryFailure.unavailable;
     final client = _directClient();
     try {
-      final socket = await upgradePairedPreview(client, origin, _key, source, codec);
+      final socket = await upgradePairedPreview(client, origin, _key, source, codec, audioOrigin: audioOrigin);
       if (_closed) {
         abortPairedPreview(socket);
         throw LibraryFailure.key;
