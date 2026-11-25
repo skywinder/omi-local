@@ -80,8 +80,35 @@ class NextCv1Capture extends ChangeNotifier {
   bool get codecSupported => _codec != null;
   bool get active => _intent != Cv1CaptureIntent.stopped;
   bool get wantsAudio => _intent == Cv1CaptureIntent.recording && codecSupported;
-  bool _hasPersistedAudio = false;
-  bool get hasPersistedAudio => _hasPersistedAudio;
+  static const _audioGap = Duration(seconds: 5);
+  DateTime? _lastPersistedAt;
+  Timer? _audioDeadline;
+  bool get hasPersistedAudio => _lastPersistedAt != null;
+  bool get audioPaused => wantsAudio && hasPersistedAudio && _audioDeadline == null;
+
+  void _clearAudioStatus() {
+    _audioDeadline?.cancel();
+    _audioDeadline = null;
+    _lastPersistedAt = null;
+  }
+
+  void _markAudioReceived() {
+    _lastPersistedAt = journal.clock();
+    if (_audioDeadline != null) return;
+    _audioDeadline = Timer(_audioGap, _checkAudioFlow);
+    notifyListeners();
+  }
+
+  void _checkAudioFlow() {
+    final remaining = _lastPersistedAt!.add(_audioGap).difference(journal.clock());
+    if (remaining > Duration.zero) {
+      _audioDeadline = Timer(remaining, _checkAudioFlow);
+      return;
+    }
+    _audioDeadline = null;
+    notifyListeners();
+  }
+
   int? _lastButtonCode;
   int? get lastButtonCode => _lastButtonCode;
   bool _closed = false;
@@ -142,6 +169,8 @@ class NextCv1Capture extends ChangeNotifier {
     if (_intent == Cv1CaptureIntent.recording) startedAt ??= journal.clock();
     if (_intent == Cv1CaptureIntent.muted) {
       _frames.discardPending();
+      _audioDeadline?.cancel();
+      _audioDeadline = null;
       _cutPreview();
       _checkpoint(resetOpusContext: true);
     }
@@ -184,7 +213,7 @@ class NextCv1Capture extends ChangeNotifier {
         active &&
         (codecCode == null || current.codec == _codecFor(codecCode))) {
       _frames.discardPending();
-      _hasPersistedAudio = false;
+      _clearAudioStatus();
       _cutPreview();
       _checkpoint(resetOpusContext: true);
     } else {
@@ -234,10 +263,7 @@ class NextCv1Capture extends ChangeNotifier {
                   startSeconds: current.audioSeconds - duration,
                 );
               }
-              if (!_hasPersistedAudio) {
-                _hasPersistedAudio = true;
-                notifyListeners();
-              }
+              if (wantsAudio && previewEpoch == _previewEpoch) _markAudioReceived();
             },
           )
           .catchError((Object _) => _writeFailed(current, attempt, segment)),
@@ -263,7 +289,7 @@ class NextCv1Capture extends ChangeNotifier {
 
   void _endSegment({bool reportSealFailure = false}) {
     _frames.discardPending();
-    _hasPersistedAudio = false;
+    _clearAudioStatus();
     _cutPreview();
     final current = _recording;
     _recording = null;

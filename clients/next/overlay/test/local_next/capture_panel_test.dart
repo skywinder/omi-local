@@ -101,6 +101,8 @@ class _Recording extends Fake implements LocalAudioRecording {
   @override
   double get audioSeconds => 1;
   @override
+  Future<void> add(List<int> payload, {void Function()? afterPersisted}) async => afterPersisted?.call();
+  @override
   Future<void> stop() => sealed;
 }
 
@@ -344,6 +346,48 @@ void main() {
       final closing = inputs.close();
       await tester.pump();
       await closing;
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
+  testWidgets('a CV1 audio gap updates the capture indicator and new packets clear it without restarting', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026);
+    final journal = _Journal(clock: () => now);
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        ),
+      );
+      wire.ready();
+      await inputs.startCv1();
+      void packet(int counter) =>
+          inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      packet(0);
+      packet(1);
+      await tester.pump();
+      expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
+      now = now.add(const Duration(seconds: 6));
+      await tester.pump(const Duration(seconds: 6));
+      expect(find.textContaining('No new audio from CV1'), findsOneWidget);
+      expect(find.textContaining('Waiting for data'), findsOneWidget);
+      expect(inputs.cv1.active, isTrue);
+      packet(2);
+      await tester.pump();
+      expect(find.textContaining('No new audio from CV1'), findsNothing);
+      expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
+      expect(wire.subscriptions, [true]);
+    } finally {
+      journal.seal.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
       inputs.dispose();
       journal.dispose();
     }

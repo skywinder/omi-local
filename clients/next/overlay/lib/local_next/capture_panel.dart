@@ -413,6 +413,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     children: [
       if (_time(context) case final timer?) timer,
       if (inputs.cv1.active) ...[_finish(context), _mute(context)],
+      if (inputs.cv1.audioPaused) Text(pairedSettingsLabel(context, 'nextCv1AudioGap')),
     ],
   );
 
@@ -610,7 +611,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                     if (cv1.intent == Cv1CaptureIntent.muted)
                       l.muted
                     else if (cv1.active && cv1.linked)
-                      cv1.hasPersistedAudio ? l.recording : l.waitingForData,
+                      cv1.hasPersistedAudio && !cv1.audioPaused ? l.recording : l.waitingForData,
                   ].join(' · '),
             textAlign: TextAlign.center,
           ),
@@ -668,7 +669,9 @@ class LocalNextCaptureControls extends StatelessWidget {
               Cv1CaptureProblem.preference => l.failedToSaveCheckConnection,
             })
           else if (link.audioFailed)
-            Text(l.captureRecordingError(l.bluetooth)),
+            Text(l.captureRecordingError(l.bluetooth))
+          else if (cv1.audioPaused)
+            Text(pairedSettingsLabel(context, 'nextCv1AudioGap')),
           if (capture.active)
             if (phoneMicNotice(context, capture) case final notice?) Text(notice),
           if (capture.problem != null)
