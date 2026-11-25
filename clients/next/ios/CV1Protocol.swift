@@ -28,6 +28,21 @@ struct CV1AudioSubscription {
   var emitting: Int? { desired == confirmed ? confirmed : nil }
 }
 
+// Restoration may precede powered-on and Flutter registration.
+struct CV1Restoration<Peer> {
+  private var pending: Peer?
+  var isPending: Bool { pending != nil }
+
+  mutating func remember(_ peers: [Peer], selected: UUID, id: (Peer) -> UUID) {
+    pending = peers.first { id($0) == selected }
+  }
+
+  mutating func take() -> Peer? {
+    defer { pending = nil }
+    return pending
+  }
+}
+
 enum CV1Wire {
   static func buttonCode(_ data: Data) -> Int? {
     guard data.count >= 4 else { return nil }

@@ -8,6 +8,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case idle, scan, link(UUID)
   }
 
+  static let restorationID = "org.omilocal.next.cv1.central"
+  static let shared = NextCV1()
+  private var restoration = CV1Restoration<CBPeripheral>()
+  private var resettingRestoredAudio = false
   private let savedKey = "org.omilocal.next.cv1.selected"
   private var sink: FlutterEventSink?
   private var central: CBCentralManager?
@@ -42,7 +46,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   ]
 
   static func register(with registrar: FlutterPluginRegistrar) {
-    let bridge = NextCV1()
+    let bridge = shared
     let messenger = registrar.messenger()
     let commands = FlutterMethodChannel(name: "org.omilocal.next/cv1", binaryMessenger: messenger)
     registrar.addMethodCallDelegate(bridge, channel: commands)
@@ -57,12 +61,16 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     UserDefaults.standard.string(forKey: savedKey).flatMap(UUID.init(uuidString:))
   }
 
-  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-    sink = events
-    publish(phase)
+  func resumeSavedLink() {
     if case .idle = intent, let id = saved, CBManager.authorization == .allowedAlways {
       start(.link(id), phase: "reconnecting")
     }
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    sink = events
+    publish(phase)
+    resumeSavedLink()
     return nil
   }
 
@@ -154,6 +162,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       if central.isScanning { central.stopScan() }
       if let peer { central.cancelPeripheralConnection(peer) }
     }
+    _ = restoration.take()
+    resettingRestoredAudio = false
     peer = nil
     central = nil
     codec = nil
@@ -188,7 +198,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     clearLink()
     intent = desired
     publish(phase)
-    central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionShowPowerAlertKey: false])
+    var options: [String: Any] = [CBCentralManagerOptionShowPowerAlertKey: false]
+    if case .link = desired { options[CBCentralManagerOptionRestoreIdentifierKey] = Self.restorationID }
+    central = CBCentralManager(delegate: self, queue: .main, options: options)
     if case .scan = desired {
       after(12) { bridge in
         if bridge.central?.isScanning == true { bridge.central?.stopScan() }
@@ -212,10 +224,17 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     after(delay) { $0.start(.link(id), phase: "reconnecting") }
   }
 
+  func centralManager(_ manager: CBCentralManager, willRestoreState dict: [String: Any]) {
+    guard central === manager, case let .link(wanted) = intent, saved == wanted,
+          let peers = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] else { return }
+    restoration.remember(peers, selected: wanted) { $0.identifier }
+    if manager.state == .poweredOn { centralManagerDidUpdateState(manager) }
+  }
+
   func centralManagerDidUpdateState(_ manager: CBCentralManager) {
     guard central === manager else { return }
     guard manager.state == .poweredOn else {
-      if manager.state == .unknown { return }
+      if manager.state == .unknown || (manager.state == .resetting && restoration.isPending) { return }
       // A powered-off radio cannot serve the existing GATT characteristics.
       // Keep one manager to observe the next powered-on event, without polling.
       let desired = intent
@@ -234,6 +253,16 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         offer(candidate, name: nil)
       }
     case let .link(id):
+      if let device = restoration.take() {
+        peer = device
+        device.delegate = self
+        switch device.state {
+        case .connected: centralManager(manager, didConnect: device)
+        case .connecting: break // iOS already owns the pending connection.
+        default: attach(device, manager)
+        }
+        return
+      }
       if peer != nil { return }
       if phase == "unavailable" {
         start(.link(id), phase: "reconnecting")
@@ -320,6 +349,12 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         return lost(false)
       }
       audioChar = stream
+      // Restored notification state belongs to the old process; only a fresh
+      // Dart subscription may start publishing audio in this process.
+      if stream.isNotifying && subscription.emitting == nil {
+        resettingRestoredAudio = true
+        device.setNotifyValue(false, for: stream)
+      }
       codecChar = format
       device.readValue(for: format)
     } else if service.uuid == CV1UUID.buttonService {
@@ -327,12 +362,17 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         return lost(false)
       }
       buttonChar = button
-      device.setNotifyValue(true, for: button)
+      if button.isNotifying {
+        buttonConfirmed = true
+        readyIfConfigured()
+      } else {
+        device.setNotifyValue(true, for: button)
+      }
     }
   }
 
   private func readyIfConfigured() {
-    guard phase != "ready", let peer, codec != nil, audioChar != nil, buttonConfirmed else { return }
+    guard phase != "ready", let peer, codec != nil, audioChar != nil, buttonConfirmed, !resettingRestoredAudio else { return }
     cancelTimer()
     retryDelay = 1
     UserDefaults.standard.set(peer.identifier.uuidString, forKey: savedKey)
@@ -360,6 +400,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     if char === buttonChar {
       guard error == nil, char.isNotifying else { return lost(true) }
       buttonConfirmed = true
+      readyIfConfigured()
+    } else if char === audioChar, resettingRestoredAudio {
+      resettingRestoredAudio = false
+      guard error == nil, !char.isNotifying else { return lost(true) }
       readyIfConfigured()
     } else if char === audioChar, changingAudio {
       cancelTimer()

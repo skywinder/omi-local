@@ -819,3 +819,8 @@ While CV1 is recording, **Finish conversation and keep listening** seals the cur
 conversation and clears its Live transcript. CV1 stays subscribed. The next complete
 Opus packet starts a new recording, with its own timer and delivery receipts. **Stop**
 ends listening as well.
+
+iOS can restore its remembered CV1 when CoreBluetooth relaunches Next. The bridge
+reacquires the selected peripheral once Bluetooth powers on, rediscovers services,
+and waits for the current capture to request audio. A manual disconnect clears the
+saved device. A fresh link or ordinary app launch does not prove a system relaunch.

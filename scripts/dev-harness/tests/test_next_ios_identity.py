@@ -155,6 +155,13 @@ def test_flutter_runner_manifest_drops_upstream_watch_companion(tmp_path):
 def test_cv1_mute_and_stop_fence_queued_notifications(tmp_path):
     main = tmp_path / 'main.swift'
     main.write_text('''import Foundation
+      let selected = UUID(), other = UUID()
+      var restoration = CV1Restoration<UUID>()
+      restoration.remember([other], selected: selected) { $0 }
+      precondition(!restoration.isPending)
+      restoration.remember([other, selected], selected: selected) { $0 }
+      precondition(restoration.isPending && restoration.take() == selected)
+      precondition(restoration.take() == nil)
       var subscription = CV1AudioSubscription()
       precondition(subscription.request(true, token: 1) == nil)
       precondition(subscription.emitting == nil)

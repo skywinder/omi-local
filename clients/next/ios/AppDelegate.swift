@@ -41,6 +41,14 @@ import shared_preferences_foundation
     return ["server_presets_b64": encoded]
   }
 
+  override func application(_ application: UIApplication,
+                            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    if let restored = launchOptions?[.bluetoothCentrals] as? [String], restored.contains(NextCV1.restorationID) {
+      NextCV1.shared.resumeSavedLink()
+    }
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     let registry = engineBridge.pluginRegistry
     if let registrar = registry.registrar(forPlugin: "OmiLocalNextEnvironment") {
