@@ -246,7 +246,7 @@ Use **Show more** to continue from the last scanned page.
 `POST /v1/local/conversations/search` reads the current owner's Firestore records
 in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
-uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. Bastion serves this route. Search duration for a rare term grows with the archive size.
+uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. The test server serves this route. Search duration for a rare term grows with the archive size.
 
 ## Chat about a recording
 
@@ -488,7 +488,7 @@ inventory query found both clients on the iPhone and matched the running Next
 process to the installed bundle. Physical server pairing, CV1 audio and playback
 are still open.
 
-An authenticated, read-only Bastion probe on November 24 confirmed the current
+An authenticated, read-only test server probe on November 24 confirmed the current
 deployment advertises durable delivery v2 and declares the local preview route.
 Its offline policy permits the listen WebSocket. Its profile did not advertise
 the Next WAV playback contract. This check queried capability and status
@@ -504,7 +504,7 @@ The original checkout and the Next pin advanced from `4ff5502` to `ba4d7ac`.
 Native project materialization, the Next analyzer and all 29 Flutter tests
 passed against that revision. The processing fixtures cover independent stage
 activation, the capture interlock, revision conflicts and uncertain writes.
-A read-only authenticated Bastion request confirmed all five stages in the
+A read-only authenticated test server request confirmed all five stages in the
 deployed registry. Its active selections were not changed.
 The signed `Profile-dev` build from `0c32b8d` includes Live and the processing
 screen. The launcher reused that exact package and CoreDevice confirmed its
@@ -514,7 +514,7 @@ both apps, and the running Next process matched its own installed bundle.
 The processing draft editor passed the Next analyzer and all 34 Flutter tests.
 The focused harness and paired-auth Python suite passed all 70 tests. These
 cover separate save and activation, key handling, the STT model catalogue, and
-deletion of an inactive draft with the current revision. Read-only Bastion
+deletion of an inactive draft with the current revision. Read-only test server
 checks confirmed the registry and the deployed routes. The new editor's iOS
 build was blocked by insufficient stable free space on the Mac, with less
 than 1 GiB available during verification. Device acceptance and writes to a
@@ -528,7 +528,7 @@ allows only the archive's two GET routes, rejects redirects and clears the
 session on credential rejection. All 38 Next Flutter tests and the analyzer
 passed, including local-day ordering, interrupted pagination, opening details,
 malformed rows and credential revocation. The source adapters applied
-deterministically at both `4ff5502` and `ba4d7ac`. A live Bastion archive probe
+deterministically at both `4ff5502` and `ba4d7ac`. A live test server archive probe
 was blocked at SSH authentication, before any HTTP request.
 
 The focused archive, Local audio delivery, and route-policy Python suites
@@ -757,10 +757,10 @@ splitting on a paired server with grouping enabled.
 
 The startup-default package `1cd5995` passed signature, entitlement and
 provisioning verification. Its executable SHA-256 begins with
-`d67d1cdeaae63d3f`. It was installed over USB with the Bastion preset.
-The physical iPhone opened Bastion automatically and showed
+`d67d1cdeaae63d3f`. It was installed over USB with a test server preset.
+The physical iPhone connected to the test server automatically and showed
 `Connected · API Key Auth`. Next discovered and connected the CV1. After a
-short test and a Bluetooth reconnect, Bastion reported a durable receipt and
+short test and a Bluetooth reconnect, the test server reported a durable receipt and
 a 2.06-second WAV from the wearable. The new card and playback were not
 confirmed on the iPhone. The physical button and the phone microphone
 remain unverified.
@@ -771,9 +771,9 @@ the final conversation can replace the temporary card. A background refresh
 keeps existing rows after a transient failure. Loading older pages suspends
 automatic refresh until the next manual refresh.
 
-The previously delivered CV1 recording was verified on Bastion. The
+The previously delivered CV1 recording was verified on the test server. The
 transcription watcher completed, the imported conversation appeared on the
-first archive page, and its detail endpoint returned HTTP 200. Bastion's
+first archive page, and its detail endpoint returned HTTP 200. The test server's
 deployed profile did not advertise the paired WAV route. The WAV exists on
 the server, and playback from Next still needs a compatible deployment.
 
@@ -789,7 +789,7 @@ The archive category milestone matches all 33 category keys in the pinned Omi
 source. The analyzer and all 73 Next tests passed, as did the offline and
 legacy transport gates. An isolated paired API and Firestore verified category
 edits, stale edit conflicts, and preservation after a later processing write.
-At the November 24 category milestone, Bastion's profile did not advertise category edits. The separately
+At the November 24 category milestone, the test server's profile did not advertise category edits. The separately
 signed `35bbf19` package passed independent verification, with executable
 SHA-256 prefix `a96020e4202fcfc6`. No eligible iPhone was available to install it.
 
@@ -802,7 +802,7 @@ The pagination milestone was server-only. Its first verification used the isolat
 
 On November 25 Next advanced to original Omi `6f771e1`. The Flutter analyzer
 and 73 Next tests passed. The legacy transport app suite and offline backend
-suite passed. Bastion now serves the optional transcript-free archive page,
+suite passed. The test server now serves the optional transcript-free archive page,
 pagination headers and owner-scoped audio playback. Its first ten cards used
 54,991 bytes versus 118,001 for the full list. The detail transcript, second
 page and authenticated WAV range passed through the live paired ingress.
@@ -812,25 +812,25 @@ and hash verification (executable SHA-256 starts with `08ad47ff6fbc53e4`).
 CoreDevice installed this exact package and confirmed launch on the physical
 iPhone. The device inventory listed both Omi Local and Omi Local Next. On-phone
 archive, category and capture interaction are separate from installation.
-Bastion's configured summary model classified a synthetic compiler discussion
+The test server's configured summary model classified a synthetic compiler discussion
 as `technology`. Its category and emoji survived import and regeneration.
 The regeneration path respects an existing owner category and title.
-Bastion now advertises recording edits and categories. A temporary conversation
+The test server now advertises recording edits and categories. A temporary conversation
 verified category changes through the paired API, safe retries, conflicts,
 validation and authentication. Its test document was removed after readback.
-The updated Local backend also reads Bastion's large grouped recordings and
+The updated Local backend also reads the test server's large grouped recordings and
 keeps their checked full transcript when a metadata edit returns the detail.
-On November 25 the paired search endpoint on Bastion found a real segment in a
+On November 25 the paired search endpoint on the test server found a real segment in a
 file-backed transcript and returned the same timestamp and ID as detail.
 The shared summary pipeline now keys partial results on the selected provider
-profile, settings, effective instruction and text, following the Bastion implementation.
+profile, settings, effective instruction and text, following the test server implementation.
 
 The signed iPhone `Profile-dev` build from `d7b2848` passed the offline and
 legacy transport gates, Next analysis and 77 Next tests. CoreDevice installed
 it alongside Omi Local and confirmed launch. The physical iPhone displayed
-the Bastion archive and CV1 battery, RSSI and firmware in Device Diagnostics.
+the test server archive and CV1 battery, RSSI and firmware in Device Diagnostics.
 The first CV1 attempt stayed at “Waiting for data”. On the second attempt a
-spoken fixture appeared in Live. Bastion stored 22.6 seconds of nonzero audio
+spoken fixture appeared in Live. The test server stored 22.6 seconds of nonzero audio
 and published six transcript segments. The phone opened the new card, summary,
 category and timestamped transcript, and its player entered playback.
 Apple's iPhone Mirroring reported that the phone microphone was unavailable
@@ -840,7 +840,7 @@ Phone-microphone speech and repeated-start reliability still need a separate che
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 26 revision `782a793`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default Bastion preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
+| Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default test server preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
