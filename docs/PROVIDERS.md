@@ -64,6 +64,8 @@ Completed WAVs pass through transcription, then enabled diarization and
 summarization. Summaries and titles use the conversation's language; long
 transcripts are processed in parts. The library shows each stage, its provider,
 and the intermediate transcript while a later stage is still pending.
+A retry reuses partial summaries for the same provider profile, settings, model instruction and transcript text.
+Changing the selected profile or model starts a separate set of checkpoints, including with the default template.
 The result is imported into the app after all enabled stages succeed.
 
 New settings do not reprocess the archive. Jobs retain their profile, including
