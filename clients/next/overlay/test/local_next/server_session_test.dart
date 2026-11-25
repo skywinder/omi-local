@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -65,6 +66,7 @@ Future<void> _confirmDelete(WidgetTester tester) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   final keyA = List.filled(43, 'A').join(), keyB = List.filled(43, 'B').join();
   const primary = '100.64.0.1', secondary = '100.64.0.2';
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));

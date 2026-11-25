@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'archive_cache.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -211,6 +212,7 @@ class PairedLibrary {
 
   void _rejectKey() {
     if (_closed) return;
+    unawaited(NextArchiveCache(audioOwnerId).write([]));
     close();
     onKeyRejected?.call();
   }

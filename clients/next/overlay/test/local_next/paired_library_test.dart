@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -13,6 +14,7 @@ import 'package:omi/local_next/recording_edit.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
   test('archive search follows a cursor and retains transcript evidence', () async {

@@ -30,6 +30,7 @@ PROCESSING_MESSAGES = {
     'en': {
         'nextCheckpoint': 'Save current audio part',
         'nextFinishContinue': 'Finish conversation and keep listening',
+        'nextCachedArchive': 'Offline · Showing the last saved recording list',
         'nextPhoneInput': 'Phone microphone',
         'nextFailedStage': 'Processing failed',
         'nextAttempts': 'Attempts',
@@ -150,6 +151,7 @@ PROCESSING_MESSAGES = {
     'ru': {
         'nextCheckpoint': 'Сохранить текущую часть аудио',
         'nextFinishContinue': 'Завершить разговор и продолжить слушать',
+        'nextCachedArchive': 'Нет связи · Последний сохранённый список записей',
         'nextPhoneInput': 'Микрофон телефона',
         'nextFailedStage': 'Ошибка обработки',
         'nextAttempts': 'Попыток',

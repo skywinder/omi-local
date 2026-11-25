@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -7,6 +8,7 @@ import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/server_catalog.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   final key = List.filled(43, 'A').join();
   final replacement = List.filled(43, 'B').join();
   const first = 'http://127.0.0.1:20000';

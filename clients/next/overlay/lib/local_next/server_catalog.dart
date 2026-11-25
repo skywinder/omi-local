@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import 'paired_library.dart';
+import 'archive_cache.dart';
 
 typedef _Fields = ({String name, String address, String key});
 typedef NextOpenPair = PairedLibrary Function(String address, String key);
@@ -279,11 +280,15 @@ class NextServerCatalog {
     final fields = catalog.servers[id];
     if (fields == null) return;
     if (id == catalog.activeId) throw LibraryFailure.unavailable;
-    await _checkRelease(PairedLibrary(fields.address, fields.key).audioOwnerId, beforeReplace);
+    final owner = PairedLibrary(fields.address, fields.key).audioOwnerId;
+    await _checkRelease(owner, beforeReplace);
     catalog.servers.remove(id);
     if (catalog.startupDefaultId == id) catalog.startupDefaultId = null;
     if (_presetId.hasMatch(id)) catalog.seenPresets.add(id);
     await _write(catalog);
+    if (!catalog.servers.values.any((other) => PairedLibrary(other.address, other.key).audioOwnerId == owner)) {
+      await NextArchiveCache(owner).write([]);
+    }
   });
 
   Future<void> importPresets(String encoded) async {

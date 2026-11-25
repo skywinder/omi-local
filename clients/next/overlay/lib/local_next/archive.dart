@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/conversation.dart';
@@ -14,6 +15,8 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'paired_library.dart';
+import 'archive_cache.dart';
+import 'settings_labels.dart';
 import 'recording_page.dart';
 import 'conversation_categories.dart';
 
@@ -24,6 +27,8 @@ class PairedArchiveProvider extends ChangeNotifier {
     : _canRefreshRecordings = canRefreshRecordings;
   final PairedLibrary _library;
   final bool Function()? _canRefreshRecordings;
+  late final _cache = NextArchiveCache(_library.audioOwnerId);
+  bool showingCached = false;
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
@@ -118,6 +123,7 @@ class PairedArchiveProvider extends ChangeNotifier {
       (category == null || conversationCategoryKey(row.structured.category) == category);
 
   Future<void> _refreshFilter() async {
+    showingCached = false;
     _rows.clear();
     entries = const [];
     more = false;
@@ -140,6 +146,22 @@ class PairedArchiveProvider extends ChangeNotifier {
     _rows[row.id] = row;
     entries = List.unmodifiable(entries.map((entry) => entry.row?.id == row.id ? (day: entry.day, row: row) : entry));
     notifyListeners();
+  }
+
+  void _groupEntries() {
+    final sorted = _rows.values.toList()
+      ..sort((a, b) {
+        final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
+        return time != 0 ? time : a.id.compareTo(b.id);
+      });
+    final grouped = <({DateTime day, ServerConversation? row})>[];
+    for (final row in sorted) {
+      final start = (row.startedAt ?? row.createdAt).toLocal();
+      final day = DateTime(start.year, start.month, start.day);
+      if (grouped.isEmpty || grouped.last.day != day) grouped.add((day: day, row: null));
+      grouped.add((day: day, row: row));
+    }
+    entries = List.unmodifiable(grouped);
   }
 
   Future<void> _load({required bool append, bool automatic = false}) async {
@@ -173,22 +195,31 @@ class PairedArchiveProvider extends ChangeNotifier {
       _offset += result.consumed;
       more = result.more && result.consumed > 0;
       partial |= result.partial;
-      final sorted = _rows.values.toList()
-        ..sort((a, b) {
-          final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
-          return time != 0 ? time : a.id.compareTo(b.id);
-        });
-      final grouped = <({DateTime day, ServerConversation? row})>[];
-      for (final row in sorted) {
-        final start = (row.startedAt ?? row.createdAt).toLocal();
-        final day = DateTime(start.year, start.month, start.day);
-        if (grouped.isEmpty || grouped.last.day != day) grouped.add((day: day, row: null));
-        grouped.add((day: day, row: row));
+      _groupEntries();
+      showingCached = false;
+      if (!append && !result.partial && !_starredOnly && folder == null && category == null) {
+        unawaited(_cache.write(_rows.values.toList()));
       }
-      entries = List.unmodifiable(grouped);
     } catch (error) {
       if (_disposed) return;
+      final offline =
+          error == LibraryFailure.unavailable ||
+          error is SocketException ||
+          error is TimeoutException ||
+          error is HttpException;
+      if (offline && entries.isEmpty && !append && !_starredOnly && folder == null && category == null) {
+        final cached = await _cache.read();
+        if (_disposed) return;
+        for (final row in cached) {
+          _rows[row.id] = row;
+        }
+        showingCached = cached.isNotEmpty;
+        more = false;
+        _groupEntries();
+      }
       if (error == LibraryFailure.key) {
+        showingCached = false;
+        unawaited(_cache.write([]));
         failure = error;
         _rows.clear();
         entries = const [];
@@ -247,7 +278,11 @@ class PairedArchiveFeed extends StatelessWidget {
       if (archive.busy) return const OmiLoadingState();
       if (error != null || archive.partial) {
         return OmiErrorState(
-          message: error == null ? l.couldNotLoadPage : errorText(context, error),
+          message: archive.showingCached
+              ? pairedSettingsLabel(context, 'nextCachedArchive')
+              : error == null
+              ? l.couldNotLoadPage
+              : errorText(context, error),
           onRetry: archive.refresh,
         );
       }
@@ -259,7 +294,11 @@ class PairedArchiveFeed extends StatelessWidget {
         if (archive.partial || error != null)
           OmiPartialNotice(
             onRetry: error == null ? archive.refresh : archive.retry,
-            message: error == null ? l.couldNotLoadPage : errorText(context, error),
+            message: archive.showingCached
+                ? pairedSettingsLabel(context, 'nextCachedArchive')
+                : error == null
+                ? l.couldNotLoadPage
+                : errorText(context, error),
           ),
         Expanded(
           child: RefreshIndicator(

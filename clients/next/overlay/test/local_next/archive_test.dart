@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,6 +84,40 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  test('cold offline archive is scoped to its pairing and a successful empty page clears the cache', () async {
+    SharedPreferences.setMockInitialValues({});
+    final row = _row(_firstId, 'Saved title', DateTime.utc(2026));
+    var offline = false;
+    var rows = [row];
+    Future<_Page> page(int offset) async {
+      if (offline) throw const SocketException('offline fixture');
+      return (rows: rows, consumed: rows.length, partial: false, more: false);
+    }
+
+    final same = _ArchiveLibrary(page, row);
+    final online = PairedArchiveProvider(same);
+    await online.refresh();
+    online.dispose();
+    offline = true;
+    final cold = PairedArchiveProvider(same);
+    await cold.refresh();
+    expect(cold.showingCached, isTrue);
+    expect(cold.rowById(_firstId)?.structured.title, 'Saved title');
+    final other = PairedArchiveProvider(_ArchiveLibrary(page, row, address: '100.64.0.2'));
+    await other.refresh();
+    expect(other.entries, isEmpty);
+    offline = false;
+    rows = [];
+    await cold.refresh();
+    expect(cold.showingCached, isFalse);
+    offline = true;
+    await cold.refresh();
+    expect(cold.entries, isEmpty);
+    cold.dispose();
+    other.dispose();
+    same.close();
+  });
+
   testWidgets('failed card identifies the recording phone and the failed provider stage', (tester) async {
     final row = _row(
       _firstId,
