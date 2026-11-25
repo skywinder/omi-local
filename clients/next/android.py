@@ -13,7 +13,7 @@ from prepare import HERE, PIN
 
 PLUGINS = {
     'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio',
-    'path_provider_android', 'permission_handler_android', 'share_plus', 'shared_preferences_android',
+    'path_provider_android', 'permission_handler_android', 'quick_actions_android', 'share_plus', 'shared_preferences_android',
 }
 
 

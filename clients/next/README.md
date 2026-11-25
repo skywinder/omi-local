@@ -345,6 +345,8 @@ operations for the pinned CV1 services.
 Recovery from the wearable's offline ring has separate custody requirements.
 See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 
+Long-press the Next app icon for device settings and, on a task-capable paired server, **Add Task**. During CV1 capture the menu also exposes the current mute or unmute action. Shortcuts are scoped to their saved pairing.
+
 In **Settings and diagnostics**, **Record on CV1 connection** enables automatic
 capture for the active pairing on the next successful CV1 connection. It starts
 off. An explicit Stop waits for a manual Start, and a muted session reopens

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
@@ -14,6 +16,9 @@ import 'local_tasks_page.dart';
 import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
+import 'cv1_capture.dart';
+import 'home_shortcuts.dart';
+import 'task_editor.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
 import 'server_catalog.dart';
@@ -22,8 +27,9 @@ import 'servers_page.dart';
 import 'settings_labels.dart';
 
 class LocalNextApp extends StatelessWidget {
-  const LocalNextApp({super.key, this.session});
+  const LocalNextApp({super.key, this.session, this.shortcuts});
   final NextServerSession? session;
+  final NextHomeShortcuts? shortcuts;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -36,7 +42,7 @@ class LocalNextApp extends StatelessWidget {
       OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
       return child!;
     },
-    home: _Pairing(session: session),
+    home: _Pairing(session: session, shortcuts: shortcuts),
   );
 }
 
@@ -85,8 +91,9 @@ ThemeData _nextTheme(Brightness brightness) {
 enum _ArchiveAction { refresh, tasks, recaps, goals, select }
 
 class _Pairing extends StatefulWidget {
-  const _Pairing({this.session});
+  const _Pairing({this.session, this.shortcuts});
   final NextServerSession? session;
+  final NextHomeShortcuts? shortcuts;
   @override
   State<_Pairing> createState() => _PairingState();
 }
@@ -125,6 +132,7 @@ class _PairingState extends State<_Pairing> {
     final named = session.servers.where((entry) => entry.id == session.activeId).firstOrNull;
     return LocalNextLibraryPage(
       key: ObjectKey(active),
+      shortcuts: widget.shortcuts,
       library: active,
       serverName: named?.name ?? active.origin.authority,
       pairingBusy: session.busy,
@@ -142,10 +150,12 @@ class LocalNextLibraryPage extends StatefulWidget {
     this.openServers,
     this.serverName,
     this.pairingBusy = false,
+    this.shortcuts,
   });
   final VoidCallback? openServers;
   final String? serverName;
   final bool pairingBusy;
+  final NextHomeShortcuts? shortcuts;
   final PairedLibrary library;
   @override
   State<LocalNextLibraryPage> createState() => _LibraryPageState();
@@ -196,7 +206,54 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   @override
   void initState() {
     super.initState();
+    widget.shortcuts?.addListener(_queueShortcuts);
     _attach();
+  }
+
+  NextCaptureInputs? _inputs;
+  bool _shortcutQueued = false;
+
+  void _bindInputs(NextCaptureInputs next) {
+    _inputs?.cv1.removeListener(_queueShortcuts);
+    _inputs = next;
+    next.cv1.addListener(_queueShortcuts);
+    _queueShortcuts();
+  }
+
+  void _queueShortcuts() {
+    if (widget.shortcuts == null || _shortcutQueued || !mounted) return;
+    _shortcutQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _shortcutQueued = false;
+      if (mounted) _syncShortcuts();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  void _syncShortcuts() {
+    final actions = widget.shortcuts!;
+    final library = widget.library;
+    final inputs = _inputs;
+    if (widget.pairingBusy || (!library.verified && _archive.failure == null)) return;
+    if (library.audioDelivery && inputs == null) return;
+    final l = context.l10n;
+    final labels = {
+      if (inputs != null) NextHomeAction.device: l.deviceSettings,
+      if (library.tasksAvailable) NextHomeAction.task: l.addTask,
+      if (inputs?.cv1.intent == Cv1CaptureIntent.recording) NextHomeAction.mute: l.mute,
+      if (inputs?.cv1.intent == Cv1CaptureIntent.muted) NextHomeAction.unmute: l.unmute,
+    };
+    actions.publish(library.audioOwnerId, labels);
+    switch (actions.take(library.audioOwnerId, labels.keys.toSet())) {
+      case NextHomeAction.device:
+        unawaited(showNextDevices(context, inputs!));
+      case NextHomeAction.task:
+        unawaited(createLocalTask(context, library));
+      case NextHomeAction.mute || NextHomeAction.unmute:
+        inputs!.cv1.toggleMute();
+      case null:
+        break;
+    }
   }
 
   void _attach() {
@@ -228,6 +285,9 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
 
   @override
   void dispose() {
+    widget.shortcuts?.removeListener(_queueShortcuts);
+    _inputs?.cv1.removeListener(_queueShortcuts);
+    widget.shortcuts?.publish('', {});
     _archive.dispose();
     super.dispose();
   }
@@ -236,6 +296,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   Widget build(BuildContext context) {
     final l = context.l10n;
     final library = widget.library;
+    _queueShortcuts();
     final archive = _archive;
     final selection = _selection;
     final serverName = widget.serverName ?? library.origin.authority;
@@ -316,6 +377,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
               library: library,
               serverName: serverName,
               onDelivered: _archive.refreshAfterRecording,
+              onInputsReady: widget.shortcuts == null ? null : _bindInputs,
               openServers: widget.openServers,
             ),
           Align(
