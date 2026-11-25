@@ -33,14 +33,16 @@ def extract(repo, directory, subtree):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository', type=Path, help='local clone of BasedHardware/omi containing the pinned commit')
-    parser.add_argument('--source-only', action='store_true', help='prepare Flutter source without iOS settings')
+    platform = parser.add_mutually_exclusive_group()
+    platform.add_argument('--android', action='store_true', help='prepare an isolated Android source tree')
+    platform.add_argument('--source-only', action='store_true', help='prepare Flutter source without iOS settings')
     args = parser.parse_args()
     revision = PIN['commit']
     if not re.fullmatch('[a-f0-9]{40}', revision):
         parser.error('upstream.json must pin a full Git commit')
     cache = ROOT / '.local' / 'clients' / 'next'
     cache.mkdir(parents=True, exist_ok=True)
-    build = cache / revision
+    build = cache / (revision + '-android' if args.android else revision)
     if not build.exists():
         with tempfile.TemporaryDirectory(dir=cache) as temp:
             staging = Path(temp) / 'tree'
@@ -52,7 +54,7 @@ def main():
         raise ValueError('Unexpected source directory')
     app = build / 'app'
     apply_presentation(args.repository, revision, app)
-    if not args.source_only:
+    if not (args.source_only or args.android):
         # Restore tracked native inputs before applying the repeatable identity overlay.
         extract(args.repository.resolve(), build, 'app/ios')
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
