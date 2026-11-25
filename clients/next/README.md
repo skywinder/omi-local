@@ -345,6 +345,13 @@ operations for the pinned CV1 services.
 Recovery from the wearable's offline ring has separate custody requirements.
 See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 
+In **Settings and diagnostics**, **Record on CV1 connection** enables automatic
+capture for the active pairing on the next successful CV1 connection. It starts
+off. An explicit Stop waits for a manual Start, and a muted session reopens
+muted. Selecting the phone microphone also suspends automatic CV1 capture.
+Android remembers a CV1 after a successful audio-service handshake; **Forget
+device** clears this selection.
+
 ## Live transcript
 
 While recording, the strip above the archive filters shows the current

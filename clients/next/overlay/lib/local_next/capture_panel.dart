@@ -10,6 +10,7 @@ import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'capture.dart';
 import 'cv1_capture.dart';
+import 'cv1_resume.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
 import 'live_preview.dart';
@@ -105,6 +106,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindin
         _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
         doubleTapAction: () => _doubleTap,
+        resumeSettings: _groupPrefs == null ? null : Cv1ResumeSettings(_groupPrefs!, library.audioOwnerId),
         diagnosticsHistory: Cv1History(preferences: _groupPrefs),
       );
       if (_hasCv1) _diagnosticPoll = Timer.periodic(const Duration(minutes: 1), (_) => _sampleIdleLink());
@@ -229,6 +231,7 @@ class NextCaptureInputs extends ChangeNotifier {
     Cv1Transport transport, {
     this.ownerChange,
     Cv1DoubleTapAction Function()? doubleTapAction,
+    Cv1ResumeSettings? resumeSettings,
     Cv1History? diagnosticsHistory,
   }) {
     cv1 = NextCv1Capture(
@@ -238,6 +241,7 @@ class NextCaptureInputs extends ChangeNotifier {
       permitsStartRequest: () => permitsNewRecording,
       onStartRequested: _claimCv1,
       doubleTapAction: doubleTapAction,
+      resumeSettings: resumeSettings,
       preview: phone.preview,
     );
     connection = Cv1Connection(transport, cv1, history: diagnosticsHistory);
@@ -413,6 +417,24 @@ class LocalNextCaptureControls extends StatelessWidget {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _openDiagnostics(context, capture),
                       ),
+                      if (inputs.cv1.resumeSettings case final resume?)
+                        SwitchListTile(
+                          title: Text(pairedSettingsLabel(context, 'nextAutoListen')),
+                          subtitle: Text(pairedSettingsLabel(context, 'nextAutoListenHint')),
+                          value: resume.enabled,
+                          onChanged: inputs.hasCaptureInProgress
+                              ? null
+                              : (value) async {
+                                  final saved = await resume.save(value ? Cv1ResumeMode.armed : Cv1ResumeMode.off);
+                                  if (!context.mounted) return;
+                                  refresh(() {});
+                                  if (!saved) {
+                                    ScaffoldMessenger.of(
+                                      context,
+                                    ).showSnackBar(SnackBar(content: Text(l.failedToSaveCheckConnection)));
+                                  }
+                                },
+                        ),
                       if (onDoubleTap != null)
                         ListTile(
                           leading: const Icon(Icons.touch_app_outlined),
@@ -681,6 +703,7 @@ class LocalNextCaptureControls extends StatelessWidget {
               Cv1CaptureProblem.unsupportedCodec => l.captureRecordingError(l.audioFormatLabel),
               Cv1CaptureProblem.storage => l.captureRecordingError(l.capturePhoneStorageFull),
               Cv1CaptureProblem.sourceSwitch => l.couldNotStartRecording,
+              Cv1CaptureProblem.preference => l.failedToSaveCheckConnection,
             })
           else if (link.audioFailed)
             Text(l.captureRecordingError(l.bluetooth)),

@@ -37,6 +37,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var gatt: BluetoothGatt? = null
     private val devices = mutableMapOf<String, String>()
     private val stats = mutableMapOf<String, Any>()
+    private val selection = context.getSharedPreferences("next.cv1", Context.MODE_PRIVATE)
     private var target: String? = null
     private var readyOnce = false
     private var phase = "idle"
@@ -67,7 +68,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
         sink = events
-        publish(phase)
+        val saved = selection.getString("selected", null)
+        if (phase == "idle" && saved != null && BluetoothAdapter.checkBluetoothAddress(saved)) {
+            target = saved
+            readyOnce = true
+            connect()
+        } else {
+            publish(phase)
+        }
     }
 
     override fun onCancel(arguments: Any?) {
@@ -102,6 +110,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     result.success(null)
                 }
                 "disconnect", "close" -> {
+                    if (call.method == "disconnect") selection.edit().remove("selected").apply()
                     disconnect(if (call.method == "disconnect") "manual" else null)
                     result.success(null)
                 }
@@ -329,6 +338,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 if (gatt === connection) {
                     if (it == null) lost(true)
                     else {
+                        target?.let { selection.edit().putString("selected", it).apply() }
                         readyOnce = true
                         retryDelay = 1000
                         target?.let(devices::get)?.let { name -> stats["name"] = name }

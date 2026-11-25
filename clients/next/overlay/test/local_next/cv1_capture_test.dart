@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/cv1_capture.dart';
+import 'package:omi/local_next/cv1_resume.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
@@ -32,6 +34,7 @@ class _Fixture {
     bool Function()? canStart,
     Future<RandomAccessFile> Function(File)? openJournal,
     NextLivePreview? preview,
+    Cv1ResumeSettings? resumeSettings,
     int? Function()? groupSilence,
   }) async {
     final files = await Directory.systemTemp.createTemp();
@@ -64,6 +67,7 @@ class _Fixture {
       owner,
       canStart: canStart ?? () => true,
       onStartRequested: acquire,
+      resumeSettings: resumeSettings,
       preview: preview,
     );
     addTearDown(() async {
@@ -104,6 +108,41 @@ class _PreviewProbe extends NextLivePreview {
 }
 
 void main() {
+  test('opt-in CV1 reconnect restores explicit Stop and Mute across cold launches for one pairing', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    Future<NextCv1Capture> open(String owner, {bool available = true}) async {
+      final fixture = _Fixture();
+      await fixture.open(resumeSettings: Cv1ResumeSettings(prefs, owner), canStart: () => available);
+      fixture.capture.handle(const Cv1LinkReady(1, 20));
+      return fixture.capture;
+    }
+
+    final first = await open('a');
+    expect(first.active, isFalse);
+    await first.resumeSettings!.save(Cv1ResumeMode.armed);
+    first.handle(const Cv1LinkLost(1));
+    first.handle(const Cv1LinkReady(2, 20));
+    expect(first.wantsAudio, isTrue);
+    await first.close();
+    final resumed = await open('a');
+    expect(resumed.wantsAudio, isTrue);
+    resumed.toggleMute();
+    await resumed.close();
+    final muted = await open('a');
+    expect(muted.intent, Cv1CaptureIntent.muted);
+    expect(muted.wantsAudio, isFalse);
+    muted.toggleMute();
+    expect(muted.wantsAudio, isTrue);
+    await muted.stop();
+    final stopped = await open('a');
+    expect(stopped.active, isFalse);
+    stopped.start();
+    await stopped.close();
+    expect((await open('a', available: false)).active, isFalse);
+    expect((await open('b')).active, isFalse);
+  });
+
   test('CV1 mute cuts only preview and fences pre-mute flush callbacks from the resumed socket', () async {
     final fixture = _Fixture();
     final preview = _PreviewProbe(fixture.owner);

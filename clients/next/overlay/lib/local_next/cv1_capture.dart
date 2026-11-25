@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:omi/services/capture/cv1_opus_frame_assembler.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
+import 'cv1_resume.dart';
 import 'live_preview.dart';
 
 sealed class Cv1CaptureEvent {
@@ -34,7 +35,7 @@ enum Cv1DoubleTapAction { checkpoint, stop, mute, off }
 
 enum Cv1CaptureIntent { stopped, recording, muted }
 
-enum Cv1CaptureProblem { unsupportedCodec, storage, sourceSwitch }
+enum Cv1CaptureProblem { unsupportedCodec, storage, sourceSwitch, preference }
 
 class NextCv1Capture extends ChangeNotifier {
   NextCv1Capture(
@@ -44,6 +45,7 @@ class NextCv1Capture extends ChangeNotifier {
     this.permitsStartRequest,
     this.onStartRequested,
     this.doubleTapAction,
+    this.resumeSettings,
     this.preview,
   });
 
@@ -53,6 +55,7 @@ class NextCv1Capture extends ChangeNotifier {
   final bool Function()? permitsStartRequest;
   final Future<void> Function()? onStartRequested;
   final Cv1DoubleTapAction Function()? doubleTapAction;
+  final Cv1ResumeSettings? resumeSettings;
   final NextLivePreview? preview;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
@@ -88,12 +91,22 @@ class NextCv1Capture extends ChangeNotifier {
   int _buttonRequest = 0;
   bool _requestPending = false;
 
+  Future<void> _remember(Cv1ResumeMode mode) async {
+    final settings = resumeSettings;
+    if (settings == null || !settings.enabled) return;
+    if (!await settings.save(mode) && !_closed) {
+      _problem = Cv1CaptureProblem.preference;
+      notifyListeners();
+    }
+  }
+
   void start() {
     if (_closed || active || !canStart()) return;
     _cancelButtonStart();
     _attempt++;
     startedAt = journal.clock();
     _intent = Cv1CaptureIntent.recording;
+    unawaited(_remember(Cv1ResumeMode.armed));
     _problem = linked && !codecSupported ? Cv1CaptureProblem.unsupportedCodec : null;
     notifyListeners();
   }
@@ -101,12 +114,13 @@ class NextCv1Capture extends ChangeNotifier {
   Future<void> stop() {
     if (_closed) return _sealed;
     _cancelButtonStart();
-    if (!active) return _sealed;
+    final remembered = _remember(Cv1ResumeMode.stopped);
+    if (!active) return Future.wait<void>([_sealed, remembered]);
     _intent = Cv1CaptureIntent.stopped;
     startedAt = null;
     _endSegment();
     notifyListeners();
-    return _sealed;
+    return Future.wait<void>([_sealed, remembered]);
   }
 
   bool get canFinish => active && _recording != null;
@@ -124,6 +138,8 @@ class NextCv1Capture extends ChangeNotifier {
   void toggleMute() {
     if (_closed || !active) return;
     _intent = _intent == Cv1CaptureIntent.muted ? Cv1CaptureIntent.recording : Cv1CaptureIntent.muted;
+    unawaited(_remember(_intent == Cv1CaptureIntent.muted ? Cv1ResumeMode.muted : Cv1ResumeMode.armed));
+    if (_intent == Cv1CaptureIntent.recording) startedAt ??= journal.clock();
     if (_intent == Cv1CaptureIntent.muted) {
       _frames.discardPending();
       _cutPreview();
@@ -138,6 +154,18 @@ class NextCv1Capture extends ChangeNotifier {
       case Cv1LinkReady(:final codecCode):
         if (_generation == event.generation && _codecCode == codecCode) return;
         _setLink(event.generation, codecCode);
+        if (!active && codecSupported && canStart()) {
+          switch (resumeSettings?.mode) {
+            case Cv1ResumeMode.armed:
+              start();
+            case Cv1ResumeMode.muted:
+              // Restore the control without requesting even one audio notification.
+              _intent = Cv1CaptureIntent.muted;
+              notifyListeners();
+            default:
+              break;
+          }
+        }
       case Cv1LinkLost():
         if (_generation == event.generation && !linked) return;
         _setLink(event.generation, null);
@@ -323,7 +351,7 @@ class NextCv1Capture extends ChangeNotifier {
     _cancelButtonStart();
     _intent = Cv1CaptureIntent.stopped;
     _endSegment();
-    return _sealed;
+    return Future.wait<void>([_sealed, if (resumeSettings case final settings?) settings.saved.then((_) {})]);
   }
 
   @override
