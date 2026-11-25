@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'capture.dart';
@@ -564,6 +565,71 @@ class LocalNextCaptureControls extends StatelessWidget {
     );
   }
 
+  Widget _recordingActions(BuildContext context) {
+    final l = context.l10n;
+    final capture = inputs.phone;
+    final cv1 = inputs.cv1;
+    final link = inputs.connection;
+    final buttonStyle = OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8));
+    final buttons = [
+      OutlinedButton.icon(
+        key: const ValueKey('next-phone-capture'),
+        style: buttonStyle,
+        onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
+            ? null
+            : inputs.togglePhone,
+        icon: Icon(capture.active ? Icons.stop : Icons.mic, size: 18),
+        label: Text(capture.active ? '${l.stop} · ${l.phone}' : l.recordWithPhoneMic, textAlign: TextAlign.center),
+      ),
+      if (cv1.linked || cv1.active)
+        OutlinedButton.icon(
+          key: const ValueKey('next-cv1-capture'),
+          style: buttonStyle,
+          onPressed: inputs.switching || (!cv1.active && (!cv1.codecSupported || !inputs.permitsNewRecording))
+              ? null
+              : cv1.active
+              ? cv1.stop
+              : inputs.startCv1,
+          icon: Icon(cv1.active ? Icons.stop : Icons.fiber_manual_record, size: 18),
+          label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', textAlign: TextAlign.center),
+        ),
+      if (hasCv1)
+        OutlinedButton.icon(
+          key: const ValueKey('next-cv1-devices'),
+          style: buttonStyle,
+          icon: Icon(cv1.linked ? Icons.bluetooth_connected : Icons.bluetooth, size: 18),
+          label: Text(
+            link.phase == Cv1LinkPhase.idle && !cv1.active
+                ? pairedSettingsLabel(context, 'nextConnectOmi')
+                : [
+                    'CV1',
+                    if (link.diagnostics?.battery case final battery? when link.phase == Cv1LinkPhase.ready)
+                      '$battery%'
+                    else
+                      cv1PhaseLabel(context, link.phase),
+                    if (cv1.intent == Cv1CaptureIntent.muted)
+                      l.muted
+                    else if (cv1.active && cv1.linked)
+                      cv1.hasPersistedAudio ? l.recording : l.waitingForData,
+                  ].join(' · '),
+            textAlign: TextAlign.center,
+          ),
+          onPressed: () => unawaited(showNextDevices(context, inputs)),
+        ),
+    ];
+    if (buttons.length == 1) return buttons.single;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: IntrinsicHeight(
+        child: Row(
+          spacing: 6,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [for (final button in buttons) Expanded(child: button)],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final capture = inputs.phone;
@@ -577,62 +643,23 @@ class LocalNextCaptureControls extends StatelessWidget {
       builder: (context, _) => Column(
         children: [
           if (_time(context) case final timer?) timer,
-          Wrap(
-            spacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                key: const ValueKey('next-phone-capture'),
-                onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
-                    ? null
-                    : inputs.togglePhone,
-                icon: Icon(capture.active ? Icons.stop : Icons.mic),
-                label: Text(capture.active ? '${l.stop} · ${l.phone}' : l.recordWithPhoneMic),
-              ),
-              if (cv1.linked || cv1.active)
-                OutlinedButton.icon(
-                  key: const ValueKey('next-cv1-capture'),
-                  onPressed: inputs.switching || (!cv1.active && (!cv1.codecSupported || !inputs.permitsNewRecording))
-                      ? null
-                      : cv1.active
-                      ? cv1.stop
-                      : inputs.startCv1,
-                  icon: Icon(cv1.active ? Icons.stop : Icons.fiber_manual_record),
-                  label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1'),
-                ),
-              if (cv1.active) ...[_finish(context), _mute(context)],
-              if (library case final paired?)
-                IconButton(
-                  key: const ValueKey('next-mobile-settings'),
-                  tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () => _settings(context, captureState, paired),
-                ),
-              if (hasCv1)
-                TextButton.icon(
-                  key: const ValueKey('next-cv1-devices'),
-                  icon: Icon(cv1.linked ? Icons.bluetooth_connected : Icons.bluetooth),
-                  label: Text(
-                    link.phase == Cv1LinkPhase.idle && !cv1.active
-                        ? l.connectDevice
-                        : [
-                            'CV1',
-                            if (link.diagnostics?.battery case final battery? when link.phase == Cv1LinkPhase.ready)
-                              '$battery%'
-                            else
-                              cv1PhaseLabel(context, link.phase),
-                            if (cv1.intent == Cv1CaptureIntent.muted)
-                              l.muted
-                            else if (cv1.active && cv1.linked)
-                              cv1.hasPersistedAudio ? l.recording : l.waitingForData,
-                          ].join(' · '),
+          _recordingActions(context),
+          if (cv1.active || library != null)
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                if (cv1.active) ...[_finish(context), _mute(context)],
+                if (library case final paired?)
+                  IconButton(
+                    key: const ValueKey('next-mobile-settings'),
+                    tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () => _settings(context, captureState, paired),
                   ),
-                  onPressed: () {
-                    unawaited(showNextDevices(context, inputs));
-                  },
-                ),
-            ],
-          ),
+              ],
+            ),
           if (cv1.problem != null)
             Text(switch (cv1.problem!) {
               Cv1CaptureProblem.unsupportedCodec => l.captureRecordingError(l.audioFormatLabel),
@@ -773,6 +800,13 @@ class _ActiveRecordingTimeState extends State<_ActiveRecordingTime> {
   }
 }
 
+String _shortCv1Id(String id) {
+  // Android MAC addresses commonly share a vendor prefix. Use the last
+  // three octets for these, and Omi's short ID for iOS peripheral UUIDs.
+  final octets = id.split(':');
+  return BtDevice.shortId(octets.length == 6 ? octets.skip(3).join() : id) as String;
+}
+
 Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) async {
   final connection = inputs.connection;
   if (connection.phase == Cv1LinkPhase.idle || connection.phase == Cv1LinkPhase.failed) unawaited(connection.scan());
@@ -784,6 +818,11 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
         builder: (context, _) {
           final l = context.l10n;
           final selected = connection.phase == Cv1LinkPhase.ready || connection.phase == Cv1LinkPhase.reconnecting;
+          final scanned = [for (final device in connection.devices) (device: device, shortId: _shortCv1Id(device.id))];
+          final shortIdCounts = <String, int>{};
+          for (final entry in scanned) {
+            shortIdCounts.update(entry.shortId, (count) => count + 1, ifAbsent: () => 1);
+          }
           return ListView(
             shrinkWrap: true,
             children: [
@@ -809,9 +848,10 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
                   subtitle: connection.phase == Cv1LinkPhase.scanning ? Text(l.searchingForDevices) : null,
                   trailing: TextButton(onPressed: inputs._closed ? null : connection.scan, child: Text(l.scanAgain)),
                 ),
-                for (final device in connection.devices)
+                for (final (device: device, shortId: shortId) in scanned)
                   ListTile(
                     title: Text(device.name.trim().isEmpty ? 'Omi CV1' : device.name),
+                    subtitle: Text('${l.deviceId} · ${shortIdCounts[shortId] == 1 ? shortId : device.id}'),
                     leading: const Icon(Icons.bluetooth),
                     onTap: () async {
                       if (inputs._closed) return;
