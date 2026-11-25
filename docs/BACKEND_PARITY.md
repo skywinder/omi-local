@@ -81,8 +81,14 @@ Next can opt in to resolving a saved-recording detail with
 the route returns the completed conversation when the capture has one successful
 import receipt and the stored result matches it. Clients use the returned ID
 for playback and edits. The plain detail route keeps exact-ID lookup. If a group
-is waiting for parts or a capture has multiple imported results, no result is
-selected by inference.
+is waiting for parts or a capture has multiple imported results, Next requests
+`include_recording_results=true` on the same route. The response keeps the
+temporary card ID and includes a compact list of results. Group children follow
+the stored recording ID and sample-boundary identity. Each published result is
+checked against its import receipt and the owner's current Conversation record.
+The list omits transcript bodies. Full playback and edits open the selected
+result by its own ID. Older clients retain the exact lookup and single-result
+resolution behavior.
 
 The paired archive search on Bastion returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired

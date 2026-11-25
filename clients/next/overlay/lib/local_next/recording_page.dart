@@ -159,13 +159,17 @@ String recordingStatus(BuildContext context, ServerConversation row) {
     'failed' => local == null ? context.l10n.processingFailed : recordingFailure(context, local['failure']),
     'pending' => context.l10n.statusPending,
     'processing' => context.l10n.statusProcessing,
+    'waiting_for_parts' => pairedSettingsLabel(context, 'nextWaitingForParts'),
+    'receiving' => pairedSettingsLabel(context, 'nextReceivingRecording'),
     'no_speech' => context.l10n.noTranscriptAvailable,
     _ => context.l10n.saved,
   };
 }
 
+const _recordingProcessing = {'saved', 'pending', 'processing', 'waiting_for_parts', 'receiving'};
+
 bool canFollowSavedRecording(ServerConversation row) =>
-    const {'saved', 'pending', 'processing', 'failed'}.contains(row.externalIntegration?.localRecording?['status']);
+    const {..._recordingProcessing, 'failed', 'published'}.contains(row.externalIntegration?.localRecording?['status']);
 
 class RecordingPage extends StatefulWidget {
   const RecordingPage({
@@ -184,14 +188,14 @@ class RecordingPage extends StatefulWidget {
   final bool verifyInitialExcerpt;
   final ValueChanged<ServerConversation>? onEdited;
   final bool fromSavedRecording;
-  final void Function(String previousId, ServerConversation row)? onPublished;
+  final void Function(String previousId, List<ServerConversation> rows)? onPublished;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
 }
 
 class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
-  late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
+  late final TabController tabs;
   late String _id = widget.id;
   late bool _followSavedRecording = widget.fromSavedRecording;
   late Future<_RecordingDetail> detail = _load();
@@ -219,6 +223,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
     if (widget.library.speakerLabelsAvailable) unawaited(_loadPeople());
   }
 
@@ -274,6 +279,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
       widget.library.audioPlayback &&
+      row.externalIntegration?.localRecording?['group'] != true &&
+      row.externalIntegration?.localRecording?['results'] == null &&
+      row.externalIntegration?.localRecording?['status'] != 'waiting_for_parts' &&
       (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
 
   bool _canEdit(_RecordingDetail loaded) =>
@@ -412,9 +420,54 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     _id = row.id;
     _followSavedRecording = canFollowSavedRecording(row);
     _processingPoll?.cancel();
-    if (const {'saved', 'pending', 'processing'}.contains(loaded.localState)) _scheduleProcessingPoll();
-    if (before != row.id) widget.onPublished?.call(before, row);
+    if (_recordingProcessing.contains(loaded.localState)) {
+      _scheduleProcessingPoll();
+    } else if (loaded.results case final results?) {
+      widget.onPublished?.call(before, results);
+    }
+    if (before != row.id) widget.onPublished?.call(before, [row]);
     return loaded;
+  }
+
+  Widget _recordingResults(_RecordingDetail loaded, List<ServerConversation> rows) => ListView(
+    children: [
+      if (loaded.localState != 'published') ListTile(title: Text(recordingStatus(context, loaded.row))),
+      for (final row in rows)
+        ListTile(
+          key: ValueKey(row.id),
+          title: Text(recordingTitle(context, row)),
+          subtitle: Text(
+            [
+              if (row.startedAt case final started?)
+                MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(started.toLocal())),
+              if (_recordingMetadata(context, row) case final meta?) meta,
+              if (row.externalIntegration?.localTranscript?['model'] case final String model) model,
+              if (row.externalIntegration?.localRecording != null) recordingStatus(context, row),
+            ].join(' · '),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openRecordingResult(row),
+        ),
+    ],
+  );
+
+  Future<void> _openRecordingResult(ServerConversation row) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecordingPage(
+          library: widget.library,
+          id: row.id,
+          fromSavedRecording: canFollowSavedRecording(row),
+          onEdited: widget.onEdited,
+          onPublished: widget.onPublished,
+        ),
+      ),
+    );
+    if (mounted && widget.library.isSignedIn) {
+      setState(() {
+        detail = _load();
+      });
+    }
   }
 
   void _scheduleProcessingPoll() {
@@ -769,9 +822,15 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         final diarization = row == null ? null : recordingDiarization(context, row);
         return Scaffold(
           appBar: AppBar(
-            title: Text(row == null ? l.conversations : recordingTitle(context, row)),
+            title: Text(
+              loaded?.results != null
+                  ? pairedSettingsLabel(context, 'nextRecordingResults')
+                  : row == null
+                  ? l.conversations
+                  : recordingTitle(context, row),
+            ),
             actions: [
-              if (loaded != null)
+              if (loaded != null && loaded.results == null)
                 PopupMenuButton<_RecordingEditAction>(
                   key: _menu,
                   enabled: !opening && !_editing,
@@ -866,7 +925,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                   icon: const Icon(Icons.chat_bubble_outline),
                   onPressed: opening ? null : _openChat,
                 ),
-              if (loaded != null)
+              if (loaded != null && loaded.results == null)
                 IconButton(
                   tooltip: l.search,
                   icon: const Icon(Icons.search),
@@ -900,6 +959,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     detail = _load();
                   }),
                 )
+              : loaded.results != null
+              ? _recordingResults(loaded, loaded.results!)
               : Column(
                   children: [
                     if (widget.library.processingRetryAvailable && loaded.failed)
@@ -1066,6 +1127,25 @@ class _RecordingDetail {
   bool get pending => row.externalIntegration?.localRecording != null;
   Object? get localState => row.externalIntegration?.localRecording?['status'];
   bool get failed => localState == 'failed';
+  late final List<ServerConversation>? results = _readResults();
+
+  List<ServerConversation>? _readResults() {
+    final raw = row.externalIntegration?.localRecording?['results'];
+    if (raw is! List) return null;
+    final ids = <String>{row.id};
+    final results = <ServerConversation>[];
+    for (final entry in raw.whereType<Map<String, dynamic>>()) {
+      try {
+        final result = ServerConversation.fromJson(entry);
+        if (ids.add(result.id)) results.add(result);
+      } on TypeError {
+        continue;
+      } on FormatException {
+        continue;
+      }
+    }
+    return results;
+  }
 }
 
 class _Summary extends StatelessWidget {

@@ -1374,8 +1374,10 @@ def get_conversations_by_id_without_photos(
     include_discarded: bool = False,
     *,
     read_site: FirestoreReadSite = FirestoreReadSite.UNATTRIBUTED,
+    field_paths: Optional[List[str]] = None,
 ):
-    return _get_conversations_by_id(uid, conversation_ids, include_discarded=include_discarded, read_site=read_site)
+    return _get_conversations_by_id(uid, conversation_ids, include_discarded=include_discarded, read_site=read_site,
+                                    field_paths=field_paths)
 
 
 def _get_conversations_by_id(
@@ -1384,12 +1386,13 @@ def _get_conversations_by_id(
     include_discarded: bool = False,
     *,
     read_site: FirestoreReadSite = FirestoreReadSite.UNATTRIBUTED,
+    field_paths: Optional[List[str]] = None,
 ):
     user_ref = db.collection('users').document(uid)
     conversations_ref = user_ref.collection(conversations_collection)
 
     doc_refs = [conversations_ref.document(str(conversation_id)) for conversation_id in conversation_ids]
-    docs = db.get_all(doc_refs)
+    docs = db.get_all(doc_refs, field_paths=field_paths) if field_paths is not None else db.get_all(doc_refs)
 
     hits = 0
     misses = 0

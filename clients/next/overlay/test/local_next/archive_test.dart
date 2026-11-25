@@ -104,6 +104,28 @@ class _PublishingLibrary extends _ArchiveLibrary {
   }
 }
 
+class _GroupedPublishingLibrary extends _ArchiveLibrary {
+  _GroupedPublishingLibrary(ServerConversation pending, this.terminal, this.published, this.other)
+    : super((_) async => (rows: [pending, published], consumed: 2, partial: false, more: false), pending);
+
+  final ServerConversation terminal;
+  final ServerConversation published;
+  final ServerConversation other;
+  var finished = false;
+
+  @override
+  Future<void> verify() async {}
+
+  @override
+  Future<ServerConversation> refreshSavedRecording(String id) async => finished ? terminal : record;
+
+  @override
+  Future<ServerConversation> detail(String id) async {
+    opened.add(id);
+    return id == other.id ? other : published;
+  }
+}
+
 ServerConversation _row(
   String id,
   String title,
@@ -140,6 +162,61 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('a waiting group keeps the choice open after all recordings publish', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final date = DateTime.utc(2026, 1, 2);
+    final first = _row(_secondId, 'First conversation from the group', date);
+    final second = _row(_thirdId, 'Second conversation from the group', date.add(const Duration(minutes: 10)));
+    final waiting = _row(
+      _firstId,
+      'Local recording',
+      date,
+      localState: 'waiting_for_parts',
+      recording: {
+        'group': true,
+        'results': [first.toJson()],
+      },
+    );
+    final done = _row(
+      _firstId,
+      'Local recording',
+      date,
+      localState: 'published',
+      recording: {
+        'group': true,
+        'results': [first.toJson(), second.toJson()],
+      },
+    );
+    final library = _GroupedPublishingLibrary(waiting, done, first, second);
+    addTearDown(library.close);
+    await _show(tester, library);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Recording'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recording results'), findsOneWidget);
+    expect(find.text('Waiting for audio from the phone'), findsOneWidget);
+    expect(find.text('First conversation from the group'), findsOneWidget);
+    expect(find.text('Second conversation from the group'), findsNothing);
+
+    library.finished = true;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Waiting for audio from the phone'), findsNothing);
+    expect(library.opened, isEmpty);
+    await tester.tap(find.text('Second conversation from the group'));
+    await tester.pumpAndSettle();
+    expect(library.opened, [_thirdId]);
+    expect(find.byType(TabBar), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConversationStateTile), findsNWidgets(2));
+    expect(find.text('First conversation from the group'), findsOneWidget);
+    expect(find.text('Second conversation from the group'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('an open saved recording survives offline, follows publication and replaces its archive row', (
     tester,
   ) async {

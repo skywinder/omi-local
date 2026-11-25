@@ -9,6 +9,7 @@ import math
 import os
 import re
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -114,7 +115,68 @@ def _saved_failure(job, checkpoint):
     return value
 
 
-def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_id=None, result_keys=None) -> list[dict]:
+@dataclass
+class RecordingResolution:
+    id: str
+    include_results: bool = False
+    result_keys: set[str] = field(default_factory=set)
+    saved: dict | None = None
+    group_id: str | None = None
+    group: dict | None = None
+    children: list[dict] = field(default_factory=list)
+
+
+def _group_rows(storage, resolution):
+    for folder in (storage / 'grouped-recordings').glob('*'):
+        if folder.is_symlink() or not folder.is_dir():
+            continue
+        progress = _optional_json(folder / 'progress.json')
+        waiting = progress.get('waiting_for_parts') is True
+        try:
+            group_id = uuid.UUID(folder.name)
+            if str(group_id) != folder.name:
+                continue
+            row_id = str(uuid.uuid5(group_id, 'waiting-for-parts'))
+            requested = resolution is not None and resolution.include_results and row_id == resolution.id
+            if not waiting and not requested:
+                continue
+            row = progress.get('waiting_row') if waiting else _optional_json(folder / 'config.json')
+            if not isinstance(row, dict):
+                continue
+            started = datetime.fromisoformat(row['started_at'])
+            duration = row['duration_seconds'] if waiting else progress['next_sample'] / 16_000
+            if started.tzinfo is None or type(duration) not in (float, int) or not math.isfinite(duration) or duration < 0:
+                continue
+            if row['source'] not in {'omi', 'phone'}:
+                continue
+            status = 'waiting_for_parts' if waiting else 'processing' if progress.get('completed') is True else 'receiving'
+            projection = Conversation(
+                id=row_id, created_at=started, started_at=started, finished_at=None,
+                source=row['source'], status='processing',
+                uses_custom_stt=True, structured=Structured(title='Local recording', overview='', emoji='🎙️'),
+                transcript_segments=[], discarded=False, deferred=False,
+                external_data={'local_recording': {'status': status, 'duration_seconds': duration, 'group': True,
+                                                  **({'origin': origin} if (origin := _origin(row)) else {})}},
+            ).model_dump()
+            if requested:
+                resolution.group_id, resolution.group = str(group_id), projection
+            if waiting:
+                yield projection
+        except (ValueError, KeyError, TypeError, OverflowError):
+            continue
+
+
+def _is_group_child(capture_id, metadata, group_id):
+    provenance = metadata.get('conversation_group')
+    if not isinstance(provenance, dict) or provenance.get('recording_id') != group_id or group_id is None:
+        return False
+    start = provenance.get('start_sample')
+    end = provenance.get('end_sample')
+    return (type(start) is int and type(end) is int and 0 <= start < end
+            and str(uuid.uuid5(uuid.UUID(group_id), f'conversation:{start}')) == capture_id)
+
+
+def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolution=None) -> list[dict]:
     if not is_offline_runtime() or not local_tunnel_enabled():
         return []
     if uid != load_pairing()['owner_uid']:
@@ -134,6 +196,7 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_
         key = data.get('capture_key')
         if data.get('import') == 'passed' and isinstance(key, str):
             imported.setdefault(key, []).append(receipt.parent.name)
+    groups = list(_group_rows(storage, resolution))
     rows = []
     for folder in (storage / 'listen-captures').glob('*'):
         if folder.is_symlink() or not folder.is_dir():
@@ -145,10 +208,13 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_
             if not isinstance(job, dict):
                 job = {}
             metadata = _optional_json(folder / 'metadata.json')
+            row_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))
+            child = resolution is not None and _is_group_child(capture_id, metadata, resolution.group_id)
             if key in imported or job.get('state') == 'completed':
-                if (result_keys is not None and metadata.get('session_id') == capture_id
-                        and resolve_id == str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))):
-                    result_keys.extend(result for result in imported.get(key, ()) if re.fullmatch(r'[a-f0-9]{64}', result))
+                if resolution is not None and metadata.get('session_id') == capture_id and (row_id == resolution.id or child):
+                    resolution.result_keys.update(result for result in imported.get(key, ()) if re.fullmatch(r'[a-f0-9]{64}', result))
+                    if resolution.include_results and not child:
+                        resolution.saved = metadata
                 if origins is not None and metadata.get('session_id') == capture_id and (origin := _origin(metadata)):
                     for result_key in imported.get(key, ()):
                         if re.fullmatch(r'[a-f0-9]{64}', result_key):
@@ -170,12 +236,11 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_
             status = job.get('state', 'saved')
             if not isinstance(status, str) or status not in {'pending', 'processing', 'failed', 'no_speech'}:
                 status = 'saved'
-            row_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))
             if status == 'failed' and not (folder / '.retry-processing').is_symlink() and (folder / '.retry-processing').is_file():
                 status = 'pending'
             if retry_targets is not None:
                 retry_targets[row_id] = (folder, status)
-            rows.append(Conversation(
+            projection = Conversation(
                 id=row_id,
                 created_at=started, started_at=started, finished_at=started + timedelta(seconds=duration),
                 source=metadata['source'], status='processing', uses_custom_stt=True,
@@ -185,35 +250,14 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_
                                                   **({'origin': origin} if (origin := _origin(metadata)) else {}),
                                                   **({'failure': _saved_failure(job, failures.get(key, {}))}
                                                      if status == 'failed' else {})}},
-            ).model_dump())
+            ).model_dump()
+            rows.append(projection)
+            if child:
+                resolution.children.append(projection)
         except (ValueError, KeyError, TypeError, OSError, OverflowError):
             # An incomplete/corrupt capture cannot hide other saved recordings.
             continue
-    for folder in (storage / 'grouped-recordings').glob('*'):
-        if folder.is_symlink() or not folder.is_dir():
-            continue
-        progress = _optional_json(folder / 'progress.json')
-        row = progress.get('waiting_row')
-        if not progress.get('waiting_for_parts') or not isinstance(row, dict):
-            continue
-        try:
-            started = datetime.fromisoformat(row['started_at'])
-            duration = row['duration_seconds']
-            if started.tzinfo is None or type(duration) not in (float, int) or not math.isfinite(duration) or duration < 0:
-                continue
-            if row['source'] not in {'omi', 'phone'}:
-                continue
-            rows.append(Conversation(
-                id=str(uuid.uuid5(uuid.UUID(folder.name), 'waiting-for-parts')), created_at=started,
-                started_at=started, source=row['source'], status='processing', uses_custom_stt=True,
-                structured=Structured(title='Local recording', overview='', emoji='🎙️'), transcript_segments=[],
-                discarded=False, deferred=False,
-                external_data={'local_recording': {'status': 'waiting_for_parts', 'duration_seconds': duration,
-                                                  **({'origin': origin} if (origin := _origin(row)) else {})}},
-            ).model_dump())
-        except (ValueError, KeyError, TypeError, OverflowError):
-            continue
-    return rows
+    return rows + groups
 
 
 def request_processing_retry(uid: str, conversation_id: str) -> str:
@@ -300,7 +344,7 @@ def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **fil
     return [attach_saved_origin(row, origins) for row in page[:limit]], has_more
 
 
-def get_local_recording(uid: str, conversation_id: str, origins=None, *, result_keys=None) -> dict | None:
-    rows = (local_recording_rows(uid, origins) if result_keys is None else
-            local_recording_rows(uid, origins, resolve_id=conversation_id, result_keys=result_keys))
+def get_local_recording(uid: str, conversation_id: str, origins=None, *, resolution=None) -> dict | None:
+    rows = (local_recording_rows(uid, origins) if resolution is None else
+            local_recording_rows(uid, origins, resolution=resolution))
     return next((row for row in rows if row['id'] == conversation_id), None)

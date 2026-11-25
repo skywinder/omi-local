@@ -907,6 +907,7 @@ def get_conversation_by_id(
     source: Optional[str] = Query(None, description="Optional provenance constraint for a detail read"),
     include_discarded: bool = Query(True),
     resolve_local_recording: bool = False,
+    include_recording_results: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if not is_offline_runtime():
@@ -914,19 +915,12 @@ def get_conversation_by_id(
     conversation = None
     origins = {}
     if is_offline_runtime():
-        from utils.local_recording_rows import attach_saved_origin, get_local_recording
+        from utils.local_recording_rows import RecordingResolution, attach_saved_origin, get_local_recording
 
-        result_keys = [] if resolve_local_recording else None
-        conversation = get_local_recording(uid, conversation_id, origins, result_keys=result_keys)
-        if conversation is None and result_keys is not None and len(result_keys) == 1:
-            # A capture can have multiple successful results. Follow only an unambiguous receipt.
-            result_key = result_keys[0]
-            published_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
-            published = _get_valid_conversation_by_id(uid, published_id)
-            local = (published.get('external_data') or {}).get('local_transcript') or {}
-            if (published.get('id') == published_id and published.get('status') == 'completed'
-                    and not published.get('deleted') and local.get('result_key') == result_key):
-                conversation = published
+        resolution = RecordingResolution(conversation_id, include_recording_results) if resolve_local_recording else None
+        conversation = get_local_recording(uid, conversation_id, origins, resolution=resolution)
+        if resolution is not None and (conversation is None or resolution.group is not None):
+            conversation = _resolved_recording(resolution, uid, origins, source, include_discarded) or conversation
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:
@@ -946,6 +940,85 @@ def get_conversation_by_id(
     else:
         _dispatch_first_open_work(uid, conversation)
     return conversation
+
+
+def _resolved_recording(resolution, uid, origins, source, include_discarded):
+    from utils.local_recording_rows import attach_saved_origin
+
+    keys = resolution.result_keys
+    if not resolution.include_results and len(keys) != 1:
+        return None
+    expected = {str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key)): key for key in sorted(keys)}
+    single = resolution.group is None and len(expected) == 1
+    if single:
+        try:
+            rows = [_get_valid_conversation_by_id(uid, next(iter(expected)))]
+        except HTTPException as exc:
+            if exc.status_code in (402, 404):
+                return None
+            raise
+    elif expected:
+        rows = conversations_db.get_conversations_by_id_without_photos(
+            uid, list(expected), include_discarded=include_discarded,
+            field_paths=['id', 'created_at', 'started_at', 'finished_at', 'status', 'source', 'starred', 'folder_id',
+                         'is_locked', 'discarded', 'deleted', 'local_chat_deleting', 'structured', 'user_title',
+                         'user_category', 'data_protection_level', 'external_data.local_transcript.result_key',
+                         'external_data.local_transcript.profile.model'],
+        )
+    else:
+        rows = []
+    published = []
+    for row in rows:
+        key = expected.get(row.get('id'))
+        local = (row.get('external_data') or {}).get('local_transcript') or {}
+        if (key is not None and row.get('status') == 'completed' and not row.get('deleted')
+                and not row.get('is_locked') and not row.get('local_chat_deleting')
+                and local.get('result_key') == key and (source is None or row.get('source') == source)
+                and (include_discarded or not row.get('discarded'))):
+            published.append(attach_saved_origin(row, origins))
+    if single:
+        return published[0] if published else None
+    if not resolution.include_results:
+        return None
+
+    group = resolution.group
+    children = resolution.children
+    if group is None:
+        if not published or resolution.saved is None:
+            return None
+        first = published[0]
+        group = {
+            'id': resolution.id, 'status': 'processing', 'created_at': first['created_at'],
+            'started_at': first.get('started_at'), 'finished_at': first.get('finished_at'),
+            'source': resolution.saved.get('source'), 'structured': {'title': 'Local recording'},
+            'external_data': {'local_recording': {'duration_seconds': resolution.saved.get('duration_seconds')}},
+        }
+    local = group['external_data']['local_recording']
+    if local.get('status') not in ('waiting_for_parts', 'receiving'):
+        active = any(row['external_data']['local_recording']['status'] in ('saved', 'pending', 'processing') for row in children)
+        local['status'] = 'processing' if active else 'published' if published or children else 'no_speech'
+    choices = sorted(published + children, key=lambda row: (str(row.get('started_at') or row['created_at']), row['id']))
+    local['results'] = [_recording_choice(row) for row in choices]
+    return group
+
+
+def _recording_choice(row):
+    fields = ('id', 'created_at', 'started_at', 'finished_at', 'status', 'source', 'starred', 'folder_id')
+    choice = {key: row[key] for key in fields if key in row}
+    structure = row.get('structured') or {}
+    choice['structured'] = {key: structure[key] for key in ('title', 'emoji', 'category') if key in structure}
+    external = row.get('external_data') or {}
+    if 'local_recording' in external:
+        choice['external_data'] = {'local_recording': external['local_recording']}
+    else:
+        local = external.get('local_transcript') or {}
+        profile = local.get('profile') or {}
+        model = profile.get('model') if isinstance(profile, dict) else None
+        choice['external_data'] = {'local_transcript': {
+            'origin': local.get('origin'),
+            **({'model': model} if isinstance(model, str) and 0 < len(model) <= 120 else {}),
+        }}
+    return choice
 
 
 @router.patch(

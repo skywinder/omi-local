@@ -31,7 +31,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool showingCached = false;
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
-  final _publicationsDuringRead = <String, ServerConversation>{};
+  final _publicationsDuringRead = <String, List<ServerConversation>>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
   bool busy = false, more = false, partial = false;
   Object? failure;
@@ -77,7 +77,12 @@ class PairedArchiveProvider extends ChangeNotifier {
     final canRefresh = _canRefreshRecordings;
     if (_disposed || canRefresh == null || _paged || busy || (!now && _localRefresh != null)) return;
     final awaitingProcessing = _rows.values.any(
-      (row) => const {'saved', 'pending', 'processing'}.contains(row.externalIntegration?.localRecording?['status']),
+      (row) => const {
+        'saved',
+        'pending',
+        'processing',
+        'waiting_for_parts',
+      }.contains(row.externalIntegration?.localRecording?['status']),
     );
     if (_refreshedDelivery == _deliveryRevision && !awaitingProcessing) return;
     _localRefresh?.cancel();
@@ -161,11 +166,13 @@ class PairedArchiveProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void replacePending(String previousId, ServerConversation row) {
+  void replacePending(String previousId, List<ServerConversation> rows) {
     if (_disposed) return;
-    if (busy) _publicationsDuringRead[previousId] = row;
+    if (busy) _publicationsDuringRead[previousId] = rows;
     if (_rows.remove(previousId) == null) return;
-    if (_matches(row)) _rows[row.id] = row;
+    for (final row in rows.where(_matches)) {
+      _rows.putIfAbsent(row.id, () => row);
+    }
     _groupEntries();
     notifyListeners();
   }
@@ -211,9 +218,10 @@ class PairedArchiveProvider extends ChangeNotifier {
       _paged = append;
       failure = null;
       for (final row in result.rows) {
-        final published = _publicationsDuringRead[row.id] ?? row;
-        final fresh = _editsDuringRead[published.id] ?? published;
-        if (_matches(fresh)) _rows[fresh.id] = fresh;
+        for (final published in _publicationsDuringRead[row.id] ?? [row]) {
+          final fresh = _editsDuringRead[published.id] ?? published;
+          if (_matches(fresh)) _rows[fresh.id] = fresh;
+        }
       }
       _offset += result.consumed;
       more = result.more && result.consumed > 0;

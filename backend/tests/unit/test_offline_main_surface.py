@@ -131,11 +131,18 @@ published = build_conversation({'segments': [{'text': 'Saved transcript', 'start
 }).model_dump()
 from fastapi import HTTPException
 original_detail = main.conversations._get_valid_conversation_by_id
+original_choices = main.conversations.conversations_db.get_conversations_by_id_without_photos
+fixture_details = {published['id']: published}
 def exact_detail(uid, id):
-    if uid == 'fixture-owner' and id == published['id']:
-        return published
+    if uid == 'fixture-owner' and id in fixture_details:
+        return fixture_details[id]
     raise HTTPException(404, 'Conversation not found')
 main.conversations._get_valid_conversation_by_id = exact_detail
+def result_cards(uid, ids, *, include_discarded, field_paths):
+    assert len(set(ids)) == len(ids)
+    assert 'transcript_segments' not in field_paths
+    return [fixture_details[id] for id in ids if uid == 'fixture-owner' and id in fixture_details]
+main.conversations.conversations_db.get_conversations_by_id_without_photos = result_cards
 saved_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture.session_id))
 saved_url = '/v1/conversations/' + saved_id
 resolve = '?resolve_local_recording=true'
@@ -159,7 +166,72 @@ assert client.get(saved_url + resolve, headers=archive_headers).status_code == 4
 main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
 (results / ('c' * 64) / 'import.json').write_text(json.dumps(data))
 assert client.get(saved_url + resolve, headers=archive_headers).status_code == 404
+choices = resolve + '&include_recording_results=true'
+single_verified = client.get(saved_url + choices, headers=archive_headers).json()
+assert single_verified['id'] == saved_id
+assert [r['id'] for r in single_verified['external_data']['local_recording']['results']] == [published['id']]
+def add_result(key, capture_id, title):
+    row = {**published, 'id': str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key)),
+           'structured': {**published['structured'], 'title': title},
+           'external_data': {'local_transcript': {'result_key': key}}}
+    fixture_details[row['id']] = row
+    (results / key).mkdir(exist_ok=True)
+    (results / key / 'import.json').write_text(json.dumps({'import': 'passed',
+        'capture_key': hashlib.sha256(capture_id.encode()).hexdigest()}))
+    return row['id']
+
+other = add_result('c' * 64, capture.session_id, 'Second pass')
+many = client.get(saved_url + choices, headers=archive_headers).json()
+assert {r['id'] for r in many['external_data']['local_recording']['results']} == {published['id'], other}
+assert all('transcript_segments' not in r for r in many['external_data']['local_recording']['results'])
+
+group = uuid.uuid4()
+group_root = storage / 'grouped-recordings' / str(group)
+group_root.mkdir(parents=True)
+progress = group_root / 'progress.json'
+group_id = str(uuid.uuid5(group, 'waiting-for-parts'))
+group_url = '/v1/conversations/' + group_id
+start = '2026-01-02T11:00:00+00:00'
+(group_root / 'config.json').write_text(json.dumps({'source': 'phone', 'started_at': start}))
+def group_child(first):
+    identifier = str(uuid.uuid5(group, f'conversation:{first}'))
+    child = OfflineAudioCapture(session_id=identifier, input_codec='pcm16', source='phone', root=storage)
+    child.record_decoded_frame(encoded_bytes=32000, pcm=b'\\x00\\x00' * 16000)
+    child.finalize()
+    metadata_path = child.session_dir / 'metadata.json'
+    local_metadata = json.loads(metadata_path.read_bytes())
+    local_metadata['conversation_group'] = {'recording_id': str(group), 'start_sample': first, 'end_sample': first+16000}
+    metadata_path.write_text(json.dumps(local_metadata))
+    return identifier
+
+completed_child = group_child(0)
+pending_child = group_child(32000)
+different_capture = str(uuid.uuid4())
+group_result = add_result('e' * 64, completed_child, 'First conversation from the group')
+add_result('f' * 64, different_capture, 'Unrelated conversation')
+def group_result_state(status, **state):
+    progress.write_text(json.dumps({'next_sample': 48000, **state}))
+    response = client.get(group_url + choices, headers=archive_headers)
+    assert response.status_code == 200, response.text
+    row = response.json()
+    assert row['id'] == group_id
+    local = row['external_data']['local_recording']
+    assert local['status'] == status
+    return {r['id'] for r in local['results']}
+
+pending_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + pending_child))
+assert group_result_state('waiting_for_parts', waiting_for_parts=True, waiting_row={
+    'source': 'phone', 'started_at': start, 'duration_seconds': 3}) == {group_result, pending_id}
+assert group_result_state('receiving') == {group_result, pending_id}
+assert group_result_state('processing', completed=True) == {group_result, pending_id}
+second_group_result = add_result('1' * 64, pending_child, 'Second conversation from the group')
+assert group_result_state('published', completed=True) == {group_result, second_group_result}
+assert client.get(group_url + resolve, headers=archive_headers).status_code == 404
+main.app.dependency_overrides[archive_auth] = lambda: 'different-owner'
+assert client.get(group_url + choices, headers=archive_headers).status_code == 404
+main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
 main.conversations._get_valid_conversation_by_id = original_detail
+main.conversations.conversations_db.get_conversations_by_id_without_photos = original_choices
 del main.app.dependency_overrides[archive_auth]
 assert client.post(search_url, json={'query': 'привет'}).status_code == 401
 db.collection.assert_not_called()
