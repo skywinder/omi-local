@@ -8,6 +8,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'server_connection_indicator.dart';
 import 'conversation_categories.dart';
 import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
@@ -161,7 +162,22 @@ class LocalNextLibraryPage extends StatefulWidget {
   State<LocalNextLibraryPage> createState() => _LibraryPageState();
 }
 
-class _LibraryPageState extends State<LocalNextLibraryPage> {
+class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingObserver {
+  var _panel = GlobalKey<NextCapturePanelState>();
+  Timer? _heartbeat;
+  void _watchServer() {
+    _heartbeat?.cancel();
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state != null && state != AppLifecycleState.resumed) return;
+    final paired = widget.library;
+    void check() => unawaited(paired.verify().catchError((Object _) {}));
+    check();
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => check());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _watchServer();
+
   late PairedArchiveProvider _archive;
   Map<String, String?>? _selection;
   bool _moving = false;
@@ -206,6 +222,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.shortcuts?.addListener(_queueShortcuts);
     _attach();
   }
@@ -215,7 +232,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
 
   void _bindInputs(NextCaptureInputs next) {
     _inputs?.cv1.removeListener(_queueShortcuts);
-    _inputs = next;
+    setState(() => _inputs = next);
     next.cv1.addListener(_queueShortcuts);
     _queueShortcuts();
   }
@@ -260,6 +277,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     _archive = PairedArchiveProvider(widget.library, canRefreshRecordings: _canRefreshRecordings)
       ..addListener(_changed);
     _archive.refresh();
+    _watchServer();
   }
 
   bool _canRefreshRecordings() {
@@ -276,6 +294,9 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   void didUpdateWidget(LocalNextLibraryPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.library != widget.library) {
+      _inputs?.cv1.removeListener(_queueShortcuts);
+      _inputs = null;
+      _panel = GlobalKey<NextCapturePanelState>();
       _selection = null;
       _moving = false;
       _archive.dispose();
@@ -285,6 +306,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _heartbeat?.cancel();
     widget.shortcuts?.removeListener(_queueShortcuts);
     _inputs?.cv1.removeListener(_queueShortcuts);
     widget.shortcuts?.publish('', {});
@@ -319,12 +342,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(
-                          serverName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: OmiColors.textTertiary),
-                        ),
+                        child: NextServerIndicator(library: library, name: serverName),
                       ),
                       const Icon(Icons.expand_more, size: 16),
                     ],
@@ -334,6 +352,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           ),
         ),
         actions: [
+          if (library.audioDelivery)
+            IconButton(
+              key: const ValueKey('next-mobile-settings'),
+              tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: _inputs == null ? null : () => _panel.currentState?.openSettings(),
+            ),
           IconButton(
             tooltip: l.searchConversations,
             icon: const Icon(Icons.search),
@@ -373,11 +398,11 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
         children: [
           if (library.audioDelivery)
             LocalNextCapturePanel(
-              key: ValueKey(library.audioOwnerId),
+              key: _panel,
               library: library,
               serverName: serverName,
               onDelivered: _archive.refreshAfterRecording,
-              onInputsReady: widget.shortcuts == null ? null : _bindInputs,
+              onInputsReady: _bindInputs,
               openServers: widget.openServers,
             ),
           Align(

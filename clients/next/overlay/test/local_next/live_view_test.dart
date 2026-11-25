@@ -83,6 +83,42 @@ class _TuningPair extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('paired server stays connected on the idle Live screen', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final library = _TuningPair();
+    final preview = NextLivePreview('fixture', (owner, source, codec) => throw StateError('no recording'));
+    final capture = ValueNotifier(false);
+    addTearDown(library.close);
+    addTearDown(preview.dispose);
+    addTearDown(capture.dispose);
+    library.connection.value = NextServerConnection.connected;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: capture,
+            isRecording: () => false,
+            onStop: () async {},
+            serverLabel: 'Bastion',
+            library: library,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bastion · Connected'), findsOneWidget);
+    expect(find.text('No active recording'), findsOneWidget);
+    expect(find.text('Off'), findsNothing);
+    library.connection.value = NextServerConnection.unreachable;
+    await tester.pump();
+    expect(find.text('Bastion · Unreachable'), findsOneWidget);
+    expect(find.text('No active recording'), findsOneWidget);
+  });
+
   testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
@@ -320,10 +356,28 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('next-live-target')));
     await tester.pumpAndSettle();
-    final menu = find.byType(Scrollable).last;
-    final off = find.descendant(of: menu, matching: find.text('Off'));
-    await tester.scrollUntilVisible(off, -240, scrollable: menu);
-    await tester.tap(off);
+    await tester.enterText(find.byType(TextField), 'рус');
+    await tester.pump();
+    expect(find.text('Русский (Russian)'), findsOneWidget);
+    expect(find.text('English'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'no-such-language');
+    await tester.pump();
+    expect(find.text('No results found'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'fr');
+    await tester.pump();
+    await tester.tap(find.text('Français (French)'));
+    await tester.pumpAndSettle();
+    expect(preview.targetLanguage, 'fr');
+    await tester.tap(find.byKey(const ValueKey('next-live-other')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'eng');
+    await tester.pump();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(preview.otherLanguage, 'en');
+    await tester.tap(find.byKey(const ValueKey('next-live-target')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Off'));
     await tester.pumpAndSettle();
     expect(preview.targetLanguage, isEmpty);
     expect((await SharedPreferences.getInstance()).getStringList('next.live.translation.fixture-owner'), ['', '']);

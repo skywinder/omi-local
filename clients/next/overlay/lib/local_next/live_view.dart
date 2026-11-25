@@ -8,7 +8,10 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:omi/providers/locale_provider.dart';
+
 import 'live_preview.dart';
+import 'server_connection_indicator.dart';
 import 'live_tuning.dart';
 import 'paired_library.dart';
 import 'settings_labels.dart';
@@ -135,10 +138,12 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
     builder: (context, _) {
       final l = context.l10n;
       if (!widget.isRecording()) {
-        return TextButton.icon(
-          icon: const Icon(Icons.subtitles_outlined),
-          label: Text(l.liveTranscript),
-          onPressed: _open,
+        return ListTile(
+          leading: const Icon(Icons.subtitles_outlined),
+          title: Text(l.liveTranscript),
+          subtitle: Text(_liveStatus(context, widget.preview, recording: false, muted: false)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _open,
         );
       }
       final preview = widget.preview;
@@ -178,17 +183,20 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
 
 String _liveStatus(BuildContext context, NextLivePreview preview, {required bool recording, required bool muted}) {
   final l = context.l10n;
-  if (recording && muted) return l.muted;
+  if (!recording) {
+    return pairedSettingsLabel(context, preview.lines.isEmpty ? 'nextIdleTranscript' : 'nextLastTranscript');
+  }
+  if (muted) return l.muted;
   return switch (preview.phase) {
-    NextPreviewPhase.idle => recording ? l.waitingForData : l.off,
+    NextPreviewPhase.idle => l.waitingForData,
     NextPreviewPhase.connecting => preview.lines.isEmpty ? l.livePreviewStarting : l.reconnecting,
     NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
-    NextPreviewPhase.unavailable when preview.reason == 'disabled' => l.off,
-    NextPreviewPhase.unavailable when preview.reason == 'session_limit' && recording => pairedSettingsLabel(
+    NextPreviewPhase.unavailable when preview.reason == 'disabled' => pairedSettingsLabel(context, 'nextLiveDisabled'),
+    NextPreviewPhase.unavailable when preview.reason == 'session_limit' => pairedSettingsLabel(
       context,
       'liveSessionLimit',
     ),
-    NextPreviewPhase.unavailable => recording ? l.transcriptionUnavailableRecordingContinues : l.statusFailed,
+    NextPreviewPhase.unavailable => l.transcriptionUnavailableRecordingContinues,
   };
 }
 
@@ -270,12 +278,30 @@ class _LivePageState extends State<_LivePage> {
           body: SafeArea(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.dns_outlined),
-                  title: Text(view.serverLabel),
-                  subtitle: Text(
-                    preview.reason == 'session_limit' ? status : (view.inputNotice?.call(context) ?? status),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md, vertical: OmiSpacing.xs),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: view.library != null
+                        ? NextServerIndicator(library: view.library!, name: view.serverLabel)
+                        : Text(view.serverLabel),
                   ),
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.subtitles_outlined,
+                    color: recording && preview.phase == NextPreviewPhase.listening
+                        ? OmiColors.success
+                        : OmiColors.textTertiary,
+                  ),
+                  title: Text(status),
+                  subtitle: switch (view.inputNotice?.call(context)) {
+                    final String notice => Text(notice),
+                    _ when !recording && preview.lines.isEmpty => Text(
+                      pairedSettingsLabel(context, 'nextStartForText'),
+                    ),
+                    _ => null,
+                  },
                 ),
                 if (preview.speakerStatus case final reporting?)
                   Padding(
@@ -379,7 +405,6 @@ class _TranslationSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = context.l10n;
     final localeCode = Localizations.localeOf(context).languageCode;
     return SafeArea(
       child: ListenableBuilder(
@@ -404,33 +429,24 @@ class _TranslationSettings extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(pairedSettingsLabel(context, 'liveTranslationTargetLanguage'), style: OmiType.headline),
-                DropdownButton<String>(
+                _LanguageChoice(
                   key: const ValueKey('next-live-target'),
                   value: target,
-                  isExpanded: true,
-                  items: [
-                    DropdownMenuItem(value: '', child: Text(l.off)),
-                    for (final code in codes) DropdownMenuItem(value: code, child: Text(options[code]!)),
-                  ],
-                  onChanged: (code) {
-                    if (code != null) change(code, code.isEmpty || code == other ? '' : other);
-                  },
+                  options: options,
+                  codes: codes,
+                  title: pairedSettingsLabel(context, 'liveTranslationTargetLanguage'),
+                  onSelected: (code) => change(code, code.isEmpty || code == other ? '' : other),
                 ),
                 if (target.isNotEmpty) ...[
                   Text(pairedSettingsLabel(context, 'liveTranslationBidirectional'), style: OmiType.headline),
                   Text(pairedSettingsLabel(context, 'liveTranslationPairHelp')),
-                  DropdownButton<String>(
+                  _LanguageChoice(
                     key: const ValueKey('next-live-other'),
                     value: other,
-                    isExpanded: true,
-                    items: [
-                      DropdownMenuItem(value: '', child: Text(l.off)),
-                      for (final code in codes)
-                        if (code != target) DropdownMenuItem(value: code, child: Text(options[code]!)),
-                    ],
-                    onChanged: (code) {
-                      if (code != null) change(target, code);
-                    },
+                    options: options,
+                    codes: codes.where((code) => code != target).toList(),
+                    title: pairedSettingsLabel(context, 'liveTranslationBidirectional'),
+                    onSelected: (code) => change(target, code),
                   ),
                 ],
               ],
@@ -440,4 +456,86 @@ class _TranslationSettings extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LanguageChoice extends StatelessWidget {
+  const _LanguageChoice({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.codes,
+    required this.title,
+    required this.onSelected,
+  });
+  final String value;
+  final Map<String, String> options;
+  final List<String> codes;
+  final String title;
+  final ValueChanged<String> onSelected;
+
+  String _name(String code) {
+    final native = LocaleProvider.getDisplayName(Locale(code));
+    return native == code ? options[code]! : native;
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(value.isEmpty ? context.l10n.off : _name(value)),
+    trailing: const Icon(Icons.expand_more),
+    onTap: () async {
+      var query = '';
+      final selected = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (context) => StatefulBuilder(
+            builder: (context, refresh) {
+              final l = context.l10n;
+              final matches = codes.where(
+                (code) => '$code ${options[code]} ${_name(code)}'.toLowerCase().contains(query),
+              );
+              final visible = [if (query.isEmpty || l.off.toLowerCase().contains(query)) '', ...matches];
+              return Scaffold(
+                appBar: AppBar(title: Text(title)),
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(OmiSpacing.md),
+                        child: TextField(
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search),
+                            hintText: l.searchLanguageHint,
+                          ),
+                          onChanged: (text) => refresh(() => query = text.trim().toLowerCase()),
+                        ),
+                      ),
+                      Expanded(
+                        child: visible.isEmpty
+                            ? Center(child: Text(l.noResultsFound))
+                            : ListView.builder(
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                itemCount: visible.length,
+                                itemBuilder: (context, i) {
+                                  final code = visible[i];
+                                  return ListTile(
+                                    title: Text(code.isEmpty ? l.off : _name(code)),
+                                    subtitle: code.isEmpty ? null : Text(code),
+                                    trailing: value == code ? const Icon(Icons.check) : null,
+                                    onTap: () => Navigator.pop(context, code),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      if (context.mounted && selected != null) onSelected(selected);
+    },
+  );
 }

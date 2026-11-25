@@ -32,6 +32,14 @@ KEYS = (
 # establish whether a service started or whether an interrupted request applied.
 PROCESSING_MESSAGES = {
     'en': {
+        'nextCheckingServer': 'Checking…',
+        'nextServerUnreachable': 'Unreachable',
+        'nextServerInvalid': 'Invalid response',
+        'nextServerRejected': 'Key rejected',
+        'nextIdleTranscript': 'No active recording',
+        'nextLastTranscript': 'Last recording on this device',
+        'nextStartForText': 'Start recording with the phone or CV1 to see speech as it is transcribed.',
+        'nextLiveDisabled': 'Live transcription is disabled',
         'nextCheckpoint': 'Save current audio part',
         'nextBoundaryAppliesLater': 'Applies to the next recording.',
         'nextRetryProcessing': 'Retry processing',
@@ -202,6 +210,14 @@ PROCESSING_MESSAGES = {
         'serverStageStale': 'Waiting for fresh processing status.',
     },
     'ru': {
+        'nextCheckingServer': 'Проверка…',
+        'nextServerUnreachable': 'Нет связи',
+        'nextServerInvalid': 'Ошибка ответа',
+        'nextServerRejected': 'Ключ отклонён',
+        'nextIdleTranscript': 'Запись не идёт',
+        'nextLastTranscript': 'Последняя запись на этом устройстве',
+        'nextStartForText': 'Начните запись с телефона или CV1. Здесь будут появляться распознанные реплики.',
+        'nextLiveDisabled': 'Распознавание в реальном времени выключено',
         'nextCheckpoint': 'Сохранить текущую часть аудио',
         'nextBoundaryAppliesLater': 'Применится к следующей записи.',
         'nextRetryProcessing': 'Повторить обработку',

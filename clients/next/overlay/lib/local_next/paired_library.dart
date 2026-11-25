@@ -29,6 +29,8 @@ import 'recording_summary.dart';
 import 'recording_edit.dart';
 import 'task_suggestion.dart';
 
+enum NextServerConnection { checking, connected, unreachable, rejected, invalid }
+
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
 typedef ArchiveSearchHit = ({String id, String title, DateTime startedAt, List<TranscriptMatchSnippet> snippets});
@@ -97,6 +99,7 @@ class PairedLibrary {
   final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
+  final connection = ValueNotifier(NextServerConnection.checking);
   bool verified = false;
   bool get isSignedIn => verified && !_closed;
   late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
@@ -107,7 +110,9 @@ class PairedLibrary {
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
 
   void close() {
+    if (_closed) return;
     _closed = true;
+    connection.dispose();
     ownerChange._close();
     verified = false;
     audioDelivery = false;
@@ -305,7 +310,23 @@ class PairedLibrary {
   Future<dynamic> _json(HttpClientResponse response, int limit) async =>
       jsonDecode(utf8.decode(await _bytes(response, limit)));
 
-  Future<void> verify() => _checking ??= _verify().whenComplete(() => _checking = null);
+  Future<void> verify() => _checking ??= _verifyConnection().whenComplete(() => _checking = null);
+
+  Future<void> _verifyConnection() async {
+    try {
+      await _verify();
+      if (!_closed) connection.value = NextServerConnection.connected;
+    } catch (error) {
+      if (!_closed) {
+        connection.value = switch (error) {
+          LibraryFailure.key => NextServerConnection.rejected,
+          LibraryFailure.malformed => NextServerConnection.invalid,
+          _ => NextServerConnection.unreachable,
+        };
+      }
+      rethrow;
+    }
+  }
 
   Future<LocalRuntimeStatus?> readRuntimeStatus() => _request(
     '/v1/local/status',

@@ -166,9 +166,9 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(ready ? Icons.bluetooth_connected : Icons.bluetooth),
+                    leading: cv1DeviceIcon(link),
                     title: Text(data?.name ?? 'Omi CV1'),
-                    subtitle: Text(cv1PhaseLabel(context, link.phase)),
+                    subtitle: Text(cv1DeviceStatus(context, link)),
                   ),
                   if (!ready)
                     Text(pairedSettingsLabel(context, 'nextDeviceUnavailable'))
@@ -587,4 +587,27 @@ class _History extends StatelessWidget {
       duration: Duration.zero,
     );
   }
+}
+
+String cv1DeviceStatus(BuildContext context, Cv1Connection link) {
+  final battery = link.diagnostics?.battery;
+  return link.phase == Cv1LinkPhase.ready && battery != null ? '$battery%' : cv1PhaseLabel(context, link.phase);
+}
+
+Widget cv1DeviceIcon(Cv1Connection link) {
+  final battery = link.diagnostics?.battery;
+  if (link.phase != Cv1LinkPhase.ready || battery == null) {
+    return Icon(link.phase == Cv1LinkPhase.ready ? Icons.bluetooth_connected : Icons.bluetooth, size: 18);
+  }
+  return Icon(
+    switch (battery) {
+      <= 15 => Icons.battery_alert,
+      <= 35 => Icons.battery_2_bar,
+      <= 65 => Icons.battery_4_bar,
+      <= 85 => Icons.battery_5_bar,
+      _ => Icons.battery_full,
+    },
+    color: _batteryColor(battery),
+    size: 19,
+  );
 }

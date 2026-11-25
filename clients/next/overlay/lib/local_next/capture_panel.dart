@@ -38,10 +38,10 @@ class LocalNextCapturePanel extends StatefulWidget {
   final VoidCallback? openServers;
 
   @override
-  State<LocalNextCapturePanel> createState() => _CapturePanelState();
+  State<LocalNextCapturePanel> createState() => NextCapturePanelState();
 }
 
-class _CapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindingObserver {
+class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindingObserver {
   // Release the previous owner's microphone and journal before recovering files.
   static Future<void> _previousRelease = Future.value();
   late final Future<void> _setup;
@@ -181,18 +181,25 @@ class _CapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindin
     if (inputs == null) {
       return _storageFailed ? Text(l.couldNotStartRecording) : const SizedBox.shrink();
     }
-    return LocalNextCaptureControls(
-      inputs: inputs,
-      serverLabel: widget.serverName,
-      hasCv1: _hasCv1,
-      openServers: widget.openServers,
-      library: widget.library,
-      groupSilence: _groupSilence,
-      onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
-      doubleTap: _doubleTap,
-      onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
-    );
+    return _controls(inputs);
   }
+
+  void openSettings() {
+    final inputs = _inputs;
+    if (inputs != null) _controls(inputs)._settings(context, widget.library);
+  }
+
+  LocalNextCaptureControls _controls(NextCaptureInputs inputs) => LocalNextCaptureControls(
+    inputs: inputs,
+    serverLabel: widget.serverName,
+    hasCv1: _hasCv1,
+    openServers: widget.openServers,
+    library: widget.library,
+    groupSilence: _groupSilence,
+    onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
+    doubleTap: _doubleTap,
+    onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
+  );
 
   Future<bool> _setDoubleTap(Cv1DoubleTapAction action) async {
     final prefs = _groupPrefs;
@@ -417,7 +424,8 @@ class LocalNextCaptureControls extends StatelessWidget {
     ],
   );
 
-  void _settings(BuildContext context, Listenable capture, PairedLibrary library) {
+  void _settings(BuildContext context, PairedLibrary library) {
+    final capture = Listenable.merge([inputs, inputs.phone, inputs.cv1, inputs.ownerChange]);
     var gesture = doubleTap;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -441,9 +449,9 @@ class LocalNextCaptureControls extends StatelessWidget {
                   children: [
                     if (hasCv1) ...[
                       ListTile(
-                        leading: const Icon(Icons.bluetooth),
+                        leading: cv1DeviceIcon(link),
                         title: const Text('Omi CV1'),
-                        subtitle: Text(cv1PhaseLabel(context, link.phase)),
+                        subtitle: Text(cv1DeviceStatus(context, link)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           unawaited(showNextDevices(context, inputs));
@@ -598,7 +606,7 @@ class LocalNextCaptureControls extends StatelessWidget {
         OutlinedButton.icon(
           key: const ValueKey('next-cv1-devices'),
           style: buttonStyle,
-          icon: Icon(cv1.linked ? Icons.bluetooth_connected : Icons.bluetooth, size: 18),
+          icon: cv1DeviceIcon(link),
           label: Text(
             link.phase == Cv1LinkPhase.idle && !cv1.active
                 ? pairedSettingsLabel(context, 'nextConnectOmi')
@@ -645,21 +653,11 @@ class LocalNextCaptureControls extends StatelessWidget {
         children: [
           if (_time(context) case final timer?) timer,
           _recordingActions(context),
-          if (cv1.active || library != null)
+          if (cv1.active)
             Wrap(
               alignment: WrapAlignment.center,
               crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              children: [
-                if (cv1.active) ...[_finish(context), _mute(context)],
-                if (library case final paired?)
-                  IconButton(
-                    key: const ValueKey('next-mobile-settings'),
-                    tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
-                    icon: const Icon(Icons.settings_outlined),
-                    onPressed: () => _settings(context, captureState, paired),
-                  ),
-              ],
+              children: [_finish(context), _mute(context)],
             ),
           if (cv1.problem != null)
             Text(switch (cv1.problem!) {
@@ -832,8 +830,8 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
             children: [
               if (selected)
                 ListTile(
-                  leading: const Icon(Icons.bluetooth_connected),
-                  title: const Text('Omi CV1'),
+                  leading: cv1DeviceIcon(connection),
+                  title: Text('Omi CV1 · ${cv1DeviceStatus(context, connection)}'),
                   subtitle: linkedId == null ? null : Text('${l.deviceId} · ${_shortCv1Id(linkedId)}'),
                   trailing: TextButton(
                     onPressed: () async {

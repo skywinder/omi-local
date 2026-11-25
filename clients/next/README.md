@@ -446,6 +446,13 @@ For backend updates, compare the shared archive and processing contracts in
 [Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
 deployments have separate authentication and audio processing boundaries.
 
+The archive header and Live share the result of an authenticated profile check on
+the selected server. The app rechecks on foreground entry and every 30 seconds
+in the foreground. The gear in the archive header opens capture settings.
+Live labels the current or last transcript for this phone separately from the
+server connection. Search either translation language by name or language code.
+The device picker and capture controls show battery level when CV1 reports it.
+
 ## Migration ledger
 
 The [feature inventory and port estimates](FEATURES.md) compare the original

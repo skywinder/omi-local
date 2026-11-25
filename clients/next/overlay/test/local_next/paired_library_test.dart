@@ -17,6 +17,29 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
+  test('server indicator rechecks the authenticated profile and recovers after a failed check', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final pair = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(pair.close);
+    var status = 200;
+    server.listen((request) async {
+      expect(request.uri.path, '/v1/users/profile');
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      request.response.statusCode = status;
+      request.response.write(jsonEncode({'uid': 'alice'}));
+      await request.response.close();
+    });
+    expect(pair.connection.value, NextServerConnection.checking);
+    await pair.verify();
+    expect(pair.connection.value, NextServerConnection.connected);
+    status = 503;
+    await expectLater(pair.verify(), throwsA(LibraryFailure.unavailable));
+    expect(pair.connection.value, NextServerConnection.unreachable);
+    status = 200;
+    await pair.verify();
+    expect(pair.connection.value, NextServerConnection.connected);
+  });
   test('archive search follows a cursor and retains transcript evidence', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
