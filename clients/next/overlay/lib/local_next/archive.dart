@@ -50,6 +50,18 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> refresh() => _load(append: false);
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
+
+  Future<void> recoverAfterServerCheck() async {
+    if (!_isConnectionFailure(failure)) return;
+    await _load(append: _retryAppend, automatic: true);
+  }
+
+  static bool _isConnectionFailure(Object? error) =>
+      error == LibraryFailure.unavailable ||
+      error is SocketException ||
+      error is TimeoutException ||
+      error is HttpException;
+
   ServerConversation? rowById(String id) => _rows[id];
 
   // A durable receipt is independent of the Live socket and survives retries.
@@ -202,12 +214,12 @@ class PairedArchiveProvider extends ChangeNotifier {
       }
     } catch (error) {
       if (_disposed) return;
-      final offline =
-          error == LibraryFailure.unavailable ||
-          error is SocketException ||
-          error is TimeoutException ||
-          error is HttpException;
-      if (offline && entries.isEmpty && !append && !_starredOnly && folder == null && category == null) {
+      if (_isConnectionFailure(error) &&
+          entries.isEmpty &&
+          !append &&
+          !_starredOnly &&
+          folder == null &&
+          category == null) {
         final cached = await _cache.read();
         if (_disposed) return;
         for (final row in cached) {
@@ -227,7 +239,7 @@ class PairedArchiveProvider extends ChangeNotifier {
         more = false;
         partial = false;
         _refreshedDelivery = _deliveryRevision;
-      } else if (!automatic || entries.isEmpty) {
+      } else if (!automatic || failure != null || entries.isEmpty) {
         failure = error;
       }
     } finally {

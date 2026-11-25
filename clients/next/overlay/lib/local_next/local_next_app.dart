@@ -170,9 +170,17 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
     final state = WidgetsBinding.instance.lifecycleState;
     if (state != null && state != AppLifecycleState.resumed) return;
     final paired = widget.library;
-    void check() => unawaited(paired.verify().catchError((Object _) {}));
-    check();
-    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => check());
+    Future<void> check() async {
+      try {
+        await paired.verify();
+      } catch (_) {
+        return; // The profile check publishes its own connection status.
+      }
+      if (mounted && paired == widget.library && _canRefreshRecordings()) await _archive.recoverAfterServerCheck();
+    }
+
+    unawaited(check());
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(check()));
   }
 
   @override

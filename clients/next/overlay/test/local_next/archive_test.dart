@@ -48,6 +48,18 @@ class _ArchiveLibrary extends PairedLibrary {
   Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) => search!(query, after);
 }
 
+class _RecoveringLibrary extends _ArchiveLibrary {
+  _RecoveringLibrary(super.page, super.record);
+
+  bool online = false;
+
+  @override
+  Future<void> verify() async {
+    if (!online) throw LibraryFailure.unavailable;
+    verified = true;
+  }
+}
+
 class _RetryLibrary extends _ArchiveLibrary {
   _RetryLibrary(this.failed, this.pending)
     : super((_) async => (rows: [failed], consumed: 1, partial: false, more: false), failed);
@@ -201,7 +213,7 @@ void main() {
     expect(other.entries, isEmpty);
     offline = false;
     rows = [];
-    await cold.refresh();
+    await cold.recoverAfterServerCheck();
     expect(cold.showingCached, isFalse);
     offline = true;
     await cold.refresh();
@@ -209,6 +221,47 @@ void main() {
     cold.dispose();
     other.dispose();
     same.close();
+  });
+
+  testWidgets('the open archive recovers on the next successful profile check without a tap', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final row = _row(_firstId, 'Available again', DateTime.utc(2026));
+    final library = _RecoveringLibrary((_) async => (rows: [row], consumed: 1, partial: false, more: false), row)
+      ..verified = false;
+    await _show(tester, library);
+    expect(find.text('Available again'), findsNothing);
+    expect(library.offsets, isEmpty);
+    library.online = true;
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(find.text('Available again'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    expect(library.offsets, [0]);
+    await tester.pumpWidget(const SizedBox());
+    library.close();
+  });
+
+  test('reconnection retries the interrupted page once and keeps the already loaded cards', () async {
+    final row = _row(_firstId, 'First page', DateTime.utc(2026));
+    final older = _row(_secondId, 'Older page', DateTime.utc(2025));
+    var online = true;
+    final library = _ArchiveLibrary((offset) async {
+      if (!online) throw const SocketException('offline fixture');
+      return (rows: [offset == 0 ? row : older], consumed: 1, partial: false, more: offset == 0);
+    }, row);
+    final archive = PairedArchiveProvider(library);
+    addTearDown(archive.dispose);
+    addTearDown(library.close);
+    await archive.refresh();
+    online = false;
+    await archive.loadMore();
+    online = true;
+    await Future.wait([archive.recoverAfterServerCheck(), archive.recoverAfterServerCheck()]);
+    await archive.recoverAfterServerCheck();
+    expect(library.offsets, [0, 1, 1]);
+    expect(archive.rowById(_firstId), row);
+    expect(archive.rowById(_secondId), older);
+    expect(archive.failure, isNull);
   });
 
   testWidgets('failed card identifies the recording phone and the failed provider stage', (tester) async {
