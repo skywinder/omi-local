@@ -15,7 +15,7 @@ explicitly selected servers.
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-The separately installable [Omi Local Next development client](clients/next/README.md) tracks the upstream Flutter app and uses this paired server.
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iPhone client for new development on `sky-dev`. It builds from a pinned Omi Flutter revision and installs alongside Omi Local. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 
@@ -194,6 +194,14 @@ For upgrades, GPU prerequisites, model selection, and troubleshooting, see the
 ## Development
 
 ### iPhone launcher
+
+For Omi Local Next, follow the [pinned Flutter setup and acceptance checks](clients/next/README.md#prepare-and-verify), then run:
+
+```bash
+python3 clients/next/iphone.py /path/to/omi --install
+```
+
+For the original Local client:
 
 ```bash
 ./iphone.command          # choose Debug, Profile, or status

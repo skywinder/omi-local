@@ -1,6 +1,6 @@
 # Omi Local Next
 
-Omi Local Next is the side-by-side iPhone client for a paired Omi Local server.
+Omi Local Next is the primary development client for the paired Omi Local server on `sky-dev`.
 Its iOS application identifier is `org.omilocal.next`. Pair it with the server's
 app key in its own Keychain. The existing app owns its pending phone recordings.
 
@@ -201,8 +201,7 @@ Use **Show more** to continue from the last scanned page.
 `POST /v1/local/conversations/search` reads the current owner's Firestore records
 in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
-requires an updated paired server. Search duration for a rare term grows with
-the archive size.
+uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. Bastion serves this route. Search duration for a rare term grows with the archive size.
 
 ## Chat about a recording
 
@@ -739,6 +738,10 @@ verified category changes through the paired API, safe retries, conflicts,
 validation and authentication. Its test document was removed after readback.
 The updated Local backend also reads Bastion's large grouped recordings and
 keeps their checked full transcript when a metadata edit returns the detail.
+On November 25 the paired search endpoint on Bastion found a real segment in a
+file-backed transcript and returned the same timestamp and ID as detail.
+The shared summary pipeline now keys partial results on the selected provider
+profile, settings, effective instruction and text, following the Bastion implementation.
 
 | Area | Status and next verification |
 | --- | --- |
