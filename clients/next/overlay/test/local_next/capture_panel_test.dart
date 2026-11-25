@@ -127,6 +127,42 @@ class _Microphone implements NextPhoneMicrophone {
 }
 
 void main() {
+  testWidgets('header follows the live CV1 battery and clears it between connections', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            appBar: AppBar(
+              title: Cv1HeaderTitle(title: 'Archive', link: inputs.connection),
+            ),
+          ),
+        ),
+      );
+      wire.ready();
+      await tester.pump();
+      expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
+      wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 97)));
+      await tester.pump();
+      expect(find.descendant(of: find.byType(AppBar), matching: find.text('97%')), findsOneWidget);
+      wire.emit(Cv1TransportState(Cv1LinkPhase.idle, ++wire.generation));
+      await tester.pump();
+      expect(find.text('97%'), findsNothing);
+      wire.ready();
+      await tester.pump();
+      expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
   testWidgets('device diagnostics show real samples, hide unsupported writes and clear a lost link', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(800, 1900);

@@ -18,6 +18,7 @@ import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'cv1_capture.dart';
+import 'device_diagnostics_page.dart';
 import 'home_shortcuts.dart';
 import 'task_editor.dart';
 import 'paired_library.dart';
@@ -344,7 +345,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l.conversations, maxLines: 1, overflow: TextOverflow.ellipsis),
+                Cv1HeaderTitle(title: l.conversations, link: _inputs?.connection),
                 if (widget.openServers != null)
                   Row(
                     mainAxisSize: MainAxisSize.min,

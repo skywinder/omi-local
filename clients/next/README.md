@@ -138,8 +138,9 @@ The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.
 
 Device Diagnostics reads charge and signal measurements from the wearable.
-The recording screen shows the connected CV1's battery percentage after its
-first measurement.
+The archive and Live titles show the CV1 battery icon and percentage. Each
+new link requests an initial battery reading even when capture resumes immediately.
+Until that link reports a value the header shows a dash.
 The signal chart refreshes every three seconds while visible, including during
 capture. Battery notifications update both the status and history on supported
 firmware. The day and week charts and connection journal retain observations

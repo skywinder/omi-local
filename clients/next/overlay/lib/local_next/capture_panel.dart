@@ -683,6 +683,7 @@ class LocalNextCaptureControls extends StatelessWidget {
             LocalNextLiveButton(
               preview: preview,
               capture: captureState,
+              cv1: link,
               isRecording: () => inputs.isRecording,
               isMuted: () => cv1.active && cv1.intent == Cv1CaptureIntent.muted,
               onStop: inputs.stopRecording,

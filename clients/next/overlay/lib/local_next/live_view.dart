@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/providers/locale_provider.dart';
 
 import 'live_preview.dart';
+import 'cv1_transport.dart';
+import 'device_diagnostics_page.dart';
 import 'server_connection_indicator.dart';
 import 'live_tuning.dart';
 import 'paired_library.dart';
@@ -29,6 +31,7 @@ class LocalNextLiveButton extends StatefulWidget {
     this.captureSettings,
     required this.serverLabel,
     this.library,
+    this.cv1,
   });
 
   final NextLivePreview preview;
@@ -41,6 +44,7 @@ class LocalNextLiveButton extends StatefulWidget {
   final WidgetBuilder? captureSettings;
   final String serverLabel;
   final PairedLibrary? library;
+  final Cv1Connection? cv1;
 
   @override
   State<LocalNextLiveButton> createState() => _LocalNextLiveButtonState();
@@ -264,7 +268,7 @@ class _LivePageState extends State<_LivePage> {
         final status = _liveStatus(context, preview, recording: recording, muted: view.isMuted?.call() == true);
         return Scaffold(
           appBar: AppBar(
-            title: Text(l.liveTranscript),
+            title: Cv1HeaderTitle(title: l.liveTranscript, link: view.cv1),
             actions: [
               IconButton(
                 icon: const Icon(Icons.tune),

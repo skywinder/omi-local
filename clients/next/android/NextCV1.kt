@@ -70,6 +70,9 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         sink = events
         val saved = selection.getString("selected", null)
         if (phase == "idle" && saved != null && BluetoothAdapter.checkBluetoothAddress(saved)) {
+            // Restoring a saved pendant bypasses scan and the manual connect command.
+            // Allocate a live generation before publishing any measurements or audio.
+            clearLink()
             target = saved
             readyOnce = true
             connect()
@@ -350,6 +353,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                             battery.getDescriptor(cccd) != null) {
                             notify(battery, true) {}
                         }
+                        if (battery != null && battery.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) {
+                            read(battery) batteryRead@{ bytes ->
+                                if (gatt !== connection) return@batteryRead
+                                val level = bytes?.firstOrNull()?.toInt()?.and(255)?.takeIf { it <= 100 } ?: return@batteryRead
+                                stats["battery"] = level
+                                telemetry("battery")
+                            }
+                        }
                     }
                 }
             }
@@ -426,7 +437,9 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     "charging" -> bytes?.firstOrNull()?.let { it.toInt() == 1 }
                     else -> bytes?.takeIf { it.size <= 64 }?.toString(Charsets.UTF_8)?.trim('\u0000', ' ')?.takeIf { it.isNotEmpty() }
                 }
-                if (value != null) stats[name] = value else stats.remove(name)
+                if (value != null) stats[name] = value
+                else if (name == "battery") return@Job
+                else stats.remove(name)
                 if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 && name in setOf("led", "gain")) {
                     stats["${name}Writable"] = true
                 }

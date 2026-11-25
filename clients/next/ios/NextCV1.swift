@@ -448,9 +448,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   private func observeBattery() {
-    guard !observingBattery, let peer, let char = metricChars["battery"], char.properties.contains(.notify) else { return }
+    guard !observingBattery, let peer, let char = metricChars["battery"] else { return }
     observingBattery = true
-    if !char.isNotifying { peer.setNotifyValue(true, for: char) }
+    if char.properties.contains(.notify), !char.isNotifying { peer.setNotifyValue(true, for: char) }
+    if char.properties.contains(.read), pendingReads.insert("battery").inserted { peer.readValue(for: char) }
   }
 
   private func supportsSetting(_ field: String) -> Bool {
@@ -503,7 +504,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         bytes.count >= 4 ? Int(bytes[0]) | (Int(bytes[1]) << 8) : nil
       } ?? 0
       sample()
-    case "battery", "led", "gain":
+    case "battery":
+      guard let level = data?.first, level <= 100 else { return }
+      metrics[field] = Int(level)
+    case "led", "gain":
       if supportsSetting(field), metricChars[field]?.properties.contains(.write) == true {
         metrics[field + "Writable"] = true
       }

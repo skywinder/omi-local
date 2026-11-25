@@ -594,6 +594,45 @@ String _reasonLabel(BuildContext context, Cv1LinkPhase phase, Cv1LinkReason? rea
   };
 }
 
+class Cv1HeaderTitle extends StatelessWidget {
+  const Cv1HeaderTitle({super.key, required this.title, required this.link});
+  final String title;
+  final Cv1Connection? link;
+
+  @override
+  Widget build(BuildContext context) {
+    final heading = Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final connection = link;
+    if (connection == null) return heading;
+    return ListenableBuilder(
+      listenable: connection,
+      builder: (context, _) {
+        if (connection.phase != Cv1LinkPhase.ready) return heading;
+        final value = connection.diagnostics?.battery;
+        final label = value == null ? '—' : '$value%';
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: heading),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'CV1 · ${context.l10n.battery} · $label',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  value == null ? const Icon(Icons.battery_unknown, size: 18) : cv1DeviceIcon(connection),
+                  const SizedBox(width: 2),
+                  Text(label, style: Theme.of(context).textTheme.labelMedium),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 String cv1DeviceStatus(BuildContext context, Cv1Connection link) {
   final state = link.linkState;
   if (state != null && state.phase == Cv1LinkPhase.failed) {
