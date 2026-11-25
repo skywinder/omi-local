@@ -36,10 +36,51 @@ String recordingTitle(BuildContext context, ServerConversation row) => row.exter
     ? context.l10n.untitledConversation
     : row.structured.title;
 
+String recordingInput(BuildContext context, ServerConversation row) {
+  final origin = (row.externalIntegration?.localRecording ?? row.externalIntegration?.localTranscript)?['origin'];
+  final model = origin is Map ? origin['phone_model'] : null;
+  final platform = origin is Map ? origin['phone_platform'] : null;
+  final phone = model is String && model.isNotEmpty
+      ? model
+      : switch (platform) {
+          'ios' => 'iPhone',
+          'android' => 'Android',
+          _ => '',
+        };
+  final input = switch (row.source?.name) {
+    'omi' => 'CV1',
+    'phone' => pairedSettingsLabel(context, 'nextPhoneInput'),
+    _ => '',
+  };
+  return [phone, input].where((s) => s.isNotEmpty).join(' · ');
+}
+
+String recordingFailure(BuildContext context, Object? failure) {
+  String label(String key) => pairedSettingsLabel(context, key);
+  final fields = failure is Map ? failure : const {};
+  final stage = switch (fields['stage']) {
+    'stt' => context.l10n.transcription,
+    'diarization' => label('diarization'),
+    'summary' => context.l10n.summary,
+    _ => label('nextFailedStage'),
+  };
+  final code = fields['code'];
+  final reason = switch (code) {
+    'invalid_json' => label('nextInvalidJson'),
+    'output_limit' => label('nextOutputLimit'),
+    'connection' => label('nextProviderConnection'),
+    'timeout' => label('nextProviderTimeout'),
+    String s when RegExp(r'^http_[1-5][0-9]{2}$').hasMatch(s) => '${label("nextProviderHttp")} ${s.substring(5)}',
+    _ => label('nextUnknownCause'),
+  };
+  final attempts = fields['attempts'];
+  return [stage, reason, if (attempts is int && attempts > 0) '${label("nextAttempts")}: $attempts'].join(' · ');
+}
+
 String recordingStatus(BuildContext context, ServerConversation row) {
   final local = row.externalIntegration?.localRecording;
   return switch (local == null ? row.status.name : local['status']) {
-    'failed' => context.l10n.processingFailed,
+    'failed' => local == null ? context.l10n.processingFailed : recordingFailure(context, local['failure']),
     'pending' => context.l10n.statusPending,
     'processing' => context.l10n.statusProcessing,
     'no_speech' => context.l10n.noTranscriptAvailable,
@@ -568,6 +609,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                 )
               : Column(
                   children: [
+                    if (recordingInput(context, loaded.row).isNotEmpty) Text(recordingInput(context, loaded.row)),
                     if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),

@@ -51,6 +51,7 @@ ServerConversation _row(
   String title,
   DateTime start, {
   String? localState,
+  Map<String, dynamic> recording = const {},
   DateTime? created,
   String category = 'other',
   String emoji = '📌',
@@ -60,11 +61,12 @@ ServerConversation _row(
   'started_at': start.toUtc().toIso8601String(),
   'finished_at': start.add(const Duration(minutes: 8)).toUtc().toIso8601String(),
   'structured': {'title': title, 'overview': 'Local archive detail', 'emoji': emoji, 'category': category},
+  'source': 'phone',
   'status': localState == null ? 'completed' : 'processing',
   'external_data': localState == null
       ? {'local_transcript': <String, dynamic>{}}
       : {
-          'local_recording': {'status': localState},
+          'local_recording': {'status': localState, ...recording},
         },
 });
 
@@ -80,6 +82,26 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('failed card identifies the recording phone and the failed provider stage', (tester) async {
+    final row = _row(
+      _firstId,
+      'Test',
+      DateTime.utc(2026),
+      localState: 'failed',
+      recording: {
+        'origin': {'phone_platform': 'ios', 'phone_model': 'iPhone Air'},
+        'failure': {'stage': 'summary', 'code': 'http_503', 'attempts': 3},
+      },
+    );
+    final library = _ArchiveLibrary((_) async => (rows: [row], consumed: 1, partial: false, more: false), row);
+    await _show(tester, library);
+    expect(find.textContaining('iPhone Air · Phone microphone'), findsOneWidget);
+    expect(find.textContaining('HTTP 503'), findsOneWidget);
+    expect(find.textContaining('Attempts: 3'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    library.close();
+  });
+
   testWidgets('category labels retain the subject emoji and filtering can reach older matching recordings', (
     tester,
   ) async {

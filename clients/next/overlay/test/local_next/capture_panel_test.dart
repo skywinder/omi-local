@@ -71,8 +71,11 @@ class _Subscription extends Fake implements StreamSubscription<Cv1TransportEvent
 }
 
 class _Journal extends LocalAudioJournal {
-  _Journal()
-    : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
+  _Journal({super.clock})
+    : super(
+        directory: Directory('unused-panel-fixture'),
+        upload: (bytes, owner) => throw StateError('no upload'),
+      );
   final seal = Completer<void>();
   @override
   LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) =>
@@ -154,7 +157,8 @@ void main() {
   testWidgets('a paired CV1 waits for the phone seal, respects mute and leaves phone recording on reconnect', (
     tester,
   ) async {
-    final journal = _Journal();
+    var now = DateTime.utc(2026);
+    final journal = _Journal(clock: () => now);
     final mic = _Microphone();
     final wire = _Wire();
     final ownerChange = NextOwnerChangeGate();
@@ -178,6 +182,10 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
+      expect(find.text('Phone microphone · 00:00'), findsOneWidget);
+      now = now.add(const Duration(seconds: 9));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Phone microphone · 00:09'), findsOneWidget);
       expect(ownerChange.tryHold(), isFalse);
       await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
       await tester.pumpAndSettle();

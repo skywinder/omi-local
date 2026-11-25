@@ -98,7 +98,7 @@ def read_archive(uid, limit, offset, *, budget, list_fields_only, **filters):
         return []
     return [archive_fixture]
 main.conversations.conversations_db.get_conversations_without_photos = read_archive
-local_recording_rows.local_recording_rows = lambda uid: []
+local_recording_rows.local_recording_rows = lambda uid, origins=None: []
 archive_auth = main.conversations.auth.get_current_user_uid
 main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
 archive_headers = {'Authorization': 'Bearer ' + key}

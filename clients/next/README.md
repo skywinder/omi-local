@@ -809,3 +809,8 @@ Phone-microphone speech and repeated-start reliability still need a separate che
 Paired Live sessions send the same optional platform and model headers as durable audio
 uploads. The Live monitor labels the paired phone and its selected input independently.
 Clients that omit the optional headers still stream normally.
+
+The mobile archive and recording detail display the input and the phone model when the paired
+server can match the original capture. Failed capture rows show the saved processing stage,
+error class and attempt count. The active recording timer uses the start of the current
+capture, including intervals when audio frames pause.

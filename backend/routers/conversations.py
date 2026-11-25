@@ -892,10 +892,11 @@ def get_conversation_by_id(
     if not is_offline_runtime():
         logger.info(f'get_conversation_by_id {uid} {conversation_id}')
     conversation = None
+    origins = {}
     if is_offline_runtime():
-        from utils.local_recording_rows import get_local_recording
+        from utils.local_recording_rows import attach_saved_origin, get_local_recording
 
-        conversation = get_local_recording(uid, conversation_id)
+        conversation = get_local_recording(uid, conversation_id, origins)
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:
@@ -907,7 +908,7 @@ def get_conversation_by_id(
             raise HTTPException(status_code=404, detail="Conversation not found")
     # Local transcript reads never dispatch cloud enrichment or first-open work.
     if is_offline_runtime():
-        return _paired_detail(conversation, uid)
+        return _paired_detail(attach_saved_origin(conversation, origins), uid)
     # Lazy processing: a desktop conversation stored raw (deferred) for a freemium/Neo user is
     # enriched on first open. Other conversations are returned unchanged.
     if conversation.get('deferred'):

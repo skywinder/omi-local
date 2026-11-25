@@ -56,6 +56,7 @@ class NextCv1Capture extends ChangeNotifier {
   final NextLivePreview? preview;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
+  DateTime? startedAt;
   Future<void>? _sealing;
   bool get sealing => _sealing != null;
   Future<void> get _sealed => _sealing ?? Future<void>.value();
@@ -91,6 +92,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (_closed || active || !canStart()) return;
     _cancelButtonStart();
     _attempt++;
+    startedAt = journal.clock();
     _intent = Cv1CaptureIntent.recording;
     _problem = linked && !codecSupported ? Cv1CaptureProblem.unsupportedCodec : null;
     notifyListeners();
@@ -101,6 +103,7 @@ class NextCv1Capture extends ChangeNotifier {
     _cancelButtonStart();
     if (!active) return _sealed;
     _intent = Cv1CaptureIntent.stopped;
+    startedAt = null;
     _endSegment();
     notifyListeners();
     return _sealed;

@@ -577,6 +577,12 @@ class LocalNextCaptureControls extends StatelessWidget {
       listenable: Listenable.merge([captureState, journal, link]),
       builder: (context, _) => Column(
         children: [
+          if ((capture.active ? capture.startedAt : cv1.startedAt) case final started?)
+            _ActiveRecordingTime(
+              started: started,
+              input: capture.active ? pairedSettingsLabel(context, 'nextPhoneInput') : 'CV1',
+              clock: journal.clock,
+            ),
           Wrap(
             spacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -669,5 +675,42 @@ class LocalNextCaptureControls extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ActiveRecordingTime extends StatefulWidget {
+  const _ActiveRecordingTime({required this.started, required this.input, required this.clock});
+  final DateTime started;
+  final String input;
+  final DateTime Function() clock;
+
+  @override
+  State<_ActiveRecordingTime> createState() => _ActiveRecordingTimeState();
+}
+
+class _ActiveRecordingTimeState extends State<_ActiveRecordingTime> {
+  late final Timer _timer;
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed = widget.clock().difference(widget.started);
+    final seconds = elapsed.isNegative ? 0 : elapsed.inSeconds;
+    final time = [
+      if (seconds >= 3600) seconds ~/ 3600,
+      seconds ~/ 60 % 60,
+      seconds % 60,
+    ].map((v) => v.toString().padLeft(2, '0')).join(':');
+    return Text('${widget.input} · $time', key: const ValueKey('next-recording-time'));
   }
 }

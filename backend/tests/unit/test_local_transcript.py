@@ -107,7 +107,7 @@ def test_paired_archive_page_counts_merged_rows_and_never_advances_past_a_trunca
 
     older, newest = row('older', 1), row('newest', 4)
     local_first, local_last = row('local-first', 5), row('local-last', 0)
-    monkeypatch.setattr(records, 'local_recording_rows', lambda uid: [local_first, local_last])
+    monkeypatch.setattr(records, 'local_recording_rows', lambda uid, origins: [local_first, local_last])
     filters = dict(
         statuses=['processing', 'completed'], sources=['omi'], start_date=None, end_date=None,
         folder_id=None, starred=None, include_discarded=True,
@@ -276,17 +276,27 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     monkeypatch.setattr(rows, 'load_pairing', lambda: {'owner_uid': 'synthetic-owner'})
     monkeypatch.setattr(rows, 'local_storage_root_from_env', lambda: storage)
     monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
-    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage,
+                                  origin={'phone_platform': 'ios', 'phone_model': 'iPhone Test'})
     capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\x00\x00' * 16000)
     assert rows.local_recording_rows('synthetic-owner') == []  # unfinished input lives in the capture card
     capture.finalize()
     key = hashlib.sha256(capture.session_id.encode()).hexdigest()
     queue = results / 'watch-queue.json'
     queue.write_text(json.dumps({key: {'state': state, 'profile': {'api_key': 'never-return'}}}))
+    processing = results / ('a' * 64)
+    processing.mkdir()
+    (processing / 'manifest.json').write_text(json.dumps({'capture_key': key, 'profile': {'api_key': 'never-return'}}))
+    (processing / 'processing.json').write_text(json.dumps({'summary': {
+        'status': 'failed', 'error_code': 'invalid_json', 'detail': 'never-return'}}))
     pending = rows.local_recording_rows('synthetic-owner')
     assert len(pending) == 1
     assert pending[0]['status'] == 'processing'
-    assert pending[0]['external_data'] == {'local_recording': {'status': state, 'duration_seconds': 1.0}}
+    origin = {'phone_platform': 'ios', 'phone_model': 'iPhone Test'}
+    expected = {'status': state, 'duration_seconds': 1.0, 'origin': origin}
+    if state == 'failed':
+        expected['failure'] = {'stage': 'summary', 'code': 'invalid_json', 'attempts': 0}
+    assert pending[0]['external_data'] == {'local_recording': expected}
     assert rows.local_recording_rows('another-owner') == []
     assert 'never-return' not in str(pending) and str(storage) not in str(pending)
     queue.write_text(json.dumps({key: {'state': 'completed'}}))
@@ -296,7 +306,11 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     assert len(rows.local_recording_rows('synthetic-owner')) == 1
     (results / ('b' * 64)).mkdir()
     (results / ('b' * 64) / 'import.json').write_text(json.dumps({'import': 'passed', 'capture_key': key}))
-    assert rows.local_recording_rows('synthetic-owner') == []
+    origins = {}
+    assert rows.local_recording_rows('synthetic-owner', origins) == []
+    saved_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + 'b' * 64))
+    assert rows.attach_saved_origin({'id': saved_id}, origins)['external_data']['local_transcript']['origin'] == origin
+
 
 
 def test_pending_projection_obeys_filters_and_merged_page_offsets():

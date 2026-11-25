@@ -311,6 +311,7 @@ class _ArchiveRow extends StatelessWidget {
         showCategory && category != 'other' && const {'', '🧠', '💬', '🎙️'}.contains(row.structured.emoji.trim());
     final meta = [
       OmiDateFormat.of(context).time(started),
+      if (recordingInput(context, row).isNotEmpty) recordingInput(context, row),
       if (duration > 0) OmiDuration.compact(duration, context.l10n),
       if (showCategory) conversationCategoryName(context, category),
       if (local != null || row.status != ConversationStatus.completed) recordingStatus(context, row),

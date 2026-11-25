@@ -60,6 +60,7 @@ class NextPhoneCapture extends ChangeNotifier {
   final NextPhoneMicrophone microphone;
   final NextLivePreview? preview;
   LocalAudioRecording? _recording;
+  DateTime? startedAt;
   CaptureProblem? problem;
   bool busy = false;
   bool _writeFailed = false;
@@ -74,6 +75,7 @@ class NextPhoneCapture extends ChangeNotifier {
     busy = true;
     problem = null;
     _writeFailed = false;
+    startedAt = journal.clock();
     final current = _recording = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: owner);
     notifyListeners();
     try {
@@ -151,6 +153,7 @@ class NextPhoneCapture extends ChangeNotifier {
         problem = CaptureProblem.storage;
       }
       _recording = null;
+      startedAt = null;
       busy = false;
       notifyListeners();
     }
