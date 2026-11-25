@@ -34,6 +34,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var metricChars: [String: CBCharacteristic] = [:]
   private var pendingReads: Set<String> = []
   private var readingRSSI = false
+  private var observingBattery = false
   private var features: Int?
   private var setting: (field: String, char: CBCharacteristic, value: Int, reply: FlutterResult)?
 
@@ -109,6 +110,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case "sampleDiagnostics":
       sample()
       result(nil)
+    case "sampleSignal":
+      sampleSignal()
+      result(nil)
     case "writeSetting":
       guard phase == "ready", let peer, let field = args?["field"] as? String,
             field == "led" || field == "gain", let char = metricChars[field],
@@ -121,7 +125,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       peer.writeValue(Data([UInt8(value)]), for: char, type: .withResponse)
     case "disconnect":
       UserDefaults.standard.removeObject(forKey: savedKey)
-      close()
+      close(reason: "manual")
       result(nil)
     case "close":
       close()
@@ -130,10 +134,12 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
   }
 
-  private func publish(_ value: String) {
+  private func publish(_ value: String, reason: String? = nil, code: Int? = nil) {
     phase = value
     var state: [String: Any] = ["type": "state", "phase": phase, "generation": generation]
     if phase == "ready", let codec { state["codec"] = codec }
+    state["reason"] = reason
+    state["code"] = code
     sink?(state)
   }
 
@@ -177,6 +183,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     metrics.removeAll()
     pendingReads.removeAll()
     readingRSSI = false
+    observingBattery = false
     features = nil
     let previousSetting = setting
     setting = nil
@@ -186,12 +193,12 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     for item in pending { item.reply(problem("stale")) }
   }
 
-  private func close() {
+  private func close(reason: String? = nil) {
     clearLink()
     intent = .idle
     retryDelay = 1
     seen.removeAll()
-    publish("idle")
+    publish("idle", reason: reason)
   }
 
   private func start(_ desired: Intent, phase: String) {
@@ -210,15 +217,15 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
   }
 
-  private func lost(_ reconnect: Bool) {
+  private func lost(_ reconnect: Bool, reason: String = "dropped", code: Int? = nil) {
     guard case let .link(id) = intent else { return }
     clearLink()
     guard reconnect, saved == id else {
       intent = .idle
-      publish("failed")
+      publish("failed", reason: reason, code: code)
       return
     }
-    publish("reconnecting")
+    publish("reconnecting", reason: reason, code: code)
     let delay = retryDelay
     retryDelay = min(30, 2 * delay)
     after(delay) { $0.start(.link(id), phase: "reconnecting") }
@@ -242,7 +249,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       central = manager
       manager.delegate = self
       if case let .link(id) = desired, saved == id { intent = desired } else { intent = .idle }
-      publish("unavailable")
+      publish("unavailable", reason: manager.state == .unauthorized ? "permission" : "radio")
       return
     }
     switch intent {
@@ -272,7 +279,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         attach(known, manager)
       } else {
         manager.scanForPeripherals(withServices: [CV1UUID.audioService])
-        after(15) { $0.lost(true) }
+        after(15) { $0.lost(true, reason: "timeout") }
       }
     }
   }
@@ -299,28 +306,41 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     device.delegate = self
     manager.connect(device)
     // For the remembered peer CoreBluetooth can wait for its return without scans.
-    if saved != device.identifier { after(20) { $0.lost(false) } }
+    if saved != device.identifier { after(20) { $0.lost(false, reason: "timeout") } }
   }
 
   func centralManager(_ manager: CBCentralManager, didConnect device: CBPeripheral) {
     guard central === manager, peer === device else { return }
-    after(15) { $0.lost(true) }
+    after(15) { $0.lost(true, reason: "timeout") }
     device.discoverServices([CV1UUID.audioService, CV1UUID.buttonService] + Array(metricServices.keys))
   }
 
   func centralManager(_ manager: CBCentralManager, didFailToConnect device: CBPeripheral, error: Error?) {
-    if central === manager, peer === device { lost(true) }
+    if central === manager, peer === device { lost(true, reason: "connect", code: bluetoothCode(error)) }
   }
 
   func centralManager(_ manager: CBCentralManager, didDisconnectPeripheral device: CBPeripheral, error: Error?) {
-    if central === manager, peer === device { lost(true) }
+    guard central === manager, peer === device else { return }
+    let code = bluetoothCode(error)
+    let reason: String
+    switch code {
+    case CBError.Code.connectionTimeout.rawValue: reason = "timeout"
+    case CBError.Code.peripheralDisconnected.rawValue: reason = "remote"
+    default: reason = "dropped"
+    }
+    lost(true, reason: reason, code: code)
+  }
+
+  private func bluetoothCode(_ error: Error?) -> Int? {
+    guard let error = error as NSError?, error.domain == CBErrorDomain else { return nil }
+    return error.code
   }
 
   func peripheral(_ device: CBPeripheral, didDiscoverServices error: Error?) {
     guard peer === device else { return }
     guard error == nil, let services = device.services,
           let audio = services.first(where: { $0.uuid == CV1UUID.audioService }),
-          let button = services.first(where: { $0.uuid == CV1UUID.buttonService }) else { return lost(false) }
+          let button = services.first(where: { $0.uuid == CV1UUID.buttonService }) else { return lost(false, reason: "incompatible") }
     device.discoverCharacteristics([CV1UUID.audio, CV1UUID.codec], for: audio)
     device.discoverCharacteristics([CV1UUID.button], for: button)
     for service in services {
@@ -339,14 +359,17 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
           metricChars[key] = char
         }
       }
-      if phase == "ready" { sample() }
+      if phase == "ready" {
+        observeBattery()
+        sample()
+      }
       return
     }
     guard error == nil, let chars = service.characteristics else { return lost(true) }
     if service.uuid == CV1UUID.audioService {
       guard let stream = chars.first(where: { $0.uuid == CV1UUID.audio && $0.properties.contains(.notify) }),
             let format = chars.first(where: { $0.uuid == CV1UUID.codec && $0.properties.contains(.read) }) else {
-        return lost(false)
+        return lost(false, reason: "incompatible")
       }
       audioChar = stream
       // Restored notification state belongs to the old process; only a fresh
@@ -359,7 +382,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       device.readValue(for: format)
     } else if service.uuid == CV1UUID.buttonService {
       guard let button = chars.first(where: { $0.uuid == CV1UUID.button && $0.properties.contains(.notify) }) else {
-        return lost(false)
+        return lost(false, reason: "incompatible")
       }
       buttonChar = button
       if button.isNotifying {
@@ -379,6 +402,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     if let name = peer.name { metrics["name"] = String(name.prefix(80)) }
     publish("ready")
     publishMetrics()
+    observeBattery()
   }
 
   private func changeAudio() {
@@ -413,9 +437,17 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
   }
 
-  private func publishMetrics() {
+  private func publishMetrics(_ measurement: String? = nil) {
     guard phase == "ready" else { return }
-    sink?(["type": "diagnostics", "generation": generation, "values": metrics])
+    var event: [String: Any] = ["type": "diagnostics", "generation": generation, "values": metrics]
+    event["measurement"] = measurement
+    sink?(event)
+  }
+
+  private func observeBattery() {
+    guard !observingBattery, let peer, let char = metricChars["battery"], char.properties.contains(.notify) else { return }
+    observingBattery = true
+    if !char.isNotifying { peer.setNotifyValue(true, for: char) }
   }
 
   private func supportsSetting(_ field: String) -> Bool {
@@ -433,17 +465,19 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       if ["firmware", "hardware", "model", "manufacturer"].contains(field), metrics[field] != nil { continue }
       if pendingReads.insert(field).inserted { peer.readValue(for: char) }
     }
-    if !readingRSSI {
-      readingRSSI = true
-      peer.readRSSI()
-    }
+  }
+
+  private func sampleSignal() {
+    guard phase == "ready", let peer, !readingRSSI else { return }
+    readingRSSI = true
+    peer.readRSSI()
   }
 
   func peripheral(_ device: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
     guard peer === device else { return }
     readingRSSI = false
     metrics["rssi"] = error == nil && (-127 ... -1).contains(RSSI.intValue) ? RSSI.intValue : nil
-    publishMetrics()
+    publishMetrics("rssi")
   }
 
   func peripheral(_ device: CBPeripheral, didWriteValueFor char: CBCharacteristic, error: Error?) {
@@ -478,7 +512,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         $0.count <= 64 ? String(data: $0, encoding: .utf8)?.trimmingCharacters(in: .controlCharacters) : nil
       }
     }
-    publishMetrics()
+    publishMetrics(field == "battery" ? field : nil)
   }
 
   func peripheral(_ device: CBPeripheral, didUpdateValueFor char: CBCharacteristic, error: Error?) {
@@ -489,7 +523,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
     guard error == nil, let data = char.value else { return lost(true) }
     if char === codecChar {
-      guard let id = data.first, id == 20 || id == 21 else { return lost(false) }
+      guard let id = data.first, id == 20 || id == 21 else { return lost(false, reason: "incompatible") }
       codec = Int(id)
       readyIfConfigured()
     } else if phase == "ready", char === audioChar, let token = subscription.emitting, !data.isEmpty {

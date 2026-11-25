@@ -49,6 +49,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var desiredAudio: Int? = null
     private var confirmedAudio: Int? = null
     private var lastAudio = 0
+    private var rssiPending = false
     private val operations = ArrayDeque<Job>()
     private var active: Job? = null
 
@@ -101,7 +102,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     result.success(null)
                 }
                 "disconnect", "close" -> {
-                    disconnect()
+                    disconnect(if (call.method == "disconnect") "manual" else null)
                     result.success(null)
                 }
                 "setAudio" -> setAudio(call, result)
@@ -109,26 +110,34 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     if (phase == "ready" && desiredAudio == null && confirmedAudio == null && active == null && operations.isEmpty()) sample()
                     result.success(null)
                 }
+                "sampleSignal" -> {
+                    sampleSignal()
+                    result.success(null)
+                }
                 "writeSetting" -> writeSetting(call, result)
                 else -> result.notImplemented()
             }
         } catch (_: SecurityException) {
             clearLink()
-            publish("unavailable")
+            publish("unavailable", "permission")
             result.error("bluetooth_permission", null, null)
         }
     }
 
-    private fun publish(value: String) {
+    private fun publish(value: String, reason: String? = null, code: Int? = null) {
         phase = value
         val state = mutableMapOf<String, Any>("type" to "state", "phase" to phase, "generation" to generation)
         codec?.takeIf { phase == "ready" }?.let { state["codec"] = it }
+        reason?.let { state["reason"] = it }
+        code?.let { state["code"] = it }
         sink?.success(state)
     }
 
-    private fun telemetry() {
+    private fun telemetry(measurement: String? = null) {
         if (phase == "ready") {
-            sink?.success(mapOf("type" to "diagnostics", "generation" to generation, "values" to stats.toMap()))
+            val event = mutableMapOf<String, Any>("type" to "diagnostics", "generation" to generation, "values" to stats.toMap())
+            measurement?.let { event["measurement"] = it }
+            sink?.success(event)
         }
     }
 
@@ -167,24 +176,25 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         desiredAudio = null
         confirmedAudio = null
         lastAudio = 0
+        rssiPending = false
         pending.forEach { it.complete(null) }
     }
 
-    private fun disconnect() {
+    private fun disconnect(reason: String? = null) {
         target = null
         readyOnce = false
         retryDelay = 1000
         clearLink()
-        publish("idle")
+        publish("idle", reason)
     }
 
-    private fun lost(retry: Boolean) {
+    private fun lost(retry: Boolean, reason: String = "dropped", code: Int? = null) {
         clearLink()
         if (!retry || !readyOnce || target == null) {
-            publish("failed")
+            publish("failed", reason, code)
             return
         }
-        publish("reconnecting")
+        publish("reconnecting", reason, code)
         val delay = retryDelay
         retryDelay = minOf(retryDelay * 2, 30000)
         after(delay) { connect() }
@@ -193,7 +203,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private fun startScan() {
         val scanner = adapter?.bluetoothLeScanner
         if (scanner == null) {
-            publish("unavailable")
+            publish("unavailable", "radio")
             return
         }
         val callback = object : ScanCallback() {
@@ -213,7 +223,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     if (scan === this) {
                         stopScan()
                         cancelTimer()
-                        publish("failed")
+                        publish("failed", "connect", errorCode)
                     }
                 }
             }
@@ -234,11 +244,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         try {
             gatt = adapter?.getRemoteDevice(address)?.connectGatt(context, false, callbacks, android.bluetooth.BluetoothDevice.TRANSPORT_LE)
         } catch (_: SecurityException) {
-            publish("unavailable")
+            publish("unavailable", "permission")
             return
         }
-        if (gatt == null) return lost(false)
-        after(15000) { lost(true) }
+        if (gatt == null) return lost(false, "connect")
+        after(15000) { lost(true, "timeout") }
     }
 
     private fun characteristic(service: UUID, uuid: UUID): BluetoothGattCharacteristic? =
@@ -255,7 +265,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val next = operations.removeFirstOrNull() ?: return
         active = next
         if (runCatching { next.start(connection) }.getOrDefault(false)) {
-            after(5000) { lost(true) }
+            val optional = phase == "ready" && (next.kind == "read" || next.uuid == Cv1Uuid.battery)
+            after(if (optional) 2000 else 5000) {
+                if (optional) finish(connection, next.kind, next.uuid, null)
+                else lost(true, "timeout")
+            }
         } else {
             finish(connection, next.kind, next.uuid, null)
         }
@@ -297,19 +311,19 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         discovering = true
         cancelTimer()
         if (!connection.discoverServices()) return lost(true)
-        after(10000) { lost(true) }
+        after(10000) { lost(true, "timeout") }
     }
 
     private fun configured(connection: BluetoothGatt) {
         cancelTimer()
-        val format = characteristic(Cv1Uuid.audioService, Cv1Uuid.codec) ?: return lost(false)
-        val audio = characteristic(Cv1Uuid.audioService, Cv1Uuid.audio) ?: return lost(false)
-        val button = characteristic(Cv1Uuid.buttonService, Cv1Uuid.button) ?: return lost(false)
-        if (audio.getDescriptor(cccd) == null) return lost(false)
+        val format = characteristic(Cv1Uuid.audioService, Cv1Uuid.codec) ?: return lost(false, "incompatible")
+        val audio = characteristic(Cv1Uuid.audioService, Cv1Uuid.audio) ?: return lost(false, "incompatible")
+        val button = characteristic(Cv1Uuid.buttonService, Cv1Uuid.button) ?: return lost(false, "incompatible")
+        if (audio.getDescriptor(cccd) == null) return lost(false, "incompatible")
         read(format) { bytes ->
             if (gatt !== connection) return@read
             val id = bytes?.firstOrNull()?.toInt()
-            if (id != 20 && id != 21) return@read lost(false)
+            if (id != 20 && id != 21) return@read lost(false, "incompatible")
             codec = id
             notify(button, true) {
                 if (gatt === connection) {
@@ -320,6 +334,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                         target?.let(devices::get)?.let { name -> stats["name"] = name }
                         publish("ready")
                         telemetry()
+                        val battery = characteristic(Cv1Uuid.batteryService, Cv1Uuid.battery)
+                        if (battery != null && battery.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0 &&
+                            battery.getDescriptor(cccd) != null) {
+                            notify(battery, true) {}
+                        }
                     }
                 }
             }
@@ -400,18 +419,16 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 && name in setOf("led", "gain")) {
                     stats["${name}Writable"] = true
                 }
-                telemetry()
+                telemetry(if (name == "battery") name else null)
             })
         }
-        enqueue(Job(null, "rssi", {
-            desiredAudio == null && confirmedAudio == null && it.readRemoteRssi()
-        }) {
-            if (generation == epoch) {
-                val value = it?.firstOrNull()?.toInt()?.takeIf { v -> v in -127..-1 }
-                if (value != null) stats["rssi"] = value else stats.remove("rssi")
-                telemetry()
-            }
-        })
+    }
+
+    // The controller RSSI read is separate from the ATT characteristic queue.
+    // A failed or unanswered observation never restarts the audio connection.
+    private fun sampleSignal() {
+        if (phase != "ready" || rssiPending || active != null || operations.isNotEmpty()) return
+        rssiPending = runCatching { gatt?.readRemoteRssi() == true }.getOrDefault(false)
     }
 
     private fun writeSetting(call: MethodCall, result: MethodChannel.Result) {
@@ -460,7 +477,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     if (!connection.requestMtu(247)) discover(connection)
                     else after(5000) { discover(connection) }
                 } else if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    lost(true)
+                    val reason = when {
+                        adapter?.isEnabled == false -> "radio"
+                        status == 8 -> "timeout"
+                        status == 19 && phase == "ready" -> "remote"
+                        phase == "ready" -> "dropped"
+                        else -> "connect"
+                    }
+                    lost(true, reason, status)
                 }
             }
         }
@@ -474,7 +498,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         override fun onServicesDiscovered(connection: BluetoothGatt, status: Int) {
             handler.post {
                 if (gatt === connection) {
-                    if (status == BluetoothGatt.GATT_SUCCESS) configured(connection) else lost(true)
+                    if (status == BluetoothGatt.GATT_SUCCESS) configured(connection) else lost(true, "connect", status)
                 }
             }
         }
@@ -488,7 +512,13 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         }
 
         override fun onReadRemoteRssi(connection: BluetoothGatt, rssi: Int, status: Int) {
-            handler.post { finish(connection, "rssi", null, if (status == 0 && rssi in -127..-1) byteArrayOf(rssi.toByte()) else null) }
+            handler.post {
+                if (gatt !== connection || !rssiPending) return@post
+                rssiPending = false
+                if (status == BluetoothGatt.GATT_SUCCESS && rssi in -127..-1) stats["rssi"] = rssi
+                else stats.remove("rssi")
+                telemetry("rssi")
+            }
         }
 
         override fun onCharacteristicRead(connection: BluetoothGatt, char: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
@@ -504,7 +534,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         override fun onCharacteristicChanged(connection: BluetoothGatt, char: BluetoothGattCharacteristic, value: ByteArray) {
             handler.post {
                 if (gatt !== connection || phase != "ready") return@post
-                if (char.uuid == Cv1Uuid.button && value.size >= 4) {
+                if (char.uuid == Cv1Uuid.battery) {
+                    val level = value.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 } ?: return@post
+                    stats["battery"] = level
+                    telemetry("battery")
+                } else if (char.uuid == Cv1Uuid.button && value.size >= 4) {
                     val code = (0..3).fold(0) { a, i -> a or ((value[i].toInt() and 0xff) shl (8*i)) }
                     if (code >= 0) sink?.success(mapOf("type" to "button", "generation" to generation, "code" to code))
                 } else if (char.uuid == Cv1Uuid.audio && value.isNotEmpty()) {

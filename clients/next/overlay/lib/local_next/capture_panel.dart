@@ -37,7 +37,7 @@ class LocalNextCapturePanel extends StatefulWidget {
   State<LocalNextCapturePanel> createState() => _CapturePanelState();
 }
 
-class _CapturePanelState extends State<LocalNextCapturePanel> {
+class _CapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindingObserver {
   // Release the previous owner's microphone and journal before recovering files.
   static Future<void> _previousRelease = Future.value();
   late final Future<void> _setup;
@@ -53,11 +53,13 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   Cv1DoubleTapAction _doubleTap = Cv1DoubleTapAction.checkpoint;
   static const _doubleTapKey = 'next.cv1.doubleTap';
   SharedPreferences? _groupPrefs;
+  Timer? _diagnosticPoll;
   String get _groupPrefKey => 'next.capture.groupSilence.${widget.library.audioOwnerId}';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.library.ownerChange.attachCapture(_captureBusy);
     _setup = _initialize(widget.library, _previousRelease).whenComplete(() {
       _initialized = true;
@@ -103,7 +105,9 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
         _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
         doubleTapAction: () => _doubleTap,
+        diagnosticsHistory: Cv1History(preferences: _groupPrefs),
       );
+      if (_hasCv1) _diagnosticPoll = Timer.periodic(const Duration(minutes: 1), (_) => _sampleIdleLink());
       journal.retry();
     } catch (_) {
       _storageFailed = true;
@@ -118,9 +122,28 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     widget.onDelivered?.call();
   }
 
+  void _sampleIdleLink() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final inputs = _inputs;
+    if (_closed || inputs == null || (lifecycle != null && lifecycle != AppLifecycleState.resumed)) return;
+    unawaited(inputs.connection.sampleSignal());
+    if (!inputs.hasCaptureInProgress) unawaited(inputs.connection.sampleDiagnostics());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _sampleIdleLink();
+    } else {
+      unawaited(_inputs?.connection.history.flush());
+    }
+  }
+
   @override
   void dispose() {
     _closed = true;
+    _diagnosticPoll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     widget.library.ownerChange.detachCapture(_captureBusy);
     _previousRelease = _release();
     PairedLibrary.trackAudioRelease(widget.library.audioOwnerId, _previousRelease);
@@ -206,6 +229,7 @@ class NextCaptureInputs extends ChangeNotifier {
     Cv1Transport transport, {
     this.ownerChange,
     Cv1DoubleTapAction Function()? doubleTapAction,
+    Cv1History? diagnosticsHistory,
   }) {
     cv1 = NextCv1Capture(
       phone.journal,
@@ -216,7 +240,7 @@ class NextCaptureInputs extends ChangeNotifier {
       doubleTapAction: doubleTapAction,
       preview: phone.preview,
     );
-    connection = Cv1Connection(transport, cv1);
+    connection = Cv1Connection(transport, cv1, history: diagnosticsHistory);
   }
 
   final NextPhoneCapture phone;

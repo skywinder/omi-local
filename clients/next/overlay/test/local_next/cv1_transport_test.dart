@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
@@ -117,6 +118,44 @@ void main() {
       journal.dispose();
       await folder.delete(recursive: true);
     }
+  });
+
+  test('CV1 history retains real charge and link events across launches without retaining signal samples', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    var now = DateTime.utc(2026, 11, 25);
+    final history = Cv1History(preferences: prefs, now: () => now);
+    history.beginLink();
+    history.measureBattery(80);
+    history.measureSignal(-69);
+    now = now.add(const Duration(seconds: 10));
+    history.measureBattery(80);
+    history.addEvent((
+      at: now,
+      phase: Cv1LinkPhase.reconnecting,
+      reason: Cv1LinkReason.dropped,
+      code: 8,
+      battery: 80,
+      rssi: -69,
+      uptime: const Duration(seconds: 10),
+      downtime: null,
+    ));
+    now = now.add(const Duration(seconds: 8));
+    history.beginLink();
+    history.measureBattery(80);
+    await history.flush();
+
+    final restored = Cv1History(preferences: prefs, now: () => now);
+    expect(restored.battery.map((sample) => sample.value), [80, 80]);
+    expect(restored.battery.map((sample) => sample.series).toSet(), hasLength(2));
+    expect(restored.events.single.rssi, -69);
+    expect(restored.events.single.code, 8);
+    expect(restored.signal, isEmpty);
+    expect(restored.exportLog(), contains('"reason": "dropped"'));
+    now = now.add(const Duration(days: 8));
+    final expired = Cv1History(preferences: prefs, now: () => now);
+    expect(expired.battery, isEmpty);
+    expect(expired.events, isEmpty);
   });
 
   test('Stop and Start while enabling supersede the subscription, even on the same link', () async {
