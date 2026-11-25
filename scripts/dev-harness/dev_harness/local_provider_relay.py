@@ -9,6 +9,7 @@ import os
 import httpx
 from pathlib import Path
 from urllib.parse import urlsplit
+from websockets.exceptions import ConnectionClosed
 
 from .local_provider_http import auth_headers, validate_url
 from .local_live_translation import LiveTranslator
@@ -20,6 +21,10 @@ DRAIN_SECONDS = 60
 
 class RelayError(ValueError):
     """Content-free provider errors."""
+
+
+class LiveSessionLimit(RelayError):
+    """The upstream Live worker refused admission."""
 
 
 def port(cfg):
@@ -75,12 +80,14 @@ def connect(url, *, key=''):
 def validate_config(raw):
     try:
         value = json.loads(raw)
-        if (not isinstance(value, dict) or value.get('type') != 'config'
-                or value.get('useAudioWorklet') is not True or value.get('enabled') is False):
-            raise ValueError()
-        return value
     except (ValueError, TypeError):
         raise RelayError('Server does not implement the WLK PCM16 preview protocol') from None
+    if isinstance(value, dict):
+        if value.get('type') == 'error' and value.get('error') == 'live session busy':
+            raise LiveSessionLimit()
+        if value.get('type') == 'config' and value.get('useAudioWorklet') is True and value.get('enabled') is not False:
+            return value
+    raise RelayError('Server does not implement the WLK PCM16 preview protocol')
 
 
 async def probe(snapshot, cfg, *, key='', connector=connect):
@@ -152,7 +159,12 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
     translator = LiveTranslator(translation, translation_key, send=send)
     try:
         async with connector(endpoint, key=key if authenticated else '') as provider:
-            config = validate_config(await asyncio.wait_for(provider.recv(), 5))
+            try:
+                config = validate_config(await asyncio.wait_for(provider.recv(), 5))
+            except ConnectionClosed as error:
+                if error.rcvd is not None and error.rcvd.code == 4409:
+                    raise LiveSessionLimit() from None
+                raise
             tuning = controls.attach(snapshot, config) if controls else None
             await send(json.dumps(config))
 
@@ -317,6 +329,7 @@ def create_app(cfg, *, registry=None, connector=connect, health_probe=diarizatio
             await socket.close(code=1008)
             return
         await socket.accept()
+        close_code = 1000
         try:
             with session_gate(cfg):
                 active += 1
@@ -334,12 +347,14 @@ def create_app(cfg, *, registry=None, connector=connect, health_probe=diarizatio
                                         translation=translation, translation_key=translation_key, controls=controls)
                 finally:
                     active -= 1
+        except LiveSessionLimit:
+            close_code = 4409
         except Exception:
             with suppress(Exception):
                 await socket.send_json({'type': 'error', 'code': 'live_provider_failed'})
         finally:
             with suppress(Exception):
-                await socket.close()
+                await socket.close(code=close_code)
 
     @app.websocket('/asr')
     async def asr(socket: WebSocket):

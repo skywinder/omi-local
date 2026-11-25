@@ -80,6 +80,27 @@ class Provider:
         return await self.incoming.get()
 
 
+@pytest.mark.parametrize('closes_first', [False, True])
+def test_relay_preserves_live_session_limit(cfg, closes_first):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    class BusyProvider(Provider):
+        async def recv(self):
+            if closes_first:
+                raise ConnectionClosedError(Close(4409, 'private fixture detail'), None)
+            return json.dumps({'type': 'error', 'error': 'live session busy'})
+
+    provider = BusyProvider()
+    app = relay.create_app(cfg, registry=Registry(profile()), connector=lambda endpoint, key: provider)
+    with TestClient(app, client=('127.0.0.1', 1234)) as client, client.websocket_connect('/asr') as socket:
+        with pytest.raises(WebSocketDisconnect) as caught:
+            socket.receive_json()
+        assert caught.value.code == 4409
+        assert not caught.value.reason
+        assert not provider.sent
+
+
 def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
     registry = Registry(profile())
     connections = []

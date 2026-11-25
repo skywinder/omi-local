@@ -223,6 +223,11 @@ WhisperLiveKit protocol: initial `config/useAudioWorklet`,
 and `ready_to_stop`. An arbitrary cloud streaming API needs its own adapter.
 Configure an external server's model and language on that server.
 
+When WhisperLiveKit rejects a stream because every session slot is in use, the
+relay preserves close code `4409`. The paired backend reports `session_limit`
+in its Live status. Omi Local Next explains the missing live text while the
+phone keeps recording audio for later processing.
+
 Before selecting **Use**, finish recording and wait for the live stream to drain.
 If changing a managed local engine, also wait for final STT.
 The new configuration is checked before switching. On failure, the previous
