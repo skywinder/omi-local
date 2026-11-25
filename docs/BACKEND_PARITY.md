@@ -78,7 +78,7 @@ and capture adjustments.
 
 ## Next slices
 
-1. Verify the signed Next package on a physical iPhone. Check category selection,
+1. The signed package was installed and launched alongside Omi Local. Check category selection,
    filtering, playback, phone microphone capture and CV1 delivery to the same archive.
 2. Compare paired search and folder operations against the deployed storage
    layout. Search must handle large recordings with file-backed transcripts.

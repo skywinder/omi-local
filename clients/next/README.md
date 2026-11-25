@@ -728,7 +728,9 @@ page and authenticated WAV range passed through the live paired ingress.
 See [backend compatibility](../../docs/BACKEND_PARITY.md) for the rollout.
 The signed `Profile-dev` package at `b5cd86c` passed signature, entitlements
 and hash verification (executable SHA-256 starts with `08ad47ff6fbc53e4`).
-USB and Xcode found no eligible iPhone for this package.
+CoreDevice installed this exact package and confirmed launch on the physical
+iPhone. The device inventory listed both Omi Local and Omi Local Next. On-phone
+archive, category and capture interaction are separate from installation.
 Bastion's configured summary model classified a synthetic compiler discussion
 as `technology`. Its category and emoji survived import and regeneration.
 The regeneration path respects an existing owner category and title.
