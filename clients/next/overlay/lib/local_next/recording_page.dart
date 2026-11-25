@@ -74,22 +74,58 @@ String recordingFailure(BuildContext context, Object? failure) {
   String label(String key) => pairedSettingsLabel(context, key);
   final fields = failure is Map ? failure : const {};
   final stage = switch (fields['stage']) {
+    'prepare' => label('nextFailedPreparation'),
     'stt' => context.l10n.transcription,
     'diarization' => label('diarization'),
     'summary' => context.l10n.summary,
+    'import' => label('nextFailedImport'),
     _ => label('nextFailedStage'),
   };
   final code = fields['code'];
   final reason = switch (code) {
+    'configuration' => label('nextProviderConfiguration'),
+    'credential_missing' => label('nextProviderCredentialMissing'),
+    'database_preflight_failed' => label('nextDatabasePreflight'),
+    'import_failed' => label('nextImportUnavailable'),
+    'invalid_audio' => label('nextInvalidAudio'),
+    'invalid_checkpoint' => label('nextInvalidCheckpoint'),
+    'invalid_diarization' => label('nextInvalidDiarization'),
     'invalid_json' => label('nextInvalidJson'),
+    'invalid_provider_response' => label('nextInvalidProviderResponse'),
+    'invalid_summary' => label('nextInvalidSummary'),
+    'invalid_transcript' => label('nextInvalidTranscript'),
     'output_limit' => label('nextOutputLimit'),
+    'response_encoding' => label('nextProviderEncoding'),
+    'response_too_large' => label('nextProviderResponseSize'),
+    'disk_full' => label('nextServerDiskFull'),
+    'storage_access' => label('nextServerStorageAccess'),
+    'io_error' => label('nextServerIOError'),
+    'summary_model_unavailable' => label('nextSummaryModelUnavailable'),
     'connection' => label('nextProviderConnection'),
     'timeout' => label('nextProviderTimeout'),
-    String s when RegExp(r'^http_[1-5][0-9]{2}$').hasMatch(s) => '${label("nextProviderHttp")} ${s.substring(5)}',
+    'unknown' => label('nextUnclassifiedFailure'),
+    String s when RegExp(r'^http_[1-5][0-9]{2}$').hasMatch(s) => _providerHttpFailure(
+      context,
+      int.parse(s.substring(5)),
+    ),
     _ => label('nextUnknownCause'),
   };
   final attempts = fields['attempts'];
   return [stage, reason, if (attempts is int && attempts > 0) '${label("nextAttempts")}: $attempts'].join(' · ');
+}
+
+String _providerHttpFailure(BuildContext context, int status) {
+  final hint = switch (status) {
+    401 || 403 => 'nextHttpAuthorization',
+    404 => 'nextHttpNotFound',
+    413 => 'nextHttpInputSize',
+    429 => 'nextHttpRateLimit',
+    400 || 415 || 422 => 'nextHttpRequest',
+    >= 300 && < 400 => 'nextHttpRedirect',
+    >= 500 => 'nextHttpServer',
+    _ => 'nextHttpGeneric',
+  };
+  return '${pairedSettingsLabel(context, 'nextProviderHttp')} $status. ${pairedSettingsLabel(context, hint)}';
 }
 
 String? recordingDiarization(BuildContext context, ServerConversation row) {
@@ -741,8 +777,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                 )
               : Column(
                   children: [
-                    if (widget.library.processingRetryAvailable &&
-                        loaded.row.externalIntegration?.localRecording?['status'] == 'failed')
+                    if (widget.library.processingRetryAvailable && loaded.failed)
                       TextButton.icon(
                         icon: const Icon(Icons.refresh),
                         onPressed: _editing ? null : _retryProcessing,
@@ -782,6 +817,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       ),
                     ),
                     if (canPlay) _playbackControls(),
+                    if (loaded.failed)
+                      Padding(
+                        padding: const EdgeInsets.all(OmiSpacing.md),
+                        child: SelectableText(recordingStatus(context, loaded.row)),
+                      ),
                     if (_initialExcerptUnavailable)
                       ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
                     if (opening || _editing) const LinearProgressIndicator(),
@@ -797,7 +837,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                               ? Center(
                                   child: Text(
                                     loaded.pending
-                                        ? recordingStatus(context, loaded.row)
+                                        ? (loaded.failed
+                                              ? l.noTranscriptAvailable
+                                              : recordingStatus(context, loaded.row))
                                         : [l.noTranscriptAvailable, if (diarization != null) diarization].join('\n'),
                                   ),
                                 )
@@ -891,6 +933,7 @@ class _RecordingDetail {
     ServerConversation(id: row.id, createdAt: row.createdAt, structured: row.structured, transcriptSegments: sources),
   );
   bool get pending => row.externalIntegration?.localRecording != null;
+  bool get failed => row.externalIntegration?.localRecording?['status'] == 'failed';
 }
 
 class _Summary extends StatelessWidget {
@@ -914,6 +957,8 @@ class _Summary extends StatelessWidget {
                   )
                 : summary.content.isNotEmpty
                 ? ConversationMarkdownSliver(content: summary.content)
+                : detail.failed
+                ? const SliverToBoxAdapter()
                 : SliverToBoxAdapter(
                     child: Text(
                       detail.pending ? recordingStatus(context, detail.row) : context.l10n.noSummaryAvailable,

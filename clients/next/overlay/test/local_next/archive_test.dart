@@ -100,7 +100,15 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 void main() {
   testWidgets('only a capable server offers retry and the refreshed pending row loses the action', (tester) async {
     final library = _RetryLibrary(
-      _row(_firstId, 'Failed', DateTime.utc(2026), localState: 'failed'),
+      _row(
+        _firstId,
+        'Failed',
+        DateTime.utc(2026),
+        localState: 'failed',
+        recording: {
+          'failure': {'stage': 'summary', 'code': 'http_401', 'attempts': 3},
+        },
+      ),
       _row(_firstId, 'Pending', DateTime.utc(2026), localState: 'pending'),
     );
     Future<void> show(bool available) async {
@@ -118,6 +126,14 @@ void main() {
     await show(false);
     expect(find.text('Retry processing'), findsNothing);
     await show(true);
+    expect(
+      find.textContaining('HTTP 401. Check the API key and its permissions for this provider.', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Attempts: 3', findRichText: true), findsOneWidget);
+    await tester.tap(find.text('Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('HTTP 401', findRichText: true), findsOneWidget);
     await tester.tap(find.text('Retry processing'));
     await tester.pumpAndSettle();
     expect(library.retries, [_firstId]);

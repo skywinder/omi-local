@@ -213,9 +213,13 @@ audio without readable processing state remains visible as a saved recording.
 The foreground list refreshes every five seconds. Physical long-session and
 background reliability still require device verification.
 
-For a failed recording the web library displays the stage, attempt count and saved
-provider error class. Older checkpoints can identify a stage without a specific
-cause. Invalid summary JSON gets one structured retry on the selected model.
+For a failed recording Next shows the stage, attempt count, saved diagnostic and
+a suggested fix. Provider errors retain the HTTP status or a bounded code for
+connection, timeout, response format or response limits. The watcher records
+failures before a stage starts and when publishing to the archive. It never
+stores a provider response body, transcript excerpt, URL or key in the diagnostic.
+Older checkpoints can identify a stage without a specific cause.
+Invalid summary JSON gets one structured retry on the selected model.
 On a paired server advertising `local_processing_retry_version: 1`, the owner can
 open a failed recording in Next and tap **Retry processing**. The authenticated
 `POST /v1/local/conversations/{conversation_id}/retry-processing` queues the saved
