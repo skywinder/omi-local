@@ -130,7 +130,8 @@ requires separate verification.
 Open the gear in **Conversations** for recording boundaries, the local upload
 queue, saved servers, processing, Live speaker settings and Omi CV1 diagnostics.
 Audio uploads include the phone platform and model when available so the web
-library can show them alongside the microphone used.
+library can show them alongside the microphone used. On iPhone, the upload
+uses the model name or hardware model code when the name is unavailable.
 
 The device view reads battery, signal, firmware and hardware details when
 reported by the wearable. It shows session connection events and up to 120

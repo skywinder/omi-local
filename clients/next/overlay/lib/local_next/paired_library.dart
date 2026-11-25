@@ -1080,6 +1080,24 @@ class PairedLibrary {
     }
   }
 
+  static String _iosPhoneModel(IosDeviceInfo device) {
+    // The pinned native catalog stops at iPhone 16e. These model identifiers
+    // are from the Xcode device catalog. Unknown iPhones retain their model code.
+    const recent = {
+      'iPhone18,1': 'iPhone 17 Pro',
+      'iPhone18,2': 'iPhone 17 Pro Max',
+      'iPhone18,3': 'iPhone 17',
+      'iPhone18,4': 'iPhone Air',
+      'iPhone18,5': 'iPhone 17e',
+      'iPhone19,2': 'iPhone 18 Pro',
+      'iPhone19,3': 'iPhone 18 Pro Max',
+    };
+    final machine = device.utsname.machine;
+    final modelName = device.modelName;
+    if (modelName.startsWith('iPhone ')) return modelName;
+    return recent[machine] ?? (RegExp(r'^iPhone[0-9]+,[0-9]+$').hasMatch(machine) ? machine : '');
+  }
+
   static Future<Map<String, String>> _readAudioOrigin() async {
     final platform = defaultTargetPlatform;
     if (platform != TargetPlatform.android && platform != TargetPlatform.iOS) return const {};
@@ -1089,7 +1107,7 @@ class PairedLibrary {
       final model =
           await (platform == TargetPlatform.android
                   ? deviceInfo.androidInfo.then((device) => device.model)
-                  : deviceInfo.iosInfo.then((device) => device.modelName))
+                  : deviceInfo.iosInfo.then(_iosPhoneModel))
               .timeout(const Duration(seconds: 1));
       final label = model.trim();
       if (label.isNotEmpty && label.length <= 80 && label.toLowerCase() != 'unknown') {

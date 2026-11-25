@@ -231,14 +231,8 @@ void main() {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final seen = <String>[];
-    Uint8List envelope(Map<String, dynamic> fields) {
-      final data = utf8.encode(jsonEncode(fields));
-      final length = (ByteData(4)..setUint32(0, data.length, Endian.big)).buffer.asUint8List();
-      return Uint8List.fromList([...LocalAudioJournal.magic, ...length, ...data]);
-    }
-
-    final part = envelope({'version': 2, 'id': id, 'server_id': 'fixture', 'preroll_frames': 0});
-    final finish = envelope({
+    final part = _audioEnvelope({'version': 2, 'id': id, 'server_id': 'fixture', 'preroll_frames': 0});
+    final finish = _audioEnvelope({
       'version': 3,
       'id': id,
       'recording_id': id,
@@ -315,6 +309,38 @@ void main() {
       '/v1/local/conversations/$id/audio',
       '/v1/local/audio/parts',
     ]);
+  });
+
+  test('iPhone uploads resolve a recent hardware model without sending device identifiers', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final originalDeviceInfo = DeviceInfoPlatform.instance;
+    DeviceInfoPlatform.instance = _IPhoneRecordingDeviceInfo();
+    addTearDown(() {
+      DeviceInfoPlatform.instance = originalDeviceInfo;
+      debugDefaultTargetPlatformOverride = null;
+    });
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final captured = Completer<(String?, String?)>();
+    server.listen((request) async {
+      await request.drain<void>();
+      captured.complete((
+        request.headers.value('X-App-Platform'),
+        request.headers.value('X-Omi-Local-Recording-Origin'),
+      ));
+      request.response
+        ..headers.contentType = ContentType.json
+        ..write('{"stored":true}');
+      await request.response.close();
+    });
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key, knownDelivery: true)..verified = true;
+    addTearDown(library.close);
+
+    final part = _audioEnvelope({'version': 2, 'id': id, 'server_id': 'fixture', 'preroll_frames': 0});
+    expect(await library.uploadPart(part, library.audioOwnerId), {'stored': true});
+    final (platform, origin) = await captured.future;
+    expect(platform, 'ios');
+    expect(jsonDecode(utf8.decode(base64Url.decode(origin!))), {'phone_model': 'iPhone Air'});
   });
 
   test('archive uses paired headers, preserves pending rows and advances the storage offset', () async {
@@ -706,6 +732,35 @@ void main() {
       {...draft, 'revision': 8},
       {'revision': 8},
     ]);
+  });
+}
+
+Uint8List _audioEnvelope(Map<String, dynamic> fields) {
+  final data = utf8.encode(jsonEncode(fields));
+  final length = (ByteData(4)..setUint32(0, data.length, Endian.big)).buffer.asUint8List();
+  return Uint8List.fromList([...LocalAudioJournal.magic, ...length, ...data]);
+}
+
+class _IPhoneRecordingDeviceInfo extends DeviceInfoPlatform {
+  @override
+  Future<BaseDeviceInfo> deviceInfo() async => BaseDeviceInfo({
+    'model': 'iPhone',
+    'modelName': 'Unknown device',
+    'name': 'Private fixture name',
+    'identifierForVendor': 'private-fixture-identifier',
+    'systemName': 'iOS',
+    'systemVersion': '26',
+    'localizedModel': 'iPhone',
+    'isPhysicalDevice': true,
+    'isiOSAppOnMac': false,
+    'utsname': {
+      'sysname': 'Darwin',
+      'nodename': 'private-fixture-hostname',
+      'release': '',
+      'version': '',
+      'machine': 'iPhone18,4',
+    },
+    for (final field in ['freeDiskSize', 'totalDiskSize', 'physicalRamSize', 'availableRamSize']) field: 100,
   });
 }
 

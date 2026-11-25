@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import audio_session
+import device_info_plus
 import flutter_secure_storage
 import flutter_sound
 import just_audio
@@ -58,6 +59,7 @@ import shared_preferences_foundation
     let plugins: [(String, FlutterPlugin.Type)] = [
       ("OmiLocalNextCV1", NextCV1.self),
       ("AudioSessionPlugin", AudioSessionPlugin.self),
+      ("FPPDeviceInfoPlusPlugin", FPPDeviceInfoPlusPlugin.self),
       ("FlutterSecureStoragePlugin", FlutterSecureStoragePlugin.self),
       ("FlutterSound", FlutterSound.self),
       ("PermissionHandlerPlugin", PermissionHandlerPlugin.self),
