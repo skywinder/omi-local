@@ -1,6 +1,6 @@
 # Omi Local backend compatibility
 
-The initial comparison used the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593). Next now pins [6f771e1](https://github.com/BasedHardware/omi/commit/6f771e1f5f50768ed7a7c8fd539b1f4b5ef426ed). The existing Local client and the Next client can use
+The initial comparison used the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593). Next now pins [782a793](https://github.com/BasedHardware/omi/commit/782a7937650c8e0f71455ebc0aae182eb86ab28b). The existing Local client and the Next client can use
 the same paired deployment. Bastion has its own deployed revision and is
 checked separately from this worktree.
 

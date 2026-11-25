@@ -138,6 +138,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     phase = value
     var state: [String: Any] = ["type": "state", "phase": phase, "generation": generation]
     if phase == "ready", let codec { state["codec"] = codec }
+    if phase == "ready" || phase == "reconnecting", case let .link(id) = intent {
+      state["deviceId"] = id.uuidString
+    }
     state["reason"] = reason
     state["code"] = code
     sink?(state)

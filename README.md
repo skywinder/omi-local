@@ -19,15 +19,15 @@ explicitly selected servers.
 
 ## Features
 
-- **Record from CV1 or the phone mic.** Start, stop and mute from the app, or finish one conversation while keeping CV1 listening. Optional reconnection and auto-start respect an explicit Stop or Mute. Live shows the source, elapsed time, CV1 battery and connection diagnostics.
+- **Record from CV1 or the phone mic.** Start, stop and mute from the app, or finish one conversation while keeping CV1 listening. Optional reconnection and auto-start respect an explicit Stop or Mute. Live shows the source, elapsed time, CV1 battery, device identity and connection diagnostics.
 - **Keep audio through connection loss.** The mobile outbox retains received audio until the paired server confirms storage. It can deliver ordered parts as one conversation. Next can reopen recent archive cards offline, with audio and full transcripts fetched from the server. See [delivery guarantees and limits](docs/RECORDING_DURABILITY.md).
 - **Follow the live transcript.** Browse incoming text without losing your place. Choose speech and silence settings, show speaker labels where supported, and use live translation with a configured provider.
-- **Review and share saved recordings.** Search the archive and open the matching transcript. Jump to a timestamp, follow the active line during playback, and share audio or text. Edit supported recording fields, name speakers, and organize recordings into folders and emoji categories.
+- **Review and share saved recordings.** Search the archive and open the matching transcript. Jump to a timestamp, follow the active line, change playback speed, seek ten seconds at a time, and share audio or text. Edit supported recording fields, name speakers, and organize recordings into folders and emoji categories.
 - **See what happened during processing.** The archive shows pending recordings, stage outcomes, and failures with recovery guidance. Retry supported failures from the recording. Configure live transcription, final transcription, diarization and summaries separately.
 - **Work with conversations.** Choose summary templates, ask a configured model about a recording or the archive, create tasks with links to source quotes, and work with daily recaps and goals. See the [Next client guide](clients/next/README.md) for server requirements and current limits.
 - **Host your own library.** Run on a Mac or with Docker on CPU or NVIDIA GPU. Pair by Tailscale or authenticated ngrok. A standalone WhisperLiveKit deployment can serve up to four configured sessions. The original Local iPhone client remains available for existing workflows.
 
-The [Next feature comparison](clients/next/FEATURES.md) and [migration ledger](clients/next/README.md#migration-ledger) cover implementation details, device checks, and remaining gaps. See the [full Next change history](https://github.com/skywinder/omi-local/compare/329796d...85b817a) for individual commits.
+The [Next feature comparison](clients/next/FEATURES.md) and [migration ledger](clients/next/README.md#migration-ledger) cover implementation details, device checks, and remaining gaps. See the [full Next change history](https://github.com/skywinder/omi-local/compare/329796d...e6ffaa0) for individual commits.
 
 ## Screenshots
 

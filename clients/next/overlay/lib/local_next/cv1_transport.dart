@@ -28,6 +28,7 @@ sealed class Cv1TransportEvent {
             return Cv1TransportState(Cv1LinkPhase.failed, gen, reason: Cv1LinkReason.incompatible);
           }
           final code = message['code'];
+          final deviceId = message['deviceId'];
           final reason = Cv1LinkReason.values.where((reason) => reason.name == message['reason']).firstOrNull;
           return Cv1TransportState(
             phase,
@@ -35,6 +36,7 @@ sealed class Cv1TransportEvent {
             codec: codec is int ? codec : null,
             reason: reason,
             code: code is int && code >= 0 && code <= 65535 ? code : null,
+            deviceId: deviceId is String && deviceId.isNotEmpty ? deviceId : null,
           );
         }
       case {
@@ -117,12 +119,13 @@ final class Cv1DeviceFound extends Cv1TransportEvent {
 }
 
 final class Cv1TransportState extends Cv1TransportEvent {
-  const Cv1TransportState(this.phase, this.generation, {this.codec, this.reason, this.code});
+  const Cv1TransportState(this.phase, this.generation, {this.codec, this.reason, this.code, this.deviceId});
 
   final Cv1LinkPhase phase;
   final int generation;
   final int? codec, code;
   final Cv1LinkReason? reason;
+  final String? deviceId;
 }
 
 final class Cv1RawAudio extends Cv1TransportEvent {
@@ -254,6 +257,8 @@ class Cv1Connection extends ChangeNotifier {
   int reconnections = 0;
   bool _wasConnected = false;
   String? _selected;
+  String? _linkedDeviceId;
+  String? get linkedDeviceId => _linkedDeviceId;
   final Cv1History history;
   DateTime? _lostAt;
   DateTime? batteryMeasuredAt;
@@ -376,6 +381,7 @@ class Cv1Connection extends ChangeNotifier {
         }
         phase = event.phase;
         _generation = event.generation;
+        _linkedDeviceId = phase == Cv1LinkPhase.ready || phase == Cv1LinkPhase.reconnecting ? event.deviceId : null;
         if (phase == Cv1LinkPhase.ready && event.codec != null) {
           codec = event.codec;
           if (!wasReady) {

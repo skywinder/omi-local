@@ -32,6 +32,7 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
 
   String? selected;
   bool rejectConnection = false;
+  List<Cv1DeviceFound> nearby = const [Cv1DeviceFound('fixture', 'Studio CV1')];
 
   @override
   Stream<Cv1TransportEvent> get events => this;
@@ -50,7 +51,9 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   @override
   Future<void> scan() async {
     emit(Cv1TransportState(Cv1LinkPhase.scanning, generation));
-    emit(const Cv1DeviceFound('fixture', 'Studio CV1'));
+    for (final device in nearby) {
+      emit(device);
+    }
   }
 
   @override
@@ -256,6 +259,93 @@ void main() {
       journal.dispose();
       boundary.dispose();
       await mic.audioSession.close();
+    }
+  });
+
+  testWidgets('Bluetooth shares the capture row and identifies identically named pendants', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 720);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final journal = _Journal();
+    final wire = _Wire()
+      ..nearby = const [
+        Cv1DeviceFound('AA:BB:CC:00:00:01', 'Omi'),
+        Cv1DeviceFound('AA:BB:CC:00:00:02', 'Omi'),
+        Cv1DeviceFound('12345678-1234-1234-1234-5A6B7C8D9E0F', 'Omi'),
+      ];
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        ),
+      );
+      final phone = find.byKey(const ValueKey('next-phone-capture'));
+      final bluetooth = find.byKey(const ValueKey('next-cv1-devices'));
+      final record = find.byKey(const ValueKey('next-cv1-capture'));
+      expect(find.text('Connect Omi'), findsOneWidget);
+      expect(tester.getRect(phone).top, tester.getRect(bluetooth).top);
+      await tester.tap(bluetooth);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Device ID · 000001'), findsOneWidget);
+      final second = find.widgetWithText(ListTile, 'Device ID · 000002');
+      expect(second, findsOneWidget);
+      final peripheralUuid = find.text('Device ID · 5A6B7C');
+      await tester.scrollUntilVisible(peripheralUuid, 90, scrollable: find.byType(Scrollable));
+      expect(peripheralUuid, findsOneWidget);
+      await tester.ensureVisible(second);
+      await tester.tap(second);
+      await tester.pumpAndSettle();
+      expect(wire.selected, 'AA:BB:CC:00:00:02');
+      expect(tester.getRect(record).top, tester.getRect(bluetooth).top);
+      expect(tester.getRect(record).bottom, tester.getRect(bluetooth).bottom);
+      expect(tester.getRect(record).right, lessThan(tester.getRect(bluetooth).left));
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final closing = inputs.close();
+      await tester.pump();
+      await closing;
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
+  testWidgets('the device menu shows the ID restored from a persisted Bluetooth link', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      wire.emit(
+        Cv1TransportEvent.fromMessage({
+          'type': 'state',
+          'phase': 'ready',
+          'generation': 1,
+          'codec': 20,
+          'deviceId': '12345678-1234-1234-1234-5A6B7C8D9E0F',
+        })!,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        ),
+      );
+      expect(wire.selected, isNull);
+      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Device ID · 5A6B7C'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final closing = inputs.close();
+      await tester.pump();
+      await closing;
+      inputs.dispose();
+      journal.dispose();
     }
   });
 
