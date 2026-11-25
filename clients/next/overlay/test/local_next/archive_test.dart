@@ -330,6 +330,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(transcript().currentSegmentId, segment);
     }
+    await tester.tapAt(Offset(bounds.left + 0.75 * bounds.width, bounds.center.dy));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Forward 10 seconds'));
+    await tester.pumpAndSettle();
+    expect(find.text('0:12 / 0:12'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back 10 seconds'));
+    await tester.pumpAndSettle();
+    expect(transcript().currentSegmentId, 'first');
+    await tester.tap(find.text('1.0×'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1.5×'));
+    await tester.pumpAndSettle();
+    expect(find.text('1.5×'), findsOneWidget);
     expect(find.byTooltip('Play'), findsOneWidget);
   });
 

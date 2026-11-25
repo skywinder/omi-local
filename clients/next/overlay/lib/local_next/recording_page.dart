@@ -197,6 +197,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   String? focusedLine;
   int focusRequest = 0;
   AudioPlayer? player;
+  double speed = 1;
   Directory? temp;
   Duration? _initialPosition;
   bool opening = false;
@@ -564,6 +565,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
           final fresh = AudioPlayer();
           try {
             await fresh.setFilePath(file.path);
+            await fresh.setSpeed(speed);
             if (!mounted) return;
             player = fresh;
             temp = folder;
@@ -632,6 +634,15 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     }
   }
 
+  Future<void> _setSpeed(double value) async {
+    try {
+      await player?.setSpeed(value);
+      if (mounted) setState(() => speed = value);
+    } catch (_) {
+      _playFailed();
+    }
+  }
+
   void _playFailed() {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.audioPlaybackUnavailable)));
@@ -668,6 +679,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
           duration: player?.duration ?? estimatedDuration,
           position: _initialPosition ?? Duration(milliseconds: (seconds * 1000).round()),
           playing: playing,
+          speed: speed,
+          onSpeed: opening ? null : _setSpeed,
           onToggle: opening
               ? null
               : () async {
