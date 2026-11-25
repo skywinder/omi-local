@@ -134,8 +134,8 @@ library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the Omi Bluetooth control sits beside CV1 recording.
-Nearby devices show a short Bluetooth ID so identically named pendants can be
-identified before connecting.
+The Bluetooth menu shows short IDs for nearby and connected devices so
+identically named pendants can be distinguished.
 
 Device Diagnostics reads charge and signal measurements from the wearable.
 The recording screen shows the connected CV1's battery percentage after its

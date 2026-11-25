@@ -137,6 +137,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         phase = value
         val state = mutableMapOf<String, Any>("type" to "state", "phase" to phase, "generation" to generation)
         codec?.takeIf { phase == "ready" }?.let { state["codec"] = it }
+        target?.takeIf { phase == "ready" || phase == "reconnecting" }?.let { state["deviceId"] = it }
         reason?.let { state["reason"] = it }
         code?.let { state["code"] = it }
         sink?.success(state)

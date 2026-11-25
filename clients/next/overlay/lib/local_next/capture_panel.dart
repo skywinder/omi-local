@@ -818,6 +818,7 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
         builder: (context, _) {
           final l = context.l10n;
           final selected = connection.phase == Cv1LinkPhase.ready || connection.phase == Cv1LinkPhase.reconnecting;
+          final linkedId = connection.linkedDeviceId;
           final scanned = [for (final device in connection.devices) (device: device, shortId: _shortCv1Id(device.id))];
           final shortIdCounts = <String, int>{};
           for (final entry in scanned) {
@@ -830,6 +831,7 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
                 ListTile(
                   leading: const Icon(Icons.bluetooth_connected),
                   title: const Text('Omi CV1'),
+                  subtitle: linkedId == null ? null : Text('${l.deviceId} · ${_shortCv1Id(linkedId)}'),
                   trailing: TextButton(
                     onPressed: () async {
                       if (inputs._closed) return;

@@ -314,6 +314,41 @@ void main() {
     }
   });
 
+  testWidgets('the device menu shows the ID restored from a persisted Bluetooth link', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      wire.emit(
+        Cv1TransportEvent.fromMessage({
+          'type': 'state',
+          'phase': 'ready',
+          'generation': 1,
+          'codec': 20,
+          'deviceId': '12345678-1234-1234-1234-5A6B7C8D9E0F',
+        })!,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        ),
+      );
+      expect(wire.selected, isNull);
+      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Device ID · 5A6B7C'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final closing = inputs.close();
+      await tester.pump();
+      await closing;
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
   testWidgets('a paired CV1 waits for the phone seal, respects mute and leaves phone recording on reconnect', (
     tester,
   ) async {
