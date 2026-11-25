@@ -1731,12 +1731,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'THIẾT BỊ',
-      one: 'THIẾT BỊ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'THIẾT BỊ', one: 'THIẾT BỊ');
     return 'ĐÃ TÌM THẤY $count $_temp0 GẦN ĐÂY';
   }
 
@@ -9210,11 +9205,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count bản ghi sẵn sàng để đồng bộ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count bản ghi sẵn sàng để đồng bộ');
     return '$_temp0';
   }
 
@@ -9226,11 +9217,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count bản ghi cần chú ý',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count bản ghi cần chú ý');
     return '$_temp0';
   }
 
@@ -9956,22 +9943,22 @@ class AppLocalizationsVi extends AppLocalizations {
   String get localMacServers => 'Máy chủ đã lưu';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Dịch trực tiếp';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Dịch sang';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Máy chủ đã kết nối hiển thị bản dịch dưới bản gốc. Mô hình tóm tắt được dùng tự động trừ khi bạn chọn mô hình khác trong thư viện máy chủ: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Chưa cấu hình mô hình dịch trên máy chủ đã kết nối. Mở thư viện của máy chủ: Settings → Summarization hoặc Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Không thể dịch trên máy chủ đã kết nối. Kiểm tra thư viện của máy chủ: Settings → Translation.';
 
   @override
   String get diarization => 'Phân tách người nói';
@@ -9992,4 +9979,36 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Phân tách người nói thất bại';
+
+  @override
+  String get localProcessingHelp =>
+      'Nhãn người nói trực tiếp đến từ nhà cung cấp Live. Tính năng phân tách người nói bên dưới xử lý bản ghi đã hoàn tất.';
+
+  @override
+  String get localProcessingApplyHelp => 'Dừng ghi âm trước khi chuyển. Các máy chủ đã chọn sẽ nhận âm thanh của bạn.';
+
+  @override
+  String get localProcessingKeyHelp => 'Để trống để giữ khóa đã lưu. Máy chủ khác cần khóa riêng.';
+
+  @override
+  String get localProcessingUnsupported => 'Cập nhật máy chủ đã ghép nối để sửa các cài đặt này.';
+
+  @override
+  String get localProcessingFinished => 'Bản ghi đã hoàn tất';
+
+  @override
+  String get localProcessingProbe => 'Kiểm tra kết nối';
+
+  @override
+  String get localProcessingPending => 'Các thay đổi đã lưu chưa có hiệu lực. Nhấn Xác nhận để áp dụng.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Cập nhật máy chủ để đồng bộ âm thanh. Âm thanh đã lưu trên điện thoại được giữ lại.';
+
+  @override
+  String get liveTranslationBidirectional => 'Dịch hai chiều';
+
+  @override
+  String get liveTranslationPairHelp => 'Nhận diện ngôn ngữ của từng câu và dịch sang ngôn ngữ còn lại đã chọn.';
 }

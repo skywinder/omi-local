@@ -1728,12 +1728,7 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ENHETER',
-      one: 'ENHET',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ENHETER', one: 'ENHET');
     return '$count $_temp0 HITTAD(E) I NÄRHETEN';
   }
 
@@ -9965,22 +9960,22 @@ class AppLocalizationsSv extends AppLocalizations {
   String get localMacServers => 'Sparade servrar';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Direktöversättning';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Översätt till';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Den anslutna servern visar översättningen under originalet. Sammanfattningsmodellen används automatiskt om du inte väljer en annan i serverns bibliotek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Ingen översättningsmodell har konfigurerats på den anslutna servern. Öppna biblioteket: Settings → Summarization eller Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Översättning är inte tillgänglig på den anslutna servern. Kontrollera biblioteket: Settings → Translation.';
 
   @override
   String get diarization => 'Talarindelning';
@@ -10001,4 +9996,37 @@ class AppLocalizationsSv extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Talarindelning misslyckades';
+
+  @override
+  String get localProcessingHelp =>
+      'Talaretiketter i realtid kommer från Live-leverantören. Diariseringen nedan bearbetar färdiga inspelningar.';
+
+  @override
+  String get localProcessingApplyHelp => 'Stoppa inspelningen innan du byter. De valda servrarna tar emot ditt ljud.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Ett tomt fält behåller den sparade nyckeln. En annan server kräver sin egen nyckel.';
+
+  @override
+  String get localProcessingUnsupported => 'Uppdatera den parkopplade servern för att ändra dessa inställningar.';
+
+  @override
+  String get localProcessingFinished => 'Färdiga inspelningar';
+
+  @override
+  String get localProcessingProbe => 'Testa anslutning';
+
+  @override
+  String get localProcessingPending => 'Sparade ändringar är inte aktiva. Tryck på Bekräfta för att tillämpa dem.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Uppdatera servern för att synkronisera ljud. Ljud som sparats på telefonen behålls.';
+
+  @override
+  String get liveTranslationBidirectional => 'Översättning åt båda hållen';
+
+  @override
+  String get liveTranslationPairHelp => 'Identifiera språket i varje mening och översätt till det andra valda språket.';
 }

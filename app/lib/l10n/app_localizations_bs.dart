@@ -1726,12 +1726,7 @@ class AppLocalizationsBs extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8493,12 +8488,7 @@ class AppLocalizationsBs extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9990,22 +9980,22 @@ class AppLocalizationsBs extends AppLocalizations {
   String get localMacServers => 'Sačuvani serveri';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Prevođenje uživo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Prevedi na';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Povezani server prikazuje prijevod ispod originala. Automatski se koristi model za sažimanje, osim ako odaberete drugi u biblioteci servera: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Na povezanom serveru nije podešen model za prevođenje. Otvorite njegovu biblioteku: Settings → Summarization ili Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Prevođenje nije dostupno na povezanom serveru. Provjerite njegovu biblioteku: Settings → Translation.';
 
   @override
   String get diarization => 'Dijarizacija';
@@ -10026,4 +10016,36 @@ class AppLocalizationsBs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Dijarizacija nije uspjela';
+
+  @override
+  String get localProcessingHelp =>
+      'Oznake govornika uživo dolaze od Live pružaoca usluge. Dijarizacija ispod obrađuje završene snimke.';
+
+  @override
+  String get localProcessingApplyHelp => 'Zaustavite snimanje prije prebacivanja. Odabrani serveri primaju vaš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prazno polje zadržava sačuvani ključ. Drugi server zahtijeva svoj ključ.';
+
+  @override
+  String get localProcessingUnsupported => 'Ažurirajte upareni server da uredite ove postavke.';
+
+  @override
+  String get localProcessingFinished => 'Završeni snimci';
+
+  @override
+  String get localProcessingProbe => 'Provjeri vezu';
+
+  @override
+  String get localProcessingPending => 'Sačuvane promjene nisu aktivne. Dodirnite Potvrdi da ih primijenite.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ažurirajte server za sinhronizaciju zvuka. Zvuk sačuvan na telefonu ostaje sačuvan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Dvosmjerni prijevod';
+
+  @override
+  String get liveTranslationPairHelp => 'Prepoznaj jezik svake rečenice i prevedi je na drugi odabrani jezik.';
 }

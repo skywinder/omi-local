@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional, TypedDict
 
+from google.api_core.exceptions import AlreadyExists
 from google.cloud import firestore
 from google.cloud.firestore_v1 import FieldFilter, transactional
 from ._client import db, delete_collection_recursive, document_id_from_seed, get_firestore_client
@@ -904,6 +905,21 @@ def create_person(uid: str, data: dict):
     people_ref = db.collection('users').document(uid).collection('people')
     people_ref.document(data['id']).set(data)
     return data
+
+
+def get_or_create_local_person(uid: str, name: str):
+    existing = get_person_by_name(uid, name)
+    if existing:
+        return existing
+    identifier = document_id_from_seed(f'user:{uid}:local-person:{name}')
+    ref = db.collection('users').document(uid).collection('people').document(identifier)
+    now = datetime.now(timezone.utc)
+    entry = {'id': identifier, 'name': name, 'created_at': now, 'updated_at': now}
+    try:
+        ref.create(entry, timeout=6)
+    except AlreadyExists:
+        return ref.get(timeout=6).to_dict() or entry
+    return entry
 
 
 def get_person(uid: str, person_id: str):

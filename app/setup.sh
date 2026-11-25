@@ -5,7 +5,7 @@
 # Prerequisites (stable versions, use these or higher):
 #
 # Common for all developers:
-# - Flutter SDK (v3.44.5)
+# - Flutter SDK: exact version from environment.flutter in pubspec.yaml
 # - Opus Codec: https://opus-codec.org
 #
 # For iOS Developers:
@@ -409,6 +409,25 @@ function _version_at_least() {
   [ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -n1)" = "$want" ]
 }
 
+# Shared by Profile setup and the prepared Debug launcher.
+function check_flutter_version() {
+  local version required_flutter
+  required_flutter=$(awk '
+    /^environment:/ { in_environment=1; next }
+    in_environment && /^[^[:space:]#]/ { exit }
+    in_environment && $1 == "flutter:" { gsub(/"/, "", $2); print $2; exit }
+  ' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pubspec.yaml") || return 1
+  if ! [[ "$required_flutter" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo 'В pubspec.yaml должна быть указана точная версия environment.flutter.' >&2
+    return 1
+  fi
+  if ! version=$(flutter --version 2>/dev/null) || ! [[ "$version" =~ Flutter[[:space:]]+([^[:space:]]+) ]] || [[ "${BASH_REMATCH[1]}" != "$required_flutter" ]]; then
+    echo "Нужен Flutter $required_flutter из app/pubspec.yaml в PATH. Установка: https://docs.flutter.dev/install" >&2
+    echo 'Выберите эту версию SDK; после изменения PATH откройте новый Terminal и повторите проверку.' >&2
+    return 1
+  fi
+}
+
 # Named checks with remedies, matching the harness's own pattern
 # (scripts/dev-harness's `Cannot start; missing prerequisites:` block) instead
 # of letting a missing/outdated tool surface as a confusing downstream failure
@@ -428,22 +447,7 @@ function check_ios_prerequisites() {
     echo 'Не найден iOS SDK. В Xcode → Settings → Components установите поддержку iOS.' >&2
     return 1
   fi
-  if ! command -v flutter >/dev/null 2>&1; then
-    echo 'Нужен Flutter 3.44.5 или новее в PATH. Установка: https://docs.flutter.dev/install' >&2
-    echo 'Можно использовать SDK в .local/toolchains/flutter: установщик найдёт его автоматически.' >&2
-    return 1
-  fi
-  if ! version=$(flutter --version 2>&1); then
-    echo 'Flutter найден, но не запускается. Диагностика SDK:' >&2
-    printf '%s\n' "$version" >&2
-    return 1
-  fi
-  if ! [[ "$version" =~ Flutter[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 3.44.5; then
-    echo 'Нужен Flutter 3.44.5 или новее. Текущий SDK:' >&2
-    printf '%s\n' "$version" >&2
-    echo 'Для обновления: flutter upgrade.' >&2
-    return 1
-  fi
+  check_flutter_version || return 1
   if ! version=$(pod --version 2>/dev/null) || ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! _version_at_least "$version" 1.16.2; then
     echo 'Нужен рабочий CocoaPods 1.16.2 или новее: brew install cocoapods (обновление: brew upgrade cocoapods).' >&2
     echo 'Если Homebrew ещё не установлен, сначала запустите start.command из корня проекта.' >&2
@@ -640,7 +644,22 @@ function prepare_ios_installation() {
   echo 'Подготовка к установке на iPhone проверена.' >&2
 }
 
+function install_personal_profile() {
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  PYTHONPATH="$repo_root/scripts/dev-harness" OMI_IOS_DEVICE_ID="$OMI_SELECTED_IOS_DEVICE" \
+    "${PYTHON:-$repo_root/backend/.venv/bin/python}" -m dev_harness.launch_iphone \
+    --build-profile --env "$repo_root/.env" \
+    --app "$repo_root/app/build/ios/Profile-dev-iphoneos/Runner.app" -- "$@"
+}
+
 function run_build_ios() {
+  # Provision only from private host files after artifact installation. No
+  # inherited launch credential may reach pub, CocoaPods or Xcode children.
+  unset OMI_LOCAL_SERVER_PRESETS_B64 DEVICECTL_CHILD_OMI_LOCAL_SERVER_PRESETS_B64 \
+    OMI_LOCAL_APP_KEY OMI_LOCAL_MAC_KEY OMI_LOCAL_MAC_URL NGROK_AUTHTOKEN \
+    DEVICECTL_CHILD_OMI_LOCAL_APP_KEY DEVICECTL_CHILD_OMI_LOCAL_MAC_KEY \
+    DEVICECTL_CHILD_OMI_LOCAL_MAC_URL DEVICECTL_CHILD_NGROK_AUTHTOKEN
   local flavor="${1:-dev}"
   shift || true
   if [[ "$flavor" != 'dev' ]]; then
@@ -686,7 +705,6 @@ function run_build_ios() {
     flutter_args+=("$arg")
   done
   prepare_ios_installation || return 1
-  local device_id="$OMI_SELECTED_IOS_DEVICE"
   personal_bundle_id >/dev/null || return 1
   write_personal_team_config \
     && prepare_mobile_build_env "$flavor" "$api_base_url" offline \
@@ -698,7 +716,7 @@ function run_build_ios() {
     && bash scripts/apply_personal_ios_plugin_overlay.sh \
     && pushd ios && pod install --repo-update && popd \
     && dart run build_runner build \
-    && flutter run --profile --flavor "$flavor" -d "$device_id" "${flutter_args[@]}" 2>&1 \
+    && install_personal_profile "${flutter_args[@]}" 2>&1 \
       | sed -u "s/${OMI_APPLE_TEAM_ID}/<redacted-team>/g"
 }
 

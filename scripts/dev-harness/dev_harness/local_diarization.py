@@ -48,12 +48,17 @@ def reconcile(segments, turns):
                            'words': [{**word, 'speaker': label} for word in words]})
             continue
         labels = [speaker(word) for word in words]
-        for index, (word, label) in enumerate(zip(words, labels)):
+        neighbour = next((label for word, label in zip(words, labels) if word['end'] > word['start']),
+                         speaker(segment))
+        for index, word in enumerate(words):
             # Whisper emits zero-length fillers that overlap no turn. They cannot
-            # own a speaker segment, so they stay with the neighbouring words.
-            if label is None and word['start'] == word['end']:
-                labels[index] = (next((l for l in reversed(labels[:index]) if l), None)
-                                 or next((l for l in labels[index + 1:] if l), None) or speaker(segment))
+            # own a speaker segment, so they stay with the adjacent timed word,
+            # including its unknown speaker. Skipping unknown words could create
+            # an isolated zero-length group with an earlier sentence timestamp.
+            if word['start'] == word['end']:
+                labels[index] = neighbour
+            else:
+                neighbour = labels[index]
         groups = []
         for word, label in zip(words, labels):
             word = {**word, 'speaker': label}

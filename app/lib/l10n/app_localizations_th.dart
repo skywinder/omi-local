@@ -1718,12 +1718,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'อุปกรณ์',
-      one: 'อุปกรณ์',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'อุปกรณ์', one: 'อุปกรณ์');
     return 'พบ $count $_temp0 ในบริเวณใกล้เคียง';
   }
 
@@ -9163,11 +9158,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'การบันทึก $count รายการพร้อมซิงค์',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'การบันทึก $count รายการพร้อมซิงค์');
     return '$_temp0';
   }
 
@@ -9179,11 +9170,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'การบันทึก $count รายการต้องการความสนใจ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'การบันทึก $count รายการต้องการความสนใจ');
     return '$_temp0';
   }
 
@@ -9756,12 +9743,7 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ฟรี $count เดือน',
-      one: 'ฟรี 1 เดือน',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ฟรี $count เดือน', one: 'ฟรี 1 เดือน');
     return '$_temp0';
   }
 
@@ -9904,22 +9886,22 @@ class AppLocalizationsTh extends AppLocalizations {
   String get localMacServers => 'เซิร์ฟเวอร์ที่บันทึกไว้';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'การแปลสด';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'แปลเป็น';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'เซิร์ฟเวอร์ที่เชื่อมต่อจะแสดงคำแปลใต้ข้อความต้นฉบับ โดยใช้โมเดลสรุปโดยอัตโนมัติ เว้นแต่จะเลือกโมเดลอื่นในคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'ยังไม่ได้ตั้งค่าโมเดลแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อ เปิดคลังของเซิร์ฟเวอร์: Settings → Summarization หรือ Translation → Save → Use';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'ไม่สามารถแปลบนเซิร์ฟเวอร์ที่เชื่อมต่อได้ ตรวจสอบคลังของเซิร์ฟเวอร์: Settings → Translation';
 
   @override
   String get diarization => 'การแยกผู้พูด';
@@ -9940,4 +9922,36 @@ class AppLocalizationsTh extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'การแยกผู้พูดล้มเหลว';
+
+  @override
+  String get localProcessingHelp =>
+      'ป้ายผู้พูดแบบสดมาจากผู้ให้บริการ Live การแยกผู้พูดด้านล่างจะประมวลผลการบันทึกที่เสร็จแล้ว';
+
+  @override
+  String get localProcessingApplyHelp => 'หยุดบันทึกก่อนสลับ เซิร์ฟเวอร์ที่เลือกจะได้รับเสียงของคุณ';
+
+  @override
+  String get localProcessingKeyHelp => 'เว้นว่างเพื่อเก็บคีย์เดิม เซิร์ฟเวอร์อื่นต้องใช้คีย์ของตนเอง';
+
+  @override
+  String get localProcessingUnsupported => 'อัปเดตเซิร์ฟเวอร์ที่จับคู่เพื่อแก้ไขการตั้งค่าเหล่านี้';
+
+  @override
+  String get localProcessingFinished => 'การบันทึกที่เสร็จแล้ว';
+
+  @override
+  String get localProcessingProbe => 'ทดสอบการเชื่อมต่อ';
+
+  @override
+  String get localProcessingPending => 'การเปลี่ยนแปลงที่บันทึกไว้ยังไม่ทำงาน แตะยืนยันเพื่อนำไปใช้';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'อัปเดตเซิร์ฟเวอร์เพื่อซิงค์เสียง เสียงที่บันทึกไว้ในโทรศัพท์จะยังคงอยู่';
+
+  @override
+  String get liveTranslationBidirectional => 'การแปลสองทาง';
+
+  @override
+  String get liveTranslationPairHelp => 'ตรวจจับภาษาของแต่ละวลีและแปลเป็นอีกภาษาที่เลือกไว้';
 }

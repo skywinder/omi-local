@@ -1731,12 +1731,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8519,12 +8514,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9859,12 +9849,7 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count నెలలు ఉచితం',
-      one: '1 నెల ఉచితం',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count నెలలు ఉచితం', one: '1 నెల ఉచితం');
     return '$_temp0';
   }
 
@@ -10010,22 +9995,22 @@ class AppLocalizationsTe extends AppLocalizations {
   String get localMacServers => 'సేవ్ చేసిన సర్వర్లు';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'ప్రత్యక్ష అనువాదం';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'ఈ భాషలోకి అనువదించండి';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'అనుసంధానించిన సర్వర్ అసలు వచనం కింద అనువాదాన్ని చూపిస్తుంది. సర్వర్ లైబ్రరీలో వేరే మోడల్ ఎంచుకోకపోతే సారాంశ మోడల్ స్వయంచాలకంగా ఉపయోగించబడుతుంది: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'అనుసంధానించిన సర్వర్‌లో అనువాద మోడల్ అమర్చలేదు. దాని లైబ్రరీ తెరవండి: Settings → Summarization లేదా Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'అనుసంధానించిన సర్వర్‌లో అనువాదం అందుబాటులో లేదు. దాని లైబ్రరీ చూడండి: Settings → Translation.';
 
   @override
   String get diarization => 'వక్తల విభజన';
@@ -10046,4 +10031,37 @@ class AppLocalizationsTe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'వక్తల విభజన విఫలమైంది';
+
+  @override
+  String get localProcessingHelp =>
+      'ప్రత్యక్ష వక్త లేబుల్‌లు Live ప్రొవైడర్ నుంచి వస్తాయి. దిగువ వక్త విభజన పూర్తయిన రికార్డింగ్‌లను ప్రాసెస్ చేస్తుంది.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'మార్చే ముందు రికార్డింగ్ ఆపండి. ఎంచుకున్న సర్వర్‌లు మీ ఆడియోను స్వీకరిస్తాయి.';
+
+  @override
+  String get localProcessingKeyHelp => 'ఖాళీగా ఉంచితే సేవ్ చేసిన కీ అలాగే ఉంటుంది. వేరే సర్వర్‌కు దాని స్వంత కీ అవసరం.';
+
+  @override
+  String get localProcessingUnsupported => 'ఈ సెట్టింగ్‌లను మార్చడానికి జత చేసిన సర్వర్‌ను అప్‌డేట్ చేయండి.';
+
+  @override
+  String get localProcessingFinished => 'పూర్తయిన రికార్డింగ్‌లు';
+
+  @override
+  String get localProcessingProbe => 'కనెక్షన్‌ను పరీక్షించండి';
+
+  @override
+  String get localProcessingPending => 'సేవ్ చేసిన మార్పులు ఇంకా అమలులో లేవు. వర్తింపజేయడానికి నిర్ధారించు నొక్కండి.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'ఆడియోను సమకాలీకరించడానికి సర్వర్‌ను నవీకరించండి. ఫోన్‌లో సేవ్ చేసిన ఆడియో అలాగే ఉంటుంది.';
+
+  @override
+  String get liveTranslationBidirectional => 'రెండు దిశల్లో అనువాదం';
+
+  @override
+  String get liveTranslationPairHelp => 'ప్రతి వాక్యం భాషను గుర్తించి, ఎంచుకున్న మరో భాషలోకి అనువదించండి.';
 }

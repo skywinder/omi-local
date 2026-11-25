@@ -10,6 +10,7 @@ void main() {
   test('local transcript stages parse from external data and survive a round trip', () {
     final data = ConversationExternalData.fromJson({
       'text': '',
+      'local_recording': {'status': 'pending', 'duration_seconds': 65},
       'local_transcript': {
         'version': 1,
         'profile': {'engine': 'openai-compatible'},
@@ -26,6 +27,8 @@ void main() {
     expect(stages.diarization!.speakers, 2);
     expect(stages.stt!.provider, 'GPU whisper');
     expect(data.toJson()['local_transcript'], isA<Map>());
+    expect(ConversationExternalData.fromJson(data.toJson()).localRecording,
+        {'status': 'pending', 'duration_seconds': 65});
     expect(ConversationExternalData.fromJson(data.toJson()).localTranscriptStages!.diarization!.speakers, 2);
   });
 

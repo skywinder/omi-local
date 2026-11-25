@@ -1725,12 +1725,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8482,12 +8477,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9824,12 +9814,7 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count ماہ مفت',
-      one: '1 ماہ مفت',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count ماہ مفت', one: '1 ماہ مفت');
     return '$_temp0';
   }
 
@@ -9973,22 +9958,21 @@ class AppLocalizationsUr extends AppLocalizations {
   String get localMacServers => 'محفوظ کردہ سرورز';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'براہ راست ترجمہ';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'اس زبان میں ترجمہ کریں';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'منسلک سرور اصل متن کے نیچے ترجمہ دکھاتا ہے۔ خلاصے کا ماڈل خود بخود استعمال ہوتا ہے، جب تک آپ سرور کی لائبریری میں دوسرا ماڈل نہ چنیں: Settings → Translation۔';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'منسلک سرور پر ترجمے کا ماڈل ترتیب نہیں دیا گیا۔ اس کی لائبریری کھولیں: Settings → Summarization یا Translation → Save → Use۔';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'منسلک سرور پر ترجمہ دستیاب نہیں۔ اس کی لائبریری دیکھیں: Settings → Translation۔';
 
   @override
   String get diarization => 'مقررین کی شناخت';
@@ -10009,4 +9993,37 @@ class AppLocalizationsUr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'مقررین کی شناخت ناکام';
+
+  @override
+  String get localProcessingHelp =>
+      'لائیو بولنے والوں کے لیبل Live فراہم کنندہ سے آتے ہیں۔ نیچے بولنے والوں کی علیحدگی مکمل ریکارڈنگز پر کارروائی کرتی ہے۔';
+
+  @override
+  String get localProcessingApplyHelp => 'تبدیل کرنے سے پہلے ریکارڈنگ روکیں۔ منتخب سرورز آپ کی آڈیو وصول کرتے ہیں۔';
+
+  @override
+  String get localProcessingKeyHelp => 'خالی چھوڑنے سے محفوظ کلید برقرار رہتی ہے۔ دوسرے سرور کو اپنی کلید درکار ہے۔';
+
+  @override
+  String get localProcessingUnsupported => 'ان ترتیبات میں ترمیم کرنے کے لیے منسلک سرور اپ ڈیٹ کریں۔';
+
+  @override
+  String get localProcessingFinished => 'مکمل ریکارڈنگز';
+
+  @override
+  String get localProcessingProbe => 'کنکشن جانچیں';
+
+  @override
+  String get localProcessingPending =>
+      'محفوظ کردہ تبدیلیاں ابھی فعال نہیں ہیں۔ لاگو کرنے کے لیے تصدیق کریں پر ٹیپ کریں۔';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'آڈیو سنک کرنے کے لیے سرور اپ ڈیٹ کریں۔ فون پر محفوظ آڈیو برقرار رہتی ہے۔';
+
+  @override
+  String get liveTranslationBidirectional => 'دو طرفہ ترجمہ';
+
+  @override
+  String get liveTranslationPairHelp => 'ہر جملے کی زبان پہچانیں اور اسے دوسری منتخب زبان میں ترجمہ کریں۔';
 }

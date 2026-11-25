@@ -13,6 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import config, local_stt, safety
+from .local_pipeline import failure_code
 
 POLL_SECONDS = 2
 MAX_ATTEMPTS = 3
@@ -182,10 +183,19 @@ class Worker:
             self.save()
 
         for key, job in self.jobs.items():
+            # A local operator can requeue one exhausted capture with its original profile.
+            retry = paths[key] / '.retry-processing'
+            if retry.is_file() and not retry.is_symlink():
+                if job['state'] == 'failed':
+                    job.update(state='pending', attempts=0, retry_at=0)
+                    self.save()
+                retry.unlink(missing_ok=True)
             if job['state'] != 'pending' or job['retry_at'] > clock():
                 continue
-            job.update(state='processing', attempts=job['attempts'] + 1)
+            job.pop('failure', None)
+            job.update(state='processing', attempts=job['attempts'] + 1, attempt_started_at=time.time())
             self.save()
+            stage = 'prepare'
             try:
                 # Model settings stay pinned; cache provenance must describe the runtime actually used.
                 profile = dict(job['profile'])
@@ -196,6 +206,7 @@ class Worker:
                     profile.setdefault('diarization_model', local_stt.EngineConfig().diarization_model)
                 engine = local_stt.EngineConfig.load(self.cfg, profile=profile)
                 job['profile'] = engine.profile()
+                stage = None  # The newest stage checkpoint now owns the stage.
                 result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
                 if result != 0:
                     raise local_stt.TranscriptionError('Local transcription failed')
@@ -208,11 +219,17 @@ class Worker:
                 if isinstance(error, KeyboardInterrupt):
                     raise
             except Exception as error:
+                diagnostic = failure_code(error)
+                if diagnostic == 'unknown' and stage == 'prepare' and isinstance(error, ValueError):
+                    diagnostic = 'configuration'
+                job['failure'] = {'code': diagnostic}
+                if failed_stage := getattr(error, 'diagnostic_stage', None) or stage:
+                    job['failure']['stage'] = failed_stage
                 job.update(state='failed' if job['attempts'] >= MAX_ATTEMPTS else 'pending',
                            retry_at=clock() + 60 * job['attempts'])
                 self.save()
                 print(json.dumps({'transcription_job': job['state'], 'attempt': job['attempts'],
-                                  'error_type': type(error).__name__}), flush=True)
+                                  'error_type': type(error).__name__, 'error_code': diagnostic}), flush=True)
             else:
                 job.update(state='completed', retry_at=0)
                 self.save()

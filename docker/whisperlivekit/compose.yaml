@@ -1,19 +1,17 @@
 # Standalone WhisperLiveKit live-STT server for the omiloc "external" Live provider.
 # Runs beside (not inside) the omiloc stack on an NVIDIA host. Setup:
-#   git clone --branch v0.2.26 --recurse-submodules https://github.com/QuentinFuxa/WhisperLiveKit.git
-#   cp compose.yaml .env  (WLK_BIND_ADDRESS = the host Tailscale IPv4)
+#   cp env.example .env  (WLK_BIND_ADDRESS = the host Tailscale IPv4)
 #   docker compose up -d --build
 # omiloc: Settings → Live STT → external → ws://<WLK_BIND_ADDRESS>:<WLK_PORT>/asr
 # --pcm-input is required: omiloc streams raw PCM16 mono 16 kHz and expects useAudioWorklet.
 name: sky-livekit
 services:
   wlk:
-    build:
-      context: ./WhisperLiveKit
-      args:
-        EXTRAS: cu129
-    image: sky-whisperlivekit:0.2.26
+    build: .
+    image: omiloc-whisperlivekit:0.2.26-concurrent
     pull_policy: never
+    environment:
+      WLK_MAX_SESSIONS: '${WLK_MAX_SESSIONS:-2}'
     command:
       - --model
       - ${WLK_MODEL:-large-v3-turbo}

@@ -1731,12 +1731,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'PERANGKAT',
-      one: 'PERANGKAT',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'PERANGKAT', one: 'PERANGKAT');
     return '$count $_temp0 DITEMUKAN DI SEKITAR';
   }
 
@@ -9219,11 +9214,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rekaman siap disinkronkan',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rekaman siap disinkronkan');
     return '$_temp0';
   }
 
@@ -9235,11 +9226,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rekaman perlu perhatian',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rekaman perlu perhatian');
     return '$_temp0';
   }
 
@@ -9972,22 +9959,22 @@ class AppLocalizationsId extends AppLocalizations {
   String get localMacServers => 'Server tersimpan';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Terjemahkan ke';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Server yang terhubung menampilkan terjemahan di bawah teks asli. Model ringkasan digunakan otomatis kecuali Anda memilih model lain di pustaka server: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Belum ada model terjemahan di server yang terhubung. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Terjemahan tidak tersedia di server yang terhubung. Periksa pustakanya: Settings → Translation.';
 
   @override
   String get diarization => 'Pemisahan pembicara';
@@ -10008,4 +9995,37 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan pembicara gagal';
+
+  @override
+  String get localProcessingHelp =>
+      'Label pembicara langsung berasal dari penyedia Live. Diarisasi di bawah memproses rekaman yang selesai.';
+
+  @override
+  String get localProcessingApplyHelp => 'Hentikan perekaman sebelum beralih. Server yang dipilih menerima audio Anda.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Kosongkan untuk mempertahankan kunci tersimpan. Server lain memerlukan kuncinya sendiri.';
+
+  @override
+  String get localProcessingUnsupported => 'Perbarui server yang dipasangkan untuk mengedit pengaturan ini.';
+
+  @override
+  String get localProcessingFinished => 'Rekaman selesai';
+
+  @override
+  String get localProcessingProbe => 'Uji koneksi';
+
+  @override
+  String get localProcessingPending => 'Perubahan tersimpan belum aktif. Ketuk Konfirmasi untuk menerapkan.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Perbarui server untuk menyinkronkan audio. Audio yang tersimpan di ponsel tetap disimpan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua arah';
+
+  @override
+  String get liveTranslationPairHelp => 'Deteksi bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

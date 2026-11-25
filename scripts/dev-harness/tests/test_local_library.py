@@ -80,6 +80,22 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+@pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [
+    ('phone', {'phone_platform': 'android', 'phone_model': 'Test Pixel'}, 'Микрофон телефона', 'Android · Test Pixel'),
+    ('phone', {}, 'Микрофон телефона', ''),
+    ('omi', {'phone_platform': 'ios', 'phone_model': 'iPhone Test', 'wearable_name': 'Upstairs'}, 'Omi · Upstairs', 'iPhone Test'),
+])
+def test_catalogue_and_detail_include_recording_origin(library, source, origin, expected_source, expected_phone):
+    metadata_path = library.captures / 'synthetic-session' / 'metadata.json'
+    metadata = json.loads(metadata_path.read_text())
+    metadata_path.write_text(json.dumps({**metadata, 'source': source, 'origin': origin}))
+    record, = json.loads(request(library, '/api/recordings')[2])['recordings']
+    detail = json.loads(request(library, f'/api/recordings/{record["id"]}')[2])
+    for item in (record, detail):
+        assert item['source'] == expected_source
+        assert item['phone'] == expected_phone
+
+
 def test_pipeline_projection_keeps_partial_transcript_and_safe_summary(library):
     folder = library.transcripts / 'result'
     raw = folder / 'audio.json'
@@ -411,6 +427,7 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
         assert str(req.url) == 'http://127.0.0.1:20000/v1/local/preview'
         return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
             'live_transcript': {'state': 'streaming', 'updates': 1},
+            'diarization': {'state': 'labeled', 'labeled_segments': 2},
             'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
     factory = httpx.Client
     def client(**kwargs):
@@ -423,6 +440,7 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
     assert status == 200 and headers['Cache-Control'] == 'no-store'
     data = json.loads(body)
     assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert data['diarization'] == {'state': 'labeled', 'labeled_segments': 2}
     assert b'synthetic-private-key' not in body
     assert 'Синтетический черновик' not in json.dumps(data['events'], ensure_ascii=False)
     assert 'text' not in runtime.previous['sessions'][0]
@@ -468,6 +486,7 @@ def test_runtime_final_timeout_preserves_healthy_live_draft(library, monkeypatch
         assert req.extensions['timeout']['read'] == 2
         return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
             'live_transcript': {'state': 'streaming', 'updates': 1},
+            'diarization': {'state': 'labeled', 'labeled_segments': 2},
             'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
 
     factory = httpx.Client
@@ -478,6 +497,7 @@ def test_runtime_final_timeout_preserves_healthy_live_draft(library, monkeypatch
     assert status == 200 and data['backend'] == 'ready'
     assert data['live_transcript']['state'] == 'streaming'
     assert data['sessions'][0]['text'] == 'Синтетический черновик'
+    assert data['diarization'] == {'state': 'labeled', 'labeled_segments': 2}
     assert data['final_stt']['state'] == 'unavailable'
     assert data['final_stt']['provider'] == 'Argmax · WhisperKit'
     assert b'synthetic-private-final-error' not in body

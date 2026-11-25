@@ -1713,12 +1713,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'أجهزة',
-      one: 'جهاز',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'أجهزة', one: 'جهاز');
     return '$count $_temp0 تم العثور عليها بالقرب منك';
   }
 
@@ -9903,22 +9898,21 @@ class AppLocalizationsAr extends AppLocalizations {
   String get localMacServers => 'الخوادم المحفوظة';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'الترجمة المباشرة';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'الترجمة إلى';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'يترجم الخادم المتصل ويعرض الترجمة أسفل النص الأصلي. يُستخدم نموذج التلخيص تلقائيًا ما لم تختَر نموذج ترجمة في مكتبة الخادم: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'لم يُضبط نموذج ترجمة على الخادم المتصل. افتح مكتبته: Settings → Summarization أو Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'الترجمة غير متاحة على الخادم المتصل. راجع مكتبته: Settings → Translation.';
 
   @override
   String get diarization => 'فصل المتحدثين';
@@ -9939,4 +9933,36 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'فشل فصل المتحدثين';
+
+  @override
+  String get localProcessingHelp =>
+      'تأتي تسميات المتحدثين المباشرة من مزوّد البث المباشر. يعالج فصل المتحدثين أدناه التسجيلات المكتملة.';
+
+  @override
+  String get localProcessingApplyHelp => 'أوقف التسجيل قبل التبديل. تتلقى الخوادم المحددة صوتك.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'اترك الحقل فارغًا للاحتفاظ بالمفتاح المحفوظ. يحتاج الخادم الآخر إلى مفتاحه الخاص.';
+
+  @override
+  String get localProcessingUnsupported => 'حدّث الخادم المقترن لتعديل هذه الإعدادات.';
+
+  @override
+  String get localProcessingFinished => 'التسجيلات المكتملة';
+
+  @override
+  String get localProcessingProbe => 'اختبار الاتصال';
+
+  @override
+  String get localProcessingPending => 'التغييرات المحفوظة غير مفعّلة. اضغط تأكيد لتطبيقها.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'حدّث الخادم لمزامنة الصوت. يبقى الصوت المحفوظ على الهاتف محفوظًا.';
+
+  @override
+  String get liveTranslationBidirectional => 'ترجمة ثنائية الاتجاه';
+
+  @override
+  String get liveTranslationPairHelp => 'تحديد لغة كل عبارة وترجمتها إلى اللغة الأخرى المحددة.';
 }

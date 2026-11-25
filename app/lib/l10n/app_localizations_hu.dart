@@ -1737,12 +1737,7 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ESZKÖZ',
-      one: 'ESZKÖZ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ESZKÖZ', one: 'ESZKÖZ');
     return '$count $_temp0 TALÁLHATÓ A KÖZELBEN';
   }
 
@@ -10002,22 +9997,22 @@ class AppLocalizationsHu extends AppLocalizations {
   String get localMacServers => 'Mentett szerverek';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Élő fordítás';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Fordítás erre';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'A csatlakoztatott szerver a fordítást az eredeti alatt jeleníti meg. Automatikusan az összefoglaló modellt használja, hacsak nem választ másikat a szerver könyvtárában: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Nincs fordítási modell beállítva a csatlakoztatott szerveren. Nyissa meg a könyvtárát: Settings → Summarization vagy Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'A fordítás nem érhető el a csatlakoztatott szerveren. Ellenőrizze a könyvtárát: Settings → Translation.';
 
   @override
   String get diarization => 'Beszélőfelismerés';
@@ -10038,4 +10033,40 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Beszélőfelismerés sikertelen';
+
+  @override
+  String get localProcessingHelp =>
+      'Az élő beszélőcímkék a Live szolgáltatótól érkeznek. Az alábbi diarizáció befejezett felvételeket dolgoz fel.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Váltás előtt állítsd le a felvételt. A kiválasztott szerverek megkapják a hangodat.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Az üres mező megőrzi a mentett kulcsot. Másik szerverhez saját kulcs szükséges.';
+
+  @override
+  String get localProcessingUnsupported => 'A beállítások szerkesztéséhez frissítsd a párosított szervert.';
+
+  @override
+  String get localProcessingFinished => 'Befejezett felvételek';
+
+  @override
+  String get localProcessingProbe => 'Kapcsolat tesztelése';
+
+  @override
+  String get localProcessingPending =>
+      'A mentett módosítások még nem aktívak. Az alkalmazásukhoz koppintson a Megerősítés gombra.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'A hang szinkronizálásához frissítsd a szervert. A telefonon mentett hang megmarad.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kétirányú fordítás';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Minden mondat nyelvének felismerése és lefordítása a másik kiválasztott nyelvre.';
 }

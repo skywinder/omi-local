@@ -1737,12 +1737,7 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DISPOSITIUS',
-      one: 'DISPOSITIU',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DISPOSITIUS', one: 'DISPOSITIU');
     return '$count $_temp0 TROBATS A PROP';
   }
 
@@ -9866,12 +9861,7 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count mesos gratis',
-      one: '1 mes gratis',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count mesos gratis', one: '1 mes gratis');
     return '$_temp0';
   }
 
@@ -10018,22 +10008,22 @@ class AppLocalizationsCa extends AppLocalizations {
   String get localMacServers => 'Servidors desats';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Traducció en directe';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tradueix a';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'El servidor connectat mostra la traducció sota l\'original. S\'utilitza automàticament el model de resum, tret que en triïs un altre a la biblioteca del servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'No hi ha cap model de traducció configurat al servidor connectat. Obre\'n la biblioteca: Settings → Summarization o Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'La traducció no està disponible al servidor connectat. Comprova\'n la biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarització';
@@ -10054,4 +10044,39 @@ class AppLocalizationsCa extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Error de diarització';
+
+  @override
+  String get localProcessingHelp =>
+      'Les etiquetes de parlants en directe provenen del proveïdor Live. La diarització següent processa gravacions acabades.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Atura la gravació abans de canviar. Els servidors seleccionats reben el teu àudio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Deixa-ho en blanc per conservar la clau desada. Un altre servidor necessita la seva pròpia clau.';
+
+  @override
+  String get localProcessingUnsupported => 'Actualitza el servidor vinculat per editar aquests ajustos.';
+
+  @override
+  String get localProcessingFinished => 'Gravacions acabades';
+
+  @override
+  String get localProcessingProbe => 'Prova la connexió';
+
+  @override
+  String get localProcessingPending => 'Els canvis desats no estan actius. Toca Confirma per aplicar-los.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Actualitzeu el servidor per sincronitzar l’àudio. Es conserva l’àudio desat al telèfon.';
+
+  @override
+  String get liveTranslationBidirectional => 'Traducció bidireccional';
+
+  @override
+  String get liveTranslationPairHelp =>
+      'Detecta la llengua de cada frase i tradueix-la a l’altra llengua seleccionada.';
 }

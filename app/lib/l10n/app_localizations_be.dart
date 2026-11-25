@@ -1728,12 +1728,7 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 FOUND NEARBY';
   }
 
@@ -8494,12 +8489,7 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9993,22 +9983,22 @@ class AppLocalizationsBe extends AppLocalizations {
   String get localMacServers => 'Захаваныя серверы';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Пераклад ужывую';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Перакладаць на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Пераклад на падключаным серверы з\'яўляецца пад арыгіналам. Аўтаматычна выкарыстоўваецца мадэль падсумавання, калі іншая не выбрана ў бібліятэцы сервера: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'На падключаным серверы не наладжана мадэль перакладу. Адкрыйце яго бібліятэку: Settings → Summarization або Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Пераклад недаступны на падключаным серверы. Праверце яго бібліятэку: Settings → Translation.';
 
   @override
   String get diarization => 'Дыярызацыя';
@@ -10029,4 +10019,36 @@ class AppLocalizationsBe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Памылка дыярызацыі';
+
+  @override
+  String get localProcessingHelp =>
+      'Меткі спікераў у рэальным часе паступаюць ад Live-правайдара. Дыярызацыя ніжэй апрацоўвае завершаныя запісы.';
+
+  @override
+  String get localProcessingApplyHelp => 'Перад пераключэннем спыніце запіс. Выбраныя серверы атрымліваюць ваша аўдыя.';
+
+  @override
+  String get localProcessingKeyHelp => 'Пустое поле захоўвае ключ. Іншаму серверу патрэбны ўласны ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Абнавіце падключаны сервер, каб змяняць гэтыя налады.';
+
+  @override
+  String get localProcessingFinished => 'Завершаныя запісы';
+
+  @override
+  String get localProcessingProbe => 'Праверыць злучэнне';
+
+  @override
+  String get localProcessingPending => 'Захаваныя змены яшчэ не дзейнічаюць. Націсніце «Пацвердзіць», каб прымяніць.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Абнавіце сервер для перадачы аўдыя. Аўдыя, захаванае на тэлефоне, застаецца.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двухбаковы пераклад';
+
+  @override
+  String get liveTranslationPairHelp => 'Вызначаць мову кожнай фразы і перакладаць на іншую выбраную мову.';
 }

@@ -79,15 +79,166 @@ def test_empty_transcript_is_not_success_and_unknown_speaker_is_not_user():
 def test_selected_pipeline_summary_projects_into_existing_conversation_contract():
     data, result = manifest(), raw()
     data['profile']['pipeline'] = {'summary': {'kind': 'openai-compatible'}}
-    result['structured'] = {'title': 'Обсуждение API', 'overview': 'Проверили работу API.'}
+    result['structured'] = {
+        'title': 'Обсуждение API', 'overview': 'Проверили работу API.', 'category': 'technology', 'emoji': '💻',
+    }
     conversation = build_conversation(result, data)
     assert conversation.structured.title == 'Обсуждение API'
     assert conversation.structured.overview == 'Проверили работу API.'
+    assert conversation.structured.category == 'technology' and conversation.structured.emoji == '💻'
     assert conversation.external_data['local_transcript']['profile'] == data['profile']
     assert conversation.structured.action_items == []
+    result['structured'].update(category='unknown', emoji='not an emoji')
+    legacy = build_conversation(result, data)
+    assert legacy.structured.category == 'other' and legacy.structured.emoji == '🎙️'
     result['structured']['overview'] = {'invalid': True}
     with pytest.raises(ValueError, match='summary'):
         build_conversation(result, data)
+
+
+def test_paired_archive_page_counts_merged_rows_and_never_advances_past_a_truncated_prefix(monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from utils import local_recording_rows as records
+
+    def row(identifier, minute):
+        return {'id': identifier, 'created_at': datetime(2026, 1, 2, 0, minute, tzinfo=timezone.utc), 'source': 'omi'}
+
+    older, newest = row('older', 1), row('newest', 4)
+    local_first, local_last = row('local-first', 5), row('local-last', 0)
+    monkeypatch.setattr(records, 'local_recording_rows', lambda uid, origins: [local_first, local_last])
+    filters = dict(
+        statuses=['processing', 'completed'], sources=['omi'], start_date=None, end_date=None,
+        folder_id=None, starred=None, include_discarded=True,
+    )
+    reads = []
+
+    def read(uid, limit, offset, *, budget, **received_filters):
+        reads.append((uid, limit, offset))
+        assert received_filters == filters
+        return [newest] if budget.truncated else [newest, older][offset:offset + limit]
+
+    complete = SimpleNamespace(truncated=False)
+    assert records.read_local_archive_page(read, 'owner', 2, 0, budget=complete, **filters) == (
+        [local_first, newest], True,
+    )
+    assert records.read_local_archive_page(read, 'owner', 2, 2, budget=complete, **filters) == (
+        [older, local_last], False,
+    )
+    partial = SimpleNamespace(truncated=True)
+    assert records.read_local_archive_page(read, 'owner', 3, 0, budget=partial, **filters) == (
+        [local_first, newest], None,
+    )
+    assert records.read_local_archive_page(read, 'owner', 2, 2, budget=partial, **filters) == ([], None)
+    assert reads == [('owner', 3, 0), ('owner', 5, 0), ('owner', 4, 0), ('owner', 5, 0)]
+
+
+@pytest.mark.parametrize('state', ['pending', 'processing', 'failed', 'no_speech'])
+def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypatch, state):
+    import hashlib
+    import json
+    import uuid
+    from utils import local_recording_rows as rows
+    from utils.offline_audio_capture import OfflineAudioCapture
+
+    storage = tmp_path / 'services/storage'
+    results = tmp_path / 'services/local-transcripts'
+    results.mkdir(parents=True)
+    monkeypatch.setattr(rows, 'is_offline_runtime', lambda: True)
+    monkeypatch.setattr(rows, 'local_tunnel_enabled', lambda: True)
+    monkeypatch.setattr(rows, 'load_pairing', lambda: {'owner_uid': 'synthetic-owner'})
+    monkeypatch.setattr(rows, 'local_storage_root_from_env', lambda: storage)
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+    capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\x00\x00' * 16000)
+    assert rows.local_recording_rows('synthetic-owner') == []  # unfinished input lives in the capture card
+    capture.finalize()
+    key = hashlib.sha256(capture.session_id.encode()).hexdigest()
+    queue = results / 'watch-queue.json'
+    queue.write_text(json.dumps({key: {'state': state, 'profile': {'api_key': 'never-return'}}}))
+    pending = rows.local_recording_rows('synthetic-owner')
+    assert len(pending) == 1
+    assert pending[0]['status'] == 'processing'
+    assert pending[0]['external_data'] == {'local_recording': {'status': state, 'duration_seconds': 1.0}}
+    assert rows.local_recording_rows('another-owner') == []
+    assert 'never-return' not in str(pending) and str(storage) not in str(pending)
+    row_id = pending[0]['id']
+    assert rows.request_processing_retry('another-owner', row_id) == 'not_found'
+    marker = capture.session_dir / '.retry-processing'
+    assert not marker.exists()
+    if state == 'failed':
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'pending'
+        assert marker.is_file()
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'pending'
+        assert rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['status'] == 'pending'
+        assert json.loads(queue.read_text())[key]['state'] == 'failed'  # Only the watcher owns the queue.
+    elif state == 'no_speech':
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'conflict'
+        assert not marker.exists()
+    queue.write_text(json.dumps({key: {'state': 'completed'}}))
+    assert rows.local_recording_rows('synthetic-owner') == []
+    # Manual import also retires the projection even if no queue job exists.
+    queue.write_text('{}')
+    assert len(rows.local_recording_rows('synthetic-owner')) == 1
+    (results / ('b' * 64)).mkdir()
+    (results / ('b' * 64) / 'import.json').write_text(json.dumps({'import': 'passed', 'capture_key': key}))
+    assert rows.local_recording_rows('synthetic-owner') == []
+
+
+def test_pending_projection_obeys_filters_and_merged_page_offsets():
+    from datetime import datetime, timezone
+    from utils.local_recording_rows import filter_local_recording_rows, merge_local_recording_page
+
+    now = datetime(2026, 9, 17, tzinfo=timezone.utc)
+    pending = [{'id': 'pending', 'created_at': now, 'source': 'omi'}]
+    filters = dict(statuses=['processing', 'completed'], sources=[], start_date=None, end_date=None,
+                   folder_id=None, starred=None)
+    assert filter_local_recording_rows(pending, **filters) == pending
+    for key, value in [('statuses', ['completed']), ('sources', ['phone']), ('folder_id', 'folder'), ('starred', True)]:
+        assert filter_local_recording_rows(pending, **{**filters, key: value}) == []
+    completed = [{'id': 'completed', 'created_at': now.replace(day=16)}]
+    assert merge_local_recording_page(completed, pending, offset=0, limit=1) == pending
+    assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
+
+
+@pytest.mark.parametrize('broken', ['invalid_json', 'non_object', 'oversized', 'bad_entry', 'bad_state', 'symlink'])
+def test_invalid_optional_job_state_does_not_hide_saved_audio(tmp_path, monkeypatch, broken):
+    import hashlib
+    import json
+    import uuid
+    from utils import local_recording_rows as rows
+    from utils.offline_audio_capture import OfflineAudioCapture
+
+    storage = tmp_path / 'services/storage'
+    results = tmp_path / 'services/local-transcripts'
+    receipt = results / ('b' * 64) / 'import.json'
+    receipt.parent.mkdir(parents=True)
+    monkeypatch.setattr(rows, 'is_offline_runtime', lambda: True)
+    monkeypatch.setattr(rows, 'local_tunnel_enabled', lambda: True)
+    monkeypatch.setattr(rows, 'load_pairing', lambda: {'owner_uid': 'synthetic-owner'})
+    monkeypatch.setattr(rows, 'local_storage_root_from_env', lambda: storage)
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+    capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\x00\x00' * 16000)
+    capture.finalize()
+    queue = results / 'watch-queue.json'
+    if broken in {'bad_entry', 'bad_state'}:
+        key = hashlib.sha256(capture.session_id.encode()).hexdigest()
+        queue.write_text(json.dumps({key: [] if broken == 'bad_entry' else {'state': []}}))
+        receipt.write_text(json.dumps({'import': 'passed', 'capture_key': []}))
+    elif broken == 'symlink':
+        target = tmp_path / 'untrusted.json'
+        target.write_text('{}')
+        queue.symlink_to(target)
+        receipt.symlink_to(target)
+    else:
+        payload = {'invalid_json': '{', 'non_object': '[]', 'oversized': ' ' * (4 * 1024 * 1024) + '{}'}[broken]
+        queue.write_text(payload)
+        receipt.write_text(payload)
+    pending = rows.local_recording_rows('synthetic-owner')
+    assert len(pending) == 1
+    assert pending[0]['external_data']['local_recording']['status'] == 'saved'
 
 
 def test_pipeline_stage_outcomes_are_projected_with_fixed_fields_only():
@@ -138,19 +289,40 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     monkeypatch.setattr(rows, 'load_pairing', lambda: {'owner_uid': 'synthetic-owner'})
     monkeypatch.setattr(rows, 'local_storage_root_from_env', lambda: storage)
     monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
-    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+    capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage,
+                                  origin={'phone_platform': 'ios', 'phone_model': 'iPhone Test'})
     capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\x00\x00' * 16000)
     assert rows.local_recording_rows('synthetic-owner') == []  # unfinished input lives in the capture card
     capture.finalize()
     key = hashlib.sha256(capture.session_id.encode()).hexdigest()
     queue = results / 'watch-queue.json'
     queue.write_text(json.dumps({key: {'state': state, 'profile': {'api_key': 'never-return'}}}))
+    processing = results / ('a' * 64)
+    processing.mkdir()
+    (processing / 'manifest.json').write_text(json.dumps({'capture_key': key, 'profile': {'api_key': 'never-return'}}))
+    (processing / 'processing.json').write_text(json.dumps({'summary': {
+        'status': 'failed', 'error_code': 'invalid_json', 'detail': 'never-return'}}))
     pending = rows.local_recording_rows('synthetic-owner')
     assert len(pending) == 1
     assert pending[0]['status'] == 'processing'
-    assert pending[0]['external_data'] == {'local_recording': {'status': state, 'duration_seconds': 1.0}}
+    origin = {'phone_platform': 'ios', 'phone_model': 'iPhone Test'}
+    expected = {'status': state, 'duration_seconds': 1.0, 'origin': origin}
+    if state == 'failed':
+        expected['failure'] = {'stage': 'summary', 'code': 'invalid_json', 'attempts': 0}
+    assert pending[0]['external_data'] == {'local_recording': expected}
     assert rows.local_recording_rows('another-owner') == []
     assert 'never-return' not in str(pending) and str(storage) not in str(pending)
+    if state == 'failed':
+        job = {'state': state, 'profile': {'api_key': 'never-return'}, 'attempts': 3,
+               'attempt_started_at': (processing / 'processing.json').stat().st_mtime + 1,
+               'failure': {'stage': 'import', 'code': 'import_failed', 'detail': 'never-return'}}
+        queue.write_text(json.dumps({key: job}))
+        failure = rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['failure']
+        assert failure == {'stage': 'import', 'code': 'import_failed', 'attempts': 3}
+        job['failure'] = {'stage': ['never-return'], 'code': 'never-return'}
+        queue.write_text(json.dumps({key: job}))
+        failure = rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['failure']
+        assert failure == {'attempts': 3}
     queue.write_text(json.dumps({key: {'state': 'completed'}}))
     assert rows.local_recording_rows('synthetic-owner') == []
     # Manual import also retires the projection even if no queue job exists.
@@ -158,7 +330,11 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     assert len(rows.local_recording_rows('synthetic-owner')) == 1
     (results / ('b' * 64)).mkdir()
     (results / ('b' * 64) / 'import.json').write_text(json.dumps({'import': 'passed', 'capture_key': key}))
-    assert rows.local_recording_rows('synthetic-owner') == []
+    origins = {}
+    assert rows.local_recording_rows('synthetic-owner', origins) == []
+    saved_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + 'b' * 64))
+    assert rows.attach_saved_origin({'id': saved_id}, origins)['external_data']['local_transcript']['origin'] == origin
+
 
 
 def test_pending_projection_obeys_filters_and_merged_page_offsets():
@@ -175,3 +351,35 @@ def test_pending_projection_obeys_filters_and_merged_page_offsets():
     completed = [{'id': 'completed', 'created_at': now.replace(day=16)}]
     assert merge_local_recording_page(completed, pending, offset=0, limit=1) == pending
     assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
+
+
+def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path):
+    import json
+    from utils.local_transcript import grouped_import_document, hydrate_grouped_transcript
+
+    data = manifest()
+    data.update(conversation_group={'start_sample': 0, 'end_sample': 192000},
+                duration_seconds=12000)
+    folder = tmp_path / data['result_key']
+    folder.mkdir()
+    transcript = {'segments': [{'text': 'Синтетическая реплика ' * 15 + str(i), 'start': i, 'end': i + 1}
+                                for i in range(1500)]}
+    raw_path = folder / 'audio.json'
+    raw_path.write_text(json.dumps(transcript))
+    (folder / 'manifest.json').write_text(json.dumps(data))
+    conversation = build_conversation(transcript, data)
+    card = grouped_import_document(conversation, data, raw_path)
+    assert len(json.dumps(card, default=str)) < 4096
+    assert len(card['transcript_segments']) == 1
+    assert card['external_data']['local_transcript']['segment_preview'] is True
+    card['starred'] = True
+    card['structured']['overview'] = 'Updated summary'
+    full = hydrate_grouped_transcript(card, tmp_path)
+    assert full['starred'] and full['structured']['overview'] == 'Updated summary'
+    assert not full['external_data']['local_transcript']['segment_preview']
+    assert [s['text'] for s in full['transcript_segments']] == [s['text'] for s in transcript['segments']]
+    assert full['transcript_segments'][-1]['id'] == conversation.transcript_segments[-1].id
+    raw_path.write_text('{"segments": []}')
+    with pytest.raises(ValueError, match='changed'):
+        hydrate_grouped_transcript(card, tmp_path)
+    assert len(grouped_import_document(conversation, manifest(), raw_path)['transcript_segments']) == 1500

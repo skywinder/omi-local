@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import uuid
@@ -17,8 +18,23 @@ from utils.offline_audio_capture import (
     WAV_NAME,
     OfflineAudioCapture,
     create_offline_audio_capture,
+    local_recording_origin,
     recover_offline_audio_captures,
 )
+
+
+def test_recording_origin_keeps_only_platform_and_display_labels():
+    header = base64.urlsafe_b64encode(json.dumps({
+        'phone_platform': 'ios', 'phone_model': 'Test Android', 'wearable_name': 'Omi Upstairs',
+        'device_id': 'private', 'serial_number': 'private',
+    }).encode()).decode()
+    assert local_recording_origin('android', header, 'omi') == {
+        'phone_platform': 'android', 'phone_model': 'Test Android', 'wearable_name': 'Omi Upstairs',
+    }
+    assert local_recording_origin('android', header, 'phone') == {
+        'phone_platform': 'android', 'phone_model': 'Test Android',
+    }
+    assert local_recording_origin('ios', 'invalid header', 'phone') == {'phone_platform': 'ios'}
 
 
 @contextmanager
@@ -147,6 +163,7 @@ def test_capture_requires_validated_owned_storage_root(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(('source', 'codec'), [('omi', 'opus'), ('omi', 'opus_fs320'), ('phone', 'pcm16')])
 def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: Path, source: str, codec: str) -> None:
+    origin = {'phone_platform': 'android', 'phone_model': 'Test Android'}
     with _offline_storage(tmp_path):
         capture = create_offline_audio_capture(
             session_id=str(uuid.uuid4()),
@@ -154,6 +171,7 @@ def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: P
             input_codec=codec,
             sample_rate=16000,
             channels=1,
+            origin=origin,
         )
         assert capture is not None
         pcm = b'\x00\x00' * 320
@@ -165,6 +183,7 @@ def test_startup_recovery_preserves_pcm_and_marks_metadata_recovered(tmp_path: P
     metadata = json.loads((capture.session_dir / METADATA_NAME).read_text(encoding='utf-8'))
     assert metadata['status'] == 'recovered'
     assert metadata['source'] == source
+    assert metadata['origin'] == origin
     assert metadata['input']['codec'] == codec
     assert metadata['decoded_pcm_bytes'] == len(pcm)
     with wave.open(str(capture.session_dir / WAV_NAME), 'rb') as wav:
@@ -257,9 +276,13 @@ def test_failed_recovery_leaves_original_part_untouched(tmp_path: Path) -> None:
 def test_continuous_capture_rotates_finished_files_without_losing_pcm(tmp_path, source, codec):
     from utils.offline_audio_capture import rotate_offline_audio_capture
 
+    origin = {'phone_platform': 'ios', 'phone_model': 'Test iPhone'}
+    if source == 'omi':
+        origin['wearable_name'] = 'Omi Upstairs'
     with _offline_storage(tmp_path) as root:
         sink = create_offline_audio_capture(
-            session_id=str(uuid.uuid4()), source=source, input_codec=codec, sample_rate=16000, channels=1)
+            session_id=str(uuid.uuid4()), source=source, input_codec=codec, sample_rate=16000, channels=1,
+            origin=origin)
         folders = [sink.session_dir]
         expected = []
         # Seven minutes of decoded input, accelerated. Silence is audio too.
@@ -278,6 +301,7 @@ def test_continuous_capture_rotates_finished_files_without_losing_pcm(tmp_path, 
         for folder in folders:
             metadata = json.loads((folder / METADATA_NAME).read_text())
             assert metadata['status'] == 'completed'
+            assert metadata['origin'] == origin
             with wave.open(str(folder / WAV_NAME), 'rb') as wav:
                 actual.append(wav.readframes(wav.getnframes()))
         assert b''.join(actual) == b''.join(expected)

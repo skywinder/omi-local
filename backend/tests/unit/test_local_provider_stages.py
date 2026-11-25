@@ -51,8 +51,16 @@ def test_status_snapshot_includes_provider_stages(monkeypatch, tmp_path):
     monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
     write(tmp_path, {'version': 1, 'checked_at': 5, 'stages': {'diarization': {'status': 'ready', 'kind': 'mycelia', 'name': 'GPU pyannote'}}})
     monkeypatch.setattr(local_status.registry, '_sessions_for', lambda uid: [])
+    monkeypatch.setattr(local_status, 'preview_url', lambda: 'ws://127.0.0.1:8177/asr')
+
+    async def busy_worker(_url):
+        return {'state': 'busy', 'diarization': {'state': 'busy', 'labeled_segments': 0}}
+
+    monkeypatch.setattr(local_status, '_worker_status', busy_worker)
     status = asyncio.run(local_status.snapshot('synthetic-user'))
     assert status['stages']['diarization'] == {'status': 'ready', 'kind': 'mycelia', 'name': 'GPU pyannote'}
+    assert status['live_transcript']['state'] == 'busy'
+    assert status['diarization'] == {'state': 'busy', 'labeled_segments': 0}
     (tmp_path / 'provider-health.json').unlink()
     status = asyncio.run(local_status.snapshot('synthetic-user'))
     assert 'stages' not in status

@@ -31,8 +31,8 @@ class LiveTranslationSettings {
   }
 }
 
-Future<String?> showLiveTranslationLanguagePicker(BuildContext context, {required String current}) {
-  final languages = LiveTranslationSettings.languages();
+Future<String?> showLiveTranslationLanguagePicker(BuildContext context, {required String current, String? exclude}) {
+  final languages = LiveTranslationSettings.languages()..removeWhere((_, code) => code == exclude);
   return showModalBottomSheet<String>(
     context: context,
     backgroundColor: const Color(0xFF1C1C1E),
@@ -84,18 +84,114 @@ Future<String?> showLiveTranslationLanguagePicker(BuildContext context, {require
   );
 }
 
+typedef LiveTranslationChanged = Future<void> Function({
+  bool? enabled,
+  String? language,
+  bool? bidirectional,
+  String? otherLanguage,
+});
+
+class LiveTranslationSelection {
+  const LiveTranslationSelection(this.language, this.otherLanguage, this.bidirectional);
+  final String language;
+  final String otherLanguage;
+  final bool bidirectional;
+}
+
+/// Edit the pair atomically: dismissing this sheet keeps the current direction.
+Future<LiveTranslationSelection?> showLiveTranslationSettings(
+  BuildContext context, {
+  required String language,
+  required String otherLanguage,
+  required bool bidirectional,
+}) {
+  return showModalBottomSheet<LiveTranslationSelection>(
+    context: context,
+    backgroundColor: const Color(0xFF1C1C1E),
+    isScrollControlled: true,
+    builder: (sheetContext) => StatefulBuilder(builder: (context, refresh) {
+      Future<void> pick({required bool other}) async {
+        final selected = await showLiveTranslationLanguagePicker(
+          context,
+          current: other ? otherLanguage : language,
+          exclude: bidirectional ? (other ? language : otherLanguage) : null,
+        );
+        if (selected == null || !sheetContext.mounted) return;
+        refresh(() {
+          if (other) {
+            otherLanguage = selected;
+          } else {
+            language = selected;
+          }
+          if (language == otherLanguage) otherLanguage = language == 'en' ? 'es' : 'en';
+        });
+      }
+
+      return SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(context.l10n.liveTranslation,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                SwitchListTile(
+                  key: const Key('live_translation_bidirectional'),
+                  value: bidirectional,
+                  activeThumbColor: Colors.white,
+                  title: Text(context.l10n.liveTranslationBidirectional),
+                  subtitle: Text(context.l10n.liveTranslationPairHelp),
+                  onChanged: (value) => refresh(() => bidirectional = value),
+                ),
+                if (bidirectional)
+                  ListTile(
+                    key: const Key('live_translation_first_language'),
+                    title: Text('${context.l10n.language} 1'),
+                    subtitle: Text(LiveTranslationSettings.label(otherLanguage)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => pick(other: true),
+                  ),
+                ListTile(
+                  key: const Key('live_translation_second_language'),
+                  title:
+                      Text(bidirectional ? '${context.l10n.language} 2' : context.l10n.liveTranslationTargetLanguage),
+                  subtitle: Text(LiveTranslationSettings.label(language)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => pick(other: false),
+                ),
+                FilledButton(
+                  key: const Key('live_translation_apply'),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                  onPressed: () =>
+                      Navigator.pop(sheetContext, LiveTranslationSelection(language, otherLanguage, bidirectional)),
+                  child: Text(context.l10n.done),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }),
+  );
+}
+
 /// Compact app-bar control: a translate toggle plus the current target as a tappable chip.
 class LiveTranslationToggle extends StatelessWidget {
   const LiveTranslationToggle({
     super.key,
     required this.enabled,
     required this.language,
+    required this.otherLanguage,
+    required this.bidirectional,
     required this.onChanged,
   });
 
   final bool enabled;
   final String language;
-  final Future<void> Function({bool? enabled, String? language}) onChanged;
+  final String otherLanguage;
+  final bool bidirectional;
+  final LiveTranslationChanged onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -108,8 +204,14 @@ class LiveTranslationToggle extends StatelessWidget {
             key: const Key('live_translation_language_chip'),
             borderRadius: BorderRadius.circular(12),
             onTap: () async {
-              final picked = await showLiveTranslationLanguagePicker(context, current: language);
-              if (picked != null && picked != language) await onChanged(language: picked);
+              final picked = await showLiveTranslationSettings(context,
+                  language: language, otherLanguage: otherLanguage, bidirectional: bidirectional);
+              if (picked != null) {
+                await onChanged(
+                    language: picked.language,
+                    otherLanguage: picked.otherLanguage,
+                    bidirectional: picked.bidirectional);
+              }
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -118,7 +220,9 @@ class LiveTranslationToggle extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                '→ ${language.toUpperCase()}',
+                bidirectional
+                    ? '${otherLanguage.toUpperCase()} ↔ ${language.toUpperCase()}'
+                    : '→ ${language.toUpperCase()}',
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
               ),
             ),

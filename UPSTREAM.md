@@ -3,6 +3,11 @@
 Original project: [BasedHardware/omi](https://github.com/BasedHardware/omi).
 Upstream baseline: `2ce52f13f4724eee989158da6318dc6f27aa744e`.
 
+Selective backports are tracked in [upstream-sync.json](upstream-sync.json).
+See [the synchronization procedure](docs/UPSTREAM_SYNC.md) for comparison scope,
+accepted changes, pending candidates and validation. The original baseline below
+remains provenance; an observed newer upstream head does not replace it.
+
 This snapshot includes the local Personal Team/offline changes
 (`8bbf848d905b32de395e8ee2fc9840e96ff9d0ee`) and WAV recording
 (`bae122dbb48d0fe46bcab384736dee239328234f`). These identify the original local

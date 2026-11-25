@@ -87,7 +87,8 @@ class Runtime:
         identity = sorted((s.get('preview_id') or '', s['source']) for s in sessions)
         old_identity = sorted((s.get('preview_id') or '', s['source']) for s in old_sessions)
         if identity and identity != old_identity:
-            sources = ', '.join(sorted({'CV1' if s['source'] == 'omi' else 'микрофон iPhone' for s in sessions}))
+            from .local_library import recording_origin_labels
+            sources = ', '.join(sorted({' · '.join(filter(None, recording_origin_labels(s).values())) for s in sessions}))
             self._event('Получена текущая запись: ' + sources + '.')
         if connected and old_sessions and not sessions:
             self._event('Поток записи закрыт. Ожидаем сохранение и финальное распознавание.')
@@ -116,7 +117,8 @@ class Runtime:
                 current = self._preview()
             except (httpx.HTTPError, OSError, ValueError, KeyError):
                 current = {'backend': 'unavailable', 'capture': {'state': 'unknown'},
-                           'live_transcript': {'state': 'unavailable', 'updates': 0}, 'sessions': []}
+                           'live_transcript': {'state': 'unavailable', 'updates': 0},
+                           'diarization': {'state': 'unavailable', 'labeled_segments': 0}, 'sessions': []}
             try:
                 current['final_stt'] = self._final()
                 live = self._settings('live-stt.json')

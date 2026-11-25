@@ -12,6 +12,24 @@ export function processingRows(processing) {
   });
 }
 
+export function processingFailure(record) {
+  if (record.status !== 'failed') return '';
+  const failed = Object.entries(stageNames).find(([stage]) => record.processing?.[stage]?.status === 'failed');
+  if (!failed) return 'Этап сбоя не сохранён. Проверьте журнал обработчика и импорт в архив.';
+  const [stage, label] = failed;
+  const code = record.processing[stage].error_code;
+  const reasons = {
+    timeout: 'Сервис не ответил вовремя. Проверьте нагрузку и повторите обработку.',
+    connection: 'Нет соединения с сервисом. Проверьте адрес и доступность провайдера.',
+    output_limit: 'Ответ превысил лимит модели. Выберите более короткий шаблон итогов.',
+    invalid_json: 'Модель вернула некорректный JSON. Проверьте поддержку JSON и шаблон ответа.',
+  };
+  const http = /^http_([1-5][0-9]{2})$/.exec(code || '');
+  const reason = reasons[code] || (http ? `Сервис вернул HTTP ${http[1]}. ${['401','403'].includes(http[1]) ? 'Проверьте ключ доступа.' : 'Проверьте настройки и доступность провайдера.'}` : 'Подробная причина не сохранена.');
+  const attempts = Number.isInteger(record.attempts) && record.attempts > 0 ? ` Попыток: ${record.attempts}.` : '';
+  return `${label}. ${reason}${attempts}`;
+}
+
 function node(tag, cls, text) {
   const element = document.createElement(tag);
   if (cls) element.className = cls;
@@ -27,6 +45,11 @@ export function renderProcessing(processingRoot, summaryRoot, record) {
     item.append(node('span', '', row.label), node('strong', '', row.text));
     if (row.detail) item.append(node('small', '', row.detail));
     list.append(item);
+  }
+  const failure = processingFailure(record);
+  if (failure) {
+    processingRoot.hidden = false;
+    list.append(node('p', 'processing-error', failure));
   }
   processingRoot.replaceChildren(list);
   const overview = typeof record.summary?.overview === 'string' ? record.summary.overview.trim() : '';

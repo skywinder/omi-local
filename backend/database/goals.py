@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
@@ -341,6 +342,13 @@ def get_goal_by_id(uid: str, goal_id: str, *, firestore_client: Any = None) -> O
     if not snapshot.exists:
         return None
     return normalize_goal_storage(_goal_dict(snapshot), goal_id=goal_id)
+
+
+def get_goal_with_revision(uid: str, goal_id: str):
+    snapshot = _goal_ref(uid, goal_id).get(retry=None, timeout=6)
+    if not snapshot.exists:
+        raise GoalNotFoundError(goal_id)
+    return normalize_goal_storage(_goal_dict(snapshot), goal_id=goal_id), snapshot.update_time.isoformat()
 
 
 def get_user_goal(uid: str, *, firestore_client: Any = None) -> Optional[Dict[str, Any]]:
@@ -787,6 +795,7 @@ def _append_goal_progress_event(
     authority_account_generation: Optional[int] = None,
     authority_source_generation: Optional[int] = None,
     first_write_wins: bool = False,
+    paired_expected_revision: Optional[str] = None,
     firestore_client: Any = None,
 ) -> GoalProgressEvent:
     client = _get_db(firestore_client)
@@ -829,6 +838,10 @@ def _append_goal_progress_event(
                 raise GoalConflictError('progress event idempotency key was reused with different content')
             return record
         goal = normalize_goal_storage(_goal_dict(goal_snapshot), goal_id=goal_id)
+        if paired_expected_revision is not None:
+            if goal_snapshot.update_time.isoformat() != paired_expected_revision:
+                raise GoalConflictError('goal changed')
+            _validate_paired_progress(client, write_transaction, uid, goal, event)
         sequence = int(goal.get('latest_progress_sequence', 0)) + 1
         record = GoalProgressEvent(
             event_id=event_id,
@@ -846,7 +859,7 @@ def _append_goal_progress_event(
             goal_patch['metric'] = event.metric.model_dump(mode='python')
             goal_patch.update(_metric_aliases(event.metric))
         write_transaction.update(goal_ref, goal_patch)
-        if authority_account_generation is not None and record.metric is not None:
+        if (authority_account_generation is not None or paired_expected_revision is not None) and record.metric is not None:
             history_ref = goal_ref.collection(goal_history_collection).document(now.strftime('%Y-%m-%d'))
             write_transaction.set(
                 history_ref,
@@ -857,6 +870,31 @@ def _append_goal_progress_event(
     return apply(transaction)
 
 
+def _validate_paired_progress(client, transaction, uid, goal, event):
+    if goal['status'] in {'paused', 'achieved', 'abandoned'}:
+        raise GoalConflictError('goal does not accept progress')
+    metric = event.metric
+    if metric is not None:
+        existing = _metric_from_storage(goal)
+        if existing is None or existing.model_copy(update={'current': metric.current}) != metric:
+            raise GoalConflictError('goal metric changed')
+        if (not math.isfinite(metric.current)
+                or (metric.min is not None and metric.current < metric.min)
+                or (metric.max is not None and metric.current > metric.max)
+                or (metric.type == GoalType.boolean and metric.current not in (0, 1))):
+            raise ValueError('progress is outside the goal metric bounds')
+    for reference in event.evidence_refs:
+        if reference.kind != 'conversation' or reference.scope != 'canonical':
+            raise ValueError('unsupported paired goal evidence')
+        doc = client.collection(users_collection).document(uid).collection('conversations').document(reference.id)
+        row = doc.get(
+            transaction=transaction, field_paths=['is_locked', 'local_chat_deleting', 'deleted', 'discarded', 'status'],
+        ).to_dict()
+        if (row is None or any(row.get(flag) for flag in ('is_locked', 'local_chat_deleting', 'deleted', 'discarded'))
+                or row.get('status') not in {None, 'completed'}):
+            raise GoalConflictError('source recording is unavailable')
+
+
 def append_goal_progress_event(
     uid: str,
     goal_id: str,
@@ -864,6 +902,7 @@ def append_goal_progress_event(
     *,
     idempotency_key: str,
     account_generation: int,
+    paired_expected_revision: Optional[str] = None,
     firestore_client: Any = None,
 ) -> GoalProgressEvent:
     return _append_goal_progress_event(
@@ -872,6 +911,7 @@ def append_goal_progress_event(
         event,
         idempotency_key=idempotency_key,
         account_generation=account_generation,
+        paired_expected_revision=paired_expected_revision,
         firestore_client=firestore_client,
     )
 

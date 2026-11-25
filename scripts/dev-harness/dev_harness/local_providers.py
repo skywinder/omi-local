@@ -29,13 +29,44 @@ ENGINE_FIELDS = {'provider_url', 'model', 'language', 'compute_type', 'batch_siz
 SPEAKER_FIELDS = {'speaker_model', 'speaker_python', 'speaker_device', 'speaker_threads', 'speaker_count', 'speaker_revision'}
 LIVE_FIELDS = {'url', 'python', 'model_dir', 'chunk_seconds', 'language', 'diarization'}
 NAME_LIMIT = 100
+DEFAULT_SUMMARY_TEMPLATE = {
+    'id': 'standard',
+    'name': 'Стандартное резюме',
+    'prompt': 'Summarize the recording accurately. Preserve decisions, important facts and explicit action items.',
+}
 
 
 class SettingsError(ValueError):
-    def __init__(self, message, *, status=400, field=None):
+    def __init__(self, message, *, status=400, field=None, code=None):
         super().__init__(message)
         self.status = status
         self.field = field
+        self.diagnostic_code = code
+
+
+def summary_templates(state):
+    return state.get('summary_templates', {
+        'default_template_id': DEFAULT_SUMMARY_TEMPLATE['id'],
+        'templates': [DEFAULT_SUMMARY_TEMPLATE],
+    })
+
+
+def validate_summary_templates(templates, default):
+    if not isinstance(templates, list) or not 1 <= len(templates) <= 24:
+        raise SettingsError('Добавьте от 1 до 24 шаблонов.')
+    ids = set()
+    for item in templates:
+        if (not isinstance(item, dict) or set(item) != {'id', 'name', 'prompt'}
+                or not all(isinstance(value, str) for value in item.values())
+                or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', item['id']) or item['id'] in ids
+                or not item['name'].strip() or not item['name'].isprintable() or len(item['name']) > 100
+                or not item['prompt'].strip() or len(item['prompt']) > 8000
+                or any(ord(char) < 32 and char not in '\n\r\t' or 0xD800 <= ord(char) <= 0xDFFF
+                       for char in item['prompt'])):
+            raise SettingsError('Проверьте название и текст шаблона.')
+        ids.add(item['id'])
+    if not isinstance(default, str) or default not in ids:
+        raise SettingsError('Выберите существующий шаблон по умолчанию.')
 
 
 def read_json(path, default=None):
@@ -269,18 +300,77 @@ class Registry:
     def read(self):
         state = self._load()
         effective = {stage: self._public(state['effective'].get(stage)) for stage in STAGES}
+        effective['translation'] = self._public(self._translation(state))
         return {'version': 1, 'revision': state['revision'],
                 'profiles': [self._public(p) for p in state['profiles']], 'effective': effective,
-                'active': {stage: p['id'] if p else None for stage, p in effective.items()}}
+                'active': {stage: p['id'] if (p := state['effective'].get(stage)) else None for stage in STAGES}}
+
+    @staticmethod
+    def _translation(state):
+        """An explicit translator overrides the connected server's active text LLM.
+
+        Resolve only applied settings, never drafts or speech-recognition models.
+        Keep the credential reference pinned to that exact model/endpoint version.
+        """
+        effective = state['effective']
+        if effective.get('translation'):
+            return deepcopy(effective['translation'])
+        summary = effective.get('summary')
+        if summary and summary['kind'] == 'openai-compatible':
+            return {**deepcopy(summary), 'stage': 'translation', 'inherited_from': 'summary'}
+        return None
 
     def snapshot(self, stage):
         if stage not in STAGES:
             raise SettingsError('Неизвестный этап обработки.')
-        return deepcopy(self._load()['effective'].get(stage))
+        state = self._load()
+        return self._translation(state) if stage == 'translation' else deepcopy(state['effective'].get(stage))
 
     def pipeline(self):
-        effective = self._load()['effective']
-        return {stage: deepcopy(effective.get(stage)) for stage in ('stt', 'diarization', 'summary')}
+        state = self._load()
+        pipeline = {stage: deepcopy(state['effective'].get(stage)) for stage in ('stt', 'diarization', 'summary')}
+        if pipeline['summary']:
+            config = summary_templates(state)
+            template = next(item for item in config['templates'] if item['id'] == config['default_template_id'])
+            if template != DEFAULT_SUMMARY_TEMPLATE:
+                pipeline['summary']['template'] = deepcopy(template)
+        return pipeline
+
+    def summary_settings(self, body=None):
+        if body is None:
+            return self._summary_settings(self._load())
+        templates, default = body.get('templates'), body.get('default_template_id')
+        validate_summary_templates(templates, default)
+        with self._edit(body.get('revision')) as state:
+            state['summary_templates'] = {'templates': templates, 'default_template_id': default}
+            state['revision'] += 1
+            atomic_json(self.path, state)
+            return self._summary_settings(state)
+
+    @staticmethod
+    def _summary_profiles(state):
+        active = state['effective'].get('summary')
+        return ([active] if active else []) + [
+            profile for profile in state['profiles']
+            if profile['stage'] == 'summary' and (not active or profile['id'] != active['id'])
+        ]
+
+    def summary_choices(self):
+        state = self._load()
+        active = state['effective'].get('summary')
+        return summary_templates(state), self._summary_profiles(state), active['id'] if active else None
+
+    @staticmethod
+    def _summary_settings(state):
+        active = state['effective'].get('summary')
+        return {
+            **summary_templates(state), 'revision': state['revision'],
+            'profiles': [
+                {'id': profile['id'], 'name': profile['name'], 'model': profile['settings']['model']}
+                for profile in Registry._summary_profiles(state)
+            ],
+            'default_profile_id': active['id'] if active else None,
+        }
 
     def key(self, snapshot):
         ref = snapshot.get('credential_ref') if snapshot else None
@@ -288,7 +378,8 @@ class Registry:
             return ''
         vault = read_json(self.secrets_path, {})
         if ref not in vault:
-            raise SettingsError('API-ключ этого задания недоступен. Настройте провайдера снова.', status=409)
+            raise SettingsError('API-ключ этого задания недоступен. Настройте провайдера снова.',
+                                status=409, code='credential_missing')
         key = vault[ref]
         auth_headers(key)
         return key
@@ -298,6 +389,10 @@ class Registry:
         previous = next((p for p in state['profiles'] if p['id'] == profile.get('id')), None)
         if previous and (previous['stage'], previous['kind']) != (profile['stage'], profile['kind']):
             raise SettingsError('Для другого типа создайте новую карточку.')
+        # Embedded execution is registry-owned metadata, not an editable field.
+        # Editing/exporting a legacy card must not turn it into a separate worker.
+        if previous and previous.get('embedded'):
+            profile['embedded'] = True
         if previous and identity(previous) == identity(profile) and previous.get('credential_ref'):
             profile['credential_ref'] = previous['credential_ref']
         if body.get('clear_key'):

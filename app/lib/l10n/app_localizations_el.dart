@@ -1738,12 +1738,7 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ΣΥΣΚΕΥΕΣ',
-      one: 'ΣΥΣΚΕΥΗ',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ΣΥΣΚΕΥΕΣ', one: 'ΣΥΣΚΕΥΗ');
     return '$count $_temp0 ΒΡΕΘΗΚΑΝ ΚΟΝΤΑ';
   }
 
@@ -10031,22 +10026,22 @@ class AppLocalizationsEl extends AppLocalizations {
   String get localMacServers => 'Αποθηκευμένοι διακομιστές';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Ζωντανή μετάφραση';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Μετάφραση σε';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Ο συνδεδεμένος διακομιστής εμφανίζει τη μετάφραση κάτω από το πρωτότυπο. Χρησιμοποιείται αυτόματα το μοντέλο σύνοψης, εκτός αν επιλέξετε άλλο στη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Δεν έχει ρυθμιστεί μοντέλο μετάφρασης στον συνδεδεμένο διακομιστή. Ανοίξτε τη βιβλιοθήκη του: Settings → Summarization ή Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Η μετάφραση δεν είναι διαθέσιμη στον συνδεδεμένο διακομιστή. Ελέγξτε τη βιβλιοθήκη του: Settings → Translation.';
 
   @override
   String get diarization => 'Διαχωρισμός ομιλητών';
@@ -10067,4 +10062,38 @@ class AppLocalizationsEl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Ο διαχωρισμός ομιλητών απέτυχε';
+
+  @override
+  String get localProcessingHelp =>
+      'Οι ζωντανές ετικέτες ομιλητών προέρχονται από τον πάροχο Live. Η διαχωριστική αναγνώριση ομιλητών παρακάτω επεξεργάζεται ολοκληρωμένες εγγραφές.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Σταματήστε την εγγραφή πριν από την αλλαγή. Οι επιλεγμένοι διακομιστές λαμβάνουν τον ήχο σας.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Το κενό πεδίο διατηρεί το αποθηκευμένο κλειδί. Ένας άλλος διακομιστής απαιτεί δικό του κλειδί.';
+
+  @override
+  String get localProcessingUnsupported => 'Ενημερώστε τον συζευγμένο διακομιστή για να αλλάξετε αυτές τις ρυθμίσεις.';
+
+  @override
+  String get localProcessingFinished => 'Ολοκληρωμένες εγγραφές';
+
+  @override
+  String get localProcessingProbe => 'Δοκιμή σύνδεσης';
+
+  @override
+  String get localProcessingPending => 'Οι αποθηκευμένες αλλαγές δεν είναι ενεργές. Πατήστε Επιβεβαίωση για εφαρμογή.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ενημερώστε τον διακομιστή για συγχρονισμό ήχου. Ο ήχος που έχει αποθηκευτεί στο τηλέφωνο διατηρείται.';
+
+  @override
+  String get liveTranslationBidirectional => 'Αμφίδρομη μετάφραση';
+
+  @override
+  String get liveTranslationPairHelp => 'Αναγνώριση της γλώσσας κάθε φράσης και μετάφραση στην άλλη επιλεγμένη γλώσσα.';
 }

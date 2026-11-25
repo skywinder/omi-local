@@ -3256,5 +3256,20 @@
     "providerMisconfigured": "Revisa la configuración del proveedor",
     "speakersCount": "{count} hablantes",
     "diarizationNotPerformed": "Diarización no realizada",
-    "diarizationFailed": "Error de diarización"
+    "diarizationFailed": "Error de diarización",
+    "localProcessingHelp": "Las etiquetas de hablantes en directo provienen del proveedor Live. La diarización de abajo procesa grabaciones terminadas.",
+    "localProcessingApplyHelp": "Detén la grabación antes de cambiar. Los servidores seleccionados reciben tu audio.",
+    "localProcessingKeyHelp": "Déjalo en blanco para conservar la clave guardada. Otro servidor necesita su propia clave.",
+    "localProcessingUnsupported": "Actualiza el servidor vinculado para editar estos ajustes.",
+    "localProcessingFinished": "Grabaciones terminadas",
+    "localProcessingProbe": "Probar conexión",
+    "localProcessingPending": "Los cambios guardados aún no están activos. Toca Confirmar para aplicarlos.",
+    "localAudioServerUpdateRequired": "Actualiza el servidor para sincronizar el audio. El audio guardado en el teléfono se conserva.",
+    "liveTranslation": "Traducción en directo",
+    "liveTranslationFailed": "La traducción no está disponible en el servidor conectado. Revisa su biblioteca: Settings → Translation.",
+    "liveTranslationHelp": "El servidor conectado muestra la traducción debajo del original. Se usa automáticamente el modelo de resumen, salvo que elijas otro en la biblioteca del servidor: Settings → Translation.",
+    "liveTranslationTargetLanguage": "Traducir al",
+    "liveTranslationUnconfigured": "No hay ningún modelo de traducción configurado en el servidor conectado. Abre su biblioteca: Settings → Summarization o Translation → Save → Use.",
+    "liveTranslationBidirectional": "Traducción bidireccional",
+    "liveTranslationPairHelp": "Detectar el idioma de cada frase y traducirla al otro idioma seleccionado."
 }

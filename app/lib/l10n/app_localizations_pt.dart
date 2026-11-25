@@ -9819,12 +9819,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count meses grátis',
-      one: '1 mês grátis',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count meses grátis', one: '1 mês grátis');
     return '$_temp0';
   }
 
@@ -9970,22 +9965,22 @@ class AppLocalizationsPt extends AppLocalizations {
   String get localMacServers => 'Servidores salvos';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Tradução ao vivo';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Traduzir para';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'O servidor conectado mostra a tradução abaixo do original. O modelo de resumo é usado automaticamente, a menos que você escolha outro na biblioteca do servidor: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Nenhum modelo de tradução está configurado no servidor conectado. Abra a biblioteca: Settings → Summarization ou Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'A tradução não está disponível no servidor conectado. Verifique a biblioteca: Settings → Translation.';
 
   @override
   String get diarization => 'Diarização';
@@ -10006,4 +10001,39 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Falha na diarização';
+
+  @override
+  String get localProcessingHelp =>
+      'As etiquetas dos falantes ao vivo vêm do provedor Live. A diarização abaixo processa gravações concluídas.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Pare a gravação antes de trocar. Os servidores selecionados recebem seu áudio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Deixe em branco para manter a chave salva. Outro servidor exige sua própria chave.';
+
+  @override
+  String get localProcessingUnsupported => 'Atualize o servidor emparelhado para editar estas configurações.';
+
+  @override
+  String get localProcessingFinished => 'Gravações concluídas';
+
+  @override
+  String get localProcessingProbe => 'Testar conexão';
+
+  @override
+  String get localProcessingPending =>
+      'As alterações salvas ainda não estão ativas. Toque em Confirmar para aplicá-las.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Atualize o servidor para sincronizar o áudio. O áudio salvo no telefone é mantido.';
+
+  @override
+  String get liveTranslationBidirectional => 'Tradução bidirecional';
+
+  @override
+  String get liveTranslationPairHelp => 'Detectar o idioma de cada frase e traduzir para o outro idioma selecionado.';
 }

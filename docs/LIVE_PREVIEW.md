@@ -109,6 +109,14 @@ The lock file must belong to the same local backend instance that performs final
 transcription. Wait for `model_ready`; `http://127.0.0.1:18090/health` contains
 only technical metrics.
 
+Managed Parakeet and WhisperLiveKit health report `busy` while their shared
+inference slot is occupied, including by final transcription. The iPhone and
+Mac status show **busy** in that case; a loaded model alone does not mean a new
+live session can start. Audio recording and final transcription remain separate.
+If a recording starts while the slot is occupied, live preview is unavailable
+for that recording; wait for final processing to finish before starting the next
+recording to use Live. The current stream does not retry busy admission.
+
 For that external process, save
 `{"enabled":true,"url":"ws://127.0.0.1:18090/asr"}` in
 `.local/dev-harness/ngrok/live-preview.json`. Only a loopback `/asr` endpoint is
@@ -194,7 +202,12 @@ by the server. The URL allows only `127.0.0.1` and `/asr`.
 Relay-side translation (see `docs/PROVIDERS.md`, *Live translation*) is layered on
 top of this contract without changing it for the provider. The phone sends
 `{"type":"translation","language":"de"}` (an empty language turns it off) as a text
-frame on `/v4/listen`; the backend forwards the same frame to the loopback relay
+frame on `/v4/listen`. For two-way translation it sends
+`{"type":"translation","language":"es","other_language":"ru"}`. The model detects
+the source independently per line: Spanish goes to Russian and Russian goes to
+Spanish; a source outside the pair goes to `language`. Missing `other_language`
+keeps the one-way protocol. Invalid or identical language codes disable the pair.
+The backend forwards the normalized frame to the loopback relay
 before the first PCM frame and whenever it changes, and only when
 `OMI_LOCAL_LIVE_PROVIDER_RELAY=1` — a directly connected WLK server still receives
 nothing but PCM16 and the EOF frame. The relay never forwards the control frame
@@ -202,6 +215,21 @@ upstream. It answers with `{"type":"translation_status","status":"ready|unconfig
 once per state, which the backend delivers to the phone as
 `service_status` with `provider: "local_live_translation"`, and it re-sends the
 latest snapshot with `translations` filled in when a batch completes.
+
+### Live speaker limit
+
+On a paired phone, `GET /v1/local/processing/live-tuning` reads the selected
+Live provider's capability and saved revision. `POST` to that route accepts
+the revision and a `max_speakers` value from 1 to 4. The server forwards both
+operations to the loopback library and relay. Saving changes the configuration
+for new recognition streams. A conflict or ambiguous response requires a new
+read before retrying.
+
+An external provider advertises the `live_tuning` capability at version 1 in
+its health response and stream configuration. At stream startup the relay sends
+the saved settings, waits for a matching acknowledgment within its deadline,
+then forwards PCM. The phone receives the outcome as `service_status` from
+`local_live_tuning`. Older providers keep the existing stream message order.
 
 Prepare a separate Mac environment after installing the backend:
 
@@ -284,3 +312,31 @@ produced its first live text after 3.6 seconds, nine updates, and a 19.04-second
 without decoding errors. Argmax automatically imported the final text (six segments).
 This verified the software path; physical CV1 recording after switching providers
 and long-session reliability remain unverified.
+
+
+### Live diarization status
+
+The Mac library's **Сейчас** view and the expanded **Local Mac** status card on
+iPhone show live speaker-label status separately from transcription and audio.
+The phone row is labeled **Instant speaker labels** (localized in the app).
+
+- **Off**: the selected stream explicitly disables diarization.
+- **Service/model ready**: a bounded health check confirms readiness, not inference.
+- **Service busy / waiting for data**: the service is occupied or this session has
+  negotiated diarization but has not produced usable labels yet.
+- **Labels received / N processed**: N segments in this session's current draft
+  contain labels from a provider that explicitly negotiated diarization.
+- **Cannot identify speakers / diarization error**: the stream degraded or failed.
+  Previous labels are not counted as current success; audio and ASR have separate status.
+- **Unknown**: the server or provider does not report this capability.
+
+The relay checks only the selected provider's health endpoint, with bounded time
+and response size, no redirects, and no speech transmission. Remote credentials
+remain in the relay and are not passed to an independent local diarization proxy.
+A provider without the health extension can still report capability in the next
+recording's handshake. Older phone/server versions remain usable.
+
+These are statuses of the live stream, not the separate **Diarization** provider
+for completed recordings. Labels are anonymous within a recording and do not prove
+speaker identity or diarization accuracy. A healthy service alone never marks a
+recording as successfully diarized.

@@ -1730,12 +1730,7 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'УСТРОЙСТВА',
-      one: 'УСТРОЙСТВО',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'УСТРОЙСТВА', one: 'УСТРОЙСТВО');
     return '$count $_temp0 НАМЕРЕНИ НАБЛИЗО';
   }
 
@@ -9998,22 +9993,22 @@ class AppLocalizationsBg extends AppLocalizations {
   String get localMacServers => 'Запазени сървъри';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Превод на живо';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Превод на';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Свързаният сървър показва превода под оригинала. Автоматично се използва моделът за обобщаване, освен ако не изберете друг в библиотеката на сървъра: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Няма настроен модел за превод на свързания сървър. Отворете библиотеката му: Settings → Summarization или Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Преводът не е достъпен на свързания сървър. Проверете библиотеката му: Settings → Translation.';
 
   @override
   String get diarization => 'Диаризация';
@@ -10034,4 +10029,37 @@ class AppLocalizationsBg extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Грешка при диаризация';
+
+  @override
+  String get localProcessingHelp =>
+      'Етикетите на говорителите на живо идват от Live доставчика. Диаризацията по-долу обработва завършени записи.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Спрете записа, преди да превключите. Избраните сървъри получават вашето аудио.';
+
+  @override
+  String get localProcessingKeyHelp => 'Празното поле запазва ключа. Друг сървър изисква собствен ключ.';
+
+  @override
+  String get localProcessingUnsupported => 'Обновете свързания сървър, за да редактирате тези настройки.';
+
+  @override
+  String get localProcessingFinished => 'Завършени записи';
+
+  @override
+  String get localProcessingProbe => 'Проверка на връзката';
+
+  @override
+  String get localProcessingPending => 'Запазените промени не са активни. Натиснете „Потвърди“, за да ги приложите.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Обновете сървъра, за да синхронизирате аудиото. Запазеното аудио на телефона се съхранява.';
+
+  @override
+  String get liveTranslationBidirectional => 'Двупосочен превод';
+
+  @override
+  String get liveTranslationPairHelp => 'Разпознаване на езика на всяка фраза и превод на другия избран език.';
 }

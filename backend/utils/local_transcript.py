@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+from pathlib import Path
 import re
+from unicodedata import category as unicode_category
 import uuid
 from datetime import datetime, timedelta
 
 from models.conversation import Conversation
 from models.structured import Structured
+from models.conversation_enums import CategoryEnum
 from models.transcript_segment import TranscriptSegment
 
 
@@ -98,6 +103,23 @@ def stage_outcomes(raw: dict) -> dict | None:
     return stages
 
 
+def summary_labels(summary: dict, *, user_category: str | None = None) -> dict:
+    """Return validated classifier fields for a new or regenerated recording summary."""
+    labels = {}
+    category = summary.get('category')
+    if not user_category and isinstance(category, str) and category in CategoryEnum._value2member_map_:
+        labels['category'] = category
+    emoji = summary.get('emoji')
+    if isinstance(emoji, str) and 0 < len(emoji) <= 12:
+        kinds = [unicode_category(char) for char in emoji]
+        if 'So' in kinds and all(
+            kind in {'So', 'Sk'} or char in {'\u200d', '\ufe0f'}
+            for char, kind in zip(emoji, kinds)
+        ):
+            labels['emoji'] = emoji
+    return labels
+
+
 def build_conversation(raw: dict, manifest: dict) -> Conversation:
     digest = manifest['audio_sha256']
     if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
@@ -125,14 +147,70 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
             raise ValueError('Invalid local recording summary')
         structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
+        structured.update(summary_labels(summary))
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
         finished_at=started + timedelta(seconds=duration),
         source=manifest['source'], language=raw.get('language'),
-        structured=Structured(**structured, emoji='🎙️'),
+        structured=Structured(**({'emoji': '🎙️'} | structured)),
         transcript_segments=segments, status='completed', uses_custom_stt=True,
         discarded=False, deferred=False,
         external_data={'local_transcript': {'version': 1, 'audio_sha256': digest, 'result_key': result_key,
                                             'profile': manifest['profile'],
                                             **({'stages': stages} if (stages := stage_outcomes(raw)) is not None else {})}},
     )
+
+
+# Reserve Firestore document space for summary metadata and subsequent user edits.
+GROUPED_INLINE_TRANSCRIPT_BYTES = 512 * 1024
+
+
+def grouped_import_document(conversation: Conversation, manifest: dict, raw_path: Path) -> dict:
+    document = conversation.model_dump()
+    if 'conversation_group' not in manifest:
+        return document
+    segments = document['transcript_segments']
+    estimated = 0
+    for segment in segments:
+        estimated += len(json.dumps(segment, ensure_ascii=True).encode())
+        if estimated > GROUPED_INLINE_TRANSCRIPT_BYTES:
+            with raw_path.open('rb') as stream:
+                checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+            local = document['external_data']['local_transcript']
+            local.update(segment_storage='result-file', segment_preview=True,
+                         segment_count=len(segments), segment_source_sha256=checksum)
+            document['transcript_segments'] = [{**segments[0], 'text': segments[0]['text'][:180]}]
+            break
+    return document
+
+
+def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
+    """Resolve only a validated imported local result under the paired owner's service directory."""
+    local = (document.get('external_data') or {}).get('local_transcript') or {}
+    if local.get('segment_storage') != 'result-file':
+        return document
+    key = local.get('result_key')
+    if not isinstance(key, str) or not re.fullmatch(r'[a-f0-9]{64}', key):
+        raise ValueError('Invalid transcript reference')
+    if document['id'] != str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key)):
+        raise ValueError('Conversation reference mismatch')
+    folder = root / key
+    if folder.is_symlink() or folder.resolve().parent != root.resolve():
+        raise ValueError('Invalid result folder')
+    manifest_path, raw_path = folder / 'manifest.json', folder / 'audio.json'
+    if manifest_path.is_symlink() or raw_path.is_symlink() or manifest_path.stat().st_size > 1024 * 1024:
+        raise ValueError('Invalid result file')
+    manifest = json.loads(manifest_path.read_bytes())
+    if (manifest.get('result_key') != key or manifest.get('audio_sha256') != local.get('audio_sha256')
+            or not isinstance(manifest.get('conversation_group'), dict)):
+        raise ValueError('Recording source mismatch')
+    with raw_path.open('rb') as stream:
+        if hashlib.file_digest(stream, 'sha256').hexdigest() != local.get('segment_source_sha256'):
+            raise ValueError('Recording transcript has changed')
+        stream.seek(0)
+        raw = json.load(stream)
+    full = build_conversation(raw, manifest)
+    if len(full.transcript_segments) != local.get('segment_count'):
+        raise ValueError('Incomplete transcript')
+    return {**document, 'transcript_segments': [s.model_dump() for s in full.transcript_segments],
+            'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}

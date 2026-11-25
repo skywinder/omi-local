@@ -1730,12 +1730,7 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'APPARATEN',
-      one: 'APPARAAT',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'APPARATEN', one: 'APPARAAT');
     return '$count $_temp0 GEVONDEN IN DE BUURT';
   }
 
@@ -9988,22 +9983,22 @@ class AppLocalizationsNl extends AppLocalizations {
   String get localMacServers => 'Opgeslagen servers';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Livevertaling';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Vertalen naar';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'De verbonden server toont de vertaling onder het origineel. Het samenvattingsmodel wordt automatisch gebruikt, tenzij je een ander model kiest in de serverbibliotheek: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Er is geen vertaalmodel ingesteld op de verbonden server. Open de bibliotheek: Settings → Summarization of Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Vertalen is niet beschikbaar op de verbonden server. Controleer de bibliotheek: Settings → Translation.';
 
   @override
   String get diarization => 'Sprekerherkenning';
@@ -10024,4 +10019,39 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Sprekerherkenning mislukt';
+
+  @override
+  String get localProcessingHelp =>
+      'Live-sprekerlabels komen van de Live-provider. De diarizatie hieronder verwerkt voltooide opnamen.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Stop de opname voordat je wisselt. De geselecteerde servers ontvangen je audio.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Laat leeg om de opgeslagen sleutel te behouden. Een andere server heeft een eigen sleutel nodig.';
+
+  @override
+  String get localProcessingUnsupported => 'Werk de gekoppelde server bij om deze instellingen te wijzigen.';
+
+  @override
+  String get localProcessingFinished => 'Voltooide opnamen';
+
+  @override
+  String get localProcessingProbe => 'Verbinding testen';
+
+  @override
+  String get localProcessingPending =>
+      'Opgeslagen wijzigingen zijn nog niet actief. Tik op Bevestigen om ze toe te passen.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Werk de server bij om audio te synchroniseren. Audio die op de telefoon is opgeslagen blijft bewaard.';
+
+  @override
+  String get liveTranslationBidirectional => 'Vertaling in beide richtingen';
+
+  @override
+  String get liveTranslationPairHelp => 'Herken de taal van elke zin en vertaal naar de andere geselecteerde taal.';
 }

@@ -1725,12 +1725,7 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'LAITETTA',
-      one: 'LAITE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'LAITETTA', one: 'LAITE');
     return '$count $_temp0 LÖYDETTY LÄHISTÖLTÄ';
   }
 
@@ -9962,22 +9957,22 @@ class AppLocalizationsFi extends AppLocalizations {
   String get localMacServers => 'Tallennetut palvelimet';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Reaaliaikainen käännös';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Käännä kielelle';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Yhdistetty palvelin näyttää käännöksen alkuperäisen alla. Yhteenvetomallia käytetään automaattisesti, ellet valitse muuta mallia palvelimen kirjastosta: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Yhdistetylle palvelimelle ei ole määritetty käännösmallia. Avaa sen kirjasto: Settings → Summarization tai Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Käännös ei ole käytettävissä yhdistetyllä palvelimella. Tarkista sen kirjasto: Settings → Translation.';
 
   @override
   String get diarization => 'Puhujien erottelu';
@@ -9998,4 +9993,39 @@ class AppLocalizationsFi extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Puhujien erottelu epäonnistui';
+
+  @override
+  String get localProcessingHelp =>
+      'Reaaliaikaiset puhujatunnisteet tulevat Live-palveluntarjoajalta. Alla oleva puhujanerottelu käsittelee valmiita tallenteita.';
+
+  @override
+  String get localProcessingApplyHelp =>
+      'Lopeta tallennus ennen vaihtamista. Valitut palvelimet vastaanottavat äänesi.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Tyhjä kenttä säilyttää tallennetun avaimen. Toinen palvelin tarvitsee oman avaimensa.';
+
+  @override
+  String get localProcessingUnsupported => 'Päivitä yhdistetty palvelin muokataksesi näitä asetuksia.';
+
+  @override
+  String get localProcessingFinished => 'Valmiit tallenteet';
+
+  @override
+  String get localProcessingProbe => 'Testaa yhteys';
+
+  @override
+  String get localProcessingPending =>
+      'Tallennetut muutokset eivät ole käytössä. Ota ne käyttöön napauttamalla Vahvista.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Päivitä palvelin äänen synkronointia varten. Puhelimeen tallennettu ääni säilytetään.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kaksisuuntainen käännös';
+
+  @override
+  String get liveTranslationPairHelp => 'Tunnista kunkin lauseen kieli ja käännä se toiselle valitulle kielelle.';
 }

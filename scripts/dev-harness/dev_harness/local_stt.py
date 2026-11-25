@@ -12,16 +12,23 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import wave
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from . import config, stt_install, local_whisperkit, local_openai_stt, local_diarization
+from . import config, stt_install, local_whisperkit, local_openai_stt, local_diarization, local_stt_windows
+from .local_capture_wav import read_wave
 
 
 class TranscriptionError(ValueError):
     """Diagnostics contain no transcript, user identifier or subprocess output."""
+
+    def __init__(self, message, *, code=None, stage=None):
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.diagnostic_stage = stage
 
 
 class TranscriptionBusy(TranscriptionError):
@@ -212,17 +219,15 @@ def atomic_json(path: Path, data: dict) -> None:
 def inspect_audio(path: Path) -> dict:
     if not path.is_file() or path.suffix.lower() != '.wav':
         raise TranscriptionError('Choose a completed WAV file')
-    with wave.open(str(path)) as audio:
+    with path.open('rb') as stream, read_wave(stream) as audio:
         if (audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getcomptype()) != (1, 2, 16000, 'NONE'):
             raise TranscriptionError('Expected PCM16 mono 16 kHz WAV')
-        duration = audio.getnframes() / audio.getframerate()
-        if not 0 < duration <= 14400:
-            raise TranscriptionError('Expected a nonempty recording up to four hours')
-    with path.open('rb') as stream:
-        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        frames = audio.getnframes()
+        duration = frames / audio.getframerate()
     started = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
     source = 'omi'
     metadata = path.with_name('metadata.json')
+    group = None
     if metadata.exists():
         data = json.loads(metadata.read_text())
         if data.get('status') != 'completed' or data.get('decode_errors') != 0 or path.with_name('audio.pcm.part').exists():
@@ -230,7 +235,25 @@ def inspect_audio(path: Path) -> dict:
         if abs(data['duration_seconds'] - duration) > 0.001 or data['source'] not in {'omi', 'phone'}:
             raise TranscriptionError('Capture metadata does not match WAV')
         started, source = data['started_at'], data['source']
+        group = data.get('conversation_group')
+        if group is not None:
+            try:
+                uuid.UUID(group['recording_id'])
+                start, end = group['start_sample'], group['end_sample']
+                if type(start) is not int or type(end) is not int or start < 0 or end - start != frames:
+                    raise ValueError()
+                if 'speech_end_sample' in group:
+                    speech_end = group['speech_end_sample']
+                    if type(speech_end) is not int or not start < speech_end < end:
+                        raise ValueError()
+            except (TypeError, ValueError, KeyError, AttributeError):
+                raise TranscriptionError('Invalid grouped recording sample range') from None
+    if duration <= 0 or (duration > 14400 and group is None):
+        raise TranscriptionError('Expected a nonempty recording up to four hours or a completed conversation group')
+    with path.open('rb') as stream:
+        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     return {'version': 1, 'audio_sha256': digest, 'duration_seconds': duration, 'started_at': started, 'source': source,
+            **({'conversation_group': group} if group is not None else {}),
             **({'capture_key': hashlib.sha256(path.parent.name.encode()).hexdigest()} if metadata.exists() else {})}
 
 
@@ -270,13 +293,23 @@ def backend_step(cfg, result_dir: Path | None = None) -> dict:
     command = [sys.executable, '-m', 'scripts.import_local_transcript']
     if result_dir is not None:
         command.append(str(result_dir))
-    completed = subprocess.run(command, cwd=cfg.repo_root / 'backend', env=env, capture_output=True, text=True, timeout=60)
-    if completed.returncode:
-        raise TranscriptionError('Local database/import preflight failed; result retained for retry')
+    stage = 'import' if result_dir is not None else 'prepare'
+    code = 'import_failed' if result_dir is not None else 'database_preflight_failed'
     try:
-        return json.loads(completed.stdout)
+        completed = subprocess.run(command, cwd=cfg.repo_root / 'backend', env=env,
+                                   capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise TranscriptionError('Local database/import timed out', code='timeout', stage=stage) from None
+    if completed.returncode:
+        raise TranscriptionError('Local database/import preflight failed; result retained for retry',
+                                 code=code, stage=stage)
+    try:
+        result = json.loads(completed.stdout)
     except ValueError:
-        raise TranscriptionError('Local import returned an invalid response') from None
+        raise TranscriptionError('Local import returned an invalid response', code=code, stage=stage) from None
+    if not isinstance(result, dict):
+        raise TranscriptionError('Local import returned an invalid response', code=code, stage=stage)
+    return result
 
 
 def check_model(engine: EngineConfig) -> Path:
@@ -348,10 +381,14 @@ def run_parakeet(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
                    '--audio', str(temp / 'audio.wav'), '--output', str(temp / 'audio.json'),
                    '--model', engine.model, '--diarization-model', engine.diarization_model,
                    '--chunk-duration', str(engine.chunk_duration), '--overlap-duration', str(engine.overlap_duration)]
+        if manifest.get('conversation_window'):
+            command.append('--allow-empty')
         outcome = subprocess.run(command, env=model_environment(engine), capture_output=True, text=True, timeout=3600)
         if outcome.returncode or not (temp / 'audio.json').is_file():
             raise TranscriptionError('Parakeet/diarization failed; original WAV retained, no conversation created')
         raw = json.loads((temp / 'audio.json').read_text())
+        if manifest.get('conversation_window') and isinstance(raw, dict) and raw.get('segments') == []:
+            return {**raw, 'outcome': 'no_speech'}
         if not isinstance(raw, dict) or not raw.get('segments'):
             raise TranscriptionError('No speech segments returned; no conversation created')
         return raw
@@ -383,6 +420,8 @@ def run_whisperx(engine: EngineConfig, audio: Path, folder: Path, manifest: dict
         if outcome.returncode or not (temp / 'audio.json').is_file():
             raise TranscriptionError('WhisperX failed; original WAV retained, no conversation created')
         raw = json.loads((temp / 'audio.json').read_text())
+        if manifest.get('conversation_window') and isinstance(raw, dict) and raw.get('segments') == []:
+            return {**raw, 'outcome': 'no_speech'}
         if not isinstance(raw, dict) or not raw.get('segments'):
             raise TranscriptionError('No speech segments returned; no conversation created')
         if engine.diarization_model == 'none':
@@ -456,12 +495,18 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
     if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
         raise TranscriptionError('Use the paired local Mac offline stack')
     audio = Path(audio_path).expanduser().resolve()
-    manifest = inspect_audio(audio)
+    try:
+        manifest = inspect_audio(audio)
+    except TranscriptionError as error:
+        raise TranscriptionError(str(error), code='invalid_audio', stage='prepare') from None
+    except (ValueError, TypeError, KeyError, EOFError, wave.Error):
+        raise TranscriptionError('Saved WAV or its capture metadata is invalid', code='invalid_audio', stage='prepare') from None
     engine = engine or EngineConfig.load(cfg)
     manifest['profile'] = engine.profile()
-    manifest['result_key'] = hashlib.sha256(
-        (manifest['audio_sha256'] + json.dumps(engine.profile(), sort_keys=True)).encode()
-    ).hexdigest()
+    identity = manifest['audio_sha256'] + json.dumps(engine.profile(), sort_keys=True)
+    if 'conversation_group' in manifest:
+        identity += ':group-v1:' + manifest['capture_key']
+    manifest['result_key'] = hashlib.sha256(identity.encode()).hexdigest()
     backend_step(cfg)  # Actual paired-owner/database read before ML or result writes.
     root = cfg.layout.services_dir / 'local-transcripts'
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -488,18 +533,36 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
         if not reused:
             started = time.monotonic()
             adapter = {'whisperx': run_whisperx, 'parakeet-mlx': run_parakeet, 'whisperkit': run_whisperkit, 'openai-compatible': run_openai}[engine.engine]
+            windowed = local_stt_windows.needed(manifest)
+
+            def transcribe_audio(engine, audio, folder, manifest):
+                if not windowed:
+                    return adapter(engine, audio, folder, manifest)
+                return local_stt_windows.run(
+                    audio, folder, manifest, 'stt',
+                    lambda piece, cache, info, _: adapter(engine, piece, cache, info),
+                    atomic_json, speakers=engine.diarization_model != 'none',
+                )
+
             if engine.pipeline is not None:
                 from .local_pipeline import execute
-                raw = execute(engine, audio, folder, manifest, adapter, apply_diarization, atomic_json)
+                raw = execute(engine, audio, folder, manifest, transcribe_audio, apply_diarization, atomic_json)
             else:
                 asr_path = folder / 'asr.json'
                 if asr_path.exists():
                     raw = json.loads(asr_path.read_text())
                 else:
-                    raw = adapter(engine, audio, folder, manifest)
+                    raw = transcribe_audio(engine, audio, folder, manifest)
                     if engine.speaker_model:
                         atomic_json(asr_path, raw)
-                raw = apply_diarization(engine, audio, folder, manifest, raw)
+                if engine.speaker_model and windowed:
+                    raw = local_stt_windows.run(
+                        audio, folder, manifest, 'diarization',
+                        lambda piece, cache, info, part: apply_diarization(engine, piece, cache, info, part),
+                        atomic_json, speakers=True,
+                    )
+                else:
+                    raw = apply_diarization(engine, audio, folder, manifest, raw)
             atomic_json(raw_path, raw)
         else:
             raw = json.loads(raw_path.read_text())

@@ -1725,12 +1725,7 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'SEADET',
-      one: 'SEADE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'SEADET', one: 'SEADE');
     return '$count $_temp0 LEITUD LÄHEDALT';
   }
 
@@ -9806,12 +9801,7 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count kuud tasuta',
-      one: '1 kuu tasuta',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count kuud tasuta', one: '1 kuu tasuta');
     return '$_temp0';
   }
 
@@ -9955,22 +9945,22 @@ class AppLocalizationsEt extends AppLocalizations {
   String get localMacServers => 'Salvestatud serverid';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Reaalajas tõlge';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Tõlgi keelde';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Ühendatud server kuvab tõlke algteksti all. Automaatselt kasutatakse kokkuvõttemudelit, kui sa ei vali serveri teegis teist mudelit: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Ühendatud serveris pole tõlkemudelit seadistatud. Ava selle teek: Settings → Summarization või Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Tõlge pole ühendatud serveris saadaval. Kontrolli selle teeki: Settings → Translation.';
 
   @override
   String get diarization => 'Kõnelejate eristamine';
@@ -9991,4 +9981,36 @@ class AppLocalizationsEt extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Kõnelejate eristamine ebaõnnestus';
+
+  @override
+  String get localProcessingHelp =>
+      'Kõnelejate reaalajas sildid tulevad Live-teenusepakkujalt. Allolev diariseerimine töötleb lõpetatud salvestisi.';
+
+  @override
+  String get localProcessingApplyHelp => 'Peata salvestamine enne vahetamist. Valitud serverid saavad sinu heli.';
+
+  @override
+  String get localProcessingKeyHelp => 'Tühi väli säilitab salvestatud võtme. Teine server vajab oma võtit.';
+
+  @override
+  String get localProcessingUnsupported => 'Nende seadete muutmiseks uuenda seotud serverit.';
+
+  @override
+  String get localProcessingFinished => 'Lõpetatud salvestised';
+
+  @override
+  String get localProcessingProbe => 'Kontrolli ühendust';
+
+  @override
+  String get localProcessingPending => 'Salvestatud muudatused pole aktiivsed. Rakendamiseks puuduta Kinnita.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Heli sünkroonimiseks uuenda serverit. Telefonis salvestatud heli säilitatakse.';
+
+  @override
+  String get liveTranslationBidirectional => 'Kahesuunaline tõlge';
+
+  @override
+  String get liveTranslationPairHelp => 'Tuvasta iga fraasi keel ja tõlgi teise valitud keelde.';
 }
