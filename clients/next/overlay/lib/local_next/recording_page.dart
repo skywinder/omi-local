@@ -39,6 +39,18 @@ String recordingTitle(BuildContext context, ServerConversation row) => row.exter
     ? context.l10n.untitledConversation
     : row.structured.title;
 
+int recordingDuration(ServerConversation row) {
+  final external = row.externalIntegration;
+  final pendingDuration = external?.localRecording?['duration_seconds'];
+  if (pendingDuration is num && pendingDuration.isFinite && pendingDuration > 0) return pendingDuration.round();
+  final start = row.startedAt;
+  final end = row.finishedAt;
+  if (external?.localTranscript != null && start != null && end != null && !end.isBefore(start)) {
+    return (end.difference(start).inMicroseconds / Duration.microsecondsPerSecond).round();
+  }
+  return row.getDurationInSeconds();
+}
+
 String recordingInput(BuildContext context, ServerConversation row) {
   final origin = (row.externalIntegration?.localRecording ?? row.externalIntegration?.localTranscript)?['origin'];
   final model = origin is Map ? origin['phone_model'] : null;
@@ -394,10 +406,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     try {
       await widget.library.retryProcessing(widget.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
       setState(() => detail = _load());
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
     } finally {
       if (mounted) setState(() => _editing = false);
     }
@@ -733,7 +748,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         onPressed: _editing ? null : _retryProcessing,
                         label: Text(pairedSettingsLabel(context, 'nextRetryProcessing')),
                       ),
-                    if (recordingInput(context, loaded.row).isNotEmpty) Text(recordingInput(context, loaded.row)),
+                    if (_recordingMetadata(context, loaded.row) case final metadata?) Text(metadata),
                     if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
@@ -838,6 +853,13 @@ enum _RecordingEditAction {
   taskSuggestions,
   summary,
   goalProgress,
+}
+
+String? _recordingMetadata(BuildContext context, ServerConversation row) {
+  final duration = recordingDuration(row);
+  final input = recordingInput(context, row);
+  final labels = [if (input.isNotEmpty) input, if (duration > 0) OmiDuration.compact(duration, context.l10n)];
+  return labels.isEmpty ? null : labels.join(' · ');
 }
 
 class _RecordingDetail {

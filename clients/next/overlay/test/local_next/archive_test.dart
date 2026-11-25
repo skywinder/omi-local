@@ -105,13 +105,16 @@ void main() {
     );
     Future<void> show(bool available) async {
       library.processingRetryAvailable = available;
-      await tester.pumpWidget(MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: RecordingPage(key: ValueKey(available), library: library, id: _firstId),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: RecordingPage(key: ValueKey(available), library: library, id: _firstId),
+        ),
+      );
       await tester.pumpAndSettle();
     }
+
     await show(false);
     expect(find.text('Retry processing'), findsNothing);
     await show(true);
@@ -120,6 +123,42 @@ void main() {
     expect(library.retries, [_firstId]);
     expect(find.text('Retry processing'), findsNothing);
     expect(find.text('Queued for processing'), findsOneWidget);
+  });
+
+  testWidgets('local WAV duration survives a truncated transcript on the list and details', (tester) async {
+    final start = DateTime.utc(2026, 11, 24);
+    final speech = {'id': 'line', 'text': 'Synthetic preview', 'is_user': false, 'start': 0.0, 'end': 14.0};
+    ServerConversation row({required bool local, DateTime? finished}) => ServerConversation.fromJson({
+      'id': _firstId,
+      'created_at': start.toIso8601String(),
+      'started_at': start.toIso8601String(),
+      'finished_at': finished?.toIso8601String(),
+      'structured': {'title': 'Long recording', 'overview': 'Synthetic recap', 'emoji': '🎙️'},
+      'source': 'phone',
+      'status': 'completed',
+      'transcript_segments': [speech],
+      if (local)
+        'external_data': {
+          'local_transcript': {'segment_preview': true},
+        },
+    });
+    final end = start.add(const Duration(minutes: 76, seconds: 46));
+    expect(recordingDuration(row(local: false, finished: end)), 14);
+    expect(recordingDuration(row(local: true, finished: null)), 14);
+    expect(recordingDuration(row(local: true, finished: start.subtract(const Duration(seconds: 1)))), 14);
+    final imported = row(local: true, finished: end);
+    expect(recordingDuration(imported), 4606);
+    SharedPreferences.setMockInitialValues({});
+    final library = _ArchiveLibrary(
+      (_) async => (rows: [imported], consumed: 1, partial: false, more: false),
+      imported,
+    );
+    await _show(tester, library);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1h 16m'), findsOneWidget);
+    await tester.tap(find.text('Long recording'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1h 16m'), findsOneWidget);
   });
 
   test('cold offline archive is scoped to its pairing and a successful empty page clears the cache', () async {

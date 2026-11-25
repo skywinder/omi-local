@@ -338,7 +338,7 @@ class _ArchiveRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final started = (row.startedAt ?? row.createdAt).toLocal();
-    final duration = row.getDurationInSeconds();
+    final duration = recordingDuration(row);
     final local = row.externalIntegration?.localRecording;
     // Local jobs span multiple processing stages. Their generic status cannot
     // tell the upstream tile whether transcription or summary is in progress.
