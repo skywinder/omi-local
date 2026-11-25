@@ -24,6 +24,7 @@ import 'daily_recap.dart';
 import 'wav_level.dart';
 import 'live_preview.dart';
 import 'local_goal.dart';
+import 'offline_recordings.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
 import 'recording_summary.dart';
@@ -115,6 +116,8 @@ class PairedLibrary {
   final _clients = <HttpClient>{};
   final _previews = <WebSocket>{};
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
+  late final offlineRecordings = NextOfflineRecordings(audioOwnerId);
+  bool get canOpenOffline => !_closed;
 
   void close() {
     if (_closed) return;
@@ -227,6 +230,7 @@ class PairedLibrary {
   void _rejectKey() {
     if (_closed) return;
     unawaited(NextArchiveCache(audioOwnerId).write([]));
+    unawaited(offlineRecordings.clear());
     close();
     onKeyRejected?.call();
   }
@@ -1281,4 +1285,42 @@ class PairedLibrary {
       }
     });
   }
+
+  Future<void> saveOfflineRecording(String id) => offlineRecordings.save(
+    id,
+    load: () => detail(id),
+    canPublish: () => isSignedIn && audioPlayback,
+    download: (file, remaining) async {
+      var size = 0;
+      await readPlayback(
+        id,
+        read: (audio) async {
+          if (audio.status != HttpStatus.ok || audio.length < 12) throw OfflineRecordingFailure.unavailable;
+          if (audio.length > remaining) throw OfflineRecordingFailure.limit;
+          final writer = await file.open(mode: FileMode.write);
+          try {
+            await for (final chunk in audio.bytes) {
+              size += chunk.length;
+              if (size > audio.length) throw OfflineRecordingFailure.unavailable;
+              await writer.writeFrom(chunk);
+            }
+            if (size != audio.length) throw OfflineRecordingFailure.unavailable;
+            await writer.flush();
+          } finally {
+            await writer.close();
+          }
+          final reader = await file.open();
+          try {
+            final header = ascii.decode(await reader.read(12), allowInvalid: true);
+            if (!(header.startsWith('RIFF') || header.startsWith('RF64')) || !header.endsWith('WAVE')) {
+              throw OfflineRecordingFailure.unavailable;
+            }
+          } finally {
+            await reader.close();
+          }
+        },
+      );
+      return size;
+    },
+  );
 }

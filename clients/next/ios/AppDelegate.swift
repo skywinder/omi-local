@@ -56,6 +56,23 @@ import shared_preferences_foundation
     if let registrar = registry.registrar(forPlugin: "OmiLocalNextEnvironment") {
       let channel = FlutterMethodChannel(name: "org.omilocal.next/environment", binaryMessenger: registrar.messenger())
       channel.setMethodCallHandler { [weak self] call, reply in
+        if call.method == "prepareOfflineRecordings" {
+          do {
+            let files = FileManager.default
+            let support = try files.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                        appropriateFor: nil, create: true)
+            var folder = support.appendingPathComponent("NextOfflineRecordings", isDirectory: true)
+            try files.createDirectory(at: folder, withIntermediateDirectories: true,
+                                      attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try folder.setResourceValues(values)
+            reply(folder.path)
+          } catch {
+            reply(FlutterError(code: "offline_storage_unavailable", message: nil, details: nil))
+          }
+          return
+        }
         guard call.method == "takeLocalMacSettings" else {
           reply(FlutterMethodNotImplemented)
           return

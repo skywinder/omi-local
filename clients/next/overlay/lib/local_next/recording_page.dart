@@ -21,6 +21,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'paired_library.dart';
+import 'offline_recordings.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
 import 'recording_chat_page.dart';
@@ -183,6 +184,7 @@ class RecordingPage extends StatefulWidget {
     this.onPublished,
     this.resultsParentId,
     this.currentResultId,
+    this.offlineOnly = false,
   });
   final PairedLibrary library;
   final String id;
@@ -193,6 +195,7 @@ class RecordingPage extends StatefulWidget {
   final void Function(String previousId, List<ServerConversation> rows)? onPublished;
   final String? resultsParentId;
   final String? currentResultId;
+  final bool offlineOnly;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
@@ -203,6 +206,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   late String _id = widget.id;
   late bool _followSavedRecording = widget.fromSavedRecording;
   String? _resultsParent;
+  OfflineRecording? _offlineCopy;
+  bool _downloaded = false;
+  bool _downloading = false;
+  bool get _readingOffline => _offlineCopy != null;
   late Future<_RecordingDetail> detail = _load();
   Timer? _processingPoll;
   final playback = ConversationPlaybackController();
@@ -229,7 +236,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   void initState() {
     super.initState();
     tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
-    if (widget.library.speakerLabelsAvailable) unawaited(_loadPeople());
+    if (!widget.offlineOnly && widget.library.speakerLabelsAvailable) {
+      unawaited(_loadPeople());
+    }
   }
 
   Future<void> _loadPeople() async {
@@ -283,13 +292,15 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
-      widget.library.audioPlayback &&
-      row.externalIntegration?.localRecording?['group'] != true &&
-      row.externalIntegration?.localRecording?['results'] == null &&
-      row.externalIntegration?.localRecording?['status'] != 'waiting_for_parts' &&
-      (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
+      _readingOffline ||
+      (widget.library.audioPlayback &&
+          row.externalIntegration?.localRecording?['group'] != true &&
+          row.externalIntegration?.localRecording?['results'] == null &&
+          row.externalIntegration?.localRecording?['status'] != 'waiting_for_parts' &&
+          (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null));
 
   bool _canEdit(_RecordingDetail loaded) =>
+      !_readingOffline &&
       widget.library.recordingEdits &&
       !loaded.pending &&
       !loaded.row.isLocked &&
@@ -407,7 +418,18 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 
   Future<_RecordingDetail> _load() async {
-    final row = await (_followSavedRecording ? widget.library.refreshSavedRecording(_id) : widget.library.detail(_id));
+    final library = widget.library;
+    final ServerConversation row;
+    if (widget.offlineOnly) {
+      if (!library.canOpenOffline) throw LibraryFailure.key;
+      final copy = await library.offlineRecordings.read(_id);
+      if (copy == null) throw OfflineRecordingFailure.unavailable;
+      row = await copy.readDetail();
+      if (!library.canOpenOffline) throw LibraryFailure.key;
+      if (mounted) _offlineCopy = copy;
+    } else {
+      row = await (_followSavedRecording ? library.refreshSavedRecording(_id) : library.detail(_id));
+    }
     final loaded = _acceptRead(row);
     if (!mounted) return loaded;
     final match = widget.initialMatch;
@@ -433,7 +455,38 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       widget.onPublished?.call(before, results);
     }
     if (before != row.id) widget.onPublished?.call(before, [row]);
+    if (!_readingOffline &&
+        widget.library.audioPlayback &&
+        row.status == ConversationStatus.completed &&
+        row.externalIntegration?.localTranscript != null) {
+      unawaited(_checkDownloaded(row.id));
+    }
     return loaded;
+  }
+
+  Future<void> _checkDownloaded(String id) async {
+    try {
+      final saved = await widget.library.offlineRecordings.read(id);
+      if (mounted && _id == id) setState(() => _downloaded = saved != null);
+    } on Exception {
+      // A storage lookup should not prevent viewing an online conversation.
+    }
+  }
+
+  Future<void> _download() async {
+    if (opening || _downloading) return;
+    setState(() => _downloading = true);
+    try {
+      await widget.library.saveOfflineRecording(_id);
+      if (mounted) setState(() => _downloaded = true);
+    } catch (error) {
+      if (mounted) {
+        final key = error == OfflineRecordingFailure.limit ? 'nextOfflineLimit' : 'nextOfflineDownloadFailed';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, key))));
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
   }
 
   Widget _recordingResults(_RecordingDetail loaded, List<ServerConversation> rows) => ListView(
@@ -557,9 +610,14 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     setState(() => opening = true);
     Directory? scratch;
     try {
-      scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
-      final audio = File('${scratch.path}/recording.wav');
-      await widget.library.downloadAudio(_id, audio);
+      var audio = _offlineCopy?.audio;
+      if (audio == null) {
+        scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
+        audio = File('${scratch.path}/recording.wav');
+        await widget.library.downloadAudio(_id, audio);
+      } else if (!widget.library.canOpenOffline) {
+        throw LibraryFailure.key;
+      }
       if (!mounted) return;
       await SharePlus.instance.share(
         ShareParams(
@@ -698,15 +756,21 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     try {
       final target = position ?? _initialPosition;
       if (player == null) {
-        final source = await RecordingPlayback.open(widget.library, _id);
+        final savedAudio = _offlineCopy?.audio;
+        if (savedAudio != null && !widget.library.canOpenOffline) throw LibraryFailure.key;
+        final source = savedAudio == null ? await RecordingPlayback.open(widget.library, _id) : null;
         if (!mounted) {
-          await source.close();
+          await source?.close();
           return;
         }
         _audioSource = source;
         final fresh = AudioPlayer();
         try {
-          await fresh.setUrl(source.uri.toString(), initialPosition: target);
+          if (savedAudio != null) {
+            await fresh.setFilePath(savedAudio.path, initialPosition: target);
+          } else {
+            await fresh.setUrl(source!.uri.toString(), initialPosition: target);
+          }
           await fresh.setSpeed(speed);
           if (!mounted) return;
           player = fresh;
@@ -717,7 +781,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         } finally {
           if (player != fresh) {
             if (identical(_audioSource, source)) _audioSource = null;
-            await source.close();
+            await source?.close();
             await fresh.dispose();
           }
         }
@@ -880,6 +944,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.copyId => _copy(loaded.row.id, l.conversationIdCopied),
                     _RecordingEditAction.recordingResults => _openResultsParent(),
                     _RecordingEditAction.audio => _shareAudio(),
+                    _RecordingEditAction.offline => _download(),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
@@ -900,6 +965,17 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (!_readingOffline &&
+                        canPlay &&
+                        loaded.row.status == ConversationStatus.completed &&
+                        loaded.row.externalIntegration?.localTranscript != null)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.offline,
+                        enabled: !_downloaded && !_downloading,
+                        child: Text(
+                          pairedSettingsLabel(context, _downloaded ? 'nextOfflineDownloaded' : 'nextOfflineDownload'),
+                        ),
+                      ),
                     if (_resultsParent != null)
                       PopupMenuItem(
                         value: _RecordingEditAction.recordingResults,
@@ -960,7 +1036,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ],
                   ],
                 ),
-              if (loaded != null && loaded.lines.isNotEmpty)
+              if (!_readingOffline && loaded != null && loaded.lines.isNotEmpty)
                 IconButton(
                   tooltip: l.askOmi,
                   icon: const Icon(Icons.chat_bubble_outline),
@@ -1011,6 +1087,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         label: Text(pairedSettingsLabel(context, 'nextRetryProcessing')),
                       ),
                     if (_recordingMetadata(context, loaded.row) case final metadata?) Text(metadata),
+                    if (_readingOffline) Text(pairedSettingsLabel(context, 'nextOfflineCopy')),
                     if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
@@ -1051,7 +1128,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       ),
                     if (_initialExcerptUnavailable)
                       ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
-                    if (opening || _editing) const LinearProgressIndicator(),
+                    if (opening || _editing || _downloading) const LinearProgressIndicator(),
                     Expanded(
                       child: TabBarView(
                         controller: tabs,
@@ -1113,6 +1190,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 enum _RecordingEditAction {
+  offline,
   recordingResults,
   export,
   audio,

@@ -261,6 +261,20 @@ in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
 uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. Bastion serves this route. Search duration for a rare term grows with the archive size.
 
+## Offline recordings
+
+In a finished recording, open **More options → Download for offline**. In the
+archive, open **More options → Offline recordings** to read the saved summary
+or transcript and play or export the WAV. Copies are snapshots of the downloaded
+conversation. Remove a copy from **Offline recordings** and download it again
+to retrieve newer edits.
+
+The 1 GiB limit is shared across the phone's saved servers, and the offline list
+belongs to the active pairing. Downloads appear after both the detail and the
+complete audio have been saved. Removing a copy frees phone storage. The server
+retains its original. Downloads use private application storage excluded from
+phone backups and are separate from pending recordings in the outbox.
+
 ## Chat about a recording
 
 Open a recording with a transcript and tap **Ask Omi**. Next displays the

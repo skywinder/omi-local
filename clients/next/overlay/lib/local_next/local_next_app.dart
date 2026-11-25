@@ -20,6 +20,7 @@ import 'capture_panel.dart';
 import 'cv1_capture.dart';
 import 'device_diagnostics_page.dart';
 import 'home_shortcuts.dart';
+import 'offline_recordings_page.dart';
 import 'task_editor.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
@@ -90,7 +91,7 @@ ThemeData _nextTheme(Brightness brightness) {
   );
 }
 
-enum _ArchiveAction { refresh, tasks, recaps, goals, select }
+enum _ArchiveAction { refresh, offline, tasks, recaps, goals, select }
 
 class _Pairing extends StatefulWidget {
   const _Pairing({this.session, this.shortcuts});
@@ -379,6 +380,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               switch (action) {
                 case _ArchiveAction.refresh:
                   archive.refresh();
+                case _ArchiveAction.offline:
+                  open(OfflineRecordingsPage(library: library));
                 case _ArchiveAction.tasks:
                   open(LocalTasksPage(library: library));
                 case _ArchiveAction.recaps:
@@ -391,6 +394,10 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
             },
             itemBuilder: (context) => [
               PopupMenuItem(value: _ArchiveAction.refresh, enabled: !archive.busy, child: Text(l.refresh)),
+              PopupMenuItem(
+                value: _ArchiveAction.offline,
+                child: Text(pairedSettingsLabel(context, 'nextOfflineRecordings')),
+              ),
               if (library.tasksAvailable) PopupMenuItem(value: _ArchiveAction.tasks, child: Text(l.tasks)),
               if (library.dailyRecapsAvailable) PopupMenuItem(value: _ArchiveAction.recaps, child: Text(l.dailyRecaps)),
               if (library.goalsAvailable) PopupMenuItem(value: _ArchiveAction.goals, child: Text(l.goals)),
