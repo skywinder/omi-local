@@ -732,6 +732,11 @@ USB and Xcode found no eligible iPhone for this package.
 Bastion's configured summary model classified a synthetic compiler discussion
 as `technology`. Its category and emoji survived import and regeneration.
 The regeneration path respects an existing owner category and title.
+Bastion now advertises recording edits and categories. A temporary conversation
+verified category changes through the paired API, safe retries, conflicts,
+validation and authentication. Its test document was removed after readback.
+The updated Local backend also reads Bastion's large grouped recordings and
+keeps their checked full transcript when a metadata edit returns the detail.
 
 | Area | Status and next verification |
 | --- | --- |

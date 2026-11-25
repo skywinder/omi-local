@@ -60,13 +60,29 @@ release directory recorded in the app container's Compose config-file label
 contains the reviewed file hashes and `rollback.sh` for this change. A fresh
 Firestore and Auth export preceded the app restart.
 
+The configured summary model classified synthetic speech about compilers as
+`technology` and returned a subject emoji. The import and regeneration paths
+retained the model labels. A manual category update passed through the live
+paired HTTP endpoint on a temporary conversation in the emulator. Readback
+confirmed the new category. Repeating the same update preserved the revision,
+a stale edit returned 409, an invalid category returned 422, and an unsigned
+request returned 401. The probe removed only its own fixture.
+
+The Local storage contract from `625034a` now covers large grouped recordings
+in Next's backend. The detail and metadata-edit responses expand the stored
+preview from the checksummed transcript. Segment and speaker changes against a
+file-backed preview return a conflict. A fixture with 1,500 segments verified
+complete expansion and rejection of a changed file. Each Bastion release keeps
+its previous Compose file list for rollback, including the original provider
+and capture adjustments.
+
 ## Next slices
 
-1. Verify manual category edits through the live paired app after the active capture
-   finishes. The configured model already produced and imported a category and
-   subject emoji from synthetic text. Regenerating protects the owner category.
-2. Check the existing client and Next on the same physical iPhone against the
-   updated archive and playback routes, then verify new microphone and CV1 audio.
+1. Verify the signed Next package on a physical iPhone. Check category selection,
+   filtering, playback, phone microphone capture and CV1 delivery to the same archive.
+2. Compare paired search and folder operations against the deployed storage
+   layout. Search must handle large recordings with file-backed transcripts.
+   Track these independently from the already deployed category and detail routes.
 
 Run `make test-offline` for the archive adapter and the offline HTTP surface.
 Run `make test-transport-unit` for transport/auth and offline route coverage.
