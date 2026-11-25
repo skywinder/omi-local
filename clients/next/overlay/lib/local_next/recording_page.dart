@@ -30,6 +30,7 @@ import 'conversation_categories.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
 import 'recording_player_bar.dart';
+import 'recording_playback.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
 import 'task_editor.dart';
@@ -197,6 +198,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Timer? _processingPoll;
   final playback = ConversationPlaybackController();
   StreamSubscription<Duration>? positionUpdates;
+  StreamSubscription<PlaybackEvent>? playbackEvents;
 
   _RecordingDetail _readDetail(ServerConversation row) {
     final loaded = _RecordingDetail(row);
@@ -208,7 +210,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   int focusRequest = 0;
   AudioPlayer? player;
   double speed = 1;
-  Directory? temp;
+  RecordingPlayback? _audioSource;
   Duration? _initialPosition;
   bool opening = false;
   bool _editing = false;
@@ -467,14 +469,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     setState(() => opening = true);
     Directory? scratch;
     try {
-      File audio;
-      if (temp case final prepared?) {
-        audio = File('${prepared.path}/recording.wav');
-      } else {
-        scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
-        audio = File('${scratch.path}/recording.wav');
-        await widget.library.downloadAudio(_id, audio);
-      }
+      scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
+      final audio = File('${scratch.path}/recording.wav');
+      await widget.library.downloadAudio(_id, audio);
       if (!mounted) return;
       await SharePlus.instance.share(
         ShareParams(
@@ -611,53 +608,69 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening) return;
     setState(() => opening = true);
     try {
+      final target = position ?? _initialPosition;
       if (player == null) {
-        final base = await getTemporaryDirectory();
-        final folder = await base.createTemp('next-recording-');
+        final source = await RecordingPlayback.open(widget.library, _id);
+        if (!mounted) {
+          await source.close();
+          return;
+        }
+        _audioSource = source;
+        final fresh = AudioPlayer();
         try {
-          final file = File('${folder.path}/recording.wav');
+          await fresh.setUrl(source.uri.toString(), initialPosition: target);
+          await fresh.setSpeed(speed);
           if (!mounted) return;
-          await widget.library.downloadAudio(_id, file);
-          if (!mounted) return;
-          final fresh = AudioPlayer();
-          try {
-            await fresh.setFilePath(file.path);
-            await fresh.setSpeed(speed);
-            if (!mounted) return;
-            player = fresh;
-            temp = folder;
-            positionUpdates = fresh.positionStream.listen((position) {
-              if (mounted) _reportPosition(position);
-            });
-          } finally {
-            if (player != fresh) await fresh.dispose();
-          }
+          player = fresh;
+          positionUpdates = fresh.positionStream.listen((position) {
+            if (mounted) _reportPosition(position);
+          });
+          playbackEvents = fresh.playbackEventStream.listen((_) {}, onError: (Object _) => _resetPlayback(fresh));
         } finally {
-          if (temp != folder && await folder.exists()) {
-            await folder.delete(recursive: true);
+          if (player != fresh) {
+            if (identical(_audioSource, source)) _audioSource = null;
+            await source.close();
+            await fresh.dispose();
           }
         }
+      } else if (target != null) {
+        await player!.seek(target);
+      } else if (player!.processingState == ProcessingState.completed) {
+        await player!.seek(Duration.zero);
       }
-      if (!mounted) return;
-      final current = player!;
-      final target = position ?? _initialPosition;
-      if (target != null) {
-        await current.seek(target);
-        _initialPosition = null;
-      } else if (current.processingState == ProcessingState.completed) {
-        await current.seek(Duration.zero);
-      }
+      final current = player;
+      if (!mounted || current == null) return;
+      _initialPosition = null;
       focusedLine = null;
-      if (mounted) _reportPosition(current.position);
-      if (mounted && !current.playing) {
+      _reportPosition(current.position);
+      if (!current.playing) {
         // play() completes on stop/end, so the control must be released before then.
-        unawaited(current.play().catchError((Object _) => _playFailed()));
+        unawaited(current.play().catchError((Object _) => _resetPlayback(current)));
       }
     } catch (_) {
+      if (mounted && position != null) _initialPosition = position;
       _playFailed();
     } finally {
       if (mounted) setState(() => opening = false);
     }
+  }
+
+  void _resetPlayback(AudioPlayer failed) {
+    if (!mounted || !identical(player, failed)) return;
+    setState(() {
+      _initialPosition = failed.position;
+      _releasePlayback();
+    });
+    _playFailed();
+  }
+
+  void _releasePlayback() {
+    unawaited(positionUpdates?.cancel());
+    unawaited(playbackEvents?.cancel());
+    unawaited(_audioSource?.close());
+    unawaited(player?.dispose());
+    _audioSource = null;
+    player = null;
   }
 
   bool get _hasPlayhead => player != null || _initialPosition != null;
@@ -709,21 +722,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   @override
   void dispose() {
     _processingPoll?.cancel();
-    unawaited(positionUpdates?.cancel());
+    _releasePlayback();
     playback.dispose();
     tabs.dispose();
-    final current = player;
-    final folder = temp;
-    temp = null;
-    unawaited(() async {
-      try {
-        await current?.dispose();
-      } finally {
-        if (folder != null && await folder.exists()) {
-          await folder.delete(recursive: true);
-        }
-      }
-    }());
     super.dispose();
   }
 

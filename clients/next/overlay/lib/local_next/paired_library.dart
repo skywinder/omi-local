@@ -34,6 +34,8 @@ enum NextServerConnection { checking, connected, unreachable, rejected, invalid 
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
+typedef PlaybackRead = ({int status, int length, int? totalLength, String? contentRange, Stream<List<int>> bytes});
+
 typedef ArchiveSearchHit = ({String id, String title, DateTime startedAt, List<TranscriptMatchSnippet> snippets});
 
 typedef ArchiveSearchPage = ({List<ArchiveSearchHit> hits, String? nextCursor});
@@ -1208,6 +1210,60 @@ class PairedLibrary {
       if (_closed) throw LibraryFailure.key;
       return WavLevel.measure(prefix.takeBytes());
     });
+  }
+
+  Future<void> readPlayback(String id, {String? range, required Future<void> Function(PlaybackRead) read}) {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!audioPlayback) throw LibraryFailure.unavailable;
+    _conversation(id);
+    return _request(
+      '/v1/local/conversations/$id/audio',
+      (response) async {
+        final status = response.statusCode;
+        final header = response.headers.value(HttpHeaders.contentRangeHeader);
+        final length = response.contentLength;
+        int? total;
+        switch (status) {
+          case HttpStatus.ok:
+            if (response.headers.value(HttpHeaders.acceptRangesHeader) == 'bytes') total = length;
+          case HttpStatus.partialContent:
+            final match = RegExp(r'^bytes ([0-9]+)-([0-9]+)/([0-9]+)$').firstMatch(header ?? '');
+            final first = int.tryParse(match?.group(1) ?? '');
+            final last = int.tryParse(match?.group(2) ?? '');
+            total = int.tryParse(match?.group(3) ?? '');
+            if (range == null ||
+                first == null ||
+                last == null ||
+                total == null ||
+                last >= total ||
+                last < first ||
+                last - first + 1 != length) {
+              throw LibraryFailure.malformed;
+            }
+          case HttpStatus.requestedRangeNotSatisfiable:
+            if (range == null || !RegExp(r'^bytes \*/[0-9]+$').hasMatch(header ?? '')) throw LibraryFailure.malformed;
+            return read((
+              status: status,
+              length: 0,
+              totalLength: null,
+              contentRange: header,
+              bytes: const Stream.empty(),
+            ));
+          default:
+            throw LibraryFailure.unavailable;
+        }
+        if (length <= 0 || response.headers.contentType?.mimeType != 'audio/wav') throw LibraryFailure.malformed;
+        await read((
+          status: status,
+          length: length,
+          totalLength: total,
+          contentRange: header,
+          bytes: response.timeout(_deadline),
+        ));
+      },
+      readHttpErrors: true,
+      headers: {if (range != null) HttpHeaders.rangeHeader: range},
+    );
   }
 
   Future<void> downloadAudio(String id, File target) async {

@@ -250,6 +250,12 @@ titles and summaries on the paired server. Tap a transcript match to open the
 line. When WAV playback is available, Play starts at that line's timestamp.
 Use **Show more** to continue from the last scanned page.
 
+The player reads byte ranges from the paired WAV endpoint, so it can start at
+a late timestamp as soon as the necessary audio arrives. The paired client
+holds the server key and refuses redirects. The native player uses a temporary
+address on the phone's loopback interface. Sharing the original WAV downloads
+the complete file to a temporary directory for the share sheet.
+
 `POST /v1/local/conversations/search` reads the current owner's Firestore records
 in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search

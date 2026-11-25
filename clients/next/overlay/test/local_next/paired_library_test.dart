@@ -11,12 +11,84 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/processing.dart';
 import 'package:omi/local_next/recording_edit.dart';
+import 'package:omi/local_next/recording_playback.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   final key = List.filled(43, 'A').join();
   const id = '00000000-0000-4000-8000-000000000001';
+  test('recording playback probes only one byte and relays a late seek through the authenticated origin', () async {
+    final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => upstream.close(force: true));
+    final pair = PairedLibrary('http://127.0.0.1:${upstream.port}', key)
+      ..verified = true
+      ..audioPlayback = true;
+    addTearDown(pair.close);
+    const total = 145000044;
+    const offset = 143000044;
+    final ranges = <String?>[];
+    upstream.listen((request) async {
+      expect(request.uri.path, '/v1/local/conversations/$id/audio');
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      final range = request.headers.value(HttpHeaders.rangeHeader);
+      ranges.add(range);
+      final response = request.response..headers.contentType = ContentType('audio', 'wav');
+      if (range == 'bytes=$total-') {
+        response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+        response.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$total');
+      } else {
+        final head = range == 'bytes=0-0';
+        final first = head ? 0 : offset;
+        final payload = head ? [82] : [10, 20, 30];
+        final last = first + payload.length - 1;
+        expect(range, 'bytes=$first-$last');
+        response.statusCode = HttpStatus.partialContent;
+        response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $first-$last/$total');
+        response.contentLength = payload.length;
+        response.add(payload);
+      }
+      await response.close();
+    });
+    final playback = await RecordingPlayback.open(pair, id);
+    addTearDown(playback.close);
+    expect(playback.uri.host, '127.0.0.1');
+    expect(playback.uri.toString(), isNot(contains(key)));
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+
+    final wrongPath = await (await client.getUrl(playback.uri.replace(path: '/recording.wav'))).close();
+    expect(wrongPath.statusCode, HttpStatus.notFound);
+    await wrongPath.drain<void>();
+    expect(ranges, isEmpty);
+
+    final metadata = await (await client.openUrl('HEAD', playback.uri)).close();
+    expect(metadata.statusCode, HttpStatus.ok);
+    expect(metadata.contentLength, total);
+    expect(metadata.headers.value(HttpHeaders.acceptRangesHeader), 'bytes');
+    await metadata.drain<void>();
+
+    final request = await client.getUrl(playback.uri);
+    request.headers.set(HttpHeaders.rangeHeader, 'bytes=$offset-${offset + 2}');
+    final seek = await request.close();
+    expect(seek.statusCode, HttpStatus.partialContent);
+    expect(seek.headers.value(HttpHeaders.contentRangeHeader), 'bytes $offset-${offset + 2}/$total');
+    expect(await seek.expand((chunk) => chunk).toList(), [10, 20, 30]);
+
+    final beyondEnd = await client.getUrl(playback.uri);
+    beyondEnd.headers.set(HttpHeaders.rangeHeader, 'bytes=$total-');
+    final unsatisfied = await beyondEnd.close();
+    expect(unsatisfied.statusCode, HttpStatus.requestedRangeNotSatisfiable);
+    expect(unsatisfied.headers.value(HttpHeaders.contentRangeHeader), 'bytes */$total');
+    await unsatisfied.drain<void>();
+
+    pair.close();
+    final denied = await (await client.getUrl(playback.uri)).close();
+    expect(denied.statusCode, HttpStatus.badGateway);
+    await denied.drain<void>();
+    expect(ranges, ['bytes=0-0', 'bytes=$offset-${offset + 2}', 'bytes=$total-']);
+  });
+
   test('server indicator rechecks the authenticated profile and recovers after a failed check', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
