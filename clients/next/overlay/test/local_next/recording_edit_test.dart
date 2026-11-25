@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/folder.dart';
@@ -36,6 +37,13 @@ class _EditableLibrary extends PairedLibrary {
     'finished_at': '2026-01-02T11:01:00Z',
     'structured': {'title': title, 'category': category},
     'status': 'completed',
+    'external_data': {
+      'local_transcript': {
+        'stages': {
+          'diarization': {'status': 'ready', 'provider': 'Fixture service', 'speakers': 2},
+        },
+      },
+    },
     'starred': starred,
     'folder_id': currentFolder,
     'transcript_segments': [
@@ -149,11 +157,44 @@ class _ManagedLibrary extends _EditableLibrary {
 Future<void> _menu(WidgetTester tester, String label) async {
   await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text(label));
   await tester.tap(find.text(label));
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets('a read-only transcript shows the recorded diarization result and copies the complete text', (
+    tester,
+  ) async {
+    final library = _EditableLibrary()..recordingEdits = false;
+    addTearDown(library.close);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Original title'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Fixture service · 2 speakers'), findsOneWidget);
+    await _menu(tester, 'Copy Transcript');
+    expect(copied, contains('Original words'));
+    expect(copied, contains('No stable identifier'));
+    await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Share Audio'), findsNothing);
+  });
+
   testWidgets('bulk folder control moves selected rows and confirms folder removal without removing the row', (
     tester,
   ) async {

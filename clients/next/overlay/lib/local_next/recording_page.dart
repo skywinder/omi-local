@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/person.dart';
@@ -16,6 +17,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'paired_library.dart';
 import 'folder_picker.dart';
@@ -76,6 +78,28 @@ String recordingFailure(BuildContext context, Object? failure) {
   };
   final attempts = fields['attempts'];
   return [stage, reason, if (attempts is int && attempts > 0) '${label("nextAttempts")}: $attempts'].join(' · ');
+}
+
+String? recordingDiarization(BuildContext context, ServerConversation row) {
+  final stages = row.externalIntegration?.localTranscript?['stages'];
+  if (stages is! Map || stages['diarization'] is! Map) return null;
+  final stage = stages['diarization'] as Map;
+  String label(String key) => pairedSettingsLabel(context, key);
+  final speakers = stage['speakers'];
+  final outcome = switch (stage['status']) {
+    'ready' when speakers is int && speakers >= 0 => label('speakersCount').replaceAll('{count}', '$speakers'),
+    'ready' => label('modelReady'),
+    'disabled' || 'no_speech' => label('diarizationNotPerformed'),
+    'failed' => label('diarizationFailed'),
+    'pending' || 'processing' => context.l10n.processing,
+    _ => context.l10n.unknown,
+  };
+  final provider = stage['provider'];
+  return [
+    label('diarization'),
+    if (stage['status'] != 'disabled' && provider is String && provider.trim().isNotEmpty) provider,
+    outcome,
+  ].join(' · ');
 }
 
 String recordingStatus(BuildContext context, ServerConversation row) {
@@ -309,14 +333,55 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   final _menu = GlobalKey();
 
-  Future<void> _export(ServerConversation row) async {
+  Rect? get _shareOrigin {
     final box = _menu.currentContext?.findRenderObject() as RenderBox?;
+    return box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  Future<void> _copy(String text, String message) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on PlatformException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+    }
+  }
+
+  Future<void> _shareAudio() async {
+    if (opening) return;
+    setState(() => opening = true);
+    Directory? scratch;
+    try {
+      File audio;
+      if (temp case final prepared?) {
+        audio = File('${prepared.path}/recording.wav');
+      } else {
+        scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
+        audio = File('${scratch.path}/recording.wav');
+        await widget.library.downloadAudio(widget.id, audio);
+      }
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(audio.path, mimeType: 'audio/wav')],
+          sharePositionOrigin: _shareOrigin,
+        ),
+      );
+    } catch (_) {
+      _playFailed();
+    } finally {
+      if (scratch != null && await scratch.exists()) await scratch.delete(recursive: true);
+      if (mounted) setState(() => opening = false);
+    }
+  }
+
+  Future<void> _export(ServerConversation row) async {
     try {
       await shareLocalConversation(
         row,
         summaryLabel: context.l10n.summary,
         transcriptLabel: context.l10n.transcriptTab,
-        origin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+        origin: _shareOrigin,
       );
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
@@ -510,17 +575,25 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         final row = loaded?.row;
         final canPlay = row != null && _canPlay(row);
         final canEdit = loaded != null && _canEdit(loaded);
+        final diarization = row == null ? null : recordingDiarization(context, row);
         return Scaffold(
           appBar: AppBar(
             title: Text(row == null ? l.conversations : recordingTitle(context, row)),
             actions: [
-              if (loaded != null && (canEdit || !loaded.pending))
+              if (loaded != null)
                 PopupMenuButton<_RecordingEditAction>(
                   key: _menu,
                   enabled: !opening && !_editing,
                   icon: Icon(loaded.row.starred ? Icons.star : Icons.more_horiz),
                   onSelected: (action) => switch (action) {
                     _RecordingEditAction.export => _export(loaded.row),
+                    _RecordingEditAction.copySummary => _copy(loaded.summary.content, l.summaryCopiedToClipboard),
+                    _RecordingEditAction.copyTranscript => _copy(
+                      loaded.row.getTranscript(generate: true),
+                      l.transcriptCopiedToClipboard,
+                    ),
+                    _RecordingEditAction.copyId => _copy(loaded.row.id, l.conversationIdCopied),
+                    _RecordingEditAction.audio => _shareAudio(),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
@@ -543,6 +616,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                   itemBuilder: (context) => [
                     if (!loaded.pending)
                       PopupMenuItem(value: _RecordingEditAction.export, child: Text('${l.share} · TXT')),
+                    if (loaded.summary.content.isNotEmpty)
+                      PopupMenuItem(value: _RecordingEditAction.copySummary, child: Text(l.copySummary)),
+                    if (loaded.lines.isNotEmpty)
+                      PopupMenuItem(value: _RecordingEditAction.copyTranscript, child: Text(l.copyTranscript)),
+                    if (canPlay) PopupMenuItem(value: _RecordingEditAction.audio, child: Text(l.shareAudio)),
+                    PopupMenuItem(value: _RecordingEditAction.copyId, child: Text(l.copyConversationId)),
                     if (canEdit) ...[
                       if (widget.library.goalsAvailable)
                         PopupMenuItem(
@@ -680,11 +759,18 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           loaded.lines.isEmpty
                               ? Center(
                                   child: Text(
-                                    loaded.pending ? recordingStatus(context, loaded.row) : l.noTranscriptAvailable,
+                                    loaded.pending
+                                        ? recordingStatus(context, loaded.row)
+                                        : [l.noTranscriptAvailable, if (diarization != null) diarization].join('\n'),
                                   ),
                                 )
                               : TranscriptWidget(
                                   segments: loaded.lines,
+                                  leadingItemIds: [if (diarization != null) 'local-diarization'],
+                                  leadingItems: [
+                                    if (diarization != null)
+                                      ListTile(leading: const Icon(Icons.people_outline), title: Text(diarization)),
+                                  ],
                                   localPeople: _people.values.toList(),
                                   editSegment: canEdit && widget.library.speakerLabelsAvailable && !opening && !_editing
                                       ? (id, _) => _labelSpeaker(loaded, id)
@@ -716,6 +802,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
 enum _RecordingEditAction {
   export,
+  audio,
+  copySummary,
+  copyTranscript,
+  copyId,
   title,
   star,
   transcript,
