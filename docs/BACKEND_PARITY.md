@@ -76,13 +76,20 @@ complete expansion and rejection of a changed file. Each Bastion release keeps
 its previous Compose file list for rollback, including the original provider
 and capture adjustments.
 
+The paired archive search on Bastion returned a snippet from a real file-backed
+recording. Its segment identifier and millisecond timestamp matched the paired
+detail response. The same check verified pagination was available, authentication
+was required and an empty query was rejected. The isolated HTTP regression also
+covers a match beyond the Firestore preview, deleted rows and a corrupt file.
+Each search page expands at most one file and resumes after the last scanned document.
+
 ## Next slices
 
 1. The signed package was installed and launched alongside Omi Local. Check category selection,
    filtering, playback, phone microphone capture and CV1 delivery to the same archive.
-2. Compare paired search and folder operations against the deployed storage
-   layout. Search must handle large recordings with file-backed transcripts.
-   Track these independently from the already deployed category and detail routes.
+2. Verify folder operations on the deployed owner collection and exercise them
+   from Next. Bring the offline capability flags and task routes across with
+   their owner checks. Continue measuring archive search on the iPhone.
 
 Run `make test-offline` for the archive adapter and the offline HTTP surface.
 Run `make test-transport-unit` for transport/auth and offline route coverage.

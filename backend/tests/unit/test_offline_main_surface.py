@@ -158,6 +158,44 @@ assert second.json()['next_cursor'] is None
 collection.document.assert_called_once_with(documents[39].id)
 query.start_after.assert_called_once_with({'__name__': collection.document.return_value})
 
+# The search route must use the same grouped result and segment IDs as detail.
+from utils import local_transcript
+manifest = {'audio_sha256': 'c' * 64, 'result_key': 'd' * 64, 'duration_seconds': 20,
+            'started_at': '2026-01-02T00:00:00Z', 'source': 'omi', 'conversation_group': {},
+            'profile': {'engine': 'whisperx'}}
+source = {'segments': [{'text': 'Intro', 'start': 0, 'end': 2},
+                       {'text': 'A later needle', 'start': 12.5, 'end': 15}]}
+folder = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts' / manifest['result_key']
+folder.mkdir(parents=True)
+file = folder / 'audio.json'
+file.write_text(json.dumps(source))
+(folder / 'manifest.json').write_text(json.dumps(manifest))
+conversation = local_transcript.build_conversation(source, manifest)
+threshold = local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES
+local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES = 1
+card = local_transcript.grouped_import_document(conversation, manifest, file)
+local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES = threshold
+assert len(card['transcript_segments']) == 1
+grouped_doc = MagicMock()
+grouped_doc.id = conversation.id
+grouped_doc.to_dict.return_value = card
+deleted_doc = MagicMock()
+deleted_doc.id = documents[1].id
+deleted_doc.to_dict.return_value = dict(card, deleted=True)
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter([deleted_doc, grouped_doc, documents[-1]])
+reply = client.post(search_url, json={'query': 'needle'}, headers=headers)
+assert reply.status_code == 200, reply.text
+result, = reply.json()['items']
+snippet, = result['match_snippets']
+assert result['id'] == conversation.id and reply.json()['next_cursor'] == conversation.id
+assert snippet['start_ms'] == 12500 and snippet['segment_id'] == conversation.transcript_segments[1].id
+assert 'external_data.local_transcript' in collection.order_by.return_value.select.call_args.args[0]
+following = client.post(search_url, json={'query': 'привет', 'after': conversation.id}, headers=headers)
+assert following.json()['items'][0]['id'] == documents[-1].id and following.json()['next_cursor'] is None
+file.write_text('{}')
+assert client.post(search_url, json={'query': 'needle'}, headers=headers).status_code == 503
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
+
 from routers import local_tasks
 
 suggestion_path = '/v1/local/conversations/' + documents[-1].id + '/task-suggestions'

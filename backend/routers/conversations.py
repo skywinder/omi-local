@@ -411,7 +411,7 @@ def search_local_archive(
         after in {'.', '..'} or '/' in after or '\x00' in after or len(after.encode('utf-8')) > 1500
     )):
         raise HTTPException(status_code=400, detail='Invalid archive search')
-    rows, next_cursor = conversations_db.read_local_search_page(uid, after, limit=40)
+    rows, next_cursor = conversations_db.read_local_search_page(uid, after, limit=40, end_page_after_file=True)
     needle = normalize('NFKC', query).casefold()
     hits = []
     for row in rows:
@@ -424,7 +424,7 @@ def search_local_archive(
         structured = structured if isinstance(structured, dict) else {}
         title = str(structured.get('title') or '')
         overview = str(structured.get('overview') or '')
-        segments = row.get('transcript_segments')
+        segments = _paired_detail(row, uid).get('transcript_segments')
         snippets = build_transcript_match_snippets(
             segments, query, context_neighbors=0, max_chars=360,
         ) if isinstance(segments, list) else []

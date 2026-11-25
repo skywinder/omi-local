@@ -13,6 +13,8 @@ Provider restarts must verify native Tailscale reachability before stopping a ba
 Cold-start checks validate owned Argmax files before starting services; the selected
 HTTP model is checked after its owned listener starts, never as a prerequisite to it.
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
+Paired archive search uses the same verified file-backed transcript as detail.
+After a file-backed result, the page cursor resumes at the next unscanned document.
 Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
