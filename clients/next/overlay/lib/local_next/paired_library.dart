@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -98,6 +99,7 @@ class PairedLibrary {
   bool get isSignedIn => verified && !_closed;
   late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
   Future<void>? _checking;
+  late final _audioOrigin = _readAudioOrigin();
   final _clients = <HttpClient>{};
   final _previews = <WebSocket>{};
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
@@ -223,6 +225,7 @@ class PairedLibrary {
     Duration? overallTimeout,
     Object Function(int status)? statusFailure,
     bool readHttpErrors = false,
+    Map<String, String> headers = const {},
   }) async {
     if (_closed) throw LibraryFailure.key;
     final uri = origin.replace(path: path, queryParameters: query);
@@ -231,6 +234,7 @@ class PairedLibrary {
       final req = await client.openUrl(method ?? (body == null ? 'GET' : 'POST'), uri).timeout(_deadline);
       req.followRedirects = false;
       req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_key');
+      headers.forEach(req.headers.set);
       if (body != null) {
         req.headers.contentType = bodyType ?? ContentType.binary;
         req.contentLength = body.length;
@@ -1076,13 +1080,39 @@ class PairedLibrary {
     }
   }
 
+  static Future<Map<String, String>> _readAudioOrigin() async {
+    final platform = defaultTargetPlatform;
+    if (platform != TargetPlatform.android && platform != TargetPlatform.iOS) return const {};
+    final headers = {'X-App-Platform': platform == TargetPlatform.android ? 'android' : 'ios'};
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      final model =
+          await (platform == TargetPlatform.android
+                  ? deviceInfo.androidInfo.then((device) => device.model)
+                  : deviceInfo.iosInfo.then((device) => device.modelName))
+              .timeout(const Duration(seconds: 1));
+      final label = model.trim();
+      if (label.isNotEmpty && label.length <= 80 && label.toLowerCase() != 'unknown') {
+        headers['X-Omi-Local-Recording-Origin'] = base64Url.encode(utf8.encode(jsonEncode({'phone_model': label})));
+      }
+    } catch (_) {
+      // Display metadata is optional. Device info must never block audio delivery.
+    }
+    return headers;
+  }
+
   Future<Map<String, dynamic>> uploadPart(Uint8List body, String serverId) async {
     if (serverId != audioOwnerId || _closed) throw LibraryFailure.key;
     // A saved v2 capability permits offline journaling; first send after launch needs a fresh profile.
     if (!verified) await verify();
     if (!audioDelivery || _closed) throw LibraryFailure.key;
     if (LocalAudioJournal.deliveryVersion(body) == 3 && !conversationGroups) throw LibraryFailure.unavailable;
-    final result = await _request('/v1/local/audio/parts', (r) => _json(r, 4096), body: body);
+    final result = await _request(
+      '/v1/local/audio/parts',
+      (r) => _json(r, 4096),
+      body: body,
+      headers: await _audioOrigin,
+    );
     if (result is! Map<String, dynamic>) throw LibraryFailure.malformed;
     return result;
   }

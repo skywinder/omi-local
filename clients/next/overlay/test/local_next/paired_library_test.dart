@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
+import 'package:device_info_plus_platform_interface/device_info_plus_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/processing.dart';
@@ -219,6 +221,13 @@ void main() {
   });
 
   test('a paired server supplies archive, transcript, audio and the durable upload receipt', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    final deviceInfo = DeviceInfoPlatform.instance;
+    DeviceInfoPlatform.instance = _RecordingDeviceInfo();
+    addTearDown(() {
+      DeviceInfoPlatform.instance = deviceInfo;
+      debugDefaultTargetPlatformOverride = null;
+    });
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
     final seen = <String>[];
@@ -264,6 +273,10 @@ void main() {
             response.headers.contentType = ContentType('audio', 'wav');
             response.add([1, 2, 3]);
           case '/v1/local/audio/parts':
+            expect(request.headers.value('X-App-Platform'), 'android');
+            final origin = request.headers.value('X-Omi-Local-Recording-Origin');
+            expect(origin, isNotNull);
+            expect(jsonDecode(utf8.decode(base64Url.decode(origin!))), {'phone_model': 'Pixel 5a'});
             final payload = await request.expand((part) => part).toList();
             if (request.method != 'POST' || payload.join(',') != part.join(',')) response.statusCode = 400;
             response.write(jsonEncode({'stored': true}));
@@ -693,5 +706,33 @@ void main() {
       {...draft, 'revision': 8},
       {'revision': 8},
     ]);
+  });
+}
+
+class _RecordingDeviceInfo extends DeviceInfoPlatform {
+  @override
+  Future<BaseDeviceInfo> deviceInfo() async => BaseDeviceInfo({
+    for (final field in [
+      'board',
+      'bootloader',
+      'brand',
+      'device',
+      'display',
+      'fingerprint',
+      'hardware',
+      'host',
+      'id',
+      'manufacturer',
+      'product',
+      'tags',
+      'type',
+    ])
+      field: 'fixture',
+    'version': {'codename': 'REL', 'incremental': '1', 'release': '14', 'sdkInt': 34},
+    'model': 'Pixel 5a',
+    'serialNumber': 'private-fixture-serial',
+    'isPhysicalDevice': true,
+    'isLowRamDevice': false,
+    for (final field in ['freeDiskSize', 'totalDiskSize', 'physicalRamSize', 'availableRamSize']) field: 100,
   });
 }

@@ -12,7 +12,7 @@ from cv1_protocol import cv1_feature_masks, cv1_uuids
 from prepare import HERE, PIN
 
 PLUGINS = {
-    'audio_session', 'flutter_secure_storage', 'flutter_sound', 'just_audio',
+    'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio',
     'path_provider_android', 'permission_handler_android', 'shared_preferences_android',
 }
 
