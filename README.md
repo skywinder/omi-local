@@ -31,14 +31,13 @@ The [Next feature comparison](clients/next/FEATURES.md) and [migration ledger](c
 
 ## Screenshots
 
-### Omi Local Next for iPhone and Android
+### Omi Local Next mobile app
 
-These captures render the app's Flutter screens with iPhone and Android profiles and synthetic demo data.
+The mobile app uses the same screens on iPhone and Android. These examples use the iPhone layout and synthetic demo data.
 
-| Platform | Recording | Live transcript | Archive |
-| --- | --- | --- | --- |
-| iPhone | ![Omi Local Next recording controls and CV1 timer on iOS](docs/screenshots/next-iphone-recording.png) | ![Omi Local Next live transcript with speakers and timestamps on iOS](docs/screenshots/next-iphone-live.png) | ![Omi Local Next conversations archive on iOS](docs/screenshots/next-iphone-archive.png) |
-| Android | ![Omi Local Next recording controls and CV1 timer on Android](docs/screenshots/next-android-recording.png) | ![Omi Local Next live transcript with speakers and timestamps on Android](docs/screenshots/next-android-live.png) | ![Omi Local Next conversations archive on Android](docs/screenshots/next-android-archive.png) |
+| Recording | Live transcript | Archive |
+| --- | --- | --- |
+| ![Omi Local Next recording controls and CV1 timer](docs/screenshots/next-iphone-recording.png) | ![Omi Local Next live transcript with speakers and timestamps](docs/screenshots/next-iphone-live.png) | ![Omi Local Next conversations archive](docs/screenshots/next-iphone-archive.png) |
 
 ### Web library
 
