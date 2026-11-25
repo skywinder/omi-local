@@ -15,6 +15,7 @@ import 'package:omi/ui/components/omi_page_states.dart';
 import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/widgets/transcript.dart';
+import 'package:omi/utils/audio/conversation_playback_controller.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -28,6 +29,7 @@ import 'recording_export.dart';
 import 'conversation_categories.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
+import 'recording_player_bar.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
 import 'task_editor.dart';
@@ -183,6 +185,15 @@ class RecordingPage extends StatefulWidget {
 class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
   late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
   late Future<_RecordingDetail> detail = _load();
+  final playback = ConversationPlaybackController();
+  StreamSubscription<Duration>? positionUpdates;
+
+  _RecordingDetail _readDetail(ServerConversation row) {
+    final loaded = _RecordingDetail(row);
+    if (mounted) playback.updateSegments(loaded.lines);
+    return loaded;
+  }
+
   String? focusedLine;
   int focusRequest = 0;
   AudioPlayer? player;
@@ -265,7 +276,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       final row = await widget.library.editRecording(widget.id, edit);
       if (!mounted) return;
       setState(() {
-        detail = SynchronousFuture(_RecordingDetail(row));
+        detail = SynchronousFuture(_readDetail(row));
       });
       widget.onEdited?.call(row);
     } finally {
@@ -370,7 +381,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 
   Future<_RecordingDetail> _load() async {
-    final loaded = _RecordingDetail(await widget.library.detail(widget.id));
+    final loaded = _readDetail(await widget.library.detail(widget.id));
     final match = widget.initialMatch;
     if (match != null) {
       final found = _focusMatch(loaded, match, verifyExcerpt: widget.verifyInitialExcerpt);
@@ -461,7 +472,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       ),
     );
     if (!mounted || !widget.library.isSignedIn) return;
-    final refreshed = widget.library.detail(widget.id).then(_RecordingDetail.new);
+    final refreshed = widget.library.detail(widget.id).then(_readDetail);
     setState(() {
       detail = refreshed;
     });
@@ -501,7 +512,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     setState(() => opening = true);
     try {
       await player?.pause();
-      final loaded = _RecordingDetail(await widget.library.detail(widget.id));
+      final loaded = _readDetail(await widget.library.detail(widget.id));
       if (!mounted) return;
       final focused = _focusMatch(loaded, match, verifyExcerpt: true);
       setState(() {
@@ -532,6 +543,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       focusRequest++;
     });
     tabs.animateTo(1);
+    playback.backToCurrent();
     if (canPlay && line.start.isFinite && line.start >= 0) {
       unawaited(_start(position: Duration(milliseconds: (line.start * 1000).round())));
     }
@@ -555,6 +567,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
             if (!mounted) return;
             player = fresh;
             temp = folder;
+            positionUpdates = fresh.positionStream.listen((position) {
+              if (mounted) _reportPosition(position);
+            });
           } finally {
             if (player != fresh) await fresh.dispose();
           }
@@ -573,6 +588,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       } else if (current.processingState == ProcessingState.completed) {
         await current.seek(Duration.zero);
       }
+      focusedLine = null;
+      if (mounted) _reportPosition(current.position);
       if (mounted && !current.playing) {
         // play() completes on stop/end, so the control must be released before then.
         unawaited(current.play().catchError((Object _) => _playFailed()));
@@ -584,6 +601,37 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     }
   }
 
+  bool get _hasPlayhead => player != null || _initialPosition != null;
+
+  void _reportPosition(Duration position) {
+    playback.reportPlayback(
+      wallSeconds: position.inMilliseconds / 1000,
+      playing: player?.playing == true,
+      loaded: player != null,
+    );
+  }
+
+  Future<void> _scrub(Duration target) async {
+    if (opening) return;
+    focusedLine = null;
+    playback.backToCurrent();
+    final current = player;
+    if (current == null) {
+      setState(() => _initialPosition = target);
+      _reportPosition(target);
+      return;
+    }
+    try {
+      await current.seek(target);
+      if (mounted) {
+        setState(() => _initialPosition = null);
+        _reportPosition(current.position);
+      }
+    } catch (_) {
+      _playFailed();
+    }
+  }
+
   void _playFailed() {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.audioPlaybackUnavailable)));
@@ -592,6 +640,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   @override
   void dispose() {
+    unawaited(positionUpdates?.cancel());
+    playback.dispose();
     tabs.dispose();
     final current = player;
     final folder = temp;
@@ -608,25 +658,28 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     super.dispose();
   }
 
-  Widget _playbackControls() => StreamBuilder<PlayerState>(
+  Widget _playbackControls(Duration estimatedDuration) => StreamBuilder<PlayerState>(
     stream: player?.playerStateStream,
     builder: (context, state) {
       final playing = state.data?.playing == true && state.data?.processingState != ProcessingState.completed;
-      final l = context.l10n;
-      return TextButton.icon(
-        onPressed: opening
-            ? null
-            : playing
-            ? () async {
-                try {
-                  await player?.pause();
-                } catch (_) {
-                  _playFailed();
-                }
-              }
-            : _start,
-        icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-        label: Text(playing ? l.pause : l.play),
+      return ValueListenableBuilder<double>(
+        valueListenable: playback.wallPosition,
+        builder: (context, seconds, _) => RecordingPlayerBar(
+          duration: player?.duration ?? estimatedDuration,
+          position: _initialPosition ?? Duration(milliseconds: (seconds * 1000).round()),
+          playing: playing,
+          onToggle: opening
+              ? null
+              : () async {
+                  if (!playing) return _start();
+                  try {
+                    await player?.pause();
+                  } catch (_) {
+                    _playFailed();
+                  }
+                },
+          onSeek: opening ? null : _scrub,
+        ),
       );
     },
   );
@@ -816,7 +869,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         ),
                       ),
                     ),
-                    if (canPlay) _playbackControls(),
+                    if (canPlay) _playbackControls(Duration(seconds: recordingDuration(loaded.row))),
                     if (loaded.failed)
                       Padding(
                         padding: const EdgeInsets.all(OmiSpacing.md),
@@ -843,30 +896,36 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                                         : [l.noTranscriptAvailable, if (diarization != null) diarization].join('\n'),
                                   ),
                                 )
-                              : TranscriptWidget(
-                                  segments: loaded.lines,
-                                  leadingItemIds: [if (diarization != null) 'local-diarization'],
-                                  leadingItems: [
-                                    if (diarization != null)
-                                      ListTile(leading: const Icon(Icons.people_outline), title: Text(diarization)),
-                                  ],
-                                  localPeople: _people.values.toList(),
-                                  editSegment: canEdit && widget.library.speakerLabelsAvailable && !opening && !_editing
-                                      ? (id, _) => _labelSpeaker(loaded, id)
-                                      : null,
-                                  isConversationDetail: true,
-                                  bottomMargin: OmiSpacing.md,
-                                  onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,
-                                  onEditSegmentText: canEdit && !opening && !_editing
-                                      ? (index) {
-                                          final line = loaded.lines[index];
-                                          if (loaded.sources.contains(line)) unawaited(_editText(loaded, line: line));
-                                        }
-                                      : null,
-                                  currentSegmentId: focusedLine,
-                                  followTargetSegmentId: focusedLine,
-                                  playbackFollowRequest: focusRequest,
-                                  followCurrentSegment: true,
+                              : ListenableBuilder(
+                                  listenable: playback,
+                                  builder: (context, _) => TranscriptWidget(
+                                    segments: loaded.lines,
+                                    leadingItemIds: [if (diarization != null) 'local-diarization'],
+                                    leadingItems: [
+                                      if (diarization != null)
+                                        ListTile(leading: const Icon(Icons.people_outline), title: Text(diarization)),
+                                    ],
+                                    localPeople: _people.values.toList(),
+                                    editSegment:
+                                        canEdit && widget.library.speakerLabelsAvailable && !opening && !_editing
+                                        ? (id, _) => _labelSpeaker(loaded, id)
+                                        : null,
+                                    isConversationDetail: true,
+                                    bottomMargin: OmiSpacing.md,
+                                    onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,
+                                    onEditSegmentText: canEdit && !opening && !_editing
+                                        ? (index) {
+                                            final line = loaded.lines[index];
+                                            if (loaded.sources.contains(line)) unawaited(_editText(loaded, line: line));
+                                          }
+                                        : null,
+                                    currentSegmentId: focusedLine ?? (_hasPlayhead ? playback.currentSegmentId : null),
+                                    followTargetSegmentId:
+                                        focusedLine ?? (_hasPlayhead ? playback.followTargetSegmentId : null),
+                                    playbackFollowRequest: focusRequest + playback.followRequest,
+                                    followCurrentSegment: playback.isFollowing,
+                                    onUserScroll: playback.suspendFollowing,
+                                  ),
                                 ),
                         ],
                       ),

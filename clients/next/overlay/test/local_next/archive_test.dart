@@ -299,6 +299,40 @@ void main() {
     }
   });
 
+  testWidgets('scrubbing a paired WAV moves the transcript and clears the highlight in silence', (tester) async {
+    final time = DateTime.utc(2026);
+    final row = ServerConversation.fromJson({
+      'id': _firstId,
+      'created_at': time.toIso8601String(),
+      'started_at': time.toIso8601String(),
+      'finished_at': time.add(const Duration(seconds: 12)).toIso8601String(),
+      'structured': {'title': 'Playback'},
+      'external_data': {'local_transcript': <String, dynamic>{}},
+      'transcript_segments': [
+        {'id': 'first', 'text': 'Opening', 'start': 1.0, 'end': 3.0, 'is_user': true},
+        {'id': 'second', 'text': 'Closing', 'start': 8.0, 'end': 11.0, 'is_user': true},
+      ],
+    });
+    final library = _ArchiveLibrary((_) async => (rows: [row], consumed: 1, partial: false, more: false), row)
+      ..audioPlayback = true;
+    addTearDown(library.close);
+    await _show(tester, library);
+    await tester.tap(find.text('Playback'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Transcript').first);
+    await tester.pumpAndSettle();
+    TranscriptWidget transcript() => tester.widget<TranscriptWidget>(find.byType(TranscriptWidget));
+    final slider = find.byType(Slider);
+    expect(transcript().currentSegmentId, isNull);
+    final bounds = tester.getRect(slider).deflate(24);
+    for (final (fraction, segment) in [(0.75, 'second'), (0.5, null), (0.16, 'first')]) {
+      await tester.tapAt(Offset(bounds.left + fraction * bounds.width, bounds.center.dy));
+      await tester.pumpAndSettle();
+      expect(transcript().currentSegmentId, segment);
+    }
+    expect(find.byTooltip('Play'), findsOneWidget);
+  });
+
   testWidgets('archive search crosses an empty storage page and opens the matching transcript line', (tester) async {
     final time = DateTime.utc(2026, 1, 2);
     final row = ServerConversation.fromJson({

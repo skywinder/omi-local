@@ -118,6 +118,9 @@ def apply_presentation(repository, revision, app):
          '  final bool followLatest;\n  final bool showTranslationNotice;\n  final List<Person> localPeople;'),
         ('    this.followLatest = false,',
          '    this.followLatest = false,\n    this.showTranslationNotice = true,\n    this.localPeople = const [],'),
+        ('Positioned.fill(child: transcriptList),',
+         'Positioned.fill(child: Scrollbar(controller: _scrollController, thumbVisibility: true, '
+         'interactive: true, child: transcriptList)),'),
         ('_buildTranslationNotice(),', 'if (widget.showTranslationNotice) _buildTranslationNotice(),', 2),
         ('final people = context.watch<PeopleProvider?>()?.people ?? SharedPreferencesUtil().cachedPeople;',
          'final people = widget.localPeople;'),

@@ -346,7 +346,6 @@ class _Transcript extends StatelessWidget {
               ],
             ),
           );
-    if (committed.isEmpty) return SingleChildScrollView(child: draft);
     return TranscriptWidget(
       segments: committed,
       unresolvedSpeakers: unknownSpeaker,

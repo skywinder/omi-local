@@ -232,11 +232,36 @@ void main() {
     expect(find.text('Первый перевод', findRichText: true), findsNothing);
     expect(find.textContaining('No translation model is configured'), findsOneWidget);
 
+    void longSnapshot(int revision, int count) => socket.send({
+      'type': 'local_transcript_snapshot',
+      'preview_id': 'preview-fixture',
+      'revision': revision,
+      'segments': List.generate(count, (i) => {'id': 'line-$i', 'text': 'Sentence $i', 'start': i, 'end': i + 1}),
+    });
+    longSnapshot(4, 45);
+    await tester.pumpAndSettle();
+    final bar = tester.widget<Scrollbar>(
+      find.descendant(of: find.byType(TranscriptWidget), matching: find.byType(Scrollbar)),
+    );
+    expect(bar.thumbVisibility, true);
+    expect(bar.interactive, true);
+    final controller = bar.controller!;
+    await tester.drag(find.byType(TranscriptWidget), const Offset(0, 400));
+    await tester.pumpAndSettle();
+    final offset = controller.offset;
+    expect(controller.position.extentAfter, greaterThan(150));
+    longSnapshot(5, 46);
+    await tester.pumpAndSettle();
+    expect(controller.offset, closeTo(offset, 2));
+    await tester.tap(find.byKey(const ValueKey('transcript_jump_to_latest')));
+    await tester.pumpAndSettle();
+    expect(controller.position.extentAfter, lessThan(2));
+
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(stops, 0);
-    expect(find.text('Corrected sentence'), findsOneWidget);
-    final latest = tester.widget<Text>(find.text('Corrected sentence'));
+    expect(find.text('Sentence 45'), findsOneWidget);
+    final latest = tester.widget<Text>(find.text('Sentence 45'));
     expect(latest.maxLines, 1);
     expect(latest.overflow, TextOverflow.ellipsis);
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
