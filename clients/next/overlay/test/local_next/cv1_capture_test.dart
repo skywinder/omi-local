@@ -160,6 +160,38 @@ void main() {
     expect(f.uploads[1].header['preroll_frames'], 0);
   });
 
+  test('Finish seals exactly one conversation and keeps the subscribed CV1 listening', () async {
+    final f = _Fixture();
+    await f.open(groupSilence: () => 15);
+    final capture = f.capture;
+    capture.handle(const Cv1LinkReady(1, 20));
+    capture.start();
+    capture.handle(_audio(1, 10, 0, _padded));
+    capture.handle(_audio(1, 11, 0, _silence));
+    await f.journal.flushPendingWrites();
+    expect(capture.canFinish, isTrue);
+    final first = capture.finishConversation();
+    await capture.finishConversation();
+    expect(capture.wantsAudio, isTrue);
+    expect(capture.canFinish, isFalse);
+    expect(capture.startedAt, isNull);
+    capture.handle(_audio(1, 12, 0, _silence));
+    capture.handle(_audio(1, 13, 0, _padded));
+    await first;
+    await f.journal.flushPendingWrites();
+    expect(capture.startedAt, isNotNull);
+    await capture.stop();
+    await f.journal.drain();
+    final parts = f.uploads.where((p) => p.header['kind'] == 'audio').toList();
+    expect(parts.map((p) => p.frames), [
+      [_padded],
+      [_silence],
+    ]);
+    expect(parts.first.header['recording_id'], isNot(parts.last.header['recording_id']));
+    final finished = f.uploads.where((p) => p.header['kind'] == 'finish');
+    expect(finished.map((p) => p.header['recording_id']), unorderedEquals(parts.map((p) => p.header['recording_id'])));
+  });
+
   test('complete CV1 frames reach only the paired owner, with a new codec and recording after reconnect', () async {
     final fixture = _Fixture();
     await fixture.open();

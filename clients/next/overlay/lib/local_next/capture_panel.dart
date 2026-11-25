@@ -607,6 +607,13 @@ class LocalNextCaptureControls extends StatelessWidget {
                   label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1'),
                 ),
               if (cv1.active)
+                TextButton.icon(
+                  key: const ValueKey('next-cv1-finish'),
+                  icon: const Icon(Icons.skip_next),
+                  label: Text(pairedSettingsLabel(context, 'nextFinishContinue')),
+                  onPressed: inputs.switching || !cv1.canFinish ? null : cv1.finishConversation,
+                ),
+              if (cv1.active)
                 IconButton(
                   tooltip: cv1.intent == Cv1CaptureIntent.muted ? l.unmute : l.mute,
                   icon: Icon(cv1.intent == Cv1CaptureIntent.muted ? Icons.mic_off : Icons.mic),

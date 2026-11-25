@@ -29,6 +29,7 @@ KEYS = (
 PROCESSING_MESSAGES = {
     'en': {
         'nextCheckpoint': 'Save current audio part',
+        'nextFinishContinue': 'Finish conversation and keep listening',
         'nextPhoneInput': 'Phone microphone',
         'nextFailedStage': 'Processing failed',
         'nextAttempts': 'Attempts',
@@ -148,6 +149,7 @@ PROCESSING_MESSAGES = {
     },
     'ru': {
         'nextCheckpoint': 'Сохранить текущую часть аудио',
+        'nextFinishContinue': 'Завершить разговор и продолжить слушать',
         'nextPhoneInput': 'Микрофон телефона',
         'nextFailedStage': 'Ошибка обработки',
         'nextAttempts': 'Попыток',

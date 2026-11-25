@@ -109,6 +109,18 @@ class NextCv1Capture extends ChangeNotifier {
     return _sealed;
   }
 
+  bool get canFinish => active && _recording != null;
+
+  /// Seal the current conversation while the same CV1 notification subscription
+  /// keeps delivering frames. A new journal starts on the next complete packet.
+  Future<void> finishConversation() {
+    if (!canFinish) return _sealed;
+    _endSegment(reportSealFailure: true);
+    startedAt = null;
+    notifyListeners();
+    return _sealed;
+  }
+
   void toggleMute() {
     if (_closed || !active) return;
     _intent = _intent == Cv1CaptureIntent.muted ? Cv1CaptureIntent.recording : Cv1CaptureIntent.muted;
@@ -169,7 +181,10 @@ class NextCv1Capture extends ChangeNotifier {
       _checkpoint(resetOpusContext: true);
     }
     if (frame == null) return;
-    if (_recording == null) _segment++;
+    if (_recording == null) {
+      _segment++;
+      startedAt ??= journal.clock();
+    }
     final current = _recording ??= journal.beginForServer(source: 'omi', codec: _codec!, serverId: owner);
     final attempt = _attempt;
     final segment = _segment;
@@ -218,7 +233,7 @@ class NextCv1Capture extends ChangeNotifier {
     }
   }
 
-  void _endSegment() {
+  void _endSegment({bool reportSealFailure = false}) {
     _frames.discardPending();
     _hasPersistedAudio = false;
     _cutPreview();
@@ -229,9 +244,21 @@ class NextCv1Capture extends ChangeNotifier {
     final attempt = _attempt;
     // stop() seals after every already accepted journal write on the same queue.
     late final Future<void> seal;
-    seal = current.stop().catchError((Object _) => _writeFailed(current, attempt, segment)).whenComplete(() {
-      if (identical(_sealing, seal)) _sealing = null;
-    });
+    seal = current
+        .stop()
+        .catchError((Object _) {
+          if (reportSealFailure && !_closed && attempt == _attempt) {
+            // The next conversation may already have accepted audio. Surface the
+            // failed seal without stopping that new recording.
+            _problem = Cv1CaptureProblem.storage;
+            notifyListeners();
+          } else {
+            _writeFailed(current, attempt, segment);
+          }
+        })
+        .whenComplete(() {
+          if (identical(_sealing, seal)) _sealing = null;
+        });
     _sealing = seal;
   }
 

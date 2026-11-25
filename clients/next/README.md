@@ -814,3 +814,8 @@ The mobile archive and recording detail display the input and the phone model wh
 server can match the original capture. Failed capture rows show the saved processing stage,
 error class and attempt count. The active recording timer uses the start of the current
 capture, including intervals when audio frames pause.
+
+While CV1 is recording, **Finish conversation and keep listening** seals the current
+conversation and clears its Live transcript. CV1 stays subscribed. The next complete
+Opus packet starts a new recording, with its own timer and delivery receipts. **Stop**
+ends listening as well.
