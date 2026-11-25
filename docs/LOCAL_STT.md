@@ -216,6 +216,11 @@ background reliability still require device verification.
 For a failed recording the web library displays the stage, attempt count and saved
 provider error class. Older checkpoints can identify a stage without a specific
 cause. Invalid summary JSON gets one structured retry on the selected model.
-To requeue an exhausted job, create an empty `.retry-processing` file in that
+On a paired server advertising `local_processing_retry_version: 1`, the owner can
+open a failed recording in Next and tap **Retry processing**. The authenticated
+`POST /v1/local/conversations/{conversation_id}/retry-processing` queues the saved
+capture and returns its pending or processing state. Repeated requests for a queued
+capture reuse that job. Completed imports and other owners' recordings are excluded.
+To requeue an exhausted job from the host, create an empty `.retry-processing` file in that
 completed capture's directory. The watcher consumes it using the saved provider
 profile and reuses validated stage checkpoints.

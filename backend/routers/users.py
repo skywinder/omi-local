@@ -337,6 +337,7 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
         profile['local_audio_playback_version'] = 1
         profile['local_recording_edits_version'] = 1
         profile['local_recording_categories_version'] = 1
+        profile['local_processing_retry_version'] = 1
         profile['local_folders_version'] = 2
         profile['local_speaker_labels_version'] = 1
         profile['local_tasks_version'] = 1

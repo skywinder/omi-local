@@ -198,6 +198,10 @@ query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
 
 from routers import local_tasks
 
+retry_path = '/v1/local/conversations/' + documents[-1].id + '/retry-processing'
+assert client.post(retry_path).status_code == 401
+assert client.post(retry_path, headers=headers).status_code == 404
+
 suggestion_path = '/v1/local/conversations/' + documents[-1].id + '/task-suggestions'
 assert client.get(suggestion_path).status_code == 401
 assert client.post(suggestion_path, json={'provider_binding': 'a' * 64}).status_code == 401
@@ -355,6 +359,7 @@ print(json.dumps({
         '/v1/local/action-items/{task_id}',
         '/v1/local/conversations/{conversation_id}/task-suggestions',
         '/v1/local/conversations/{conversation_id}/regenerate-summary',
+        '/v1/local/conversations/{conversation_id}/retry-processing',
         '/v1/local/preview',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',

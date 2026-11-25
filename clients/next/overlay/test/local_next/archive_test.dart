@@ -48,6 +48,20 @@ class _ArchiveLibrary extends PairedLibrary {
   Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) => search!(query, after);
 }
 
+class _RetryLibrary extends _ArchiveLibrary {
+  _RetryLibrary(this.failed, this.pending)
+    : super((_) async => (rows: [failed], consumed: 1, partial: false, more: false), failed);
+  final ServerConversation failed;
+  final ServerConversation pending;
+  final retries = <String>[];
+
+  @override
+  Future<void> retryProcessing(String id) async => retries.add(id);
+
+  @override
+  Future<ServerConversation> detail(String id) async => retries.isEmpty ? failed : pending;
+}
+
 ServerConversation _row(
   String id,
   String title,
@@ -84,6 +98,30 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('only a capable server offers retry and the refreshed pending row loses the action', (tester) async {
+    final library = _RetryLibrary(
+      _row(_firstId, 'Failed', DateTime.utc(2026), localState: 'failed'),
+      _row(_firstId, 'Pending', DateTime.utc(2026), localState: 'pending'),
+    );
+    Future<void> show(bool available) async {
+      library.processingRetryAvailable = available;
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingPage(key: ValueKey(available), library: library, id: _firstId),
+      ));
+      await tester.pumpAndSettle();
+    }
+    await show(false);
+    expect(find.text('Retry processing'), findsNothing);
+    await show(true);
+    await tester.tap(find.text('Retry processing'));
+    await tester.pumpAndSettle();
+    expect(library.retries, [_firstId]);
+    expect(find.text('Retry processing'), findsNothing);
+    expect(find.text('Queued for processing'), findsOneWidget);
+  });
+
   test('cold offline archive is scoped to its pairing and a successful empty page clears the cache', () async {
     SharedPreferences.setMockInitialValues({});
     final row = _row(_firstId, 'Saved title', DateTime.utc(2026));

@@ -25,6 +25,10 @@ def test_offline_detail_contract_does_not_open_other_conversation_actions():
     recording_edit = '/v1/local/conversations/00000000-0000-4000-8000-000000000001/edit'
     assert is_offline_http_route_allowed('PATCH', recording_edit)
     assert not is_offline_http_route_allowed('POST', recording_edit)
+    retry = recording_edit.removesuffix('/edit') + '/retry-processing'
+    assert is_offline_http_route_allowed('POST', retry)
+    assert not is_offline_http_route_allowed('GET', retry)
+    assert not is_offline_http_route_allowed('POST', retry + '/extra')
     assert is_offline_http_route_allowed('GET', '/v1/local/folders')
     assert is_offline_http_route_allowed('POST', '/v1/local/folders')
     assert is_offline_http_route_allowed('PATCH', '/v1/local/folders/fixture-folder')

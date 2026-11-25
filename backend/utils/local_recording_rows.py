@@ -77,7 +77,7 @@ def _failed_stages(results, queue):
     return stages
 
 
-def local_recording_rows(uid: str, origins=None) -> list[dict]:
+def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[dict]:
     if not is_offline_runtime() or not local_tunnel_enabled():
         return []
     if uid != load_pairing()['owner_uid']:
@@ -130,8 +130,13 @@ def local_recording_rows(uid: str, origins=None) -> list[dict]:
             status = job.get('state', 'saved')
             if not isinstance(status, str) or status not in {'pending', 'processing', 'failed', 'no_speech'}:
                 status = 'saved'
+            row_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))
+            if status == 'failed' and not (folder / '.retry-processing').is_symlink() and (folder / '.retry-processing').is_file():
+                status = 'pending'
+            if retry_targets is not None:
+                retry_targets[row_id] = (folder, status)
             rows.append(Conversation(
-                id=str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id)),
+                id=row_id,
                 created_at=started, started_at=started, finished_at=started + timedelta(seconds=duration),
                 source=metadata['source'], status='processing', uses_custom_stt=True,
                 structured=Structured(title='Local recording', overview='', emoji='🎙️'),
@@ -170,6 +175,38 @@ def local_recording_rows(uid: str, origins=None) -> list[dict]:
         except (ValueError, KeyError, TypeError, OverflowError):
             continue
     return rows
+
+
+def request_processing_retry(uid: str, conversation_id: str) -> str:
+    """Wake the existing watcher for this owner's unimported recording and pinned job."""
+    targets = {}
+    local_recording_rows(uid, retry_targets=targets)
+    target = targets.get(conversation_id)
+    if target is None:
+        return 'not_found'
+    folder, state = target
+    if state in {'pending', 'processing'}:
+        return state
+    if state != 'failed':
+        return 'conflict'
+    directory = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            marker = os.open('.retry-processing', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        except FileExistsError:
+            try:
+                mode = os.stat('.retry-processing', dir_fd=directory, follow_symlinks=False).st_mode
+            except FileNotFoundError:
+                return 'pending'  # The watcher already consumed the request.
+            if not stat.S_ISREG(mode):
+                raise ValueError('Invalid retry marker')
+        else:
+            os.close(marker)
+            os.fsync(directory)
+    finally:
+        os.close(directory)
+    return 'pending'
 
 
 def filter_local_recording_rows(rows, *, statuses, sources, start_date, end_date, folder_id, starred):

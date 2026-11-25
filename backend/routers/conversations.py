@@ -316,6 +316,24 @@ def _paired_detail(row: dict, uid: str) -> dict:
         raise HTTPException(503, 'Full local transcript unavailable') from None
 
 
+@router.post('/v1/local/conversations/{conversation_id}/retry-processing', tags=['local'])
+def retry_local_recording_processing(conversation_id: str, response: Response, uid: str = Depends(require_paired_owner)):
+    from utils.local_recording_rows import request_processing_retry
+
+    if not _LOCAL_ARCHIVE_ID.fullmatch(conversation_id):
+        raise HTTPException(404, 'local_recording_unavailable')
+    try:
+        status = request_processing_retry(uid, conversation_id)
+    except (OSError, ValueError):
+        raise HTTPException(503, 'local_job_unavailable') from None
+    if status == 'not_found':
+        raise HTTPException(404, 'local_recording_unavailable')
+    if status == 'conflict':
+        raise HTTPException(409, 'local_job_not_failed')
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': status}
+
+
 class LocalTitleEdit(BaseModel):
     field: Literal['title']
     expected: str = Field(pattern=r'^[a-f0-9]{64}$', description='SHA-256 of the original UTF-8 title')

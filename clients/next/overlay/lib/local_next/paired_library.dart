@@ -85,6 +85,7 @@ class PairedLibrary {
   bool conversationGroups = false;
   bool recordingEdits = false;
   bool recordingCategories = false;
+  bool processingRetryAvailable = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
   bool taskSuggestionsAvailable = false;
@@ -114,6 +115,7 @@ class PairedLibrary {
     audioPlayback = false;
     recordingEdits = false;
     recordingCategories = false;
+    processingRetryAvailable = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
     taskSuggestionsAvailable = false;
@@ -466,6 +468,7 @@ class PairedLibrary {
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
     recordingCategories = recordingEdits && data['local_recording_categories_version'] == 1;
+    processingRetryAvailable = data['local_processing_retry_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
@@ -600,6 +603,15 @@ class PairedLibrary {
       // Domain model normalization also rejects incompatible JSON field types.
       throw LibraryFailure.malformed;
     }
+  }
+
+  Future<void> retryProcessing(String id) async {
+    _conversation(id);
+    if (!isSignedIn || !processingRetryAvailable) throw LibraryFailure.unavailable;
+    await _request('/v1/local/conversations/$id/retry-processing', (response) async {
+      final data = await _json(response, 4096);
+      if (data is! Map || !const {'pending', 'processing'}.contains(data['status'])) throw LibraryFailure.malformed;
+    }, method: 'POST');
   }
 
   Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {

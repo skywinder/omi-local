@@ -163,6 +163,19 @@ def test_saved_recording_stays_visible_until_import_succeeds(tmp_path, monkeypat
     assert pending[0]['external_data'] == {'local_recording': {'status': state, 'duration_seconds': 1.0}}
     assert rows.local_recording_rows('another-owner') == []
     assert 'never-return' not in str(pending) and str(storage) not in str(pending)
+    row_id = pending[0]['id']
+    assert rows.request_processing_retry('another-owner', row_id) == 'not_found'
+    marker = capture.session_dir / '.retry-processing'
+    assert not marker.exists()
+    if state == 'failed':
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'pending'
+        assert marker.is_file()
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'pending'
+        assert rows.local_recording_rows('synthetic-owner')[0]['external_data']['local_recording']['status'] == 'pending'
+        assert json.loads(queue.read_text())[key]['state'] == 'failed'  # Only the watcher owns the queue.
+    elif state == 'no_speech':
+        assert rows.request_processing_retry('synthetic-owner', row_id) == 'conflict'
+        assert not marker.exists()
     queue.write_text(json.dumps({key: {'state': 'completed'}}))
     assert rows.local_recording_rows('synthetic-owner') == []
     # Manual import also retires the projection even if no queue job exists.

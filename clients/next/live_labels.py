@@ -33,6 +33,8 @@ KEYS = (
 PROCESSING_MESSAGES = {
     'en': {
         'nextCheckpoint': 'Save current audio part',
+        'nextRetryProcessing': 'Retry processing',
+        'nextRetryQueued': 'Queued for processing',
         'nextFinishContinue': 'Finish conversation and keep listening',
         'nextCachedArchive': 'Offline · Showing the last saved recording list',
         'nextPhoneInput': 'Phone microphone',
@@ -167,6 +169,8 @@ PROCESSING_MESSAGES = {
     },
     'ru': {
         'nextCheckpoint': 'Сохранить текущую часть аудио',
+        'nextRetryProcessing': 'Повторить обработку',
+        'nextRetryQueued': 'Запись поставлена в очередь',
         'nextFinishContinue': 'Завершить разговор и продолжить слушать',
         'nextCachedArchive': 'Нет связи · Последний сохранённый список записей',
         'nextPhoneInput': 'Микрофон телефона',

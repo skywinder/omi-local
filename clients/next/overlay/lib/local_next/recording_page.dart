@@ -388,6 +388,21 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     }
   }
 
+  Future<void> _retryProcessing() async {
+    if (_editing) return;
+    setState(() => _editing = true);
+    try {
+      await widget.library.retryProcessing(widget.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
+      setState(() => detail = _load());
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+  }
+
   Future<void> _regenerateSummary() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -711,6 +726,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                 )
               : Column(
                   children: [
+                    if (widget.library.processingRetryAvailable &&
+                        loaded.row.externalIntegration?.localRecording?['status'] == 'failed')
+                      TextButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _editing ? null : _retryProcessing,
+                        label: Text(pairedSettingsLabel(context, 'nextRetryProcessing')),
+                      ),
                     if (recordingInput(context, loaded.row).isNotEmpty) Text(recordingInput(context, loaded.row)),
                     if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
                       Padding(
