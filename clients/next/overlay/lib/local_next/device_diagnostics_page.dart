@@ -8,7 +8,11 @@ import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
+
 import 'cv1_transport.dart';
+import 'gain_samples.dart';
+import 'paired_library.dart';
 import 'settings_labels.dart';
 
 String cv1PhaseLabel(BuildContext context, Cv1LinkPhase phase) {
@@ -25,11 +29,18 @@ String cv1PhaseLabel(BuildContext context, Cv1LinkPhase phase) {
 }
 
 class NextDeviceDiagnosticsPage extends StatefulWidget {
-  const NextDeviceDiagnosticsPage({super.key, required this.link, required this.capture, required this.captureBusy});
+  const NextDeviceDiagnosticsPage({
+    super.key,
+    required this.link,
+    required this.capture,
+    required this.captureBusy,
+    this.library,
+  });
 
   final Cv1Connection link;
   final Listenable capture;
   final bool Function() captureBusy;
+  final PairedLibrary? library;
 
   @override
   State<NextDeviceDiagnosticsPage> createState() => _DeviceDiagnosticsState();
@@ -86,7 +97,25 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('${draft.round()}'),
+              if (field == 'gain')
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove),
+                      tooltip: pairedSettingsLabel(context, 'gainDown'),
+                      onPressed: draft > 0 ? () => setDraft(() => draft--) : null,
+                    ),
+                    Flexible(child: Text('${draft.round()} / 8 · ${micGainLevelLabel(context, draft.round())}')),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: pairedSettingsLabel(context, 'gainUp'),
+                      onPressed: draft < max ? () => setDraft(() => draft++) : null,
+                    ),
+                  ],
+                )
+              else
+                Text('${draft.round()}'),
               Slider(
                 min: 0,
                 max: max.toDouble(),
@@ -95,6 +124,18 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 label: '${draft.round()}',
                 onChanged: (value) => setDraft(() => draft = value),
               ),
+              if (field == 'gain')
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final (title, level) in [(l.quiet, 2), (l.normal, 4), (l.high, 6)])
+                      ChoiceChip(
+                        label: Text(title),
+                        selected: draft.round() == level,
+                        onSelected: (_) => setDraft(() => draft = level.toDouble()),
+                      ),
+                  ],
+                ),
             ],
           ),
           actions: [
@@ -204,6 +245,22 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                   ],
                 ],
               ),
+              if (data?.gain case final int gain when ready && data?.gainWritable == true && gain >= 0 && gain <= 8)
+                _Card(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.mic_outlined),
+                      title: Text(l.micGain),
+                      subtitle: Text('$gain / 8 · ${micGainLevelLabel(context, gain)}'),
+                      trailing: const Icon(Icons.tune),
+                      onTap: widget.captureBusy() || _writing ? null : () => _edit('gain', l.micGain, gain, 8),
+                    ),
+                    if (widget.captureBusy()) Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
+                    if (widget.library case final library? when library.audioPlayback)
+                      GainSamples(key: ObjectKey(library), library: library),
+                  ],
+                ),
               _History(
                 title: l.signalStrength,
                 samples: link.rssiHistory,
@@ -295,6 +352,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
     return _Card(
       children: [
         ExpansionTile(
+          key: const PageStorageKey('cv1-device-info'),
           tilePadding: EdgeInsets.zero,
           title: Text(l.deviceInfoSection),
           children: [
@@ -312,12 +370,6 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 title: Text(l.ledBrightness),
                 trailing: Text('${data!.led}%'),
                 onTap: canEdit ? () => _edit('led', l.ledBrightness, data.led!, 100) : null,
-              ),
-            if (data?.gainWritable == true && data?.gain != null)
-              ListTile(
-                title: Text(l.micGain),
-                trailing: Text('${data!.gain}'),
-                onTap: canEdit ? () => _edit('gain', l.micGain, data.gain!, 8) : null,
               ),
             if (widget.captureBusy() && (data?.ledWritable == true || data?.gainWritable == true))
               ListTile(title: Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy'))),

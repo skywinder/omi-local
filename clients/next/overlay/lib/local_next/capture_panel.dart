@@ -377,6 +377,7 @@ class LocalNextCaptureControls extends StatelessWidget {
           link: inputs.connection,
           capture: capture,
           captureBusy: () => inputs.hasCaptureInProgress,
+          library: library,
         ),
       ),
     );

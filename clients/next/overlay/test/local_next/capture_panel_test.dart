@@ -20,6 +20,7 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   final subscriptions = <bool>[];
   int generation = 1;
   int signalReads = 0;
+  final writes = <(String, int)>[];
 
   @override
   Future<void> sampleSignal() async => signalReads++;
@@ -28,7 +29,7 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   Future<void> sampleDiagnostics() async {}
 
   @override
-  Future<void> writeSetting(int generation, String field, int value) async {}
+  Future<void> writeSetting(int generation, String field, int value) async => writes.add((field, value));
 
   String? selected;
   bool rejectConnection = false;
@@ -204,6 +205,29 @@ void main() {
       expect(find.text('fixture firmware'), findsOneWidget);
       expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNotNull);
       expect(find.text('Mic Gain'), findsNothing);
+      radio.emit(
+        const Cv1DiagnosticsEvent(
+          1,
+          Cv1Diagnostics(
+            gain: 6,
+            gainWritable: true,
+            led: 30,
+            ledWritable: true,
+            rssi: -66,
+            firmware: 'fixture firmware',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('Mic Gain'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Decrease gain'));
+      await tester.pump();
+      expect(find.text('5 / 8 · +10dB'), findsOneWidget);
+      expect(radio.writes, isEmpty);
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(radio.writes, [('gain', 5)]);
       busy.value = true;
       final reads = radio.signalReads;
       await tester.pump(const Duration(seconds: 3));

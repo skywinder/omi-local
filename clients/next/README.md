@@ -149,7 +149,13 @@ minutes. Connection events can be copied with timestamps, reason codes, last
 measurements and link duration. The journal does not contain Bluetooth
 identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
-and a confirmed Bluetooth write. Configure double tap in the same screen.
+and a confirmed Bluetooth write. Device Diagnostics exposes gain as the Omi 0–8 scale
+with dB labels and one-step changes. Use two short CV1 archive recordings of the
+same phrase to compare gain settings. The phone reads at most the first ten
+seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital
+RMS, peak and the number of full-scale samples. The gain shown for the pendant is
+its current setting. Archive recordings do not carry a historical gain measurement.
+Configure double tap in the same screen.
 The default preserves the existing behavior of saving the current audio part.
 
 ## Saved servers

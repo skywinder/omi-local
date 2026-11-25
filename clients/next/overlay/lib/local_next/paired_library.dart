@@ -21,6 +21,7 @@ import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'daily_recap.dart';
+import 'wav_level.dart';
 import 'live_preview.dart';
 import 'local_goal.dart';
 import 'processing.dart';
@@ -1169,6 +1170,26 @@ class PairedLibrary {
     );
     if (result is! Map<String, dynamic>) throw LibraryFailure.malformed;
     return result;
+  }
+
+  Future<WavLevel> readRecordingLevel(String id) async {
+    if (!audioPlayback) throw LibraryFailure.unavailable;
+    _conversation(id);
+    return _request('/v1/local/conversations/$id/audio', (response) async {
+      if (response.headers.contentType?.mimeType != 'audio/wav') throw LibraryFailure.malformed;
+      const limit = gainHeaderLimit + gainSampleBytes;
+      final prefix = BytesBuilder(copy: false);
+      await for (final chunk in response.timeout(_deadline)) {
+        final left = limit - prefix.length;
+        if (chunk.length >= left) {
+          prefix.add(chunk.sublist(0, left));
+          break;
+        }
+        prefix.add(chunk);
+      }
+      if (_closed) throw LibraryFailure.key;
+      return WavLevel.measure(prefix.takeBytes());
+    });
   }
 
   Future<void> downloadAudio(String id, File target) async {
