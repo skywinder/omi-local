@@ -9,6 +9,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/archive.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/recording_edit.dart';
 import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/pages/conversations/widgets/conversation_state_tile.dart';
 import 'package:omi/pages/conversations/widgets/date_list_item.dart';
@@ -72,6 +73,35 @@ class _RetryLibrary extends _ArchiveLibrary {
 
   @override
   Future<ServerConversation> detail(String id) async => retries.isEmpty ? failed : pending;
+
+  @override
+  Future<ServerConversation> refreshSavedRecording(String id) => detail(id);
+}
+
+class _PublishingLibrary extends _ArchiveLibrary {
+  _PublishingLibrary(ServerConversation pending, this.published)
+    : super((_) async => (rows: [pending], consumed: 1, partial: false, more: false), pending) {
+    recordingEdits = true;
+  }
+  final ServerConversation published;
+  final refreshes = <String>[];
+  final edits = <String>[];
+
+  @override
+  Future<void> verify() async {}
+
+  @override
+  Future<ServerConversation> refreshSavedRecording(String id) async {
+    refreshes.add(id);
+    if (refreshes.length == 2) throw LibraryFailure.unavailable;
+    return refreshes.length == 1 ? record : published;
+  }
+
+  @override
+  Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {
+    edits.add(id);
+    return published;
+  }
 }
 
 ServerConversation _row(
@@ -110,6 +140,45 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('an open saved recording survives offline, follows publication and replaces its archive row', (
+    tester,
+  ) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final date = DateTime.utc(2026, 1, 2);
+    final library = _PublishingLibrary(
+      _row(_firstId, 'Processing', date, localState: 'processing'),
+      _row(_secondId, 'Finished conversation', date),
+    );
+    addTearDown(library.close);
+    await _show(tester, library);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(ConversationStateTile));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecordingPage), findsOneWidget);
+    expect(library.refreshes, [_firstId]);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(library.refreshes, [_firstId, _firstId]);
+    expect(find.text('Finished conversation'), findsNothing);
+    expect(find.byType(TabBar), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(library.refreshes, [_firstId, _firstId, _firstId]);
+    expect(find.text('Finished conversation'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add to favorites'));
+    await tester.pumpAndSettle();
+    expect(library.edits, [_secondId]);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConversationStateTile), findsOneWidget);
+    expect(find.text('Finished conversation'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('only a capable server offers retry and the refreshed pending row loses the action', (tester) async {
     final library = _RetryLibrary(
       _row(

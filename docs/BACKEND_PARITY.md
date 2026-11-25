@@ -76,6 +76,14 @@ complete expansion and rejection of a changed file. Each Bastion release keeps
 its previous Compose file list for rollback, including the original provider
 and capture adjustments.
 
+Next can opt in to resolving a saved-recording detail with
+`GET /v1/conversations/{id}?resolve_local_recording=true`. For the paired owner,
+the route returns the completed conversation when the capture has one successful
+import receipt and the stored result matches it. Clients use the returned ID
+for playback and edits. The plain detail route keeps exact-ID lookup. If a group
+is waiting for parts or a capture has multiple imported results, no result is
+selected by inference.
+
 The paired archive search on Bastion returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired
 detail response. The same check verified pagination was available, authentication

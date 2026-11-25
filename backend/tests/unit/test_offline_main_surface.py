@@ -43,6 +43,7 @@ import json
 import os
 import sys
 import hashlib
+import uuid
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +118,48 @@ assert cut_archive.headers['X-Omi-Conversation-Page-Size'] == '0'
 assert 'X-Omi-Has-More' not in cut_archive.headers
 main.conversations.conversations_db.get_conversations_without_photos = original_canonical
 local_recording_rows.local_recording_rows = original_local
+from utils.local_transcript import build_conversation
+from utils.offline_audio_capture import OfflineAudioCapture
+storage = Path(os.environ['OMI_LOCAL_STORAGE_ROOT'])
+capture = OfflineAudioCapture(session_id=str(uuid.uuid4()), input_codec='pcm16', source='phone', root=storage)
+capture.record_decoded_frame(encoded_bytes=32000, pcm=b'\\x00\\x00' * 16000)
+capture.finalize()
+result_key = 'b' * 64
+published = build_conversation({'segments': [{'text': 'Saved transcript', 'start': 0.1, 'end': 0.9}]}, {
+    'result_key': result_key, 'audio_sha256': 'a' * 64, 'duration_seconds': 1,
+    'started_at': '2026-01-02T11:00:00Z', 'source': 'phone', 'profile': {'engine': 'whisperkit'},
+}).model_dump()
+from fastapi import HTTPException
+original_detail = main.conversations._get_valid_conversation_by_id
+def exact_detail(uid, id):
+    if uid == 'fixture-owner' and id == published['id']:
+        return published
+    raise HTTPException(404, 'Conversation not found')
+main.conversations._get_valid_conversation_by_id = exact_detail
+saved_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture.session_id))
+saved_url = '/v1/conversations/' + saved_id
+resolve = '?resolve_local_recording=true'
+assert client.get(saved_url + resolve, headers=archive_headers).json()['id'] == saved_id
+results = pairing.parent / 'services' / 'local-transcripts'
+data = {'import': 'passed', 'capture_key': hashlib.sha256(capture.session_id.encode()).hexdigest()}
+for candidate in (result_key, 'c' * 64):
+    (results / candidate).mkdir(parents=True)
+receipt = results / result_key / 'import.json'
+receipt.write_text(json.dumps(data))
+assert client.get(saved_url, headers=archive_headers).status_code == 404
+resolved = client.get(saved_url + resolve, headers=archive_headers)
+assert resolved.status_code == 200, resolved.text
+assert resolved.json()['id'] == published['id']
+assert resolved.json()['transcript_segments'][0]['text'] == 'Saved transcript'
+published['external_data']['local_transcript']['result_key'] = 'd' * 64
+assert client.get(saved_url + resolve, headers=archive_headers).status_code == 404
+published['external_data']['local_transcript']['result_key'] = result_key
+main.app.dependency_overrides[archive_auth] = lambda: 'different-owner'
+assert client.get(saved_url + resolve, headers=archive_headers).status_code == 404
+main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
+(results / ('c' * 64) / 'import.json').write_text(json.dumps(data))
+assert client.get(saved_url + resolve, headers=archive_headers).status_code == 404
+main.conversations._get_valid_conversation_by_id = original_detail
 del main.app.dependency_overrides[archive_auth]
 assert client.post(search_url, json={'query': 'привет'}).status_code == 401
 db.collection.assert_not_called()

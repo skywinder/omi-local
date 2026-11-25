@@ -163,6 +163,9 @@ String recordingStatus(BuildContext context, ServerConversation row) {
   };
 }
 
+bool canFollowSavedRecording(ServerConversation row) =>
+    const {'saved', 'pending', 'processing', 'failed'}.contains(row.externalIntegration?.localRecording?['status']);
+
 class RecordingPage extends StatefulWidget {
   const RecordingPage({
     super.key,
@@ -171,12 +174,16 @@ class RecordingPage extends StatefulWidget {
     this.initialMatch,
     this.verifyInitialExcerpt = false,
     this.onEdited,
+    this.fromSavedRecording = false,
+    this.onPublished,
   });
   final PairedLibrary library;
   final String id;
   final TranscriptMatchSnippet? initialMatch;
   final bool verifyInitialExcerpt;
   final ValueChanged<ServerConversation>? onEdited;
+  final bool fromSavedRecording;
+  final void Function(String previousId, ServerConversation row)? onPublished;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
@@ -184,7 +191,10 @@ class RecordingPage extends StatefulWidget {
 
 class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
   late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
+  late String _id = widget.id;
+  late bool _followSavedRecording = widget.fromSavedRecording;
   late Future<_RecordingDetail> detail = _load();
+  Timer? _processingPoll;
   final playback = ConversationPlaybackController();
   StreamSubscription<Duration>? positionUpdates;
 
@@ -274,7 +284,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening || _editing) throw RecordingEditFailure.unavailable;
     setState(() => _editing = true);
     try {
-      final row = await widget.library.editRecording(widget.id, edit);
+      final row = await widget.library.editRecording(_id, edit);
       if (!mounted) return;
       setState(() {
         detail = SynchronousFuture(_readDetail(row));
@@ -349,7 +359,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final created = await createLocalTask(
       context,
       widget.library,
-      conversationId: widget.id,
+      conversationId: _id,
       segmentId: line?.id,
       initial: initial,
     );
@@ -382,13 +392,58 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 
   Future<_RecordingDetail> _load() async {
-    final loaded = _readDetail(await widget.library.detail(widget.id));
+    final row = await (_followSavedRecording ? widget.library.refreshSavedRecording(_id) : widget.library.detail(_id));
+    final loaded = _acceptRead(row);
+    if (!mounted) return loaded;
     final match = widget.initialMatch;
     if (match != null) {
       final found = _focusMatch(loaded, match, verifyExcerpt: widget.verifyInitialExcerpt);
       _initialExcerptUnavailable = widget.verifyInitialExcerpt && !found;
     }
     return loaded;
+  }
+
+  _RecordingDetail _acceptRead(ServerConversation row) {
+    final loaded = _readDetail(row);
+    if (!mounted) return loaded;
+    final before = _id;
+    _id = row.id;
+    _followSavedRecording = canFollowSavedRecording(row);
+    _processingPoll?.cancel();
+    if (const {'saved', 'pending', 'processing'}.contains(loaded.localState)) _scheduleProcessingPoll();
+    if (before != row.id) widget.onPublished?.call(before, row);
+    return loaded;
+  }
+
+  void _scheduleProcessingPoll() {
+    _processingPoll = Timer(const Duration(seconds: 5), _refreshProcessingDetail);
+  }
+
+  bool get _canPoll =>
+      ModalRoute.isCurrentOf(context) == true &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+      !_editing &&
+      !opening;
+
+  Future<void> _refreshProcessingDetail() async {
+    if (!mounted || !widget.library.isSignedIn) return;
+    if (_canPoll) {
+      ServerConversation? row;
+      try {
+        row = await widget.library.refreshSavedRecording(_id);
+      } catch (_) {
+        // A temporary server failure leaves the last confirmed recording visible.
+      }
+      if (!mounted || !widget.library.isSignedIn) return;
+      if (row != null && _canPoll) {
+        final loaded = _acceptRead(row);
+        setState(() {
+          detail = SynchronousFuture(loaded);
+        });
+        return;
+      }
+    }
+    if (mounted && widget.library.isSignedIn) _scheduleProcessingPoll();
   }
 
   final _menu = GlobalKey();
@@ -418,7 +473,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       } else {
         scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
         audio = File('${scratch.path}/recording.wav');
-        await widget.library.downloadAudio(widget.id, audio);
+        await widget.library.downloadAudio(_id, audio);
       }
       if (!mounted) return;
       await SharePlus.instance.share(
@@ -452,12 +507,14 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (_editing) return;
     setState(() => _editing = true);
     try {
-      await widget.library.retryProcessing(widget.id);
+      await widget.library.retryProcessing(_id);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
-      setState(() => detail = _load());
+      setState(() {
+        detail = _load();
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
@@ -469,11 +526,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Future<void> _regenerateSummary() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => RecordingSummaryPage(id: widget.id, library: widget.library),
+        builder: (_) => RecordingSummaryPage(id: _id, library: widget.library),
       ),
     );
     if (!mounted || !widget.library.isSignedIn) return;
-    final refreshed = widget.library.detail(widget.id).then(_readDetail);
+    final refreshed = widget.library.detail(_id).then(_readDetail);
     setState(() {
       detail = refreshed;
     });
@@ -506,14 +563,14 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening) return;
     final match = await Navigator.of(context).push<TranscriptMatchSnippet>(
       MaterialPageRoute(
-        builder: (_) => RecordingChatPage(id: widget.id, library: widget.library),
+        builder: (_) => RecordingChatPage(id: _id, library: widget.library),
       ),
     );
     if (!mounted || match == null) return;
     setState(() => opening = true);
     try {
       await player?.pause();
-      final loaded = _readDetail(await widget.library.detail(widget.id));
+      final loaded = _readDetail(await widget.library.detail(_id));
       if (!mounted) return;
       final focused = _focusMatch(loaded, match, verifyExcerpt: true);
       setState(() {
@@ -560,7 +617,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         try {
           final file = File('${folder.path}/recording.wav');
           if (!mounted) return;
-          await widget.library.downloadAudio(widget.id, file);
+          await widget.library.downloadAudio(_id, file);
           if (!mounted) return;
           final fresh = AudioPlayer();
           try {
@@ -651,6 +708,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   @override
   void dispose() {
+    _processingPoll?.cancel();
     unawaited(positionUpdates?.cancel());
     playback.dispose();
     tabs.dispose();
@@ -1005,7 +1063,8 @@ class _RecordingDetail {
     ServerConversation(id: row.id, createdAt: row.createdAt, structured: row.structured, transcriptSegments: sources),
   );
   bool get pending => row.externalIntegration?.localRecording != null;
-  bool get failed => row.externalIntegration?.localRecording?['status'] == 'failed';
+  Object? get localState => row.externalIntegration?.localRecording?['status'];
+  bool get failed => localState == 'failed';
 }
 
 class _Summary extends StatelessWidget {

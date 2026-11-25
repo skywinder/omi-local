@@ -31,6 +31,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool showingCached = false;
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
+  final _publicationsDuringRead = <String, ServerConversation>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
   bool busy = false, more = false, partial = false;
   Object? failure;
@@ -160,6 +161,15 @@ class PairedArchiveProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void replacePending(String previousId, ServerConversation row) {
+    if (_disposed) return;
+    if (busy) _publicationsDuringRead[previousId] = row;
+    if (_rows.remove(previousId) == null) return;
+    if (_matches(row)) _rows[row.id] = row;
+    _groupEntries();
+    notifyListeners();
+  }
+
   void _groupEntries() {
     final sorted = _rows.values.toList()
       ..sort((a, b) {
@@ -201,7 +211,8 @@ class PairedArchiveProvider extends ChangeNotifier {
       _paged = append;
       failure = null;
       for (final row in result.rows) {
-        final fresh = _editsDuringRead[row.id] ?? row;
+        final published = _publicationsDuringRead[row.id] ?? row;
+        final fresh = _editsDuringRead[published.id] ?? published;
         if (_matches(fresh)) _rows[fresh.id] = fresh;
       }
       _offset += result.consumed;
@@ -244,6 +255,7 @@ class PairedArchiveProvider extends ChangeNotifier {
       }
     } finally {
       _editsDuringRead.clear();
+      _publicationsDuringRead.clear();
       if (!_disposed) {
         busy = false;
         notifyListeners();

@@ -3,6 +3,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import uuid
 from unicodedata import normalize
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, BackgroundTasks
@@ -905,6 +906,7 @@ def get_conversation_by_id(
     conversation_id: str,
     source: Optional[str] = Query(None, description="Optional provenance constraint for a detail read"),
     include_discarded: bool = Query(True),
+    resolve_local_recording: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if not is_offline_runtime():
@@ -914,7 +916,17 @@ def get_conversation_by_id(
     if is_offline_runtime():
         from utils.local_recording_rows import attach_saved_origin, get_local_recording
 
-        conversation = get_local_recording(uid, conversation_id, origins)
+        result_keys = [] if resolve_local_recording else None
+        conversation = get_local_recording(uid, conversation_id, origins, result_keys=result_keys)
+        if conversation is None and result_keys is not None and len(result_keys) == 1:
+            # A capture can have multiple successful results. Follow only an unambiguous receipt.
+            result_key = result_keys[0]
+            published_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))
+            published = _get_valid_conversation_by_id(uid, published_id)
+            local = (published.get('external_data') or {}).get('local_transcript') or {}
+            if (published.get('id') == published_id and published.get('status') == 'completed'
+                    and not published.get('deleted') and local.get('result_key') == result_key):
+                conversation = published
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:

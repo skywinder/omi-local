@@ -114,7 +114,7 @@ def _saved_failure(job, checkpoint):
     return value
 
 
-def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[dict]:
+def local_recording_rows(uid: str, origins=None, *, retry_targets=None, resolve_id=None, result_keys=None) -> list[dict]:
     if not is_offline_runtime() or not local_tunnel_enabled():
         return []
     if uid != load_pairing()['owner_uid']:
@@ -146,6 +146,9 @@ def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[
                 job = {}
             metadata = _optional_json(folder / 'metadata.json')
             if key in imported or job.get('state') == 'completed':
+                if (result_keys is not None and metadata.get('session_id') == capture_id
+                        and resolve_id == str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))):
+                    result_keys.extend(result for result in imported.get(key, ()) if re.fullmatch(r'[a-f0-9]{64}', result))
                 if origins is not None and metadata.get('session_id') == capture_id and (origin := _origin(metadata)):
                     for result_key in imported.get(key, ()):
                         if re.fullmatch(r'[a-f0-9]{64}', result_key):
@@ -297,5 +300,7 @@ def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **fil
     return [attach_saved_origin(row, origins) for row in page[:limit]], has_more
 
 
-def get_local_recording(uid: str, conversation_id: str, origins=None) -> dict | None:
-    return next((row for row in local_recording_rows(uid, origins) if row['id'] == conversation_id), None)
+def get_local_recording(uid: str, conversation_id: str, origins=None, *, result_keys=None) -> dict | None:
+    rows = (local_recording_rows(uid, origins) if result_keys is None else
+            local_recording_rows(uid, origins, resolve_id=conversation_id, result_keys=result_keys))
+    return next((row for row in rows if row['id'] == conversation_id), None)

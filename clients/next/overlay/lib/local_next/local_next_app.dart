@@ -490,7 +490,16 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   ? _select
                   : (id) => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => RecordingPage(library: library, id: id, onEdited: archive.applyEdit),
+                        builder: (_) => RecordingPage(
+                          library: library,
+                          id: id,
+                          fromSavedRecording: switch (archive.rowById(id)) {
+                            final row? => canFollowSavedRecording(row),
+                            null => false,
+                          },
+                          onEdited: archive.applyEdit,
+                          onPublished: archive.replacePending,
+                        ),
                       ),
                     ),
             ),

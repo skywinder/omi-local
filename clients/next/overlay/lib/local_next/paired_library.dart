@@ -104,6 +104,10 @@ class PairedLibrary {
   bool verified = false;
   bool get isSignedIn => verified && !_closed;
   late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
+  late final _savedRecording = ConversationApi(
+    baseUrl: origin.origin,
+    send: (request) => _sendArchive(request, resolveLocalRecording: true),
+  );
   Future<void>? _checking;
   late final _audioOrigin = _readAudioOrigin();
   final _clients = <HttpClient>{};
@@ -509,7 +513,7 @@ class PairedLibrary {
     ConversationStatus.failed,
   ];
 
-  Future<http.Response> _sendArchive(ApiRequest request) async {
+  Future<http.Response> _sendArchive(ApiRequest request, {bool resolveLocalRecording = false}) async {
     if (!isSignedIn) throw LibraryFailure.key;
     final uri = Uri.parse(request.url);
     if (request.method != 'GET' ||
@@ -555,7 +559,11 @@ class PairedLibrary {
         }
         return http.Response.bytes(await _bytes(response, collection ? 8 << 20 : 24 << 20), 200, headers: headers);
       },
-      query: collection ? {...query, 'list_fields_only': 'true'} : null,
+      query: collection
+          ? {...query, 'list_fields_only': 'true'}
+          : resolveLocalRecording
+          ? {'resolve_local_recording': 'true'}
+          : null,
       readHttpErrors: true,
       overallTimeout: _deadline,
     );
@@ -609,16 +617,26 @@ class PairedLibrary {
     return '$_archivePath/$id';
   }
 
-  Future<ServerConversation> detail(String id) async {
+  Future<ServerConversation> detail(String id) => _readDetail(id, resolveLocalRecording: false);
+
+  Future<ServerConversation> refreshSavedRecording(String id) => _readDetail(id, resolveLocalRecording: true);
+
+  Future<ServerConversation> _readDetail(String id, {required bool resolveLocalRecording}) async {
     _conversation(id);
     try {
-      final result = await _archive.byId(id);
+      final result = await (resolveLocalRecording ? _savedRecording : _archive).byId(id);
       if (!isSignedIn) throw LibraryFailure.key;
       switch (result) {
         case ApiFailure(:final problem):
           throw _archiveFailure(problem);
         case ApiSuccess(:final data):
-          if (data.id != id) throw LibraryFailure.malformed;
+          if (data.id != id &&
+              (!resolveLocalRecording ||
+                  !_archiveId.hasMatch(data.id) ||
+                  data.externalIntegration?.localTranscript == null ||
+                  data.status != ConversationStatus.completed)) {
+            throw LibraryFailure.malformed;
+          }
           return data;
       }
     } on TypeError {
