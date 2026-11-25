@@ -135,6 +135,7 @@ ServerConversation _row(
   DateTime? created,
   String category = 'other',
   String emoji = '📌',
+  Map<String, dynamic> transcript = const {},
 }) => ServerConversation.fromJson({
   'id': id,
   'created_at': (created ?? start).toUtc().toIso8601String(),
@@ -144,7 +145,7 @@ ServerConversation _row(
   'source': 'phone',
   'status': localState == null ? 'completed' : 'processing',
   'external_data': localState == null
-      ? {'local_transcript': <String, dynamic>{}}
+      ? {'local_transcript': transcript}
       : {
           'local_recording': {'status': localState, ...recording},
         },
@@ -162,6 +163,53 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  testWidgets('a finished recording opens its result list without reopening itself', (tester) async {
+    final date = DateTime.utc(2026, 1, 2);
+    final first = _row(_secondId, 'One published conversation', date, transcript: {'recording_results_id': _firstId});
+    final second = _row(
+      _thirdId,
+      'Another published conversation',
+      date,
+      transcript: {'recording_results_id': _firstId},
+    );
+    final group = _row(
+      _firstId,
+      'Recording',
+      date,
+      localState: 'published',
+      recording: {
+        'group': true,
+        'results': [first.toJson(), second.toJson()],
+      },
+    );
+    final library = _GroupedPublishingLibrary(group, group, first, second)..finished = true;
+    addTearDown(library.close);
+    await _show(tester, library);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('One published conversation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open recording results'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recording results'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    await tester.tap(find.text('Another published conversation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    expect(find.text('Open recording results'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('One published conversation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recording results'), findsNothing);
+    expect(library.opened, [_secondId, _thirdId]);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a waiting group keeps the choice open after all recordings publish', (tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     final date = DateTime.utc(2026, 1, 2);

@@ -915,11 +915,12 @@ def get_conversation_by_id(
     conversation = None
     origins = {}
     if is_offline_runtime():
-        from utils.local_recording_rows import RecordingResolution, attach_saved_origin, get_local_recording
+        from utils.local_recording_rows import RecordingResolution, attach_recording_parent, attach_saved_origin, get_local_recording
 
-        resolution = RecordingResolution(conversation_id, include_recording_results) if resolve_local_recording else None
+        resolution = (RecordingResolution(conversation_id, include_recording_results)
+                      if resolve_local_recording or include_recording_results else None)
         conversation = get_local_recording(uid, conversation_id, origins, resolution=resolution)
-        if resolution is not None and (conversation is None or resolution.group is not None):
+        if resolve_local_recording and (conversation is None or resolution.group is not None):
             conversation = _resolved_recording(resolution, uid, origins, source, include_discarded) or conversation
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
@@ -932,7 +933,8 @@ def get_conversation_by_id(
             raise HTTPException(status_code=404, detail="Conversation not found")
     # Local transcript reads never dispatch cloud enrichment or first-open work.
     if is_offline_runtime():
-        return _paired_detail(attach_saved_origin(conversation, origins), uid)
+        row = attach_saved_origin(conversation, origins)
+        return _paired_detail(attach_recording_parent(row, resolution), uid)
     # Lazy processing: a desktop conversation stored raw (deferred) for a freemium/Neo user is
     # enriched on first open. Other conversations are returned unchanged.
     if conversation.get('deferred'):

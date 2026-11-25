@@ -90,6 +90,13 @@ The list omits transcript bodies. Full playback and edits open the selected
 result by its own ID. Older clients retain the exact lookup and single-result
 resolution behavior.
 
+An exact detail read with `include_recording_results=true` still returns the
+requested conversation. When its import receipt proves the relationship, the
+response adds `local_transcript.recording_results_id`. For grouped audio, the
+link points to the group's results and also checks the original sample boundary.
+For multiple passes over one ungrouped capture, it points to that capture's
+results. Next uses the same opt-in detail route to open the list.
+
 The paired archive search on Bastion returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired
 detail response. The same check verified pagination was available, authentication

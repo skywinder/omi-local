@@ -181,6 +181,8 @@ class RecordingPage extends StatefulWidget {
     this.onEdited,
     this.fromSavedRecording = false,
     this.onPublished,
+    this.resultsParentId,
+    this.currentResultId,
   });
   final PairedLibrary library;
   final String id;
@@ -189,6 +191,8 @@ class RecordingPage extends StatefulWidget {
   final ValueChanged<ServerConversation>? onEdited;
   final bool fromSavedRecording;
   final void Function(String previousId, List<ServerConversation> rows)? onPublished;
+  final String? resultsParentId;
+  final String? currentResultId;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
@@ -198,6 +202,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   late final TabController tabs;
   late String _id = widget.id;
   late bool _followSavedRecording = widget.fromSavedRecording;
+  String? _resultsParent;
   late Future<_RecordingDetail> detail = _load();
   Timer? _processingPoll;
   final playback = ConversationPlaybackController();
@@ -418,6 +423,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (!mounted) return loaded;
     final before = _id;
     _id = row.id;
+    final parent = row.externalIntegration?.localTranscript?['recording_results_id'];
+    _resultsParent = parent is String && parent != row.id && parent != widget.resultsParentId ? parent : null;
     _followSavedRecording = canFollowSavedRecording(row);
     _processingPoll?.cancel();
     if (_recordingProcessing.contains(loaded.localState)) {
@@ -445,19 +452,24 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
               if (row.externalIntegration?.localRecording != null) recordingStatus(context, row),
             ].join(' · '),
           ),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: Icon(row.id == widget.currentResultId ? Icons.check : Icons.chevron_right),
           onTap: () => _openRecordingResult(row),
         ),
     ],
   );
 
   Future<void> _openRecordingResult(ServerConversation row) async {
+    if (row.id == widget.currentResultId) {
+      Navigator.of(context).pop();
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => RecordingPage(
           library: widget.library,
           id: row.id,
           fromSavedRecording: canFollowSavedRecording(row),
+          resultsParentId: _id,
           onEdited: widget.onEdited,
           onPublished: widget.onPublished,
         ),
@@ -468,6 +480,29 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         detail = _load();
       });
     }
+  }
+
+  Future<void> _openResultsParent() async {
+    final parent = _resultsParent;
+    if (parent == null) return;
+    try {
+      await player?.pause();
+    } catch (_) {
+      _playFailed();
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecordingPage(
+          library: widget.library,
+          id: parent,
+          fromSavedRecording: true,
+          currentResultId: _id,
+          onEdited: widget.onEdited,
+          onPublished: widget.onPublished,
+        ),
+      ),
+    );
   }
 
   void _scheduleProcessingPoll() {
@@ -580,7 +615,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
       ),
     );
     if (!mounted || !widget.library.isSignedIn) return;
-    final refreshed = widget.library.detail(_id).then(_readDetail);
+    final refreshed = widget.library.detail(_id).then(_acceptRead);
     setState(() {
       detail = refreshed;
     });
@@ -843,6 +878,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       l.transcriptCopiedToClipboard,
                     ),
                     _RecordingEditAction.copyId => _copy(loaded.row.id, l.conversationIdCopied),
+                    _RecordingEditAction.recordingResults => _openResultsParent(),
                     _RecordingEditAction.audio => _shareAudio(),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
@@ -864,6 +900,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (_resultsParent != null)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.recordingResults,
+                        child: Text(pairedSettingsLabel(context, 'nextOpenRecordingResults')),
+                      ),
                     if (!loaded.pending)
                       PopupMenuItem(value: _RecordingEditAction.export, child: Text('${l.share} · TXT')),
                     if (loaded.summary.content.isNotEmpty)
@@ -1072,6 +1113,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 enum _RecordingEditAction {
+  recordingResults,
   export,
   audio,
   copySummary,

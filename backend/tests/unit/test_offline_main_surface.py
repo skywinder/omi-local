@@ -158,6 +158,15 @@ resolved = client.get(saved_url + resolve, headers=archive_headers)
 assert resolved.status_code == 200, resolved.text
 assert resolved.json()['id'] == published['id']
 assert resolved.json()['transcript_segments'][0]['text'] == 'Saved transcript'
+def related_result(id, *, opt_in=True):
+    query = '?include_recording_results=true' if opt_in else ''
+    response = client.get('/v1/conversations/' + id + query, headers=archive_headers)
+    assert response.status_code == 200, response.text
+    row = response.json()
+    assert row['id'] == id
+    return row['external_data']['local_transcript'].get('recording_results_id')
+
+assert related_result(published['id']) is None
 published['external_data']['local_transcript']['result_key'] = 'd' * 64
 assert client.get(saved_url + resolve, headers=archive_headers).status_code == 404
 published['external_data']['local_transcript']['result_key'] = result_key
@@ -181,6 +190,9 @@ def add_result(key, capture_id, title):
     return row['id']
 
 other = add_result('c' * 64, capture.session_id, 'Second pass')
+assert related_result(published['id']) == saved_id
+assert related_result(other) == saved_id
+assert related_result(other, opt_in=False) is None
 many = client.get(saved_url + choices, headers=archive_headers).json()
 assert {r['id'] for r in many['external_data']['local_recording']['results']} == {published['id'], other}
 assert all('transcript_segments' not in r for r in many['external_data']['local_recording']['results'])
@@ -226,6 +238,22 @@ assert group_result_state('receiving') == {group_result, pending_id}
 assert group_result_state('processing', completed=True) == {group_result, pending_id}
 second_group_result = add_result('1' * 64, pending_child, 'Second conversation from the group')
 assert group_result_state('published', completed=True) == {group_result, second_group_result}
+assert related_result(group_result) == group_id
+assert related_result(second_group_result) == group_id
+assert related_result(second_group_result, opt_in=False) is None
+second_key = fixture_details[second_group_result]['external_data']['local_transcript']
+second_key['result_key'] = 'a'*64
+second_key['recording_results_id'] = group_id  # An unverified stored link must not appear in the response.
+assert related_result(second_group_result) is None
+del second_key['recording_results_id']
+second_key['result_key'] = '1'*64
+child_metadata = storage / 'listen-captures' / pending_child / 'metadata.json'
+original_metadata = child_metadata.read_text()
+modified = json.loads(original_metadata)
+modified['conversation_group']['start_sample'] += 1
+child_metadata.write_text(json.dumps(modified))
+assert related_result(second_group_result) is None  # An inconsistent boundary cannot claim unrelated audio.
+child_metadata.write_text(original_metadata)
 assert client.get(group_url + resolve, headers=archive_headers).status_code == 404
 main.app.dependency_overrides[archive_auth] = lambda: 'different-owner'
 assert client.get(group_url + choices, headers=archive_headers).status_code == 404

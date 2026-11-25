@@ -565,7 +565,7 @@ class PairedLibrary {
           ? {...query, 'list_fields_only': 'true'}
           : resolveLocalRecording
           ? {'resolve_local_recording': 'true', 'include_recording_results': 'true'}
-          : null,
+          : {'include_recording_results': 'true'},
       readHttpErrors: true,
       overallTimeout: _deadline,
     );

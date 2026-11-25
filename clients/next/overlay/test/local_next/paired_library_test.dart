@@ -494,7 +494,7 @@ void main() {
           }
         }
       } else {
-        expect(r.uri.queryParameters, isEmpty);
+        expect(r.uri.queryParameters, {'include_recording_results': 'true'});
         response.write(jsonEncode(row)); // A stale / wrong detail response.
       }
       await response.close();
