@@ -75,4 +75,4 @@ docker-doctor:
 	./omiloc --runtime docker doctor
 
 test-docker:
-	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider docker/test_runtime.py
+	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider docker/test_runtime.py docker/whisperlivekit/test_omi_live.py

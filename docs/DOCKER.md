@@ -340,12 +340,18 @@ loopback access is unchanged. Changing these values requires recreating `app`.
 
 The built-in stack has no live server. `docker/whisperlivekit/compose.yaml`
 runs a standalone WhisperLiveKit on an NVIDIA host with `--pcm-input`, which the
-omiloc `external` Live provider requires. Copy it with `env.example` to the GPU
-host, clone the pinned WhisperLiveKit tag beside it as described in the file,
-set `WLK_BIND_ADDRESS` to the host Tailscale IPv4, and run
+omiloc `external` Live provider requires. Copy the `docker/whisperlivekit/`
+directory to the GPU host, copy `env.example` to `.env`, set `WLK_BIND_ADDRESS`
+to the host Tailscale IPv4, and run
 `docker compose up -d --build`. In the library select **Live STT → external**
 with `ws://<host-tailscale-ip>:8010/asr`. The live server is a separate process
 and model copy; it does not replace the final transcription provider.
+
+The standalone image defaults to two simultaneous `/asr` sessions. Set
+`WLK_MAX_SESSIONS=1` in `.env` to allow a single stream. Both sessions can send
+audio while the shared Faster-Whisper model runs one inference call at a time.
+A connection above the limit receives WebSocket close code `4409`. A slot is
+released after the session and its outstanding inference have finished.
 
 ## Development and updates
 
