@@ -13,10 +13,21 @@ import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/device_diagnostics_page.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 
-class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport {
+class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1DiagnosticsTransport {
   void Function(Cv1TransportEvent)? _listener;
   final subscriptions = <bool>[];
   int generation = 1;
+  int signalReads = 0;
+
+  @override
+  Future<void> sampleSignal() async => signalReads++;
+
+  @override
+  Future<void> sampleDiagnostics() async {}
+
+  @override
+  Future<void> writeSetting(int generation, String field, int value) async {}
+
   String? selected;
   bool rejectConnection = false;
 
@@ -72,10 +83,7 @@ class _Subscription extends Fake implements StreamSubscription<Cv1TransportEvent
 
 class _Journal extends LocalAudioJournal {
   _Journal({super.clock})
-    : super(
-        directory: Directory('unused-panel-fixture'),
-        upload: (bytes, owner) => throw StateError('no upload'),
-      );
+    : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
   final seal = Completer<void>();
   @override
   LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) =>
@@ -101,6 +109,10 @@ class _Microphone implements NextPhoneMicrophone {
 
 void main() {
   testWidgets('device diagnostics show real samples, hide unsupported writes and clear a lost link', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     final journal = LocalAudioJournal(
       directory: Directory('unused-device-diagnostics'),
       upload: (body, owner) async => <String, dynamic>{},
@@ -128,14 +140,25 @@ void main() {
       await tester.pump();
       expect(find.text('72%'), findsWidgets);
       expect(find.text('-66 dBm'), findsWidgets);
+      expect(find.textContaining('Good ·'), findsOneWidget);
+      expect(find.text('Battery history'), findsOneWidget);
+      await tester.tap(find.text('Week'));
+      await tester.pump();
+      await tester.tap(find.text('Device Information'));
+      await tester.pumpAndSettle();
       expect(find.text('fixture firmware'), findsOneWidget);
       expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNotNull);
       expect(find.text('Mic Gain'), findsNothing);
       busy.value = true;
-      await tester.pump();
+      final reads = radio.signalReads;
+      await tester.pump(const Duration(seconds: 3));
+      expect(radio.signalReads, greaterThan(reads));
       expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNull);
-      radio.emit(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
+      radio.emit(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2, reason: Cv1LinkReason.dropped, code: 8));
       await tester.pump();
+      expect(find.text('Bluetooth connection lost'), findsOneWidget);
+      expect(find.textContaining('BLE 8'), findsOneWidget);
+      expect(find.textContaining('-66 dBm'), findsWidgets);
       expect(find.text('fixture firmware'), findsNothing);
       expect(find.text('LED Brightness'), findsNothing);
       expect(find.textContaining('Connect an Omi CV1'), findsOneWidget);

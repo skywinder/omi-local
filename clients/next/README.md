@@ -133,9 +133,14 @@ Audio uploads include the phone platform and model when available so the web
 library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
-The device view reads battery, signal, firmware and hardware details when
-reported by the wearable. It shows session connection events and up to 120
-battery and signal measurements. The charts show elapsed time for those samples.
+Device Diagnostics reads charge and signal measurements from the wearable.
+The signal chart refreshes every three seconds while visible, including during
+capture. Battery notifications update both the status and history on supported
+firmware. The day and week charts and connection journal retain observations
+on this phone for seven days. RSSI samples in the graph cover the last ten
+minutes. Connection events can be copied with timestamps, reason codes, last
+measurements and link duration. The journal does not contain Bluetooth
+identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
 and a confirmed Bluetooth write. Configure double tap in the same screen.
 The default preserves the existing behavior of saving the current audio part.
