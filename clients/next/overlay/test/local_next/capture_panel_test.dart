@@ -100,6 +100,11 @@ class _Recording extends Fake implements LocalAudioRecording {
 }
 
 class _Microphone implements NextPhoneMicrophone {
+  final audioSession = StreamController<bool>.broadcast(sync: true);
+
+  @override
+  Stream<bool> get interruptions => audioSession.stream;
+
   bool recording = false;
   @override
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure) async => recording = true;
@@ -288,6 +293,7 @@ void main() {
       expect(closed, isTrue);
       await closing;
       inputs.dispose();
+      await mic.audioSession.close();
       ownerChange.dispose();
       journal.dispose();
     }

@@ -328,6 +328,14 @@ If the cited text changed, generate suggestions again before adding the task.
 Tasks use the paired server's canonical task store. The local edits keep
 notification and external task-sync behavior outside this workflow.
 
+## Recording from the phone microphone
+
+Next waits for PCM before showing active audio. It shows an audio-session
+interruption on the home and Live screens. If frames stop without an interruption,
+it reopens the recorder once and keeps the same local recording and preview.
+If frames still fail to arrive, it closes the recording and keeps the audio already
+accepted by the journal. Stop cancels any pending recovery.
+
 ## Recording from CV1
 
 Pair Next with your Local server, open **Connect Device**, and choose the

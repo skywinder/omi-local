@@ -21,6 +21,7 @@ class LocalNextLiveButton extends StatefulWidget {
     required this.isRecording,
     this.isMuted,
     required this.onStop,
+    this.inputNotice,
     required this.serverLabel,
     this.library,
   });
@@ -30,6 +31,7 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function() isRecording;
   final bool Function()? isMuted;
   final Future<void> Function() onStop;
+  final String? Function(BuildContext)? inputNotice;
   final String serverLabel;
   final PairedLibrary? library;
 
@@ -255,7 +257,7 @@ class _LivePageState extends State<_LivePage> {
                 ListTile(
                   leading: const Icon(Icons.dns_outlined),
                   title: Text(view.serverLabel),
-                  subtitle: Text(status),
+                  subtitle: Text(view.inputNotice?.call(context) ?? status),
                 ),
                 if (preview.speakerStatus case final reporting?)
                   Padding(

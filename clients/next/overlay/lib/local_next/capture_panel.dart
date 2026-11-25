@@ -138,6 +138,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> with WidgetsBindin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _inputs?.phone.rearmWatchdog();
       _sampleIdleLink();
     } else {
       unawaited(_inputs?.connection.history.flush());
@@ -641,12 +642,15 @@ class LocalNextCaptureControls extends StatelessWidget {
             })
           else if (link.audioFailed)
             Text(l.captureRecordingError(l.bluetooth)),
+          if (capture.active)
+            if (phoneMicNotice(context, capture) case final notice?) Text(notice),
           if (capture.problem != null)
             Text(switch (capture.problem!) {
               CaptureProblem.permission => l.onboardingMicrophoneRequired,
               CaptureProblem.microphone => l.captureRecordingError(l.microphone),
               CaptureProblem.storage => l.captureRecordingError(l.capturePhoneStorageFull),
               CaptureProblem.empty => l.onboardingActNoAudioPhone,
+              CaptureProblem.micStalled => pairedSettingsLabel(context, 'nextMicStalled'),
             }),
           if (journal.pendingParts > 0) Text(l.nPending(journal.pendingParts)),
           if (journal.deliveryFailed) TextButton(onPressed: journal.retry, child: Text(l.captureBannerRetrySync)),
@@ -657,6 +661,7 @@ class LocalNextCaptureControls extends StatelessWidget {
               isRecording: () => inputs.isRecording,
               isMuted: () => cv1.active && cv1.intent == Cv1CaptureIntent.muted,
               onStop: inputs.stopRecording,
+              inputNotice: (context) => phoneMicNotice(context, capture),
               serverLabel: serverLabel,
               library: library,
             ),
@@ -665,6 +670,13 @@ class LocalNextCaptureControls extends StatelessWidget {
     );
   }
 }
+
+String? phoneMicNotice(BuildContext context, NextPhoneCapture capture) => switch (capture.micStatus) {
+  PhoneMicStatus.waiting => context.l10n.waitingForData,
+  PhoneMicStatus.interrupted => pairedSettingsLabel(context, 'nextMicInterrupted'),
+  PhoneMicStatus.recovering => pairedSettingsLabel(context, 'nextMicRecovering'),
+  _ => capture.problem == CaptureProblem.micStalled ? pairedSettingsLabel(context, 'nextMicStalled') : null,
+};
 
 class _ActiveRecordingTime extends StatefulWidget {
   const _ActiveRecordingTime({required this.started, required this.input, required this.clock});
