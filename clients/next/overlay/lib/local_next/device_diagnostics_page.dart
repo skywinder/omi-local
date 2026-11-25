@@ -530,7 +530,9 @@ class _History extends StatelessWidget {
               showTitles: true,
               reservedSize: 36,
               interval: battery ? 25 : 30,
-              getTitlesWidget: (value, _) => Text('${value.round()}', style: theme.textTheme.labelSmall),
+              getTitlesWidget: (value, _) => !battery && value < -120
+                  ? const SizedBox.shrink()
+                  : Text('${value.round()}', style: theme.textTheme.labelSmall),
             ),
           ),
           bottomTitles: AxisTitles(
