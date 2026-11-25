@@ -778,6 +778,18 @@ file-backed transcript and returned the same timestamp and ID as detail.
 The shared summary pipeline now keys partial results on the selected provider
 profile, settings, effective instruction and text, following the Bastion implementation.
 
+The signed iPhone `Profile-dev` build from `d7b2848` passed the offline and
+legacy transport gates, Next analysis and 77 Next tests. CoreDevice installed
+it alongside Omi Local and confirmed launch. The physical iPhone displayed
+the Bastion archive and CV1 battery, RSSI and firmware in Device Diagnostics.
+The first CV1 attempt stayed at “Waiting for data”. On the second attempt a
+spoken fixture appeared in Live. Bastion stored 22.6 seconds of nonzero audio
+and published six transcript segments. The phone opened the new card, summary,
+category and timestamped transcript, and its player entered playback.
+Apple's iPhone Mirroring reported that the phone microphone was unavailable
+from the Mac. That 16-second phone WAV was delivered with silent samples.
+Phone-microphone speech and repeated-start reliability still need a separate check.
+
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 25 revision `6f771e1`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
