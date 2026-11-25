@@ -1732,12 +1732,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'PERANTI',
-      one: 'PERANTI',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'PERANTI', one: 'PERANTI');
     return '$count $_temp0 DIJUMPAI BERDEKATAN';
   }
 
@@ -9233,11 +9228,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String syncCardReadyCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rakaman sedia untuk disegerakkan',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rakaman sedia untuk disegerakkan');
     return '$_temp0';
   }
 
@@ -9249,11 +9240,7 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String syncCardNeedsAttention(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count rakaman memerlukan perhatian',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count rakaman memerlukan perhatian');
     return '$_temp0';
   }
 
@@ -9987,22 +9974,22 @@ class AppLocalizationsMs extends AppLocalizations {
   String get localMacServers => 'Pelayan tersimpan';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Terjemahan langsung';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Terjemah ke';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Pelayan yang disambungkan memaparkan terjemahan di bawah teks asal. Model ringkasan digunakan secara automatik kecuali anda memilih model lain dalam pustaka pelayan: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Tiada model terjemahan dikonfigurasi pada pelayan yang disambungkan. Buka pustakanya: Settings → Summarization atau Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Terjemahan tidak tersedia pada pelayan yang disambungkan. Semak pustakanya: Settings → Translation.';
 
   @override
   String get diarization => 'Pemisahan penutur';
@@ -10023,4 +10010,37 @@ class AppLocalizationsMs extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Pemisahan penutur gagal';
+
+  @override
+  String get localProcessingHelp =>
+      'Label penutur langsung datang daripada penyedia Live. Diarisasi di bawah memproses rakaman yang telah selesai.';
+
+  @override
+  String get localProcessingApplyHelp => 'Hentikan rakaman sebelum bertukar. Pelayan yang dipilih menerima audio anda.';
+
+  @override
+  String get localProcessingKeyHelp =>
+      'Biarkan kosong untuk mengekalkan kunci tersimpan. Pelayan lain memerlukan kuncinya sendiri.';
+
+  @override
+  String get localProcessingUnsupported => 'Kemas kini pelayan berpasangan untuk menyunting tetapan ini.';
+
+  @override
+  String get localProcessingFinished => 'Rakaman selesai';
+
+  @override
+  String get localProcessingProbe => 'Uji sambungan';
+
+  @override
+  String get localProcessingPending => 'Perubahan yang disimpan belum aktif. Ketik Sahkan untuk menggunakan.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Kemas kini pelayan untuk menyegerakkan audio. Audio yang disimpan pada telefon dikekalkan.';
+
+  @override
+  String get liveTranslationBidirectional => 'Terjemahan dua hala';
+
+  @override
+  String get liveTranslationPairHelp => 'Kesan bahasa setiap frasa dan terjemahkan ke bahasa lain yang dipilih.';
 }

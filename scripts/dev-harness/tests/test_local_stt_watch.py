@@ -226,12 +226,25 @@ def test_busy_and_interrupt_do_not_exhaust_retries_and_failures_are_bounded(setu
         worker.tick(8)
     assert next(iter(worker.jobs.values()))['state'] == 'pending'
     assert next(iter(worker.jobs.values()))['attempts'] == 0
-    fail(local_stt.TranscriptionError('Synthetic model failure'))
+    fail(local_stt.TranscriptionError('Synthetic private database error', stage='import', code='import_failed'))
     for now in (10, 70, 190, 1000):
         worker.tick(now)
     job = next(iter(watch.read_queue(cfg).values()))
     assert job['state'] == 'failed' and job['attempts'] == 3
+    assert job['failure'] == {'stage': 'import', 'code': 'import_failed'}
+    assert 'Synthetic private' not in watch.queue_path(cfg).read_text()
     assert (folder / 'audio.wav').is_file() and not documents
+
+    # Only the explicitly marked job is retried, with its saved profile.
+    profile = job['profile']
+    marker = folder / '.retry-processing'
+    marker.touch()
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *args, **kwargs: 0)
+    worker.tick(1001)
+    [retried] = watch.read_queue(cfg).values()
+    assert retried['state'] == 'completed' and retried['profile'] == profile
+    assert retried['attempts'] == 1 and not marker.exists()
+    assert 'failure' not in retried
 
 
 def test_reenable_preserves_backlog_boundary(setup):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -24,6 +25,36 @@ OUTPUT_SAMPLE_RATE = 16000
 OUTPUT_CHANNELS = 1
 OUTPUT_SAMPLE_WIDTH_BYTES = 2
 INPUT_CODECS_BY_SOURCE = {'omi': frozenset({'opus', 'opus_fs320'}), 'phone': frozenset({'pcm16'})}
+RECORDING_ORIGIN_HEADER = 'x-omi-local-recording-origin'
+
+
+def _clean_origin(origin: Any, source: str | None) -> dict[str, str]:
+    if not isinstance(origin, dict):
+        return {}
+    result = {}
+    platform = origin.get('phone_platform')
+    if platform in ('android', 'ios'):
+        result['phone_platform'] = platform
+    fields = ('phone_model', 'wearable_name') if source == 'omi' else ('phone_model',)
+    for field in fields:
+        value = origin.get(field)
+        if isinstance(value, str) and 0 < len(value) <= 80 and value.isprintable():
+            if value := value.strip():
+                result[field] = value
+    return result
+
+
+def local_recording_origin(platform: str | None, header: str | None, source: str | None) -> dict[str, str]:
+    """Read optional display labels without retaining a hardware or installation ID."""
+    decoded = {}
+    if header and len(header) <= 2048:
+        try:
+            labels = json.loads(base64.b64decode(header, altchars=b'-_', validate=True))
+            if isinstance(labels, dict):
+                decoded = labels
+        except ValueError:
+            pass
+    return _clean_origin({**decoded, 'phone_platform': platform}, source)
 
 
 def _input_format_supported(source: str, input_codec: str) -> bool:
@@ -83,6 +114,7 @@ def _capture_metadata(
     decoded_pcm_bytes: int,
     decode_errors: int,
     status: str,
+    origin: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return {
         'schema_version': SCHEMA_VERSION,
@@ -90,6 +122,7 @@ def _capture_metadata(
         'started_at': started_at,
         'ended_at': ended_at,
         'source': source,
+        **({'origin': origin} if origin else {}),
         'input': {
             'codec': input_codec,
             'sample_rate': OUTPUT_SAMPLE_RATE,
@@ -115,12 +148,14 @@ def _capture_metadata(
 class OfflineAudioCapture:
     """Write decoded mono PCM immediately and atomically finalize a WAV session."""
 
-    def __init__(self, *, session_id: str, input_codec: str, source: str, root: Path):
+    def __init__(self, *, session_id: str, input_codec: str, source: str, root: Path,
+                 origin: dict[str, str] | None = None):
         self.session_id = _validated_session_id(session_id)
         if not _input_format_supported(source, input_codec):
             raise ValueError('unsupported offline capture source/codec combination')
         self.input_codec = input_codec
         self.source = source
+        self.origin = _clean_origin(origin, source)
         self.started_at_timestamp = time.time()
         self.started_at = _utc_iso(self.started_at_timestamp)
         self.frames_received = 0
@@ -149,6 +184,7 @@ class OfflineAudioCapture:
             decoded_pcm_bytes=self.decoded_pcm_bytes,
             decode_errors=self.decode_errors,
             status=status,
+            origin=self.origin,
         )
 
     def _write_progress_metadata(self) -> None:
@@ -201,7 +237,7 @@ def rotate_offline_audio_capture(capture: OfflineAudioCapture) -> OfflineAudioCa
     capture.finalize()
     return OfflineAudioCapture(
         session_id=str(uuid.uuid4()), input_codec=capture.input_codec,
-        source=capture.source, root=capture.session_dir.parent.parent,
+        source=capture.source, root=capture.session_dir.parent.parent, origin=capture.origin,
     )
 
 
@@ -212,6 +248,7 @@ def create_offline_audio_capture(
     input_codec: str,
     sample_rate: int,
     channels: int,
+    origin: dict[str, str] | None = None,
 ) -> OfflineAudioCapture | None:
     """Capture existing CV1 Opus and phone-mic PCM16 streams without STT."""
 
@@ -226,7 +263,7 @@ def create_offline_audio_capture(
     root = local_storage_root_from_env()
     if root is None:
         raise RuntimeError('offline capture requires validated OMI_LOCAL_STORAGE_ROOT')
-    return OfflineAudioCapture(session_id=session_id, input_codec=input_codec, source=source, root=root)
+    return OfflineAudioCapture(session_id=session_id, input_codec=input_codec, source=source, root=root, origin=origin)
 
 
 def _recover_one(pcm_part_path: Path) -> bool:
@@ -258,6 +295,7 @@ def _recover_one(pcm_part_path: Path) -> bool:
         decoded_pcm_bytes=decoded_pcm_bytes,
         decode_errors=int(loaded.get('decode_errors') or 0),
         status='recovered',
+        origin=_clean_origin(loaded.get('origin'), loaded['source']),
     )
     _write_wav_atomic(pcm_part_path, session_dir / WAV_NAME)
     _atomic_json(session_dir / METADATA_NAME, recovered)

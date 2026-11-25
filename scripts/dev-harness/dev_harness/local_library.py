@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import config, safety
+from .local_capture_wav import read_wave
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
@@ -143,6 +144,24 @@ def safe_file(path, root):
     return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
 
 
+def recording_origin_labels(metadata):
+    origin = metadata.get('origin')
+    origin = origin if isinstance(origin, dict) else {}
+
+    def display_label(field):
+        value = origin.get(field)
+        return value if isinstance(value, str) and 0 < len(value) <= 80 and value.isprintable() else ''
+
+    platform = {'android': 'Android', 'ios': 'iPhone'}.get(str(origin.get('phone_platform')), '')
+    model = display_label('phone_model')
+    phone = model if model and model.startswith(platform) else ' · '.join(filter(None, (platform, model)))
+    source = 'Микрофон телефона'
+    if metadata.get('source') == 'omi':
+        wearable = display_label('wearable_name')
+        source = f'Omi · {wearable}' if wearable else 'Omi CV1'
+    return {'source': source, 'phone': phone}
+
+
 class Library:
     def __init__(self, services):
         self.captures = services / 'storage' / 'listen-captures'
@@ -199,7 +218,7 @@ class Library:
                     identity = (stamp.st_size, stamp.st_mtime_ns, stamp.st_ino)
                     cached = self.digests.get(audio)
                     if cached is None or cached[0] != identity:
-                        with wave.open(str(audio)) as wav:
+                        with audio.open('rb') as source_stream, read_wave(source_stream) as wav:
                             if wav.getcomptype() != 'NONE' or not wav.getframerate():
                                 continue
                             duration = wav.getnframes() / wav.getframerate()
@@ -230,6 +249,9 @@ class Library:
                                             'ready', 'processing', 'pending', 'failed', 'disabled', 'no_speech'}:
                                         continue
                                     processing[stage] = {'status': entry['status']}
+                                    code = entry.get('error_code')
+                                    if isinstance(code, str) and re.fullmatch(r'http_[1-5][0-9]{2}|timeout|connection|output_limit|invalid_json|unknown', code):
+                                        processing[stage]['error_code'] = code
                                     for field in ('provider_name', 'model'):
                                         value = entry.get(field)
                                         if isinstance(value, str) and len(value) <= 256:
@@ -259,8 +281,9 @@ class Library:
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
-                                      'source': 'CV1' if meta.get('source') == 'omi' else 'iPhone',
+                                      **recording_origin_labels(meta),
                                       'duration': duration, 'status': state, 'segments': segments,
+                                      'attempts': job.get('attempts', 0),
                                       'summary': summary, 'processing': processing,
                                       'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):
@@ -306,6 +329,8 @@ def byte_range(value, size):
 
 def handler(library, assets, delete=None, runtime=None, settings=None, access=None):
     access = access or Access()
+    from .local_provider_api import Processing
+    processing = Processing(settings.cfg) if settings is not None else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -331,6 +356,10 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.headers_for(401, 'application/json; charset=utf-8', 0, {'WWW-Authenticate': 'Basic realm="omiloc"'})
                 return
             return self.send_json({'error': message}, status)
+
+        def processing_allowed(self):
+            return (self.client_address[0] in {'127.0.0.1', '::1'}
+                    and self.headers.get('Host') == f'127.0.0.1:{self.server.server_port}')
 
         def headers_for(self, status, content_type, length, extra=None):
             self.send_response(status)
@@ -359,19 +388,25 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
         def settings_request(self):
             from .local_providers import SettingsError
             from .local_stt_services import ActivationIndeterminate
-            if not self.allowed(request='settings'):
+            phone = self.path.startswith('/api/processing/')
+            controls = processing if phone else settings
+            if (not self.allowed(request='processing' if phone else 'settings')
+                    or (phone and not self.processing_allowed())):
                 return self.reject('Настройки доступны только на этом Mac.')
-            if settings is None:
+            if controls is None:
                 return self.send_json({'error': 'Настройки недоступны.'}, 503)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                if (not 0 < length <= 64 * 1024 or self.headers.get('Transfer-Encoding')
+                large_requests = ('/api/processing/summary-settings', '/api/settings/summary-settings',
+                                  '/api/processing/regenerate-summary')
+                limit = 1024 * 1024 if self.path in large_requests else 64 * 1024
+                if (not 0 < length <= limit or self.headers.get('Transfer-Encoding')
                         or self.headers.get_content_type() != 'application/json'):
                     raise SettingsError('Некорректный запрос настроек.')
                 if hasattr(self.connection, 'settimeout'):
                     self.connection.settimeout(15)
                 body = json.loads(self.rfile.read(length))
-                self.send_json(settings.dispatch(self.command, self.path, body))
+                self.send_json(controls.dispatch(self.command, self.path, body))
             except SettingsError as error:
                 self.send_json({'error': str(error), **({'field': error.field} if error.field else {})}, error.status)
             except ActivationIndeterminate:
@@ -383,7 +418,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Не удалось применить настройки. Проверьте готовность сервера.'}, 503)
 
         def do_POST(self):
-            if self.path.startswith('/api/settings/'):
+            if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='open-folder'):
                 return self.reject('Открыть папку можно только на этом Mac.')
@@ -399,7 +434,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
 
         def do_DELETE(self):
-            if self.path.startswith('/api/settings/'):
+            if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='delete'):
                 return self.reject('Удаление доступно только на этом Mac.')
@@ -449,6 +484,52 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json(runtime.snapshot())
             elif path == '/api/settings' and settings is not None:
                 self.send_json(settings.read())
+            elif path in ('/api/settings/summary-settings', '/api/processing/summary-settings') and settings is not None:
+                phone = path.startswith('/api/processing/')
+                if phone and (not self.allowed(request='processing') or not self.processing_allowed()):
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(settings.registry.summary_settings())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
+            elif path == '/api/settings/live-tuning' and settings is not None:
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(settings.live_tuning())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
+            elif path == '/api/processing/live-tuning' and processing is not None:
+                if not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.live_tuning())
+                except SettingsError as error:
+                    self.send_json({'error': str(error)}, error.status)
+            elif path == '/api/processing' and processing is not None:
+                if not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                self.send_json(processing.read())
+            elif path == '/api/processing/regenerate-summary' and processing is not None:
+                if not self.allowed(request='processing') or not self.processing_allowed():
+                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.summary_regeneration_options())
+                except (SettingsError, ValueError, KeyError):
+                    self.send_json({'error': 'Summary settings are unavailable.'}, 503)
+            elif path in {
+                '/api/processing/recording-chat', '/api/processing/archive-chat', '/api/processing/task-suggestions',
+                '/api/processing/daily-recap',
+            } and processing is not None:
+                if not self.allowed(request='processing') or not self.processing_allowed():
+                    return self.reject('Доступ только через сопряжённый сервер.')
+                from .local_providers import SettingsError
+                try:
+                    self.send_json(processing.recording_chat_provider())
+                except (SettingsError, ValueError, KeyError):
+                    self.send_json({'error': 'Recording chat provider is unavailable.'}, 503)
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import stat
 import math
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,21 +16,105 @@ from models.conversation import Conversation
 from models.structured import Structured
 from utils.env_loader import is_offline_runtime
 from utils.local_transport_auth import load_pairing, local_tunnel_enabled
-from utils.local_transcription_status import _read_private_json
 from utils.other.local_storage import local_storage_root_from_env
+
+_FAILURE_STAGES = frozenset({'prepare', 'stt', 'diarization', 'summary', 'import'})
+_FAILURE_CODES = frozenset({
+    'configuration', 'connection', 'credential_missing', 'database_preflight_failed', 'disk_full', 'import_failed',
+    'invalid_audio', 'invalid_checkpoint', 'invalid_diarization', 'invalid_json', 'invalid_provider_response',
+    'invalid_summary', 'invalid_transcript', 'io_error', 'output_limit', 'response_encoding', 'response_too_large',
+    'storage_access', 'summary_model_unavailable', 'timeout', 'unknown',
+})
+
+
+def _safe_failure_code(value):
+    if isinstance(value, str) and (value in _FAILURE_CODES or re.fullmatch(r'http_[1-5][0-9]{2}', value)):
+        return value
+    return None
 
 
 def _optional_json(path: Path) -> dict:
     try:
-        value = _read_private_json(path, limit=4 * 1024 * 1024)
-    except FileNotFoundError:
+        limit = 4 * 1024 * 1024
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError('Invalid local recording state')
+            raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise ValueError('Invalid local recording state')
+        value = json.loads(raw)
+    except (OSError, ValueError):
+        # These observations must not make the Conversations list/detail fail.
+        # Canonical audio remains available even if a queue or receipt is unreadable.
         return {}
     if not isinstance(value, dict):
-        raise ValueError('Invalid local recording state')
+        return {}
     return value
 
 
-def local_recording_rows(uid: str) -> list[dict]:
+def _origin(metadata):
+    from utils.offline_audio_capture import _clean_origin
+    return _clean_origin(metadata.get('origin'), metadata.get('source'))
+
+
+def attach_saved_origin(row, origins):
+    origin = origins.get(row.get('id'))
+    if origin:
+        external = dict(row.get('external_data') or {})
+        external['local_transcript'] = {**(external.get('local_transcript') or {}), 'origin': origin}
+        return {**row, 'external_data': external}
+    return row
+
+
+def _failed_stages(results, queue):
+    failed = {key for key, job in queue.items() if isinstance(job, dict) and job.get('state') == 'failed'}
+    stages = {}
+    if not failed:
+        return stages
+    for path in results.glob('*/processing.json'):
+        if path.parent.is_symlink() or (path.parent / 'import.json').exists():
+            continue
+        manifest = _optional_json(path.with_name('manifest.json'))
+        key = manifest.get('capture_key')
+        if not isinstance(key, str) or key not in failed or manifest.get('profile') != queue[key].get('profile'):
+            continue
+        try:
+            written = path.stat().st_mtime
+        except OSError:
+            continue
+        attempt_started = queue[key].get('attempt_started_at')
+        if type(attempt_started) in (float, int) and written < attempt_started:
+            continue
+        if key in stages and stages[key][0] >= written:
+            continue
+        entries = _optional_json(path)
+        for stage in ('stt', 'diarization', 'summary'):
+            entry = entries.get(stage)
+            if isinstance(entry, dict) and entry.get('status') == 'failed':
+                code = _safe_failure_code(entry.get('error_code'))
+                stages[key] = (written, {'stage': stage, **({'code': code} if code else {})})
+                break
+    return {key: value for key, (_, value) in stages.items()}
+
+
+def _saved_failure(job, checkpoint):
+    failure = job.get('failure')
+    failure = failure if isinstance(failure, dict) else {}
+    stage = failure.get('stage')
+    code = _safe_failure_code(failure.get('code'))
+    # Explicit preflight/import errors describe the latest attempt even if a previous stage checkpoint survived.
+    if isinstance(stage, str) and stage in _FAILURE_STAGES:
+        value = {'stage': stage}
+    else:
+        value = dict(checkpoint)
+    if code and value.get('code') in (None, 'unknown'):
+        value['code'] = code
+    value['attempts'] = job['attempts'] if type(job.get('attempts')) is int else 0
+    return value
+
+
+def local_recording_rows(uid: str, origins=None, *, retry_targets=None) -> list[dict]:
     if not is_offline_runtime() or not local_tunnel_enabled():
         return []
     if uid != load_pairing()['owner_uid']:
@@ -38,13 +125,15 @@ def local_recording_rows(uid: str) -> list[dict]:
         return []
     results = Path(state) / 'services' / 'local-transcripts'
     queue = _optional_json(results / 'watch-queue.json')
-    imported = set()
+    failures = _failed_stages(results, queue)
+    imported = {}
     for receipt in results.glob('*/import.json'):
         if receipt.parent.is_symlink():
             continue
         data = _optional_json(receipt)
-        if data.get('import') == 'passed':
-            imported.add(data.get('capture_key'))
+        key = data.get('capture_key')
+        if data.get('import') == 'passed' and isinstance(key, str):
+            imported.setdefault(key, []).append(receipt.parent.name)
     rows = []
     for folder in (storage / 'listen-captures').glob('*'):
         if folder.is_symlink() or not folder.is_dir():
@@ -53,9 +142,15 @@ def local_recording_rows(uid: str) -> list[dict]:
             capture_id = str(uuid.UUID(folder.name))
             key = hashlib.sha256(capture_id.encode()).hexdigest()
             job = queue.get(key, {})
-            if key in imported or job.get('state') == 'completed':
-                continue
+            if not isinstance(job, dict):
+                job = {}
             metadata = _optional_json(folder / 'metadata.json')
+            if key in imported or job.get('state') == 'completed':
+                if origins is not None and metadata.get('session_id') == capture_id and (origin := _origin(metadata)):
+                    for result_key in imported.get(key, ()):
+                        if re.fullmatch(r'[a-f0-9]{64}', result_key):
+                            origins[str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + result_key))] = origin
+                continue
             if metadata.get('status') not in {'completed', 'recovered'} or not (folder / 'audio.wav').is_file():
                 continue
             duration = metadata.get('duration_seconds')
@@ -63,24 +158,91 @@ def local_recording_rows(uid: str) -> list[dict]:
                 continue
             if metadata.get('session_id') != capture_id or metadata.get('source') not in {'omi', 'phone'}:
                 continue
-            started = datetime.fromisoformat(metadata['started_at'].replace('Z', '+00:00'))
+            started_at = metadata.get('started_at')
+            if not isinstance(started_at, str):
+                continue
+            started = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
             if started.tzinfo is None:
                 continue
             status = job.get('state', 'saved')
-            if status not in {'pending', 'processing', 'failed', 'no_speech'}:
+            if not isinstance(status, str) or status not in {'pending', 'processing', 'failed', 'no_speech'}:
                 status = 'saved'
+            row_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id))
+            if status == 'failed' and not (folder / '.retry-processing').is_symlink() and (folder / '.retry-processing').is_file():
+                status = 'pending'
+            if retry_targets is not None:
+                retry_targets[row_id] = (folder, status)
             rows.append(Conversation(
-                id=str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-capture:' + capture_id)),
+                id=row_id,
                 created_at=started, started_at=started, finished_at=started + timedelta(seconds=duration),
                 source=metadata['source'], status='processing', uses_custom_stt=True,
                 structured=Structured(title='Local recording', overview='', emoji='🎙️'),
                 transcript_segments=[], discarded=False, deferred=False,
-                external_data={'local_recording': {'status': status, 'duration_seconds': duration}},
+                external_data={'local_recording': {'status': status, 'duration_seconds': duration,
+                                                  **({'origin': origin} if (origin := _origin(metadata)) else {}),
+                                                  **({'failure': _saved_failure(job, failures.get(key, {}))}
+                                                     if status == 'failed' else {})}},
             ).model_dump())
-        except (ValueError, KeyError, TypeError, OSError):
+        except (ValueError, KeyError, TypeError, OSError, OverflowError):
             # An incomplete/corrupt capture cannot hide other saved recordings.
             continue
+    for folder in (storage / 'grouped-recordings').glob('*'):
+        if folder.is_symlink() or not folder.is_dir():
+            continue
+        progress = _optional_json(folder / 'progress.json')
+        row = progress.get('waiting_row')
+        if not progress.get('waiting_for_parts') or not isinstance(row, dict):
+            continue
+        try:
+            started = datetime.fromisoformat(row['started_at'])
+            duration = row['duration_seconds']
+            if started.tzinfo is None or type(duration) not in (float, int) or not math.isfinite(duration) or duration < 0:
+                continue
+            if row['source'] not in {'omi', 'phone'}:
+                continue
+            rows.append(Conversation(
+                id=str(uuid.uuid5(uuid.UUID(folder.name), 'waiting-for-parts')), created_at=started,
+                started_at=started, source=row['source'], status='processing', uses_custom_stt=True,
+                structured=Structured(title='Local recording', overview='', emoji='🎙️'), transcript_segments=[],
+                discarded=False, deferred=False,
+                external_data={'local_recording': {'status': 'waiting_for_parts', 'duration_seconds': duration,
+                                                  **({'origin': origin} if (origin := _origin(row)) else {})}},
+            ).model_dump())
+        except (ValueError, KeyError, TypeError, OverflowError):
+            continue
     return rows
+
+
+def request_processing_retry(uid: str, conversation_id: str) -> str:
+    """Wake the existing watcher for this owner's unimported recording and pinned job."""
+    targets = {}
+    local_recording_rows(uid, retry_targets=targets)
+    target = targets.get(conversation_id)
+    if target is None:
+        return 'not_found'
+    folder, state = target
+    if state in {'pending', 'processing'}:
+        return state
+    if state != 'failed':
+        return 'conflict'
+    directory = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            marker = os.open('.retry-processing', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        except FileExistsError:
+            try:
+                mode = os.stat('.retry-processing', dir_fd=directory, follow_symlinks=False).st_mode
+            except FileNotFoundError:
+                return 'pending'  # The watcher already consumed the request.
+            if not stat.S_ISREG(mode):
+                raise ValueError('Invalid retry marker')
+        else:
+            os.close(marker)
+            os.fsync(directory)
+    finally:
+        os.close(directory)
+    return 'pending'
 
 
 def filter_local_recording_rows(rows, *, statuses, sources, start_date, end_date, folder_id, starred):
@@ -98,3 +260,42 @@ def filter_local_recording_rows(rows, *, statuses, sources, start_date, end_date
 def merge_local_recording_page(conversations, recordings, *, offset, limit):
     rows = sorted([*conversations, *recordings], key=lambda row: row['created_at'], reverse=True)
     return rows[offset:offset + limit]
+
+
+def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **filters):
+    """Read one paired page with the same storage advance as the upstream list."""
+    origins = {}
+    recordings = filter_local_recording_rows(
+        local_recording_rows(uid, origins),
+        statuses=filters['statuses'],
+        sources=filters['sources'],
+        start_date=filters['start_date'],
+        end_date=filters['end_date'],
+        folder_id=filters['folder_id'],
+        starred=filters['starred'],
+    )
+    # One extra row distinguishes a full final page from an actual continuation.
+    canonical = read_canonical(
+        uid,
+        limit + offset + 1 if recordings else limit + 1,
+        0 if recordings else offset,
+        budget=budget,
+        **filters,
+    )
+    if recordings:
+        if budget.truncated:
+            # A local capture behind the observed Firestore prefix may follow
+            # unread canonical rows. Advancing past it would skip those rows.
+            recordings = (
+                [row for row in recordings if row['created_at'] > canonical[-1]['created_at']]
+                if canonical else []
+            )
+        page = merge_local_recording_page(canonical, recordings, offset=offset, limit=limit + 1)
+    else:
+        page = canonical
+    has_more = None if budget.truncated else len(page) > limit
+    return [attach_saved_origin(row, origins) for row in page[:limit]], has_more
+
+
+def get_local_recording(uid: str, conversation_id: str, origins=None) -> dict | None:
+    return next((row for row in local_recording_rows(uid, origins) if row['id'] == conversation_id), None)

@@ -42,6 +42,55 @@ void main() {
     );
   }
 
+  testWidgets('both translation directions appear below their unchanged originals', (tester) async {
+    final segment = TranscriptSegment.fromJson({
+      'id': 'local-preview-synthetic-line-0',
+      'text': 'Добрый день.',
+      'speaker': 'SPEAKER_00',
+      'is_user': false,
+      'start': 0.0,
+      'end': 1.0,
+      'translations': [
+        {'lang': 'es', 'text': 'Buenos días.'}
+      ],
+    });
+    final reply = TranscriptSegment.fromJson({
+      'id': 'local-preview-synthetic-line-1',
+      'text': '¿Cómo estás?',
+      'speaker': 'SPEAKER_01',
+      'is_user': false,
+      'start': 2.0,
+      'end': 3.0,
+      'translations': [
+        {'lang': 'ru', 'text': 'Как дела?'}
+      ],
+    });
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: TranscriptWidget(segments: [segment, reply], isConversationDetail: false)),
+    ));
+    await tester.pumpAndSettle();
+    final original = find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == 'Добрый день.',
+    );
+    final translated = find.text('Buenos días.');
+    expect(original, findsOneWidget);
+    expect(translated, findsOneWidget);
+    expect(tester.getTopLeft(translated).dy, greaterThan(tester.getBottomLeft(original).dy));
+    final replyOriginal = find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText() == '¿Cómo estás?',
+    );
+    expect(replyOriginal, findsOneWidget);
+    expect(find.text('Как дела?'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('Как дела?')).dy, greaterThan(tester.getBottomLeft(replyOriginal).dy));
+  });
+
   group('Speaker label display', () {
     testWidgets('shows person name when personId is set and in cache', (tester) async {
       final now = DateTime.now();

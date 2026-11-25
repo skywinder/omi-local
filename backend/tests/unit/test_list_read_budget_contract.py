@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import json
+import zlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -530,6 +531,10 @@ class _ConvQuery:
         self._clock = clock
         self._recorder = recorder
 
+    def select(self, fields):
+        docs = [_AIDoc({'id': doc.id, **{k: v for k, v in doc._data.items() if k in fields}}) for doc in self._docs]
+        return _ConvQuery(docs, recorder=self._recorder)
+
     def where(self, *args, **kwargs):
         return self
 
@@ -600,6 +605,26 @@ def test_conversations_large_offsets_are_served_and_charged(conv_mod, total, off
     assert not budget.truncated
     # The skipped offset prefix is charged before the page rows.
     assert budget.docs_scanned == offset + limit
+
+
+def test_paired_archive_projection_keeps_card_overrides_and_skips_transcript_storage(conv_mod):
+    fields = {
+        'id': 'card',
+        'structured': {'emoji': '📚'},
+        'user_title': 'Renamed',
+        'user_category': 'education',
+        'is_locked': True,
+        'external_data': {'local_recording': {'status': 'pending'}},
+    }
+    segments = [{'text': 'Full transcript'}]
+    transcript = {'transcript_segments': zlib.compress(json.dumps(segments).encode()), 'transcript_segments_compressed': True}
+    _install_conv_db(conv_mod, [_AIDoc(fields | transcript)])
+
+    cards = conv_mod.get_conversations_without_photos('uid', list_fields_only=True)
+    legacy = conv_mod.get_conversations_without_photos('uid')
+    expected_card = fields | {'structured': {'emoji': '📚', 'title': 'Renamed', 'category': 'education'}}
+    assert cards == [expected_card]
+    assert legacy == [expected_card | {'transcript_segments': segments, 'transcript_segments_compressed': True}]
 
 
 def test_conversations_deadline_cut_keeps_honest_prefix(conv_mod):

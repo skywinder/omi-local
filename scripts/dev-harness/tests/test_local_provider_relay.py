@@ -80,6 +80,27 @@ class Provider:
         return await self.incoming.get()
 
 
+@pytest.mark.parametrize('closes_first', [False, True])
+def test_relay_preserves_live_session_limit(cfg, closes_first):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+
+    class BusyProvider(Provider):
+        async def recv(self):
+            if closes_first:
+                raise ConnectionClosedError(Close(4409, 'private fixture detail'), None)
+            return json.dumps({'type': 'error', 'error': 'live session busy'})
+
+    provider = BusyProvider()
+    app = relay.create_app(cfg, registry=Registry(profile()), connector=lambda endpoint, key: provider)
+    with TestClient(app, client=('127.0.0.1', 1234)) as client, client.websocket_connect('/asr') as socket:
+        with pytest.raises(WebSocketDisconnect) as caught:
+            socket.receive_json()
+        assert caught.value.code == 4409
+        assert not caught.value.reason
+        assert not provider.sent
+
+
 def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
     registry = Registry(profile())
     connections = []
@@ -87,10 +108,14 @@ def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
         provider = Provider()
         connections.append((endpoint, key, provider))
         return provider
-    with TestClient(relay.create_app(cfg, registry=registry, connector=connect), client=('127.0.0.1', 1234)) as client:
+    async def health_probe(*a, **kw):
+        return {'state': 'ready'}
+    with TestClient(relay.create_app(cfg, registry=registry, connector=connect, health_probe=health_probe), client=('127.0.0.1', 1234)) as client:
         with client.websocket_connect('/asr') as socket:
             assert socket.receive_json()['useAudioWorklet'] is True
-            assert client.get('/health').json()['active_sessions'] == 1
+            health = client.get('/health').json()
+            assert health['active_sessions'] == 1
+            assert health['diarization'] == {'state': 'ready'}
             with pytest.raises(relay.RelayError, match='Stop recording'):
                 with relay.session_gate(cfg, exclusive=True):
                     pass
@@ -103,7 +128,7 @@ def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
             assert corrected == {'lines': [], 'buffer_transcription': 'corrected', 'diarization_status': 'degraded'}
             assert socket.receive_json() == {'type': 'ready_to_stop'}
         assert connections[0][:2] == ('wss://speech.example/asr', 'synthetic-bearer')
-        assert registry.lookups == ['synthetic-key-ref']
+        assert registry.lookups == ['synthetic-key-ref', 'synthetic-key-ref']
         assert connections[0][2].sent == [b'\x01\x00' * 100, b'']
         with client.websocket_connect('/asr') as socket:
             socket.receive_json()
@@ -111,20 +136,29 @@ def test_real_asgi_relay_pins_key_preserves_corrections_and_drains(cfg):
             socket.receive_json()
             socket.receive_json()
         assert connections[1][0] == 'wss://next.example/asr'
-        assert registry.lookups == ['synthetic-key-ref', 'changed-ref']
+        assert registry.lookups == ['synthetic-key-ref', 'synthetic-key-ref', 'changed-ref']
 
 
-def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch):
+@pytest.mark.parametrize('enable_after_text', [False, True])
+@pytest.mark.parametrize('other_language', [None, 'ru'])
+def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monkeypatch, enable_after_text,
+                                                                     other_language):
     from dev_harness import local_live_translation as translation
     requests = []
-    def fake_request(settings, key, language, texts):
-        requests.append((settings['model'], key, language, list(texts)))
+    def fake_request(settings, key, language, texts, *, other_language=None):
+        requests.append((settings['model'], key, language, list(texts), other_language))
+        if other_language:
+            return [{'source_lang': language, 'lang': other_language, 'text': f'{other_language}:{text}'}
+                    for text in texts]
         return [f'{language}:{text}' for text in texts]
     monkeypatch.setattr(translation, 'request_translations', fake_request)
     card = {'id': 'synthetic-translation', 'name': 'LLM', 'stage': 'translation', 'kind': 'openai-compatible',
             'settings': {'base_url': 'https://llm.example/v1', 'model': 'qwen3'}, 'credential_ref': 'translation-ref'}
     registry = Registry(profile(), card)
     providers = []
+    control = {'type': 'translation', 'language': 'en'}
+    if other_language:
+        control['other_language'] = other_language
     def connect(endpoint, *, key):
         provider = Provider()
         providers.append(provider)
@@ -132,20 +166,27 @@ def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monk
     with TestClient(relay.create_app(cfg, registry=registry, connector=connect), client=('127.0.0.1', 1234)) as client:
         with client.websocket_connect('/asr') as socket:
             socket.receive_json()
-            socket.send_text(json.dumps({'type': 'translation', 'language': 'en'}))
+            if not enable_after_text:
+                socket.send_text(json.dumps(control))
             socket.send_bytes(b'\x01\x00' * 100)
             first = socket.receive_json()
+            if enable_after_text:
+                assert first['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
+                socket.send_text(json.dumps(control))
+                first = socket.receive_json()  # No further audio/snapshot required.
             assert first['lines'][0]['text'] == 'initial' and first['lines'][0]['translations'] == []
             assert socket.receive_json() == {'type': 'translation_status', 'status': 'ready'}
             translated = socket.receive_json()
-            assert translated['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:initial'}]
+            destination = other_language or 'en'
+            assert translated['lines'][0]['translations'] == [{'lang': destination, 'text': f'{destination}:initial'}]
             assert translated['buffer_transcription'] == 'draft'
             socket.send_text(json.dumps({'type': 'translation', 'language': ''}))
+            assert socket.receive_json()['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
             socket.send_bytes(b'')
             assert socket.receive_json()['buffer_transcription'] == 'corrected'
             assert socket.receive_json() == {'type': 'ready_to_stop'}
     assert providers[0].sent == [b'\x01\x00' * 100, b'']
-    assert requests == [('qwen3', 'synthetic-translation-key', 'en', ['initial'])]
+    assert requests == [('qwen3', 'synthetic-translation-key', 'en', ['initial'], other_language)]
     assert registry.lookups == ['synthetic-key-ref', 'translation-ref']
 
 
@@ -397,3 +438,41 @@ def test_activation_rolls_back_under_gate_after_backend_failure(cfg, monkeypatch
     with pytest.raises(services.ActivationIndeterminate, match='indeterminate') as error:
         services.activate(cfg, None, publish=lambda: events.append('publish'), rollback=rollback)
     assert events == ['publish', 'rollback'] and 'private' not in str(error.value)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize('body,status,expected', [
+    ({'ready': True, 'active': False, 'diarization': True}, 200, 'ready'),
+    ({'ready': True, 'active': True, 'diarization': True}, 200, 'busy'),
+    ({'ready': True, 'active': False, 'busy': True, 'diarization': True}, 200, 'busy'),
+    ({'ready': True, 'active': False, 'busy': True, 'diarization': False}, 200, 'disabled'),
+    ({'ready': True, 'active': False, 'busy': 'false', 'diarization': True}, 200, 'unknown'),
+    ({'ready': True, 'active': False, 'diarization': False}, 200, 'disabled'),
+    ({'ready': True, 'active': False}, 200, 'unknown'),
+    ({'ready': False, 'diarization': True}, 200, 'unavailable'),
+    ({'ready': True}, 302, 'unavailable'),
+    ({'padding': 'x' * 5000}, 200, 'unavailable'),
+])
+async def test_selected_diarization_health_is_bounded_and_does_not_redirect(cfg, monkeypatch, body, status, expected):
+    factory = httpx.AsyncClient
+    def respond(request):
+        assert str(request.url) == 'https://speech.example/health'
+        assert request.headers['authorization'] == 'Bearer synthetic-key'
+        return httpx.Response(status, json=body, headers={'Location': 'https://unselected.example'})
+    def client(**kwargs):
+        assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
+        return factory(transport=httpx.MockTransport(respond), **kwargs)
+    monkeypatch.setattr(relay.httpx, 'AsyncClient', client)
+    assert await relay.diarization_health(profile(), cfg, key='synthetic-key') == {'state': expected}
+
+
+@pytest.mark.anyio
+async def test_local_diarization_health_does_not_receive_remote_credentials(cfg, monkeypatch):
+    factory = httpx.AsyncClient
+    def respond(request):
+        assert str(request.url) == 'http://127.0.0.1:18091/health'
+        assert 'authorization' not in request.headers
+        raise httpx.ConnectError('synthetic private error')
+    monkeypatch.setattr(relay.httpx, 'AsyncClient', lambda **kw: factory(transport=httpx.MockTransport(respond), **kw))
+    selected = profile(diarization={'enabled': True, 'port': 18091})
+    assert await relay.diarization_health(selected, cfg, key='synthetic-key') == {'state': 'unavailable'}

@@ -113,8 +113,10 @@ from utils.cloud_tasks import (
     verify_account_deletion_cloud_tasks_oidc,
 )
 from utils.executors import cleanup_executor, db_executor, llm_executor, run_blocking
+from utils.env_loader import is_offline_runtime
 from utils.log_sanitizer import sanitize
 from utils.local_transcription_status import local_transcription_status
+from utils.local_transport_auth import require_paired_owner
 from utils.llm.followup import followup_question_prompt
 from utils.notifications import send_notification, send_training_data_submitted_notification
 from utils.llm.external_integrations import generate_comprehensive_daily_summary
@@ -330,6 +332,19 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
     transcription = local_transcription_status()
     if transcription is not None:
         profile['local_transcription'] = transcription
+        profile['local_audio_delivery_version'] = 2
+        profile['local_conversation_group_version'] = 1
+        profile['local_audio_playback_version'] = 1
+        profile['local_recording_edits_version'] = 1
+        profile['local_recording_categories_version'] = 1
+        profile['local_processing_retry_version'] = 1
+        profile['local_folders_version'] = 2
+        profile['local_speaker_labels_version'] = 1
+        profile['local_tasks_version'] = 1
+        profile['local_task_suggestions_version'] = 1
+        profile['local_summary_regeneration_version'] = 1
+        profile['local_daily_recaps_version'] = 1
+        profile['local_goals_version'] = 1
     return profile
 
 
@@ -636,6 +651,33 @@ def get_private_cloud_sync(uid: str = Depends(auth.get_current_user_uid)):
 
 
 # Person photo deferred — see models.other.Person (no photo field / storage yet).
+class LocalPersonLabel(BaseModel):
+    id: str
+    name: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class LocalPersonName(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+@router.get('/v1/local/people', tags=['local'], response_model=List[LocalPersonLabel])
+def list_local_people(uid: str = Depends(require_paired_owner)):
+    return [
+        person for person in get_people(uid)
+        if isinstance(person.get('name'), str) and person['name'].strip()
+    ]
+
+
+@router.post('/v1/local/people', tags=['local'], response_model=LocalPersonLabel)
+def create_local_person(body: LocalPersonName, uid: str = Depends(require_paired_owner)):
+    name = body.name.strip()
+    if not name or not name.isprintable():
+        raise HTTPException(400, 'local_person_invalid_name')
+    return users_db.get_or_create_local_person(uid, name)
+
+
 @router.post('/v1/users/people', tags=['v1'], response_model=Person)
 def get_or_create_person(data: CreatePerson, uid: str = Depends(auth.get_current_user_uid)):
     """Create a new person or return existing one with same name (idempotent by name).
@@ -1716,6 +1758,9 @@ def get_daily_summaries(
     Returns summaries in reverse chronological order.
     """
     summaries = daily_summaries_db.get_daily_summaries(uid, limit=limit, offset=offset)
+    if is_offline_runtime():
+        from database.local_daily_recaps import public_summary
+        summaries = [public_summary(summary) for summary in summaries]
     return {'summaries': summaries}
 
 

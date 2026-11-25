@@ -31,6 +31,46 @@ def summary(name='Synthetic LLM', base='https://llm.example/v1'):
             'settings': {'base_url': base, 'model': 'synthetic-model'}}
 
 
+def test_translation_defaults_to_applied_summary_and_keeps_credentials_pinned(cfg):
+    registry = Registry(cfg)
+    # Legacy users with only STT have no text model; never send text to ASR.
+    assert registry.snapshot('translation') is None
+    saved = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'summary-key'})
+    card = saved['profiles'][-1]
+    assert registry.snapshot('translation') is None  # A saved draft is not active.
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': card['id']},
+                      prepare=lambda _, publish: publish())
+    inherited = registry.snapshot('translation')
+    assert inherited['inherited_from'] == 'summary'
+    assert inherited['stage'] == 'translation'
+    assert registry.key(inherited) == 'summary-key'
+    assert registry.read()['active']['translation'] is None
+    assert registry.read()['effective']['translation']['settings'] == card['settings']
+    edited = {**card, 'settings': {**card['settings'], 'model': 'draft-only'}}
+    registry.save({'revision': 2, 'profile': edited, 'api_key': 'new-key'})
+    assert registry.snapshot('translation') == inherited
+    assert registry.key(inherited) == 'summary-key'
+    assert 'translation' not in registry.pipeline()
+    registry.activate({'revision': 3, 'stage': 'summary', 'id': None},
+                      prepare=lambda _, publish: publish())
+    assert registry.snapshot('translation') is None
+
+
+def test_explicit_translator_overrides_default_until_returning_to_automatic(cfg):
+    registry = Registry(cfg)
+    for stage in ('summary', 'translation'):
+        saved = registry.save({'revision': registry.read()['revision'],
+                               'profile': {**summary(), 'stage': stage}, 'api_key': stage + '-key'})
+        registry.activate({'revision': saved['revision'], 'stage': stage, 'id': saved['profiles'][-1]['id']},
+                          prepare=lambda _, publish: publish())
+    selected = registry.snapshot('translation')
+    assert 'inherited_from' not in selected
+    assert registry.key(selected) == 'translation-key'
+    registry.activate({'revision': registry.read()['revision'], 'stage': 'translation', 'id': None},
+                      prepare=lambda _, publish: publish())
+    assert registry.key(registry.snapshot('translation')) == 'summary-key'
+
+
 def test_drafts_are_separate_and_secrets_keep_pinned_versions(cfg):
     registry = Registry(cfg)
     original = (registry.root / 'stt-engine.json').read_bytes()
@@ -238,6 +278,244 @@ def test_actual_http_settings_roundtrip_and_origin_guards(cfg):
     assert 'synthetic-test-secret' not in json.dumps(saved)
     assert http_request(cfg, '/api/settings/save', payload=payload)[0] == 409
     assert http_request(cfg, '/api/settings/save', payload=payload, overrides={'Content-Length': '999999'})[0] == 400
+
+
+def phone_request(cfg, operation='', **kwargs):
+    return http_request(cfg, '/api/processing' + operation,
+                        overrides={'X-Omiloc-Request': 'processing'}, **kwargs)
+
+
+def test_shared_summary_catalog_preserves_drafts_and_pins_only_the_applied_default(cfg):
+    registry = Registry(cfg)
+    assert http_request(cfg, '/api/processing/summary-settings', method='GET')[0] == 403
+    code, initial = phone_request(cfg, '/summary-settings', method='GET')
+    assert code == 200 and initial['revision'] == 0 and initial['default_template_id'] == 'standard'
+    assert initial['default_profile_id'] is None
+    prepared = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-summary-key'})
+    identifier = prepared['profiles'][-1]['id']
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': identifier},
+                      prepare=lambda _, publish: publish())
+    before = registry.pipeline()['summary']
+    assert 'template' not in before
+    custom = {'id': 'decisions', 'name': 'Decisions', 'prompt': 'List decisions.\nInclude owners.'}
+    body = {'revision': 2, 'templates': [*initial['templates'], custom], 'default_template_id': 'standard'}
+    status, result = phone_request(cfg, '/summary-settings', payload=body)
+    assert status == 200 and result['revision'] == 3
+    assert result['default_profile_id'] == identifier
+    assert 'fixture-summary-key' not in json.dumps(result)
+    assert registry.pipeline()['summary'] == before
+    assert phone_request(cfg, '/summary-settings', payload=body)[0] == 409
+    updated = {**body, 'revision': 3, 'default_template_id': custom['id']}
+    assert phone_request(cfg, '/summary-settings', payload={**updated, 'default_template_id': 'missing'})[0] == 400
+    assert phone_request(cfg, '/summary-settings', payload=updated)[0] == 200
+    after = registry.pipeline()['summary']
+    assert after['template'] == custom and registry.key(after) == 'fixture-summary-key'
+    assert registry.snapshot('summary') == before
+    assert 'template' not in before
+
+
+def test_summary_regeneration_uses_the_confirmed_model_and_template(cfg, monkeypatch):
+    from dev_harness import local_summary_regeneration
+
+    registry = Registry(cfg)
+    saved = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-summary-key'})
+    profile = saved['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    code, data = phone_request(cfg, '/regenerate-summary', method='GET')
+    assert code == 200 and 'fixture-summary-key' not in json.dumps(data)
+    assert http_request(cfg, '/api/processing/regenerate-summary', method='GET')[0] == 403
+    provider, = data['providers']
+    template, = data['templates']
+    body = {
+        'provider_binding': provider['binding'], 'template_id': template['id'],
+        'template_digest': '0' * 64, 'transcript': '[1.0] Corrected transcript.', 'prompt': 'Extract decisions.',
+    }
+    received = []
+
+    def summarize(snapshot, key, transcript, *_args, **_kwargs):
+        assert key == 'fixture-summary-key'
+        received.append((snapshot, transcript))
+        return {'title': 'Generated title', 'overview': 'Generated recap'}
+
+    monkeypatch.setattr(local_summary_regeneration.local_pipeline, 'summarize_text', summarize)
+    assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 409
+    assert not received
+    body['template_digest'] = template['digest']
+    assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 200
+    snapshot, transcript = received.pop()
+    assert snapshot['template']['prompt'] == body['prompt'] and transcript == body['transcript']
+
+
+def test_recording_chat_sends_transcript_only_to_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    assert phone_request(cfg, '/recording-chat', method='GET') == (200, {'provider': None})
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-chat-key'})
+    profile = state['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/recording-chat', method='GET')
+    assert status == 200
+    assert data['provider']['host'] == 'llm.example'
+    assert 'fixture-chat-key' not in json.dumps(data)
+    assert http_request(cfg, '/api/processing/recording-chat', method='GET')[0] == 403
+
+    citations = [1]
+    sent = []
+
+    def respond(client, url, **kwargs):
+        assert url == 'https://llm.example/v1/chat/completions'
+        assert client.headers['Authorization'] == 'Bearer fixture-chat-key'
+        sent.append(kwargs['json'])
+        return {'choices': [{'finish_reason': 'stop', 'message': {
+            'content': json.dumps({'answer': 'The plan was accepted.', 'sources': citations}),
+        }}]}
+
+    monkeypatch.setattr(local_recording_chat.transport, 'post_json', respond)
+    body = {'binding': '0' * 64, 'question': 'Was the plan accepted?', 'sources': ['We accepted the plan.'], 'history': []}
+    assert phone_request(cfg, '/recording-chat', payload=body)[0] == 409
+    assert sent == []
+    body['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/recording-chat', payload=body) == (200, {
+        'answer': 'The plan was accepted.', 'sources': [1],
+    })
+    assert json.loads(sent[0]['messages'][1]['content'])['transcript'] == [
+        {'source': 1, 'text': 'We accepted the plan.'},
+    ]
+    citations[:] = [2]
+    assert phone_request(cfg, '/recording-chat', payload=body)[0] == 502
+    assert phone_request(cfg, '/archive-chat', method='GET') == (200, data)
+    assert phone_request(cfg, '/archive-chat', payload=body)[0] == 400
+    body['sources'] = ['We accepted the plan.', 'We confirmed it later.']
+    body['recordings'] = [
+        {'recording': 1, 'title': 'First meeting', 'started_at': '2026-05-01T12:00:00+00:00'},
+        {'recording': 2, 'title': 'Second meeting', 'started_at': '2026-05-08T12:00:00+00:00'},
+    ]
+    assert phone_request(cfg, '/archive-chat', payload=body) == (200, {
+        'answer': 'The plan was accepted.', 'sources': [2],
+    })
+    assert json.loads(sent[-1]['messages'][1]['content'])['transcript'] == [
+        {'source': index, 'text': line, **recording}
+        for index, (line, recording) in enumerate(zip(body['sources'], body['recordings']), 1)
+    ]
+
+
+def test_daily_recap_sends_only_selected_excerpts_to_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-daily-key'})
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': state['profiles'][-1]['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/daily-recap', method='GET')
+    assert status == 200
+    assert http_request(cfg, '/api/processing/daily-recap', method='GET')[0] == 403
+    calls = []
+
+    def complete(_registry, profile, payload):
+        assert registry.key(profile) == 'fixture-daily-key'
+        calls.append(json.loads(payload['messages'][-1]['content']))
+        return {'headline': 'A day', 'overview': 'An overview', 'highlights': [], 'decisions': []}
+
+    monkeypatch.setattr(local_recording_chat, '_complete', complete)
+    excerpt = {'source': 1, 'title': 'Meeting', 'text': 'Saved evidence.', 'kind': 'recap'}
+    request = {'binding': '0' * 64, 'sources': [excerpt]}
+    assert phone_request(cfg, '/daily-recap', payload=request)[0] == 409
+    assert not calls
+    request['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/daily-recap', payload=request)[0] == 200
+    assert calls == [[excerpt]]
+
+
+def test_task_suggestions_use_only_the_confirmed_model(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+
+    registry = Registry(cfg)
+    assert phone_request(cfg, '/task-suggestions', method='GET') == (200, {'provider': None})
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-task-key'})
+    profile = state['profiles'][-1]
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/task-suggestions', method='GET')
+    assert status == 200 and data['provider']['host'] == 'llm.example'
+    assert http_request(cfg, '/api/processing/task-suggestions', method='GET')[0] == 403
+    sent = []
+    reply = {'suggestions': [{'description': 'Send the budget', 'source': 1}]}
+
+    def respond(client, url, **kwargs):
+        assert url == 'https://llm.example/v1/chat/completions'
+        assert client.headers['Authorization'] == 'Bearer fixture-task-key'
+        sent.append(kwargs['json'])
+        return {'choices': [{'message': {'content': json.dumps(reply)}}]}
+
+    monkeypatch.setattr(local_recording_chat.transport, 'post_json', respond)
+    body = {'binding': '0' * 64, 'sources': ['I will send the budget.']}
+    assert phone_request(cfg, '/task-suggestions', payload=body)[0] == 409
+    assert not sent
+    body['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/task-suggestions', payload=body) == (200, reply)
+    assert json.loads(sent[0]['messages'][-1]['content']) == [{'source': 1, 'text': body['sources'][0]}]
+
+
+def test_phone_remote_profile_roundtrip_reuses_keys_revision_and_activation(cfg, monkeypatch):
+    from dev_harness import local_provider_probe
+    monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'ready'})
+    profile = {'name': 'Synthetic server', 'stage': 'diarization', 'kind': 'mycelia',
+               'settings': {'base_url': 'https://diarization.example', 'min_speakers': 1}}
+    status, saved = phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile, 'api_key': 'synthetic-secret'})
+    selected = saved['profiles'][-1]
+    assert status == 200 and selected['can_edit'] and selected['has_key']
+    assert 'synthetic-secret' not in json.dumps(saved)
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile})[0] == 409
+    status, active = phone_request(cfg, '/activate', payload={'revision': 1, 'stage': 'diarization', 'id': selected['id']})
+    assert status == 200 and active['effective']['diarization']['id'] == selected['id']
+    status, disabled = phone_request(cfg, '/activate', payload={'revision': 2, 'stage': 'diarization', 'id': None})
+    assert status == 200 and disabled['effective']['diarization'] is None
+    assert phone_request(cfg, '/profiles/' + selected['id'], method='DELETE', payload={'revision': 3})[0] == 200
+
+
+def test_phone_can_select_prepared_engines_but_never_edit_host_execution(cfg, monkeypatch):
+    from dev_harness import local_provider_probe
+    monkeypatch.setattr(local_provider_probe, 'probe', lambda *_args, **_kwargs: {'state': 'available'})
+    registry = Registry(cfg)
+    native = {'name': 'Prepared local', 'stage': 'stt', 'kind': 'whisperx',
+              'settings': {'model': 'small', 'language': 'ru', 'python': '/synthetic/private/bin/python'}}
+    saved = registry.save({'revision': 0, 'profile': native})
+    native['id'] = saved['profiles'][-1]['id']
+    status, public = phone_request(cfg, method='GET')
+    assert status == 200 and not public['profiles'][-1]['can_edit']
+    assert '/synthetic/private' not in json.dumps(public)
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': native})[0] == 403
+    assert phone_request(cfg, '/probe', payload={'profile': native})[0] == 403
+    assert phone_request(cfg, '/profiles/' + native['id'], method='DELETE', payload={'revision': 1})[0] == 403
+    status, selected = phone_request(cfg, '/activate', payload={'revision': 1, 'stage': 'stt', 'id': native['id']})
+    assert status == 200 and selected['active']['stt'] == native['id']
+
+
+def test_phone_external_live_cannot_install_or_replace_managed_diarization(cfg):
+    registry = Registry(cfg)
+    profile = {'name': 'Prepared live speakers', 'stage': 'live', 'kind': 'external',
+               'settings': {'url': 'wss://live.example/asr', 'diarization': {
+                   'enabled': True, 'python': '/synthetic/private/bin/python', 'port': 19091}}}
+    saved = registry.save({'revision': 0, 'profile': profile})
+    profile['id'] = saved['profiles'][-1]['id']
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': profile})[0] == 403
+    profile['settings'] = {'url': 'wss://different.example/asr'}
+    assert phone_request(cfg, '/save', payload={'revision': 1, 'profile': profile})[0] == 403
+    assert registry.read() == saved
+
+
+def test_phone_request_guards_and_url_validation(cfg):
+    profile = {'name': 'Remote', 'stage': 'stt', 'kind': 'openai-compatible',
+               'settings': {'provider_url': 'http://public.example/v1', 'model': 'synthetic'}}
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile})[0] == 400
+    profile['settings']['provider_url'] = 'https://stt.example/v1'
+    assert http_request(cfg, '/api/processing/save', payload={'revision': 0, 'profile': profile})[0] == 403
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': summary()})[0] == 403
+    assert phone_request(cfg, '/activate', payload={'revision': 0, 'stage': 'summary', 'id': None})[0] == 400
+    assert not Registry(cfg).exists
 
 
 def test_live_activation_indeterminate_is_distinct_from_ordinary_failure(cfg, monkeypatch):

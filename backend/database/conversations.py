@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import logging
 import uuid
@@ -13,7 +14,7 @@ from google.cloud.firestore_v1 import FieldFilter
 
 import utils.other.hume as hume
 from models.audio_file import AudioFile
-from models.conversation_enums import ConversationStatus, PostProcessingModel, PostProcessingStatus
+from models.conversation_enums import CategoryEnum, ConversationStatus, PostProcessingModel, PostProcessingStatus
 from models.conversation_photo import ConversationPhoto
 from models.transcript_segment import TranscriptSegment
 from utils import encryption
@@ -306,20 +307,28 @@ def raw_conversation_has_content(uid: str, conversation: Dict[str, Any]) -> bool
     return bool(segments)
 
 
+def _apply_user_structured(target: dict, source: dict) -> None:
+    overrides = {}
+    title = source.get('user_title')
+    category = source.get('user_category')
+    if isinstance(title, str):
+        overrides['title'] = title
+    if isinstance(category, str) and category in CategoryEnum._value2member_map_:
+        overrides['category'] = category
+    if overrides:
+        structured = target.get('structured')
+        if not isinstance(structured, dict):
+            structured = {}
+            target['structured'] = structured
+        structured.update(overrides)
+
+
 def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], uid: str) -> Optional[Dict[str, Any]]:
     if not conversation_data:
         return None
 
     data = copy.deepcopy(conversation_data)
-    # User titles are durable overrides. Conversation processing owns the
-    # generated title, but must never erase an explicit user edit.
-    user_title = data.get('user_title')
-    if isinstance(user_title, str):
-        structured = data.get('structured')
-        if not isinstance(structured, dict):
-            structured = {}
-            data['structured'] = structured
-        structured['title'] = user_title
+    _apply_user_structured(data, data)
     level = data.get('data_protection_level')
 
     if level == 'enhanced':
@@ -336,6 +345,41 @@ def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], 
                 pass
 
     return data
+
+
+def read_local_search_page(
+    uid: str, after: Optional[str], limit: int, *, timeout: float = 8, end_page_after_file: bool = False,
+) -> tuple[list[dict], Optional[str]]:
+    """Read an owner-scoped slice without photos or offset scans."""
+    collection = db.collection('users').document(uid).collection(conversations_collection)
+    query = collection.order_by('__name__').select(
+        [
+            'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
+            'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'deleted',
+        ]
+    )
+    if after is not None:
+        query = query.start_after({'__name__': collection.document(after)})
+    rows = []
+    last_id = None
+    page_full = False
+    for count, document in enumerate(query.limit(limit + 1).stream(retry=None, timeout=timeout), start=1):
+        if page_full:
+            return rows, last_id
+        last_id = document.id
+        page_full = count == limit
+        data = document.to_dict()
+        if not data or is_soft_deleted(data) or data.get('is_locked') or data.get('local_chat_deleting'):
+            continue
+        row = _prepare_conversation_for_read(data, uid)
+        if row is not None:
+            row['id'] = document.id
+            row['_local_read_version'] = document.update_time
+            rows.append(row)
+            if end_page_after_file:
+                local = (row.get('external_data') or {}).get('local_transcript') or {}
+                page_full = page_full or local.get('segment_storage') == 'result-file'
+    return rows, None
 
 
 def _document_data_with_revision(document) -> Optional[Dict[str, Any]]:
@@ -414,7 +458,7 @@ def upsert_conversation_with_lifecycle(uid: str, conversation_data: dict):
             # A null existing value means "never user-set" (stub docs dump None
             # fields), so only non-null values are preserved — otherwise the
             # stub's folder_id: None would revert every AI folder assignment.
-            for field in ('starred', 'folder_id', 'visibility', 'user_title'):
+            for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
                 if existing.get(field) is not None:
                     write_data[field] = existing[field]
 
@@ -426,13 +470,7 @@ def upsert_conversation_with_lifecycle(uid: str, conversation_data: dict):
             if existing.get('folder_user_set'):
                 write_data['folder_id'] = existing.get('folder_id')
 
-            user_title = existing.get('user_title')
-            if isinstance(user_title, str):
-                structured = write_data.get('structured')
-                if not isinstance(structured, dict):
-                    structured = {}
-                    write_data['structured'] = structured
-                structured['title'] = user_title
+            _apply_user_structured(write_data, existing)
 
             transaction.set(conversation_ref, write_data, merge=True)
             return
@@ -489,7 +527,7 @@ def persist_processing_result_with_lifecycle(
         # A null existing value means "never user-set" (stub docs dump None
         # fields), so only non-null values are preserved — otherwise the
         # stub's folder_id: None would revert every AI folder assignment.
-        for field in ('starred', 'folder_id', 'visibility', 'user_title'):
+        for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
             if existing.get(field) is not None:
                 write_data[field] = existing[field]
 
@@ -501,13 +539,7 @@ def persist_processing_result_with_lifecycle(
         if existing.get('folder_user_set'):
             write_data['folder_id'] = existing.get('folder_id')
 
-        user_title = existing.get('user_title')
-        if isinstance(user_title, str):
-            structured = write_data.get('structured')
-            if not isinstance(structured, dict):
-                structured = {}
-                write_data['structured'] = structured
-            structured['title'] = user_title
+        _apply_user_structured(write_data, existing)
 
         transaction.set(conversation_ref, write_data, merge=True)
         return True
@@ -710,6 +742,8 @@ def get_conversations_without_photos(
     folder_id: Optional[str] = None,
     starred: Optional[bool] = None,
     budget: Optional[ListReadBudget] = None,
+    *,
+    list_fields_only: bool = False,
 ):
     """
     Same as get_conversations but without loading photos.
@@ -723,6 +757,13 @@ def get_conversations_without_photos(
     instead of pretending to be complete.
     """
     conversations_ref = db.collection('users').document(uid).collection(conversations_collection)
+    if list_fields_only:
+        from models.conversation import Conversation
+
+        # Preserve card fields and Local edit overrides without downloading or
+        # decompressing transcript bytes for every row in a page.
+        fields = set(Conversation.model_fields) - {'transcript_segments', 'transcript_segments_compressed'}
+        conversations_ref = conversations_ref.select(sorted(fields | {'user_title', 'user_category'}))
     if not include_discarded:
         conversations_ref = conversations_ref.where(filter=FieldFilter('discarded', '==', False))
     if sources:
@@ -1036,6 +1077,136 @@ def update_conversation_title(uid: str, conversation_id: str, title: str):
         return
 
     conversation_ref.update({'structured.title': title, 'user_title': title})
+
+
+@firestore.transactional
+def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
+    owner = db.collection('users').document(uid)
+    ref = owner.collection(conversations_collection).document(conversation_id)
+    snapshot = ref.get(transaction=transaction, timeout=6)
+    raw = snapshot.to_dict()
+    if not raw or is_soft_deleted(raw) or raw.get('is_locked') or raw.get('local_chat_deleting'):
+        return 'not_found', None
+    if raw.get('status') not in {None, 'completed'}:
+        return 'not_ready', None
+    storage = (raw.get('external_data') or {}).get('local_transcript') or {}
+    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
+        # Firestore contains only a preview. Transcript edits need the file-backed source.
+        return 'segment_unavailable', None
+    row = _prepare_conversation_for_read(raw, uid)
+    if row is None:
+        return 'not_found', None
+    row['id'] = conversation_id
+
+    def matches_original(current):
+        if field in {'title', 'segment_text'} and isinstance(current, str):
+            return expected == hashlib.sha256(current.encode('utf-8')).hexdigest()
+        return expected == current
+
+    if field == 'title':
+        structured = row.get('structured')
+        current = structured.get('title') or '' if isinstance(structured, dict) else ''
+        structured = structured if isinstance(structured, dict) else {}
+        structured['title'] = value
+        row['structured'] = structured
+        row['user_title'] = value
+        patch = {'user_title': value}
+        if isinstance(raw.get('structured'), dict):
+            patch['structured.title'] = value
+        else:
+            patch['structured'] = structured
+    elif field == 'starred':
+        current = bool(row.get('starred'))
+        row['starred'] = value
+        patch = {'starred': value}
+    elif field == 'folder':
+        current = row.get('folder_id')
+        if value is not None:
+            target = owner.collection('folders').document(value)
+            if not target.get(transaction=transaction, timeout=6).exists:
+                return 'conflict', None
+        row['folder_id'] = value
+        patch = {'folder_id': value, 'folder_user_set': True}
+    elif field == 'category':
+        structured = row.get('structured')
+        structured = structured if isinstance(structured, dict) else {}
+        try:
+            current = CategoryEnum(structured.get('category')).value
+        except (ValueError, TypeError):
+            current = CategoryEnum.other.value
+        value = CategoryEnum(value).value
+        structured['category'] = value
+        row['structured'] = structured
+        patch = {'user_category': value}
+        if isinstance(raw.get('structured'), dict):
+            patch['structured.category'] = value
+        else:
+            patch['structured'] = structured
+    elif field == 'speaker':
+        segments = row.get('transcript_segments')
+        if not isinstance(segments, list):
+            return 'segment_unavailable', None
+        if value['person_id'] is not None:
+            person = owner.collection('people').document(value['person_id'])
+            if not person.get(transaction=transaction, timeout=6).exists:
+                return 'conflict', None
+        seen = set()
+        changed = []
+        for segment in segments:
+            if not isinstance(segment, dict) or segment.get('id') not in expected:
+                continue
+            identifier = segment['id']
+            if identifier in seen:
+                return 'segment_unavailable', None
+            seen.add(identifier)
+            current = {'person_id': segment.get('person_id'), 'is_user': bool(segment.get('is_user'))}
+            if current != expected[identifier] and current != value:
+                return 'conflict', None
+            if current != value:
+                changed.append(segment)
+        if len(seen) != len(expected):
+            return 'segment_unavailable', None
+        if changed:
+            for segment in changed:
+                segment.update(value, speaker_identity_status='user' if value['is_user'] else 'unknown')
+            transaction.update(ref, _prepare_conversation_for_write(
+                {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
+            ))
+        return 'ok', row
+    elif field == 'segment_text':
+        segments = row.get('transcript_segments')
+        if not isinstance(segments, list):
+            return 'segment_unavailable', None
+        matches = [segment for segment in segments if isinstance(segment, dict) and segment.get('id') == segment_id]
+        if len(matches) != 1:
+            return 'segment_unavailable', None
+        segment = matches[0]
+        current = segment.get('text')
+        if current == value:
+            return 'ok', row
+        if not matches_original(current):
+            return 'conflict', None
+        segment['text'] = value
+        patch = _prepare_conversation_for_write(
+            {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
+        )
+    else:
+        raise ValueError('Unsupported local recording edit')
+
+    if current != value and not matches_original(current):
+        return 'conflict', None
+    # Repeating a confirmed edit does not change the Firestore revision.
+    if current != value or (field == 'title' and raw.get('user_title') != value) or (
+        field == 'folder' and not raw.get('folder_user_set')
+    ) or (
+        field == 'category' and raw.get('user_category') != value
+    ):
+        transaction.update(ref, patch)
+    return 'ok', row
+
+
+def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None):
+    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id)
 
 
 def update_conversation_summary(uid: str, conversation_id: str, app_id: Optional[str], content: str) -> str:

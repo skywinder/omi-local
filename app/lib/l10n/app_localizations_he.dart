@@ -1716,12 +1716,7 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'DEVICES',
-      one: 'DEVICE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'DEVICES', one: 'DEVICE');
     return '$count $_temp0 נמצאו בקרבה';
   }
 
@@ -8403,12 +8398,7 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String nConversationsCreated(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 's',
-      one: '',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 's', one: '');
     return '$count conversation$_temp0 created';
   }
 
@@ -9735,12 +9725,7 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String monthsFreeBadge(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count חודשים חינם',
-      one: 'חודש אחד חינם',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: '$count חודשים חינם', one: 'חודש אחד חינם');
     return '$_temp0';
   }
 
@@ -9882,22 +9867,21 @@ class AppLocalizationsHe extends AppLocalizations {
   String get localMacServers => 'שרתים שמורים';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'תרגום בזמן אמת';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'תרגום לשפה';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'השרת המחובר מציג את התרגום מתחת למקור. מודל הסיכום משמש אוטומטית, אלא אם נבחר מודל אחר בספריית השרת: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'לא הוגדר מודל תרגום בשרת המחובר. יש לפתוח את הספרייה שלו: Settings → Summarization או Translation → Save → Use.';
 
   @override
-  String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+  String get liveTranslationFailed => 'התרגום אינו זמין בשרת המחובר. יש לבדוק את הספרייה שלו: Settings → Translation.';
 
   @override
   String get diarization => 'זיהוי דוברים';
@@ -9918,4 +9902,35 @@ class AppLocalizationsHe extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'זיהוי דוברים נכשל';
+
+  @override
+  String get localProcessingHelp =>
+      'תוויות דוברים בזמן אמת מגיעות מספק Live. הפרדת הדוברים למטה מעבדת הקלטות שהסתיימו.';
+
+  @override
+  String get localProcessingApplyHelp => 'יש לעצור את ההקלטה לפני ההחלפה. השרתים שנבחרו מקבלים את השמע שלך.';
+
+  @override
+  String get localProcessingKeyHelp => 'שדה ריק שומר על המפתח השמור. שרת אחר דורש מפתח משלו.';
+
+  @override
+  String get localProcessingUnsupported => 'יש לעדכן את השרת המותאם כדי לערוך הגדרות אלה.';
+
+  @override
+  String get localProcessingFinished => 'הקלטות שהסתיימו';
+
+  @override
+  String get localProcessingProbe => 'בדיקת חיבור';
+
+  @override
+  String get localProcessingPending => 'השינויים השמורים עדיין אינם פעילים. הקש על אישור כדי להחיל אותם.';
+
+  @override
+  String get localAudioServerUpdateRequired => 'יש לעדכן את השרת כדי לסנכרן שמע. השמע שנשמר בטלפון יישמר.';
+
+  @override
+  String get liveTranslationBidirectional => 'תרגום דו־כיווני';
+
+  @override
+  String get liveTranslationPairHelp => 'זיהוי השפה של כל משפט ותרגומו לשפה האחרת שנבחרה.';
 }

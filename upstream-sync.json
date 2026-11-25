@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/BasedHardware/omi",
+  "snapshot_base": "2ce52f13f4724eee989158da6318dc6f27aa744e",
+  "observed_head": "95f97c1e850f162f1d3d381b5a71afa4359768ac",
+  "observed_on": "2026-10-28",
+  "paths": ["app", "backend"],
+  "decisions": [
+    {
+      "commit": "730b8906a8fb935b5007d898a4d3f74b66a10406",
+      "status": "backported",
+      "note": "Stored-device decode guard and original tests; log exception type only."
+    },
+    {
+      "commit": "b863f6ae845ba9aaec6893c7f264b95d1d16f66a",
+      "status": "backported",
+      "note": "Per-entry cache decode and pending-memory preservation. Extended to Local server namespaces with isolation tests and redacted namespace logs."
+    },
+    {
+      "commit": "9334a88f16518ccf560b4bc5ee61bbaf6459818c",
+      "status": "backported",
+      "note": "Malformed action/event isolation and original behavioral tests."
+    },
+    {
+      "commit": "9938a55a7b6c780c94c26d580f8ba14974f8e9ea",
+      "status": "backported",
+      "note": "Serialized atomic WAL-index writes and backup recovery; original fault-injection tests."
+    },
+    {
+      "commit": "c831ba0f547907c6f90e2b4f12ec527fb2accaca",
+      "status": "backported",
+      "note": "App ownership checks and tests for device deletes. Upstream failure-class registry is outside the standalone snapshot."
+    },
+    {
+      "commit": "df3eaf8dd75a0edb358e7583be85d5cb7a40e43e",
+      "status": "deferred",
+      "note": "Native saved reconnect depends on newer capture policy and service ownership; reconcile with Local radio recovery before a separate physical BLE gate."
+    },
+    {
+      "commit": "b46679b2006cdf44a01b2afa697a7b167b8ebb96",
+      "status": "deferred",
+      "note": "Loaded-transcript retention needs adaptation to Local processing rows, foreground refresh and server cache isolation."
+    },
+    {
+      "commit": "d055cd9e184788427bd8a401bb3f75adec2873bb",
+      "status": "deferred",
+      "note": "The replaced 15-second stall timer is absent from this snapshot; review with the newer SD transfer stack, not as an isolated patch."
+    }
+  ]
+}

@@ -1,0 +1,1044 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:omi/backend/schema/conversation.dart';
+import 'package:omi/backend/schema/person.dart';
+import 'package:omi/backend/schema/transcript_segment.dart';
+import 'package:omi/pages/conversation_detail/conversation_summary_selection.dart';
+import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
+import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart';
+import 'package:omi/ui/components/omi_page_states.dart';
+import 'package:omi/ui/format/omi_duration.dart';
+import 'package:omi/ui/omi_tokens.dart';
+import 'package:omi/widgets/transcript.dart';
+import 'package:omi/utils/audio/conversation_playback_controller.dart';
+import 'package:omi/utils/l10n_extensions.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+import 'paired_library.dart';
+import 'folder_picker.dart';
+import 'local_goals_page.dart';
+import 'recording_chat_page.dart';
+import 'recording_edit.dart';
+import 'recording_export.dart';
+import 'conversation_categories.dart';
+import 'recording_search.dart';
+import 'recording_summary_page.dart';
+import 'recording_player_bar.dart';
+import 'settings_labels.dart';
+import 'speaker_picker.dart';
+import 'task_editor.dart';
+import 'task_suggestions_page.dart';
+
+String recordingTitle(BuildContext context, ServerConversation row) => row.externalIntegration?.localRecording != null
+    ? context.l10n.recording
+    : row.structured.title.trim().isEmpty
+    ? context.l10n.untitledConversation
+    : row.structured.title;
+
+int recordingDuration(ServerConversation row) {
+  final external = row.externalIntegration;
+  final pendingDuration = external?.localRecording?['duration_seconds'];
+  if (pendingDuration is num && pendingDuration.isFinite && pendingDuration > 0) return pendingDuration.round();
+  final start = row.startedAt;
+  final end = row.finishedAt;
+  if (external?.localTranscript != null && start != null && end != null && !end.isBefore(start)) {
+    return (end.difference(start).inMicroseconds / Duration.microsecondsPerSecond).round();
+  }
+  return row.getDurationInSeconds();
+}
+
+String recordingInput(BuildContext context, ServerConversation row) {
+  final origin = (row.externalIntegration?.localRecording ?? row.externalIntegration?.localTranscript)?['origin'];
+  final model = origin is Map ? origin['phone_model'] : null;
+  final platform = origin is Map ? origin['phone_platform'] : null;
+  final phone = model is String && model.isNotEmpty
+      ? model
+      : switch (platform) {
+          'ios' => 'iPhone',
+          'android' => 'Android',
+          _ => '',
+        };
+  final input = switch (row.source?.name) {
+    'omi' => 'CV1',
+    'phone' => pairedSettingsLabel(context, 'nextPhoneInput'),
+    _ => '',
+  };
+  return [phone, input].where((s) => s.isNotEmpty).join(' · ');
+}
+
+String recordingFailure(BuildContext context, Object? failure) {
+  String label(String key) => pairedSettingsLabel(context, key);
+  final fields = failure is Map ? failure : const {};
+  final stage = switch (fields['stage']) {
+    'prepare' => label('nextFailedPreparation'),
+    'stt' => context.l10n.transcription,
+    'diarization' => label('diarization'),
+    'summary' => context.l10n.summary,
+    'import' => label('nextFailedImport'),
+    _ => label('nextFailedStage'),
+  };
+  final code = fields['code'];
+  final reason = switch (code) {
+    'configuration' => label('nextProviderConfiguration'),
+    'credential_missing' => label('nextProviderCredentialMissing'),
+    'database_preflight_failed' => label('nextDatabasePreflight'),
+    'import_failed' => label('nextImportUnavailable'),
+    'invalid_audio' => label('nextInvalidAudio'),
+    'invalid_checkpoint' => label('nextInvalidCheckpoint'),
+    'invalid_diarization' => label('nextInvalidDiarization'),
+    'invalid_json' => label('nextInvalidJson'),
+    'invalid_provider_response' => label('nextInvalidProviderResponse'),
+    'invalid_summary' => label('nextInvalidSummary'),
+    'invalid_transcript' => label('nextInvalidTranscript'),
+    'output_limit' => label('nextOutputLimit'),
+    'response_encoding' => label('nextProviderEncoding'),
+    'response_too_large' => label('nextProviderResponseSize'),
+    'disk_full' => label('nextServerDiskFull'),
+    'storage_access' => label('nextServerStorageAccess'),
+    'io_error' => label('nextServerIOError'),
+    'summary_model_unavailable' => label('nextSummaryModelUnavailable'),
+    'connection' => label('nextProviderConnection'),
+    'timeout' => label('nextProviderTimeout'),
+    'unknown' => label('nextUnclassifiedFailure'),
+    String s when RegExp(r'^http_[1-5][0-9]{2}$').hasMatch(s) => _providerHttpFailure(
+      context,
+      int.parse(s.substring(5)),
+    ),
+    _ => label('nextUnknownCause'),
+  };
+  final attempts = fields['attempts'];
+  return [stage, reason, if (attempts is int && attempts > 0) '${label("nextAttempts")}: $attempts'].join(' · ');
+}
+
+String _providerHttpFailure(BuildContext context, int status) {
+  final hint = switch (status) {
+    401 || 403 => 'nextHttpAuthorization',
+    404 => 'nextHttpNotFound',
+    413 => 'nextHttpInputSize',
+    429 => 'nextHttpRateLimit',
+    400 || 415 || 422 => 'nextHttpRequest',
+    >= 300 && < 400 => 'nextHttpRedirect',
+    >= 500 => 'nextHttpServer',
+    _ => 'nextHttpGeneric',
+  };
+  return '${pairedSettingsLabel(context, 'nextProviderHttp')} $status. ${pairedSettingsLabel(context, hint)}';
+}
+
+String? recordingDiarization(BuildContext context, ServerConversation row) {
+  final stages = row.externalIntegration?.localTranscript?['stages'];
+  if (stages is! Map || stages['diarization'] is! Map) return null;
+  final stage = stages['diarization'] as Map;
+  String label(String key) => pairedSettingsLabel(context, key);
+  final speakers = stage['speakers'];
+  final outcome = switch (stage['status']) {
+    'ready' when speakers is int && speakers >= 0 => label('speakersCount').replaceAll('{count}', '$speakers'),
+    'ready' => label('modelReady'),
+    'disabled' || 'no_speech' => label('diarizationNotPerformed'),
+    'failed' => label('diarizationFailed'),
+    'pending' || 'processing' => context.l10n.processing,
+    _ => context.l10n.unknown,
+  };
+  final provider = stage['provider'];
+  return [
+    label('diarization'),
+    if (stage['status'] != 'disabled' && provider is String && provider.trim().isNotEmpty) provider,
+    outcome,
+  ].join(' · ');
+}
+
+String recordingStatus(BuildContext context, ServerConversation row) {
+  final local = row.externalIntegration?.localRecording;
+  return switch (local == null ? row.status.name : local['status']) {
+    'failed' => local == null ? context.l10n.processingFailed : recordingFailure(context, local['failure']),
+    'pending' => context.l10n.statusPending,
+    'processing' => context.l10n.statusProcessing,
+    'no_speech' => context.l10n.noTranscriptAvailable,
+    _ => context.l10n.saved,
+  };
+}
+
+class RecordingPage extends StatefulWidget {
+  const RecordingPage({
+    super.key,
+    required this.library,
+    required this.id,
+    this.initialMatch,
+    this.verifyInitialExcerpt = false,
+    this.onEdited,
+  });
+  final PairedLibrary library;
+  final String id;
+  final TranscriptMatchSnippet? initialMatch;
+  final bool verifyInitialExcerpt;
+  final ValueChanged<ServerConversation>? onEdited;
+
+  @override
+  State<RecordingPage> createState() => _RecordingPageState();
+}
+
+class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
+  late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
+  late Future<_RecordingDetail> detail = _load();
+  final playback = ConversationPlaybackController();
+  StreamSubscription<Duration>? positionUpdates;
+
+  _RecordingDetail _readDetail(ServerConversation row) {
+    final loaded = _RecordingDetail(row);
+    if (mounted) playback.updateSegments(loaded.lines);
+    return loaded;
+  }
+
+  String? focusedLine;
+  int focusRequest = 0;
+  AudioPlayer? player;
+  double speed = 1;
+  Directory? temp;
+  Duration? _initialPosition;
+  bool opening = false;
+  bool _editing = false;
+  final _people = <String, Person>{};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.library.speakerLabelsAvailable) unawaited(_loadPeople());
+  }
+
+  Future<void> _loadPeople() async {
+    try {
+      final people = await widget.library.readLocalPeople();
+      if (mounted) {
+        setState(() {
+          for (final person in people) {
+            _people.putIfAbsent(person.id, () => person);
+          }
+        });
+      }
+    } catch (_) {
+      // A failed directory read leaves the transcript available.
+    }
+  }
+
+  Future<void> _labelSpeaker(_RecordingDetail loaded, String id) async {
+    final line = loaded.sources.where((segment) => segment.id == id).firstOrNull;
+    if (line == null) return;
+    final group = loaded.lines
+        .where((segment) => segment.speakerId == line.speakerId && segment.speakerIdScope == line.speakerIdScope)
+        .toList();
+    final canGroup =
+        line.speakerId >= 0 && group.length > 1 && group.length <= 250 && group.every(loaded.sources.contains);
+    final choice = await showModalBottomSheet<SpeakerChoice>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => LocalSpeakerPicker(library: widget.library, canGroup: canGroup),
+    );
+    if (!mounted || choice == null) return;
+    final person = choice.person;
+    if (person != null) _people[person.id] = person;
+    try {
+      await _save(
+        RecordingEdit.speaker(
+          {
+            for (final segment in choice.group ? group : [line])
+              segment.id: {'person_id': segment.personId, 'is_user': segment.isUser},
+          },
+          {'person_id': person?.id, 'is_user': choice.isUser},
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  bool _initialExcerptUnavailable = false;
+  bool _canPlay(ServerConversation row) =>
+      widget.library.audioPlayback &&
+      (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
+
+  bool _canEdit(_RecordingDetail loaded) =>
+      widget.library.recordingEdits &&
+      !loaded.pending &&
+      !loaded.row.isLocked &&
+      loaded.row.status == ConversationStatus.completed;
+
+  Future<void> _save(RecordingEdit edit) async {
+    if (opening || _editing) throw RecordingEditFailure.unavailable;
+    setState(() => _editing = true);
+    try {
+      final row = await widget.library.editRecording(widget.id, edit);
+      if (!mounted) return;
+      setState(() {
+        detail = SynchronousFuture(_readDetail(row));
+      });
+      widget.onEdited?.call(row);
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+  }
+
+  Future<void> _changeCategory(_RecordingDetail loaded) async {
+    final current = conversationCategoryKey(loaded.row.structured.category);
+    final choice = await pickConversationCategory(context, current: current);
+    if (!mounted || choice == null || choice == current) return;
+    try {
+      await _save(RecordingEdit.category(current, choice));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  Future<void> _editText(_RecordingDetail loaded, {TranscriptSegment? line}) {
+    final l = context.l10n;
+    final initial = line?.text ?? loaded.row.structured.title;
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => RecordingTextEditor(
+        label: line == null ? pairedSettingsLabel(context, 'recordingEditTitle') : l.transcript,
+        initial: initial,
+        maxLength: line == null ? 300 : 10000,
+        multiline: line != null,
+        onSave: (value) =>
+            _save(line == null ? RecordingEdit.title(initial, value) : RecordingEdit.segment(line.id, initial, value)),
+      ),
+    );
+  }
+
+  Future<TranscriptSegment?> _pickLine(_RecordingDetail loaded) => showModalBottomSheet<TranscriptSegment>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) => FractionallySizedBox(
+      heightFactor: 0.65,
+      child: SafeArea(
+        child: ListView.builder(
+          itemCount: loaded.sources.length,
+          itemBuilder: (context, index) {
+            final line = loaded.sources[index];
+            return ListTile(
+              title: Text(line.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+              subtitle: Text(OmiDuration.offset(line.start)),
+              onTap: () => Navigator.of(context).pop(line),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _chooseLine(_RecordingDetail loaded) async {
+    final line = await _pickLine(loaded);
+    if (mounted && line != null) await _editText(loaded, line: line);
+  }
+
+  Future<void> _addTask(_RecordingDetail loaded, {bool useLine = false}) async {
+    final line = useLine ? await _pickLine(loaded) : null;
+    if (!mounted || (useLine && line == null)) return;
+    final initial = line == null ? '' : String.fromCharCodes(line.text.trim().runes.take(4096));
+    final created = await createLocalTask(
+      context,
+      widget.library,
+      conversationId: widget.id,
+      segmentId: line?.id,
+      initial: initial,
+    );
+    if (created && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.saved)));
+    }
+  }
+
+  Future<void> _changeStar(_RecordingDetail loaded) async {
+    final before = loaded.row.starred;
+    try {
+      await _save(RecordingEdit.starred(before, !before));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  Future<void> _moveFolder(_RecordingDetail loaded) async {
+    final choice = await pickLocalFolder(context, widget.library, moving: true);
+    if (!mounted || choice == null) return;
+    try {
+      await _save(RecordingEdit.folder(loaded.row.folderId, choice.folder?.id));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  Future<_RecordingDetail> _load() async {
+    final loaded = _readDetail(await widget.library.detail(widget.id));
+    final match = widget.initialMatch;
+    if (match != null) {
+      final found = _focusMatch(loaded, match, verifyExcerpt: widget.verifyInitialExcerpt);
+      _initialExcerptUnavailable = widget.verifyInitialExcerpt && !found;
+    }
+    return loaded;
+  }
+
+  final _menu = GlobalKey();
+
+  Rect? get _shareOrigin {
+    final box = _menu.currentContext?.findRenderObject() as RenderBox?;
+    return box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  Future<void> _copy(String text, String message) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } on PlatformException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+    }
+  }
+
+  Future<void> _shareAudio() async {
+    if (opening) return;
+    setState(() => opening = true);
+    Directory? scratch;
+    try {
+      File audio;
+      if (temp case final prepared?) {
+        audio = File('${prepared.path}/recording.wav');
+      } else {
+        scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
+        audio = File('${scratch.path}/recording.wav');
+        await widget.library.downloadAudio(widget.id, audio);
+      }
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(audio.path, mimeType: 'audio/wav')],
+          sharePositionOrigin: _shareOrigin,
+        ),
+      );
+    } catch (_) {
+      _playFailed();
+    } finally {
+      if (scratch != null && await scratch.exists()) await scratch.delete(recursive: true);
+      if (mounted) setState(() => opening = false);
+    }
+  }
+
+  Future<void> _export(ServerConversation row) async {
+    try {
+      await shareLocalConversation(
+        row,
+        summaryLabel: context.l10n.summary,
+        transcriptLabel: context.l10n.transcriptTab,
+        origin: _shareOrigin,
+      );
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.somethingWentWrong)));
+    }
+  }
+
+  Future<void> _retryProcessing() async {
+    if (_editing) return;
+    setState(() => _editing = true);
+    try {
+      await widget.library.retryProcessing(widget.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
+      setState(() => detail = _load());
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+    } finally {
+      if (mounted) setState(() => _editing = false);
+    }
+  }
+
+  Future<void> _regenerateSummary() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => RecordingSummaryPage(id: widget.id, library: widget.library),
+      ),
+    );
+    if (!mounted || !widget.library.isSignedIn) return;
+    final refreshed = widget.library.detail(widget.id).then(_readDetail);
+    setState(() {
+      detail = refreshed;
+    });
+    try {
+      final loaded = await refreshed;
+      if (mounted) widget.onEdited?.call(loaded.row);
+    } catch (_) {
+      // The detail's FutureBuilder displays the normal retry state.
+    }
+  }
+
+  bool _focusMatch(_RecordingDetail loaded, TranscriptMatchSnippet match, {bool verifyExcerpt = false}) {
+    bool hasExcerpt(TranscriptSegment line) => !verifyExcerpt || line.text.trim().startsWith(match.text);
+    final start = match.start;
+    final line =
+        loaded.sources.where((line) => line.id == match.segmentId && hasExcerpt(line)).firstOrNull ??
+        loaded.lines
+            .where((line) => start != null && (line.start - start).abs() < 0.01 && hasExcerpt(line))
+            .firstOrNull;
+    if (line == null) return false;
+    focusedLine = line.id;
+    focusRequest++;
+    if (line.start.isFinite && line.start >= 0) {
+      _initialPosition = Duration(milliseconds: (line.start * 1000).round());
+    }
+    return true;
+  }
+
+  Future<void> _openChat() async {
+    if (opening) return;
+    final match = await Navigator.of(context).push<TranscriptMatchSnippet>(
+      MaterialPageRoute(
+        builder: (_) => RecordingChatPage(id: widget.id, library: widget.library),
+      ),
+    );
+    if (!mounted || match == null) return;
+    setState(() => opening = true);
+    try {
+      await player?.pause();
+      final loaded = _readDetail(await widget.library.detail(widget.id));
+      if (!mounted) return;
+      final focused = _focusMatch(loaded, match, verifyExcerpt: true);
+      setState(() {
+        detail = SynchronousFuture(loaded);
+      });
+      if (focused) {
+        tabs.index = 1;
+      } else {
+        _chatSourceUnavailable();
+      }
+    } catch (_) {
+      if (mounted) _chatSourceUnavailable();
+    } finally {
+      if (mounted) setState(() => opening = false);
+    }
+  }
+
+  void _chatSourceUnavailable() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))));
+  }
+
+  void _openLine(TranscriptSegment line, {required bool canPlay}) {
+    if (opening) return;
+    setState(() {
+      focusedLine = line.id;
+      focusRequest++;
+    });
+    tabs.animateTo(1);
+    playback.backToCurrent();
+    if (canPlay && line.start.isFinite && line.start >= 0) {
+      unawaited(_start(position: Duration(milliseconds: (line.start * 1000).round())));
+    }
+  }
+
+  Future<void> _start({Duration? position}) async {
+    if (opening) return;
+    setState(() => opening = true);
+    try {
+      if (player == null) {
+        final base = await getTemporaryDirectory();
+        final folder = await base.createTemp('next-recording-');
+        try {
+          final file = File('${folder.path}/recording.wav');
+          if (!mounted) return;
+          await widget.library.downloadAudio(widget.id, file);
+          if (!mounted) return;
+          final fresh = AudioPlayer();
+          try {
+            await fresh.setFilePath(file.path);
+            await fresh.setSpeed(speed);
+            if (!mounted) return;
+            player = fresh;
+            temp = folder;
+            positionUpdates = fresh.positionStream.listen((position) {
+              if (mounted) _reportPosition(position);
+            });
+          } finally {
+            if (player != fresh) await fresh.dispose();
+          }
+        } finally {
+          if (temp != folder && await folder.exists()) {
+            await folder.delete(recursive: true);
+          }
+        }
+      }
+      if (!mounted) return;
+      final current = player!;
+      final target = position ?? _initialPosition;
+      if (target != null) {
+        await current.seek(target);
+        _initialPosition = null;
+      } else if (current.processingState == ProcessingState.completed) {
+        await current.seek(Duration.zero);
+      }
+      focusedLine = null;
+      if (mounted) _reportPosition(current.position);
+      if (mounted && !current.playing) {
+        // play() completes on stop/end, so the control must be released before then.
+        unawaited(current.play().catchError((Object _) => _playFailed()));
+      }
+    } catch (_) {
+      _playFailed();
+    } finally {
+      if (mounted) setState(() => opening = false);
+    }
+  }
+
+  bool get _hasPlayhead => player != null || _initialPosition != null;
+
+  void _reportPosition(Duration position) {
+    playback.reportPlayback(
+      wallSeconds: position.inMilliseconds / 1000,
+      playing: player?.playing == true,
+      loaded: player != null,
+    );
+  }
+
+  Future<void> _scrub(Duration target) async {
+    if (opening) return;
+    focusedLine = null;
+    playback.backToCurrent();
+    final current = player;
+    if (current == null) {
+      setState(() => _initialPosition = target);
+      _reportPosition(target);
+      return;
+    }
+    try {
+      await current.seek(target);
+      if (mounted) {
+        setState(() => _initialPosition = null);
+        _reportPosition(current.position);
+      }
+    } catch (_) {
+      _playFailed();
+    }
+  }
+
+  Future<void> _setSpeed(double value) async {
+    try {
+      await player?.setSpeed(value);
+      if (mounted) setState(() => speed = value);
+    } catch (_) {
+      _playFailed();
+    }
+  }
+
+  void _playFailed() {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.audioPlaybackUnavailable)));
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(positionUpdates?.cancel());
+    playback.dispose();
+    tabs.dispose();
+    final current = player;
+    final folder = temp;
+    temp = null;
+    unawaited(() async {
+      try {
+        await current?.dispose();
+      } finally {
+        if (folder != null && await folder.exists()) {
+          await folder.delete(recursive: true);
+        }
+      }
+    }());
+    super.dispose();
+  }
+
+  Widget _playbackControls(Duration estimatedDuration) => StreamBuilder<PlayerState>(
+    stream: player?.playerStateStream,
+    builder: (context, state) {
+      final playing = state.data?.playing == true && state.data?.processingState != ProcessingState.completed;
+      return ValueListenableBuilder<double>(
+        valueListenable: playback.wallPosition,
+        builder: (context, seconds, _) => RecordingPlayerBar(
+          duration: player?.duration ?? estimatedDuration,
+          position: _initialPosition ?? Duration(milliseconds: (seconds * 1000).round()),
+          playing: playing,
+          speed: speed,
+          onSpeed: opening ? null : _setSpeed,
+          onToggle: opening
+              ? null
+              : () async {
+                  if (!playing) return _start();
+                  try {
+                    await player?.pause();
+                  } catch (_) {
+                    _playFailed();
+                  }
+                },
+          onSeek: opening ? null : _scrub,
+        ),
+      );
+    },
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final l = context.l10n;
+    return FutureBuilder<_RecordingDetail>(
+      future: detail,
+      builder: (context, snapshot) {
+        final loaded = snapshot.data;
+        final row = loaded?.row;
+        final canPlay = row != null && _canPlay(row);
+        final canEdit = loaded != null && _canEdit(loaded);
+        final diarization = row == null ? null : recordingDiarization(context, row);
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(row == null ? l.conversations : recordingTitle(context, row)),
+            actions: [
+              if (loaded != null)
+                PopupMenuButton<_RecordingEditAction>(
+                  key: _menu,
+                  enabled: !opening && !_editing,
+                  icon: Icon(loaded.row.starred ? Icons.star : Icons.more_horiz),
+                  onSelected: (action) => switch (action) {
+                    _RecordingEditAction.export => _export(loaded.row),
+                    _RecordingEditAction.copySummary => _copy(loaded.summary.content, l.summaryCopiedToClipboard),
+                    _RecordingEditAction.copyTranscript => _copy(
+                      loaded.row.getTranscript(generate: true),
+                      l.transcriptCopiedToClipboard,
+                    ),
+                    _RecordingEditAction.copyId => _copy(loaded.row.id, l.conversationIdCopied),
+                    _RecordingEditAction.audio => _shareAudio(),
+                    _RecordingEditAction.title => _editText(loaded),
+                    _RecordingEditAction.star => _changeStar(loaded),
+                    _RecordingEditAction.transcript => _chooseLine(loaded),
+                    _RecordingEditAction.folder => _moveFolder(loaded),
+                    _RecordingEditAction.category => _changeCategory(loaded),
+                    _RecordingEditAction.task => _addTask(loaded),
+                    _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => LocalGoalsPage(library: widget.library, conversationId: loaded.row.id),
+                      ),
+                    ),
+                    _RecordingEditAction.summary => _regenerateSummary(),
+                    _RecordingEditAction.taskSuggestions => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => TaskSuggestionsPage(id: loaded.row.id, library: widget.library),
+                      ),
+                    ),
+                  },
+                  itemBuilder: (context) => [
+                    if (!loaded.pending)
+                      PopupMenuItem(value: _RecordingEditAction.export, child: Text('${l.share} · TXT')),
+                    if (loaded.summary.content.isNotEmpty)
+                      PopupMenuItem(value: _RecordingEditAction.copySummary, child: Text(l.copySummary)),
+                    if (loaded.lines.isNotEmpty)
+                      PopupMenuItem(value: _RecordingEditAction.copyTranscript, child: Text(l.copyTranscript)),
+                    if (canPlay) PopupMenuItem(value: _RecordingEditAction.audio, child: Text(l.shareAudio)),
+                    PopupMenuItem(value: _RecordingEditAction.copyId, child: Text(l.copyConversationId)),
+                    if (canEdit) ...[
+                      if (widget.library.goalsAvailable)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.goalProgress,
+                          child: Text(pairedSettingsLabel(context, 'localGoalLog')),
+                        ),
+                      if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
+                        PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
+                      if (widget.library.tasksAvailable)
+                        PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
+                      if (widget.library.tasksAvailable && loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.taskFromLine,
+                          child: Text(pairedSettingsLabel(context, 'localTaskFromLine')),
+                        ),
+                      if (widget.library.tasksAvailable &&
+                          widget.library.taskSuggestionsAvailable &&
+                          loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.taskSuggestions,
+                          child: Text(pairedSettingsLabel(context, 'localTaskSuggest')),
+                        ),
+                      if (widget.library.foldersAvailable)
+                        PopupMenuItem(value: _RecordingEditAction.folder, child: Text(context.l10n.moveToFolder)),
+                      if (widget.library.recordingCategories)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.category,
+                          child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
+                        ),
+                      PopupMenuItem(
+                        value: _RecordingEditAction.title,
+                        child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
+                      ),
+                      PopupMenuItem(
+                        value: _RecordingEditAction.star,
+                        child: Text(
+                          pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
+                        ),
+                      ),
+                      if (loaded.sources.isNotEmpty)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.transcript,
+                          child: Text(pairedSettingsLabel(context, 'recordingEditTranscript')),
+                        ),
+                    ],
+                  ],
+                ),
+              if (loaded != null && loaded.lines.isNotEmpty)
+                IconButton(
+                  tooltip: l.askOmi,
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  onPressed: opening ? null : _openChat,
+                ),
+              if (loaded != null)
+                IconButton(
+                  tooltip: l.search,
+                  icon: const Icon(Icons.search),
+                  onPressed: opening
+                      ? null
+                      : () async {
+                          final line = await Navigator.push<TranscriptSegment>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RecordingSearch(
+                                title: loaded.row.structured.title,
+                                summary: loaded.summary.content,
+                                lines: loaded.lines,
+                                canPlay: canPlay,
+                              ),
+                            ),
+                          );
+                          if (mounted && line != null) {
+                            _openLine(line, canPlay: canPlay);
+                          }
+                        },
+                ),
+            ],
+          ),
+          body: snapshot.connectionState != ConnectionState.done
+              ? const OmiLoadingState()
+              : loaded == null
+              ? OmiErrorState(
+                  message: snapshot.error == LibraryFailure.key ? l.invalidKey : l.couldNotLoadPage,
+                  onRetry: () => setState(() {
+                    detail = _load();
+                  }),
+                )
+              : Column(
+                  children: [
+                    if (widget.library.processingRetryAvailable && loaded.failed)
+                      TextButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _editing ? null : _retryProcessing,
+                        label: Text(pairedSettingsLabel(context, 'nextRetryProcessing')),
+                      ),
+                    if (_recordingMetadata(context, loaded.row) case final metadata?) Text(metadata),
+                    if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(conversationCategoryLabel(context, loaded.row.structured.category)),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: OmiColors.border)),
+                        ),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TabBar(
+                            controller: tabs,
+                            isScrollable: true,
+                            padding: EdgeInsets.zero,
+                            tabAlignment: TabAlignment.start,
+                            labelPadding: const EdgeInsetsDirectional.only(end: 22),
+                            labelStyle: OmiType.subhead.copyWith(fontWeight: FontWeight.w600),
+                            labelColor: OmiColors.textPrimary,
+                            unselectedLabelColor: OmiColors.textTertiary,
+                            indicator: UnderlineTabIndicator(borderSide: BorderSide(color: OmiColors.accent, width: 2)),
+                            indicatorSize: TabBarIndicatorSize.label,
+                            tabs: [
+                              Tab(text: l.summary),
+                              Tab(text: l.transcript),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (canPlay) _playbackControls(Duration(seconds: recordingDuration(loaded.row))),
+                    if (loaded.failed)
+                      Padding(
+                        padding: const EdgeInsets.all(OmiSpacing.md),
+                        child: SelectableText(recordingStatus(context, loaded.row)),
+                      ),
+                    if (_initialExcerptUnavailable)
+                      ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
+                    if (opening || _editing) const LinearProgressIndicator(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: tabs,
+                        children: [
+                          _Summary(
+                            detail: loaded,
+                            onOpenLine: (line) => _openLine(line, canPlay: canPlay),
+                          ),
+                          loaded.lines.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    loaded.pending
+                                        ? (loaded.failed
+                                              ? l.noTranscriptAvailable
+                                              : recordingStatus(context, loaded.row))
+                                        : [l.noTranscriptAvailable, if (diarization != null) diarization].join('\n'),
+                                  ),
+                                )
+                              : ListenableBuilder(
+                                  listenable: playback,
+                                  builder: (context, _) => TranscriptWidget(
+                                    segments: loaded.lines,
+                                    leadingItemIds: [if (diarization != null) 'local-diarization'],
+                                    leadingItems: [
+                                      if (diarization != null)
+                                        ListTile(leading: const Icon(Icons.people_outline), title: Text(diarization)),
+                                    ],
+                                    localPeople: _people.values.toList(),
+                                    editSegment:
+                                        canEdit && widget.library.speakerLabelsAvailable && !opening && !_editing
+                                        ? (id, _) => _labelSpeaker(loaded, id)
+                                        : null,
+                                    isConversationDetail: true,
+                                    bottomMargin: OmiSpacing.md,
+                                    onSegmentTap: canPlay && !opening ? (line) => _openLine(line, canPlay: true) : null,
+                                    onEditSegmentText: canEdit && !opening && !_editing
+                                        ? (index) {
+                                            final line = loaded.lines[index];
+                                            if (loaded.sources.contains(line)) unawaited(_editText(loaded, line: line));
+                                          }
+                                        : null,
+                                    currentSegmentId: focusedLine ?? (_hasPlayhead ? playback.currentSegmentId : null),
+                                    followTargetSegmentId:
+                                        focusedLine ?? (_hasPlayhead ? playback.followTargetSegmentId : null),
+                                    playbackFollowRequest: focusRequest + playback.followRequest,
+                                    followCurrentSegment: playback.isFollowing,
+                                    onUserScroll: playback.suspendFollowing,
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+enum _RecordingEditAction {
+  export,
+  audio,
+  copySummary,
+  copyTranscript,
+  copyId,
+  title,
+  star,
+  transcript,
+  folder,
+  category,
+  task,
+  taskFromLine,
+  taskSuggestions,
+  summary,
+  goalProgress,
+}
+
+String? _recordingMetadata(BuildContext context, ServerConversation row) {
+  final duration = recordingDuration(row);
+  final input = recordingInput(context, row);
+  final labels = [if (input.isNotEmpty) input, if (duration > 0) OmiDuration.compact(duration, context.l10n)];
+  return labels.isEmpty ? null : labels.join(' · ');
+}
+
+class _RecordingDetail {
+  _RecordingDetail(this.row) : lines = row.transcriptSegments {
+    // Some older recordings carry no segment ID or repeat one. Give those rows
+    // distinct keys for the transcript viewport without changing valid citations.
+    final reserved = <String, int>{};
+    for (final line in lines) {
+      reserved.update(line.id, (count) => count + 1, ifAbsent: () => 1);
+    }
+    final ids = <String>{};
+    for (final (index, line) in lines.indexed) {
+      if (line.id.isNotEmpty && ids.add(line.id)) {
+        if (reserved[line.id] == 1) sources.add(line);
+        continue;
+      }
+      var id = 'local-next-$index';
+      while (reserved.containsKey(id)) {
+        id = ':$id';
+      }
+      line.id = id;
+    }
+  }
+
+  final ServerConversation row;
+  final List<TranscriptSegment> lines;
+  final sources = <TranscriptSegment>[];
+  late final summary = ConversationSummarySelection.firstParty(
+    ServerConversation(id: row.id, createdAt: row.createdAt, structured: row.structured, transcriptSegments: sources),
+  );
+  bool get pending => row.externalIntegration?.localRecording != null;
+  bool get failed => row.externalIntegration?.localRecording?['status'] == 'failed';
+}
+
+class _Summary extends StatelessWidget {
+  const _Summary({required this.detail, required this.onOpenLine});
+  final _RecordingDetail detail;
+  final ValueChanged<TranscriptSegment> onOpenLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = detail.summary;
+    return SelectionArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(OmiSpacing.md),
+            sliver: summary.sections.isNotEmpty
+                ? NoteSectionsSliver(
+                    sections: summary.sections,
+                    transcriptSegments: detail.sources,
+                    onOpenSource: (id) => onOpenLine(detail.sources.firstWhere((line) => line.id == id)),
+                  )
+                : summary.content.isNotEmpty
+                ? ConversationMarkdownSliver(content: summary.content)
+                : detail.failed
+                ? const SliverToBoxAdapter()
+                : SliverToBoxAdapter(
+                    child: Text(
+                      detail.pending ? recordingStatus(context, detail.row) : context.l10n.noSummaryAvailable,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

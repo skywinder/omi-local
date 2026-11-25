@@ -228,7 +228,16 @@ class SharedPreferencesUtil {
   BtDevice get btDevice {
     final String device = getString('btDevice');
     if (device.isEmpty) return BtDevice(id: '', name: '', type: DeviceType.omi, rssi: 0);
-    return BtDevice.fromJson(jsonDecode(device));
+    try {
+      final decoded = jsonDecode(device);
+      if (decoded is Map<String, dynamic>) {
+        return BtDevice.fromJson(decoded);
+      }
+      Logger.debug('Stored device is not a JSON object: ${decoded.runtimeType}');
+    } catch (e) {
+      Logger.debug('Error decoding stored device: ${e.runtimeType}');
+    }
+    return BtDevice(id: '', name: '', type: DeviceType.omi, rssi: 0);
   }
 
   List<BtDevice> get btDevices {
@@ -652,6 +661,21 @@ class SharedPreferencesUtil {
 
   set localLiveTranslationLanguage(String value) => saveString('localLiveTranslationLanguage', value);
 
+  bool get localLiveTranslationBidirectional => getBool('localLiveTranslationBidirectional');
+
+  set localLiveTranslationBidirectional(bool value) => saveBool('localLiveTranslationBidirectional', value);
+
+  String get localLiveTranslationOtherLanguage {
+    final saved = getString('localLiveTranslationOtherLanguage');
+    final primary = userPrimaryLanguage.toLowerCase().split(RegExp('[-_]')).first;
+    for (final code in [saved, primary, 'en', 'es']) {
+      if (RegExp(r'^[a-z]{2,3}$').hasMatch(code) && code != localLiveTranslationLanguage) return code;
+    }
+    return 'en';
+  }
+
+  set localLiveTranslationOtherLanguage(String value) => saveString('localLiveTranslationOtherLanguage', value);
+
   int get currentStorageBytes => getInt('currentStorageBytes');
 
   set currentStorageBytes(int value) => saveInt('currentStorageBytes', value);
@@ -684,10 +708,24 @@ class SharedPreferencesUtil {
 
   set showGetOmiCard(bool value) => saveBool('showGetOmiCard', value);
 
-  List<App> get appsList {
-    final apps = getStringList('appsList');
-    return App.fromJsonList(apps.map((e) => jsonDecode(e)).toList());
+  List<T> _decodeCachedList<T>(String key, T Function(Map<String, dynamic> json) fromJson) {
+    final items = <T>[];
+    for (final encoded in getStringList(key)) {
+      try {
+        final decoded = jsonDecode(encoded);
+        if (decoded is Map<String, dynamic>) {
+          items.add(fromJson(decoded));
+        } else {
+          Logger.debug('Skipping unreadable ${key.split(RegExp(r'[.:]')).first} entry: ${decoded.runtimeType}');
+        }
+      } catch (e) {
+        Logger.debug('Skipping unreadable ${key.split(RegExp(r'[.:]')).first} entry: ${e.runtimeType}');
+      }
+    }
+    return items;
   }
+
+  List<App> get appsList => _decodeCachedList('appsList', (json) => App.fromJson(json));
 
   set appsList(List<App> value) {
     final List<String> apps = value.map((e) => jsonEncode(e.toJson())).toList();
@@ -725,27 +763,40 @@ class SharedPreferencesUtil {
   set preferredSummarizationAppId(String value) => saveString('preferredSummarizationAppId', value);
 
   List<ServerConversation> get cachedConversations {
+    final namespace = getString('localConversationCacheNamespace');
+    if (namespace.isNotEmpty) {
+      return _decodeCachedList('localConversations.$namespace', (json) => ServerConversation.fromJson(json));
+    }
     if (getBool('migratedMemories')) {
       final cachedMemories = getStringList('cachedMemories');
       if (cachedMemories.isNotEmpty) {
-        final conversations = cachedMemories.map((e) => ServerConversation.fromJson(jsonDecode(e))).toList();
-        cachedConversations = conversations;
+        cachedConversations = _decodeCachedList('cachedMemories', (json) => ServerConversation.fromJson(json));
         saveBool('migratedMemories', true);
       }
     }
-    final conversations = getStringList('cachedConversations');
-    return conversations.map((e) => ServerConversation.fromJson(jsonDecode(e))).toList();
+    return _decodeCachedList('cachedConversations', (json) => ServerConversation.fromJson(json));
   }
 
   set cachedConversations(List<ServerConversation> value) {
     final List<String> conversations = value.map((e) => jsonEncode(e.toJson())).toList();
-    saveStringList('cachedConversations', conversations);
+    final namespace = getString('localConversationCacheNamespace');
+    saveStringList(namespace.isEmpty ? 'cachedConversations' : 'localConversations.$namespace', conversations);
   }
 
-  List<ServerMessage> get cachedMessages {
-    final messages = getStringList('cachedMessages');
-    return messages.map((e) => ServerMessage.fromJson(jsonDecode(e))).toList();
+  /// Select the paired server's projection without deleting any other cache.
+  /// Only a restored authenticated pairing may adopt the unscoped legacy rows.
+  Future<void> selectLocalConversationCache(String namespace, {bool adoptLegacy = false}) async {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(namespace)) throw const FormatException('Invalid local cache namespace');
+    final previous = getString('localConversationCacheNamespace');
+    if (previous == namespace) return;
+    final key = 'localConversations.$namespace';
+    if (adoptLegacy && previous.isEmpty && !(_preferences?.containsKey(key) ?? false)) {
+      await saveStringList(key, getStringList('cachedConversations'));
+    }
+    await saveString('localConversationCacheNamespace', namespace);
   }
+
+  List<ServerMessage> get cachedMessages => _decodeCachedList('cachedMessages', (json) => ServerMessage.fromJson(json));
 
   set cachedMessages(List<ServerMessage> value) {
     final List<String> messages = value.map((e) => jsonEncode(e.toJson())).toList();
@@ -757,8 +808,10 @@ class SharedPreferencesUtil {
     final ownerUid = uid;
     if (ownerUid.isEmpty) return [];
     _scopeLegacyUserData(ownerUid);
-    final memories = getStringList(_userScopedKey('pendingMemories', ownerUid));
-    return memories.map((e) => Memory.fromJson(jsonDecode(e))).where((memory) => memory.uid == ownerUid).toList();
+    return _decodeCachedList(
+      _userScopedKey('pendingMemories', ownerUid),
+      (json) => Memory.fromJson(json),
+    ).where((memory) => memory.uid == ownerUid).toList();
   }
 
   set pendingMemories(List<Memory> value) {
@@ -769,21 +822,27 @@ class SharedPreferencesUtil {
   }
 
   void addPendingMemory(Memory memory) {
-    final List<Memory> memories = pendingMemories;
-    memories.add(memory);
-    pendingMemories = memories;
+    final ownerUid = uid;
+    if (ownerUid.isEmpty) return;
+    _scopeLegacyUserData(ownerUid);
+    final key = _userScopedKey('pendingMemories', ownerUid);
+    saveStringList(key, [...getStringList(key), jsonEncode(memory.toJson())]);
   }
 
   void removePendingMemory(String memoryId, {String? ownerUid}) {
     final owner = ownerUid ?? uid;
     if (owner.isEmpty) return;
-    final encoded = getStringList(_userScopedKey('pendingMemories', owner));
-    final memories = encoded.map((e) => Memory.fromJson(jsonDecode(e))).toList();
-    memories.removeWhere((m) => m.id == memoryId);
-    saveStringList(
-      _userScopedKey('pendingMemories', owner),
-      memories.map((memory) => jsonEncode(memory.toJson())).toList(),
-    );
+    final key = _userScopedKey('pendingMemories', owner);
+    saveStringList(key, getStringList(key).where((encoded) => !_hasId(encoded, memoryId)).toList());
+  }
+
+  bool _hasId(String encoded, String id) {
+    try {
+      final decoded = jsonDecode(encoded);
+      return decoded is Map<String, dynamic> && decoded['id'] == id;
+    } catch (e) {
+      return false;
+    }
   }
 
   void clearPendingMemories() {
@@ -792,10 +851,7 @@ class SharedPreferencesUtil {
     saveStringList(_userScopedKey('pendingMemories', ownerUid), []);
   }
 
-  List<Person> get cachedPeople {
-    final people = getStringList('cachedPeople');
-    return people.map((e) => Person.fromJson(jsonDecode(e))).toList();
-  }
+  List<Person> get cachedPeople => _decodeCachedList('cachedPeople', (json) => Person.fromJson(json));
 
   Person? getPersonById(String id) {
     return cachedPeople.firstWhereOrNull((element) => element.id == id);
@@ -834,7 +890,14 @@ class SharedPreferencesUtil {
   ServerConversation? get modifiedConversationDetails {
     final String conversation = getString('modifiedConversationDetails');
     if (conversation.isEmpty) return null;
-    return ServerConversation.fromJson(jsonDecode(conversation));
+    try {
+      final decoded = jsonDecode(conversation);
+      if (decoded is Map<String, dynamic>) return ServerConversation.fromJson(decoded);
+      Logger.debug('Skipping unreadable modifiedConversationDetails: ${decoded.runtimeType}');
+    } catch (e) {
+      Logger.debug('Skipping unreadable modifiedConversationDetails: ${e.runtimeType}');
+    }
+    return null;
   }
 
   set modifiedConversationDetails(ServerConversation? value) {
@@ -903,6 +966,8 @@ class SharedPreferencesUtil {
     hasSetPrimaryLanguage = false;
     localLiveTranslationEnabled = false;
     localLiveTranslationLanguage = 'en';
+    localLiveTranslationBidirectional = false;
+    localLiveTranslationOtherLanguage = '';
     hasSpeakerProfile = false;
     selectedChatAppId = 'no_selected';
     lastUsedSummarizationAppId = '';

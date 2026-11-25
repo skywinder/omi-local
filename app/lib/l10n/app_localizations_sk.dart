@@ -1730,12 +1730,7 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String devicesFoundNearby(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'ZARIADENIA',
-      one: 'ZARIADENIE',
-    );
+    String _temp0 = intl.Intl.pluralLogic(count, locale: localeName, other: 'ZARIADENIA', one: 'ZARIADENIE');
     return '$count $_temp0 NÁJDENÉ V BLÍZKOSTI';
   }
 
@@ -9954,22 +9949,22 @@ class AppLocalizationsSk extends AppLocalizations {
   String get localMacServers => 'Uložené servery';
 
   @override
-  String get liveTranslation => 'Live translation';
+  String get liveTranslation => 'Živý preklad';
 
   @override
-  String get liveTranslationTargetLanguage => 'Translate to';
+  String get liveTranslationTargetLanguage => 'Preložiť do';
 
   @override
   String get liveTranslationHelp =>
-      'Translate the live transcript on your Mac. The original stays; the translation appears under each line. Add a Translation provider in the local library settings first.';
+      'Pripojený server zobrazuje preklad pod originálom. Automaticky sa používa model na zhrnutie, ak v knižnici servera nevyberiete iný: Settings → Translation.';
 
   @override
   String get liveTranslationUnconfigured =>
-      'Translation provider is not configured on your Mac. Add one in the local library settings.';
+      'Na pripojenom serveri nie je nastavený model na preklad. Otvorte jeho knižnicu: Settings → Summarization alebo Translation → Save → Use.';
 
   @override
   String get liveTranslationFailed =>
-      'Translation is unavailable right now. Check the translation provider on your Mac.';
+      'Preklad na pripojenom serveri nie je dostupný. Skontrolujte jeho knižnicu: Settings → Translation.';
 
   @override
   String get diarization => 'Diarizácia';
@@ -9990,4 +9985,36 @@ class AppLocalizationsSk extends AppLocalizations {
 
   @override
   String get diarizationFailed => 'Diarizácia zlyhala';
+
+  @override
+  String get localProcessingHelp =>
+      'Živé označenia hovoriacich pochádzajú od poskytovateľa Live. Diarizácia nižšie spracúva dokončené nahrávky.';
+
+  @override
+  String get localProcessingApplyHelp => 'Pred prepnutím zastavte nahrávanie. Vybrané servery prijímajú váš zvuk.';
+
+  @override
+  String get localProcessingKeyHelp => 'Prázdne pole zachová uložený kľúč. Iný server vyžaduje vlastný kľúč.';
+
+  @override
+  String get localProcessingUnsupported => 'Ak chcete upraviť tieto nastavenia, aktualizujte spárovaný server.';
+
+  @override
+  String get localProcessingFinished => 'Dokončené nahrávky';
+
+  @override
+  String get localProcessingProbe => 'Otestovať pripojenie';
+
+  @override
+  String get localProcessingPending => 'Uložené zmeny nie sú aktívne. Klepnutím na Potvrdiť ich použijete.';
+
+  @override
+  String get localAudioServerUpdateRequired =>
+      'Ak chcete synchronizovať zvuk, aktualizujte server. Zvuk uložený v telefóne zostane zachovaný.';
+
+  @override
+  String get liveTranslationBidirectional => 'Obojsmerný preklad';
+
+  @override
+  String get liveTranslationPairHelp => 'Rozpoznať jazyk každej frázy a preložiť ju do druhého vybraného jazyka.';
 }

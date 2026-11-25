@@ -42,6 +42,13 @@ def test_offline_main_imports_without_provider_keys_and_registers_only_allowlist
 import json
 import os
 import sys
+import hashlib
+import zlib
+from datetime import datetime, timezone
+from pathlib import Path
+from unittest.mock import MagicMock
+
+from fastapi.testclient import TestClient
 import main
 
 fixture = {'id': 'synthetic', 'deferred': True, 'transcript_segments': [{'text': 'Synthetic fixture'}]}
@@ -58,6 +65,246 @@ profile = main.users.get_user_profile_endpoint(uid='synthetic')
 assert profile['local_transcription']['live']['status'] == 'disabled'
 assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
+assert profile['local_recording_edits_version'] == 1
+assert profile['local_recording_categories_version'] == 1
+assert profile['local_conversation_group_version'] == 1
+
+key = 'A' * 43
+pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
+pairing.write_text(json.dumps({'version': 1, 'owner_uid': 'fixture-owner',
+                               'key_sha256': hashlib.sha256(key.encode()).hexdigest()}))
+pairing.chmod(0o600)
+os.environ['OMI_LOCAL_PAIRING_FILE'] = str(pairing)
+db = main.conversations.conversations_db.db = MagicMock()
+owner = db.collection.return_value.document.return_value
+collection = owner.collection.return_value
+query = collection.order_by.return_value.select.return_value
+search_url = '/v1/local/conversations/search'
+client = TestClient(main.app)
+from utils import local_recording_rows
+original_canonical = main.conversations.conversations_db.get_conversations_without_photos
+original_local = local_recording_rows.local_recording_rows
+time = datetime(2026, 1, 2, tzinfo=timezone.utc)
+archive_fixture = {
+    'id': '00000000-0000-4000-8000-000000000042', 'structured': {'title': 'Fixture'},
+    'created_at': time, 'started_at': time, 'finished_at': time, 'status': 'completed',
+}
+projection_requests = []
+def read_archive(uid, limit, offset, *, budget, list_fields_only, **filters):
+    projection_requests.append(list_fields_only)
+    assert uid == 'fixture-owner' and limit == 2
+    if offset:
+        budget.mark_exhausted('documents')
+        return []
+    return [archive_fixture]
+main.conversations.conversations_db.get_conversations_without_photos = read_archive
+local_recording_rows.local_recording_rows = lambda uid, origins=None: []
+archive_auth = main.conversations.auth.get_current_user_uid
+main.app.dependency_overrides[archive_auth] = lambda: 'fixture-owner'
+archive_headers = {'Authorization': 'Bearer ' + key}
+first_archive = client.get('/v1/conversations?limit=1', headers=archive_headers)
+assert first_archive.status_code == 200, first_archive.text
+assert first_archive.json()[0]['id'] == archive_fixture['id']
+assert first_archive.headers['X-Omi-Conversation-Page-Size'] == '1'
+assert first_archive.headers['X-Omi-Has-More'] == 'false'
+cards = client.get('/v1/conversations?limit=1&list_fields_only=true', headers=archive_headers)
+assert cards.status_code == 200 and cards.json()[0]['id'] == archive_fixture['id']
+assert projection_requests == [False, True]
+cut_archive = client.get('/v1/conversations?limit=1&offset=1', headers=archive_headers)
+assert cut_archive.status_code == 200 and cut_archive.json() == []
+assert cut_archive.headers['X-Omi-List-Truncated'] == 'true'
+assert cut_archive.headers['X-Omi-Conversation-Page-Size'] == '0'
+assert 'X-Omi-Has-More' not in cut_archive.headers
+main.conversations.conversations_db.get_conversations_without_photos = original_canonical
+local_recording_rows.local_recording_rows = original_local
+del main.app.dependency_overrides[archive_auth]
+assert client.post(search_url, json={'query': 'привет'}).status_code == 401
+db.collection.assert_not_called()
+headers = {'Authorization': 'Bearer ' + key}
+assert client.post(search_url, json={'query': '  '}, headers=headers).status_code == 400
+assert client.post(search_url, json={'query': 'привет', 'after': 'users/other'}, headers=headers).status_code == 400
+
+timestamp = datetime(2026, 1, 2, tzinfo=timezone.utc)
+documents = []
+for i in range(1, 42):
+    doc = MagicMock()
+    doc.id = '00000000-0000-4000-8000-' + str(i).zfill(12)
+    doc.to_dict.return_value = {'created_at': timestamp, 'is_locked': i == 1,
+                                'structured': {'title': 'Запись'},
+                                'transcript_segments': [{'text': 'Привет'}] if i == 1 else []}
+    documents.append(doc)
+documents[-1].to_dict.return_value.update({
+    'user_title': 'Моя запись',
+    'transcript_segments_compressed': True,
+    'transcript_segments': zlib.compress(json.dumps([
+        {'id': 'fixture-line', 'text': 'ПРИВЕТ из старой записи', 'start': 4.25, 'end': 6}
+    ]).encode()),
+})
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
+query.start_after.return_value.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents[-1:])
+first = client.post(search_url, json={'query': 'привет', 'uid': 'other'}, headers=headers)
+assert first.status_code == 200, first.text
+assert first.json() == {'items': [], 'next_cursor': documents[39].id}
+documents[0].to_dict.assert_called_once()
+assert first.headers['Cache-Control'] == 'no-store'
+db.collection.return_value.document.assert_called_with('fixture-owner')
+second = client.post(search_url, json={'query': 'привет', 'after': first.json()['next_cursor']}, headers=headers)
+assert second.status_code == 200, second.text
+hit, = second.json()['items']
+assert hit['title'] == 'Моя запись'
+assert hit['match_snippets'][0]['start_ms'] == 4250
+assert hit['match_snippets'][0]['segment_id'] == 'fixture-line'
+assert second.json()['next_cursor'] is None
+collection.document.assert_called_once_with(documents[39].id)
+query.start_after.assert_called_once_with({'__name__': collection.document.return_value})
+
+# The search route must use the same grouped result and segment IDs as detail.
+from utils import local_transcript
+manifest = {'audio_sha256': 'c' * 64, 'result_key': 'd' * 64, 'duration_seconds': 20,
+            'started_at': '2026-01-02T00:00:00Z', 'source': 'omi', 'conversation_group': {},
+            'profile': {'engine': 'whisperx'}}
+source = {'segments': [{'text': 'Intro', 'start': 0, 'end': 2},
+                       {'text': 'A later needle', 'start': 12.5, 'end': 15}]}
+folder = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts' / manifest['result_key']
+folder.mkdir(parents=True)
+file = folder / 'audio.json'
+file.write_text(json.dumps(source))
+(folder / 'manifest.json').write_text(json.dumps(manifest))
+conversation = local_transcript.build_conversation(source, manifest)
+threshold = local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES
+local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES = 1
+card = local_transcript.grouped_import_document(conversation, manifest, file)
+local_transcript.GROUPED_INLINE_TRANSCRIPT_BYTES = threshold
+assert len(card['transcript_segments']) == 1
+grouped_doc = MagicMock()
+grouped_doc.id = conversation.id
+grouped_doc.to_dict.return_value = card
+deleted_doc = MagicMock()
+deleted_doc.id = documents[1].id
+deleted_doc.to_dict.return_value = dict(card, deleted=True)
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter([deleted_doc, grouped_doc, documents[-1]])
+reply = client.post(search_url, json={'query': 'needle'}, headers=headers)
+assert reply.status_code == 200, reply.text
+result, = reply.json()['items']
+snippet, = result['match_snippets']
+assert result['id'] == conversation.id and reply.json()['next_cursor'] == conversation.id
+assert snippet['start_ms'] == 12500 and snippet['segment_id'] == conversation.transcript_segments[1].id
+assert 'external_data.local_transcript' in collection.order_by.return_value.select.call_args.args[0]
+following = client.post(search_url, json={'query': 'привет', 'after': conversation.id}, headers=headers)
+assert following.json()['items'][0]['id'] == documents[-1].id and following.json()['next_cursor'] is None
+file.write_text('{}')
+assert client.post(search_url, json={'query': 'needle'}, headers=headers).status_code == 503
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
+
+from routers import local_tasks
+
+retry_path = '/v1/local/conversations/' + documents[-1].id + '/retry-processing'
+assert client.post(retry_path).status_code == 401
+assert client.post(retry_path, headers=headers).status_code == 404
+
+suggestion_path = '/v1/local/conversations/' + documents[-1].id + '/task-suggestions'
+assert client.get(suggestion_path).status_code == 401
+assert client.post(suggestion_path, json={'provider_binding': 'a' * 64}).status_code == 401
+suggestion_source = {'id': 'fixture-line', 'text': 'I will send the budget.', 'start': 4.25}
+local_tasks.local_recording_chat.recording = MagicMock(return_value=('revision', {
+    'transcript_segments': [suggestion_source, {'text': 'Unaddressable line.'}],
+}))
+local_tasks.local_recording_chat.sources_current = MagicMock(return_value=True)
+local_tasks._library_request = MagicMock(return_value=json.dumps({
+    'suggestions': [{'description': 'Send the budget', 'source': 1}],
+}))
+local_tasks.action_items.create_action_item = MagicMock(side_effect=forbidden)
+prompt = {'provider_binding': 'a' * 64}
+suggestions = client.post(suggestion_path, json=prompt, headers=headers)
+assert suggestions.status_code == 200, suggestions.text
+candidate, = suggestions.json()['suggestions']
+assert candidate['segment_id'] == suggestion_source['id'] and candidate['start_ms'] == 4250
+assert candidate['segment_sha256'] == hashlib.sha256(suggestion_source['text'].encode()).hexdigest()
+assert suggestions.json()['context_limited']
+local_tasks._library_request.assert_called_once_with({
+    'binding': prompt['provider_binding'], 'sources': [suggestion_source['text']],
+}, suggestions=True)
+local_tasks.local_recording_chat.sources_current.return_value = False
+assert client.post(suggestion_path, json=prompt, headers=headers).status_code == 409
+local_tasks.action_items.create_action_item.assert_not_called()
+
+# A grouped archive can keep the full transcript in a result file.
+grouped_ref, grouped_tx = MagicMock(), MagicMock()
+grouped_ref.get.return_value.to_dict.return_value = {
+    'status': 'completed', 'external_data': {'local_transcript': {'segment_storage': 'result-file'}},
+    'structured': {'category': 'education'}, 'transcript_segments': [{'id': 'first', 'text': 'Excerpt'}],
+}
+grouped_db = main.conversations.conversations_db
+old_db = grouped_db.db
+grouped_db.db = MagicMock()
+grouped_db.db.collection.return_value.document.return_value.collection.return_value.document.return_value = grouped_ref
+for field in ('speaker', 'segment_text'):
+    assert grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', field, '', '', None)[0] == 'segment_unavailable'
+grouped_tx.update.assert_not_called()
+outcome, _ = grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', 'category', 'education', 'work', None)
+assert outcome == 'ok'
+grouped_tx.update.assert_called_once_with(grouped_ref, {'user_category': 'work', 'structured.category': 'work'})
+grouped_db.db = old_db
+
+from routers import local_summary
+from database import local_summary as summary_db
+
+summary_path = '/v1/local/conversations/' + documents[-1].id + '/regenerate-summary'
+assert client.get(summary_path).status_code == 401
+assert client.post(summary_path, json={}).status_code == 401
+raw = {'status': 'completed', 'user_title': 'Mine',
+       'structured': {'title': 'Mine', 'overview': 'Previous'},
+       'transcript_segments': [{'text': 'Corrected transcript.', 'start': 1}]}
+reference, transaction = MagicMock(), MagicMock()
+summary_db._ref = lambda *_: reference
+reference.get.return_value.to_dict.return_value = raw
+_, revision = summary_db.source(raw, 'fixture-owner')
+publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
+candidate = {'title': 'Generated title', 'overview': 'New recap', 'category': 'education', 'emoji': '📚'}
+reply = summary_db._publish.to_wrap(
+    transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication,
+)
+assert reply == publication
+transaction.update.assert_called_once_with(reference, {
+    'structured.overview': 'New recap', 'structured.category': 'education', 'structured.emoji': '📚',
+    'local_summary_publication': publication,
+})
+transaction.reset_mock()
+raw['user_category'] = 'family'
+summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication)
+assert 'structured.category' not in transaction.update.call_args.args[1]
+assert transaction.update.call_args.args[1]['structured.emoji'] == '📚'
+transaction.reset_mock()
+raw['transcript_segments'][0]['text'] = 'New edit.'
+try:
+    summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication)
+    raise AssertionError('A source edit must reject the candidate')
+except summary_db.SummaryChanged:
+    pass
+transaction.update.assert_not_called()
+
+from routers import local_daily_recaps
+from datetime import timedelta
+
+spring = {'day': '2026-03-29', 'start': '2026-03-28T23:00:00Z', 'end': '2026-03-29T22:00:00Z'}
+assert local_daily_recaps._day(local_daily_recaps.DayInput(**spring)).end - datetime(
+    2026, 3, 28, 23, tzinfo=timezone.utc,
+) == timedelta(hours=23)
+assert client.post('/v1/local/daily-recaps/preview', json=spring).status_code == 401
+invalid = {**spring, 'end': '2026-03-31T22:00:00Z'}
+assert client.post('/v1/local/daily-recaps/preview', json=invalid, headers=headers).status_code == 422
+
+from routers import local_goals
+
+assert client.post('/v1/local/goals', json={}).status_code == 401
+assert client.get('/v1/local/goals/legacy-goal').status_code == 401
+assert client.post('/v1/local/goals/legacy-goal/progress', json={}).status_code == 401
+assert client.post('/v1/local/goals', headers=headers, json={
+    'request_id': documents[0].id, 'title': 'Fixture', 'current': 2,
+}).status_code == 422
+assert client.post('/v1/local/goals/legacy-goal/progress', headers=headers, json={
+    'request_id': documents[0].id, 'expected_revision': 'old', 'note': '   ',
+}).status_code == 422
 
 forbidden_modules = (
     'routers.chat', 'routers.firmware', 'routers.updates', 'routers.oauth',
@@ -92,11 +339,40 @@ print(json.dumps({
         '/v1/conversations',
         '/v1/conversations/{conversation_id}',
         '/v1/goals/all',
+        '/v1/local/goals',
+        '/v1/local/goals/{goal_id}',
+        '/v1/local/goals/{goal_id}/progress',
         '/v1/health',
         '/v1/local/status',
+        '/v1/local/audio/parts',
+        '/v1/local/conversations/{conversation_id}/audio',
+        '/v1/local/conversations/search',
+        '/v1/local/conversations/chat',
+        '/v1/local/conversations/{conversation_id}/chat',
+        '/v1/local/conversations/{conversation_id}/edit',
+        '/v1/local/folders',
+        '/v1/local/folders/{folder_id}',
+        '/v1/local/folders/move',
+        '/v1/local/folders/reorder',
+        '/v1/local/people',
+        '/v1/local/action-items',
+        '/v1/local/action-items/{task_id}',
+        '/v1/local/conversations/{conversation_id}/task-suggestions',
+        '/v1/local/conversations/{conversation_id}/regenerate-summary',
+        '/v1/local/conversations/{conversation_id}/retry-processing',
         '/v1/local/preview',
+        '/v1/local/processing',
+        '/v1/local/processing/live-tuning',
+        '/v1/local/processing/summary-settings',
+        '/v1/local/processing/save',
+        '/v1/local/processing/probe',
+        '/v1/local/processing/models',
+        '/v1/local/processing/activate',
+        '/v1/local/processing/profiles/{profile_id}',
         '/v1/users/available-languages',
         '/v1/users/daily-summaries',
+        '/v1/local/daily-recaps/preview',
+        '/v1/local/daily-recaps/generate',
         '/v1/users/language',
         '/v1/users/me/subscription',
         '/v1/users/onboarding',

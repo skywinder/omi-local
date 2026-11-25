@@ -6,123 +6,11 @@ import 'package:omi/env/env.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/utils/offline_network_policy.dart';
 
-enum LocalCaptureState { idle, waitingAudio, received, decodeError }
+import 'local_runtime_status_model.dart';
 
-enum LocalLiveTranscriptState { disabled, unavailable, ready, busy, streaming, failed }
-
-enum LocalStageState { ready, unavailable, misconfigured, disabled, unknown }
-
-/// Readiness of one server-side processing stage, as probed by the Mac harness.
-class LocalStageStatus {
-  const LocalStageStatus({required this.state, this.name, this.kind});
-
-  final LocalStageState state;
-  final String? name;
-  final String? kind;
-
-  static const stageOrder = ['stt', 'diarization', 'live', 'summary'];
-
-  static LocalStageStatus? fromJson(Object? value) {
-    if (value is! Map<String, dynamic>) return null;
-    final state = switch (value['status']) {
-      'ready' => LocalStageState.ready,
-      'unavailable' => LocalStageState.unavailable,
-      'misconfigured' => LocalStageState.misconfigured,
-      'disabled' => LocalStageState.disabled,
-      _ => LocalStageState.unknown,
-    };
-    String? text(Object? raw) => raw is String && raw.trim().isNotEmpty ? raw.substring(0, raw.length.clamp(0, 100)) : null;
-    return LocalStageStatus(state: state, name: text(value['name']), kind: text(value['kind']));
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is LocalStageStatus && other.state == state && other.name == name && other.kind == kind;
-
-  @override
-  int get hashCode => Object.hash(state, name, kind);
-
-  @override
-  String toString() => 'LocalStageStatus($state, $name, $kind)';
-}
+export 'local_runtime_status_model.dart';
 
 class LocalRuntimeStatusUnavailable implements Exception {}
-
-/// Aggregate evidence from the Mac, never inferred from a phone socket state.
-class LocalRuntimeStatus {
-  const LocalRuntimeStatus({
-    required this.captureState,
-    required this.audioSeconds,
-    required this.framesReceived,
-    required this.liveTranscriptState,
-    required this.transcriptUpdates,
-    this.stages = const {},
-    this.stagesStale = false,
-  });
-
-  final LocalCaptureState captureState;
-  final double audioSeconds;
-  final int framesReceived;
-  final LocalLiveTranscriptState liveTranscriptState;
-  final int transcriptUpdates;
-
-  /// Server-side stage readiness keyed by stage; empty when the Mac does not report it.
-  final Map<String, LocalStageStatus> stages;
-  final bool stagesStale;
-
-  factory LocalRuntimeStatus.fromJson(Object? value) {
-    const invalid = FormatException('Invalid local runtime status');
-    if (value is! Map<String, dynamic> || value['backend'] != 'ready') throw invalid;
-    final capture = value['capture'];
-    final live = value['live_transcript'];
-    if (capture is! Map<String, dynamic> || live is! Map<String, dynamic>) throw invalid;
-    final captureState = switch (capture['state']) {
-      'idle' => LocalCaptureState.idle,
-      'waiting_audio' => LocalCaptureState.waitingAudio,
-      'received' => LocalCaptureState.received,
-      'decode_error' => LocalCaptureState.decodeError,
-      _ => throw invalid,
-    };
-    final liveState = switch (live['state']) {
-      'disabled' => LocalLiveTranscriptState.disabled,
-      'unavailable' => LocalLiveTranscriptState.unavailable,
-      'ready' => LocalLiveTranscriptState.ready,
-      'busy' => LocalLiveTranscriptState.busy,
-      'streaming' => LocalLiveTranscriptState.streaming,
-      'failed' => LocalLiveTranscriptState.failed,
-      _ => throw invalid,
-    };
-    final seconds = capture['audio_seconds'];
-    final frames = capture['frames_received'];
-    final updates = live['updates'];
-    if (seconds is! num ||
-        !seconds.isFinite ||
-        seconds < 0 ||
-        frames is! int ||
-        frames < 0 ||
-        updates is! int ||
-        updates < 0) {
-      throw invalid;
-    }
-    final stages = <String, LocalStageStatus>{};
-    final rawStages = value['stages'];
-    if (rawStages is Map<String, dynamic>) {
-      for (final stage in LocalStageStatus.stageOrder) {
-        final parsed = LocalStageStatus.fromJson(rawStages[stage]);
-        if (parsed != null) stages[stage] = parsed;
-      }
-    }
-    return LocalRuntimeStatus(
-      captureState: captureState,
-      audioSeconds: seconds.toDouble(),
-      framesReceived: frames,
-      liveTranscriptState: liveState,
-      transcriptUpdates: updates,
-      stages: stages,
-      stagesStale: rawStages is Map<String, dynamic> && rawStages['stale'] == true,
-    );
-  }
-}
 
 class LocalRuntimeStatusClient {
   LocalRuntimeStatusClient({LocalMacSession? session}) : _session = session ?? LocalMacSession.instance;
@@ -160,8 +48,7 @@ class LocalRuntimeStatusClient {
             throw LocalRuntimeStatusUnavailable();
           }
           return status;
-        })()
-            .timeout(requestTimeout);
+        })().timeout(requestTimeout);
       } finally {
         client.close(force: true);
       }

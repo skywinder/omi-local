@@ -13,25 +13,45 @@ Provider restarts must verify native Tailscale reachability before stopping a ba
 Cold-start checks validate owned Argmax files before starting services; the selected
 HTTP model is checked after its owned listener starts, never as a prerequisite to it.
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
+Paired archive search uses the same verified file-backed transcript as detail.
+After a file-backed result, the page cursor resumes at the next unscanned document.
 Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
 binary frame/byte counts. Audio, private parameters and close reasons stay out.
-Authenticated `/v1/local/status` is paired-transport/offline-only. Capture counters
-come from the caller's active listen sessions; live-ASR health is separate from WAV
+Authenticated `/v1/local/status` is paired-transport/offline-only. Its capture counters come
+from the caller's active listen sessions; live-ASR health is separate from WAV
 capture. An absent live-preview URL means disabled, including during active recording;
 only invalid configuration or a failing configured provider reports a preview error.
+The status response also carries content-free `diarization` evidence: readiness
+from bounded selected-worker health and labels only from this owner's active previews.
+Worker health's optional boolean `busy` includes shared inference contention;
+combine it with `active` before reporting readiness. Missing `busy` preserves
+older providers; malformed values must not imply readiness.
+Never infer working diarization from ASR updates or placeholder speaker numbers.
 Never return transcript text, identifiers, filesystem paths or credentials.
 The separate `/v1/local/preview` endpoint supplies owner-scoped RAM-only drafts
 to the loopback library. It requires the existing paired key, rejects non-loopback
 clients, non-loopback receiving sockets and all forwarded headers, and uses
 `Cache-Control: no-store`. Never add draft text to the status endpoint, logs or a diagnostic file.
+Updated paired clients send bounded immutable parts to `/v1/local/audio/parts`.
+Grouped delivery acquires the per-recording lock, checks adjacent sample positions
+and advances only through the ordered durable prefix. Preserve immutable receipts
+and allow legacy parts to use the existing independent capture path.
+Authenticate before consuming bodies. Publish the complete WAV and metadata
+outside watcher staging, sync them, and return a receipt for that exact ID/hash.
+Retries must not overwrite or duplicate audio. The explicit outbox header makes
+the listen socket preview-only; legacy clients retain server WAV capture.
+See `docs/RECORDING_DURABILITY.md` for capability and recovery boundaries.
 Creation and recovery share the same source/codec constraint: CV1 uses Opus,
 phone uses PCM16. Invalid recovery metadata must leave the original parts intact.
 Offline capture rotates at decoded packet boundaries after five minutes without
 closing the listen socket. Saved audio is projected read-only into the paired
 owner's Conversations list/detail until import succeeds; never expose capture
 paths, provider credentials, or add processing placeholders to Firestore.
+The paired archive adapter emits upstream page-size and continuation headers.
+Keep truncated reads distinct from end of list. See [Backend compatibility](../docs/BACKEND_PARITY.md)
+for the shared route and local adapter boundaries.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.
@@ -42,6 +62,44 @@ The library provider registry and selected remote adapters run in the harness.
 Generated summaries use the same trusted-host import after all enabled stages
 finish. Remote Live runs through the owned loopback provider relay; never widen
 backend egress or forward provider credentials to it. See `docs/PROVIDERS.md`.
+Paired chat reads one recording and stores encrypted turns inside its Firestore
+subcollection. The loopback library owns inference and checks the confirmed
+summary provider binding. The backend validates cited excerpts against the
+submitted context. Trusted-host deletion marks the source unavailable to
+in-flight chat before enumerating the recording's child collections.
+Paired recording edits accept JSON on the local edit route. They compare the
+prior field or transcript digest in the write transaction, preserve segment
+identity and use the existing transcript storage encoder. Large grouped imports store
+a checksummed result-file reference. Hydrate that file for detail and metadata edit
+responses. Segment and speaker writes must reject a stored preview. The trusted-host
+importer preserves edits on replay through create-if-absent.
+Paired folder management shares the Omi folder collection. A recording move
+checks the destination within the recording mutation transaction and marks the
+assignment as user-owned, including when the user removes the folder.
+Folder ordering compares the complete current order. Bulk moves check every
+recording before updating any. Removing a folder clears its assignments and
+deletes the folder within one Firestore transaction.
+Paired speaker labels read the owner's names without voice samples. A manual
+assignment compares each included segment ID and prior assignment in the
+recording transaction. Keep recognition and training outside this route.
+Paired tasks use the canonical action-item collection. A create request's
+UUID is tied to its original inputs, and linked recordings are checked inside
+the create transaction. A task suggestion uses bounded transcript excerpts with
+the confirmed summary provider and does not write a task. Accepting a suggestion
+compares its source text digest and uses the original recording revision in the
+create transaction. The paired task path has no hosted task side effects.
+Paired summary template settings use the harness's shared provider revision.
+The backend only forwards the catalog to the configured loopback library.
+Paired summary regeneration sends the canonical transcript to that same
+loopback service. Publication compares transcript and summary revisions in
+one transaction, preserving user titles and unrelated recording data.
+Paired daily recaps use the canonical daily summary collection. Start/end
+are the phone's local calendar midnights converted to UTC. The archive
+snapshot is checked again before publication, including additions to that day.
+Paired goals use the canonical goal and progress-event collections. An event
+checks the goal revision and any linked recording inside the same transaction
+that writes progress and its daily history. Paired routes skip hosted goal
+wakeups.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;
@@ -356,3 +414,10 @@ Custom local STT: finished WAVs may use a loopback OpenAI-compatible timed API;
 Argmax/WhisperLiveKit services; `apply-stt` checks capture idle again after model
 startup before restarting its backend. See `docs/LOCAL_STT.md` and
 `docs/LIVE_PREVIEW.md`. Never add ML imports or provider URLs to phone builds.
+
+The paired owner can play a finalized WAV through
+`GET /v1/local/conversations/{conversation_id}/audio` when the profile advertises
+`local_audio_playback_version: 1`. Single HTTP byte ranges support seeking.
+Imported audio must match the owner's saved transcript digest. A pending recording
+must still appear in the owner's library and carry its paired upload receipt.
+Older listen recordings become eligible after transcript import.

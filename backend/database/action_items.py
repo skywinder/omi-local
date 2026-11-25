@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
+import hashlib
 import logging
 from typing import Any, Dict, Iterable, List, Optional, Protocol, cast
 
@@ -15,7 +16,7 @@ from database.firestore_index_registry import (
     ACTION_ITEMS_COMPLETION_ID_SCAN_QUERY,
     ACTION_ITEMS_CREATED_RANGE_QUERY,
 )
-from ._client import db, get_firestore_client
+from ._client import db, get_firestore_client, run_transactional
 from utils.other.list_budget import ListReadBudget, ListReadBudgetExhausted
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,8 @@ def create_action_item(
     idempotency_key: Optional[str] = None,
     *,
     document_id: Optional[str] = None,
+    local_source_revision: tuple[str, datetime] | None = None,
+    local_request_fingerprint: str | None = None,
 ) -> str:
     """
     Create a new action item for a user.
@@ -347,10 +350,22 @@ def create_action_item(
         if document_id is not None:
             existing_document = doc_ref.get(transaction=write_transaction)
             if existing_document.exists:
-                existing_generation = int(_typed_doc(existing_document).get('account_generation', 0))
+                existing_data = _typed_doc(existing_document)
+                existing_generation = int(existing_data.get('account_generation', 0))
                 if existing_generation != account_generation:
                     raise TaskRelationshipConflictError('document id belongs to another account generation')
+                if local_request_fingerprint is not None and existing_data.get('local_request_fingerprint') != local_request_fingerprint:
+                    raise TaskRelationshipConflictError('task request changed')
                 return document_id
+        if local_source_revision is not None:
+            recording_id, revision = local_source_revision
+            recording = user_ref.collection('conversations').document(recording_id).get(
+                transaction=write_transaction, field_paths=['is_locked', 'local_chat_deleting', 'status'], timeout=6,
+            )
+            fields = recording.to_dict()
+            if (fields is None or recording.update_time != revision or fields.get('is_locked')
+                    or fields.get('local_chat_deleting') or fields.get('status') not in {None, 'completed'}):
+                raise TaskRelationshipConflictError('task source changed')
         if goal_id is not None or workstream_id is not None:
             validate_task_relationship_in_transaction(
                 uid,
@@ -362,6 +377,8 @@ def create_action_item(
             )
         payload = dict(action_item_data)
         payload['account_generation'] = account_generation
+        if local_request_fingerprint is not None:
+            payload['local_request_fingerprint'] = local_request_fingerprint
         write_transaction.set(doc_ref, payload)
         return doc_ref.id
 
@@ -484,6 +501,35 @@ def get_action_item(uid: str, action_item_id: str) -> Optional[Dict[str, Any]]:
     data: Dict[str, Any] = _typed_doc(doc)
     data['id'] = doc.id
     return _prepare_action_item_for_read(data)
+
+
+@firestore.transactional
+def _patch_local_task(transaction, uid, task_id, field, expected, value):
+    ref = db.collection('users').document(uid).collection(action_items_collection).document(task_id)
+    snapshot = ref.get(transaction=transaction, timeout=6)
+    raw = snapshot.to_dict()
+    if not raw or raw.get('is_locked') or raw.get('deleted'):
+        return 'not_found', None
+    row = _prepare_action_item_for_read({**raw, 'id': task_id})
+    if row.get('status') not in {'active', 'completed'}:
+        return 'conflict', None
+    current = row.get(field)
+    if current == value:
+        return 'ok', row
+    current_check = hashlib.sha256(current.encode()).hexdigest() if isinstance(current, str) else current
+    if current_check != expected:
+        return 'conflict', None
+    now = datetime.now(timezone.utc)
+    patch = {field: value, 'updated_at': now}
+    if field == 'completed':
+        patch['status'] = 'completed' if value else 'active'
+        patch['completed_at'] = now if value else None
+    transaction.update(ref, _prepare_action_item_for_write(patch, partial=True))
+    return 'ok', {**row, **patch}
+
+
+def patch_local_task(uid, task_id, field, expected, value):
+    return run_transactional(db, _patch_local_task, uid, task_id, field, expected, value)
 
 
 # Hard safety caps for list reads. Unbounded streams + in-process sort caused prod GET

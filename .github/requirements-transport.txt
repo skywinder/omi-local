@@ -10,3 +10,6 @@ prometheus-client==0.21.1
 numpy==1.26.4
 uvicorn==0.30.5
 python-multipart==0.0.20
+
+# Grouped audio-delivery tests exercise the same native VAD as the backend.
+webrtcvad==2.0.10
