@@ -617,8 +617,10 @@ class LocalNextCaptureControls extends StatelessWidget {
                         ? l.connectDevice
                         : [
                             'CV1',
-                            cv1PhaseLabel(context, link.phase),
-                            if (link.diagnostics?.battery case final battery?) '$battery%',
+                            if (link.diagnostics?.battery case final battery? when link.phase == Cv1LinkPhase.ready)
+                              '$battery%'
+                            else
+                              cv1PhaseLabel(context, link.phase),
                             if (cv1.intent == Cv1CaptureIntent.muted)
                               l.muted
                             else if (cv1.active && cv1.linked)

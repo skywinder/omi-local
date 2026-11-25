@@ -306,6 +306,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(wire.selected, 'fixture');
       expect(find.text('CV1 · Connected'), findsOneWidget);
+      wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 75)));
+      await tester.pump();
+      expect(find.text('CV1 · 75%'), findsOneWidget);
+      expect(find.text('CV1 · Connected'), findsNothing);
       expect(mic.recording, isTrue);
       expect(wire.subscriptions, isEmpty);
 
@@ -323,6 +327,9 @@ void main() {
 
       await tester.tap(find.byTooltip('Mute'));
       await tester.pumpAndSettle();
+      wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 0)));
+      await tester.pump();
+      expect(find.text('CV1 · 0% · Muted'), findsOneWidget);
       expect(wire.subscriptions, [true, false]);
       expect(ownerChange.tryHold(), isFalse, reason: 'mute keeps the current capture owner');
       wire.reconnect();

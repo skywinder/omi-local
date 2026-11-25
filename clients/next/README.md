@@ -134,6 +134,8 @@ library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
 Device Diagnostics reads charge and signal measurements from the wearable.
+The recording screen shows the connected CV1's battery percentage after its
+first measurement.
 The signal chart refreshes every three seconds while visible, including during
 capture. Battery notifications update both the status and history on supported
 firmware. The day and week charts and connection journal retain observations
