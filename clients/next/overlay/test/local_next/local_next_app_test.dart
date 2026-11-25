@@ -9,6 +9,8 @@ import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/pages/conversation_detail/widgets/conversation_markdown_widget.dart';
 import 'package:omi/pages/conversation_detail/widgets/note_sections_sliver.dart';
+import 'package:omi/ui/omi_theme.dart';
+import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/widgets/transcript.dart';
 
 class _ExistingRecording extends PairedLibrary {
@@ -34,12 +36,27 @@ class _ExistingRecording extends PairedLibrary {
   });
 }
 
-Future<void> _openDetail(WidgetTester tester, _ExistingRecording library) async {
+Future<void> _openDetail(
+  WidgetTester tester,
+  _ExistingRecording library, {
+  Brightness brightness = Brightness.light,
+  double textScale = 1,
+}) async {
   addTearDown(library.close);
+  final previous = OmiColors.active;
+  addTearDown(() => OmiColors.active = previous);
   await tester.pumpWidget(
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      theme: buildOmiTheme(brightness: brightness),
+      builder: (context, child) {
+        OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        );
+      },
       home: RecordingPage(library: library, id: '00000000-0000-4000-8000-000000000001'),
     ),
   );
@@ -67,6 +84,42 @@ void main() {
     expect(find.text('Invalid key'), findsOneWidget);
     expect(find.text('Conversations'), findsNothing);
   });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('recording tabs keep selected and inactive labels legible in ${brightness.name}', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(360, 800);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await _openDetail(tester, _ExistingRecording(), brightness: brightness, textScale: 1.5);
+      final tabs = find.byType(TabBar);
+      final summary = find.descendant(of: tabs, matching: find.text('Summary'));
+      final transcript = find.descendant(of: tabs, matching: find.text('Transcript'));
+      final background = Theme.of(tester.element(tabs)).scaffoldBackgroundColor;
+      double contrast(Color foreground) {
+        final ink = Color.alphaBlend(foreground, background).computeLuminance();
+        final surface = background.computeLuminance();
+        return ink > surface ? (ink + .05) / (surface + .05) : (surface + .05) / (ink + .05);
+      }
+
+      void expectVisible() {
+        for (final tab in [summary, transcript]) {
+          final color = DefaultTextStyle.of(tester.element(tab)).style.color!;
+          expect(contrast(color), greaterThanOrEqualTo(4.5));
+        }
+        final bar = tester.widget<TabBar>(tabs);
+        final indicator = bar.indicator! as UnderlineTabIndicator;
+        expect(contrast(indicator.borderSide.color), greaterThanOrEqualTo(3));
+        expect(tester.takeException(), isNull);
+      }
+
+      expectVisible();
+      await tester.tap(transcript);
+      await tester.pumpAndSettle();
+      expectVisible();
+      expect(find.byType(TranscriptWidget), findsOneWidget);
+    });
+  }
 
   testWidgets('detail renders the upstream summary and timestamped transcript for an older server', (tester) async {
     await _openDetail(tester, _ExistingRecording());

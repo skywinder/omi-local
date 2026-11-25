@@ -152,6 +152,7 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
         effective.configurationRevision != null &&
         selected.configurationRevision != null &&
         effective.configurationRevision != selected.configurationRevision;
+    final changed = effective?.id != _selected[stage] || pending;
     final enabled = !_busy && !widget.isRecording() && state.canActivate(stage, _selected[stage]);
     return Card(
       child: Padding(
@@ -189,16 +190,18 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
                         }
                       }),
               ),
-              if (pending) Text(pairedSettingsLabel(context, 'localProcessingPending')),
+
+              if (changed) Text(pairedSettingsLabel(context, 'localProcessingPending')),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 children: [
-                  FilledButton(
-                    key: ValueKey('next-${stage.name}-confirm'),
-                    onPressed: enabled ? () => _activate(stage) : null,
-                    child: Text(l.confirm),
-                  ),
+                  if (changed)
+                    FilledButton(
+                      key: ValueKey('next-${stage.name}-confirm'),
+                      onPressed: enabled ? () => _activate(stage) : null,
+                      child: Text(pairedSettingsLabel(context, 'processingApply')),
+                    ),
                   if (stage.canCreateDraft)
                     TextButton.icon(
                       key: ValueKey('next-${stage.name}-add'),
@@ -234,13 +237,12 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
     final state = _settings;
     return Scaffold(
       appBar: AppBar(
-        title: Text(l.processing),
+        title: Text('${l.processing} · ${widget.serverLabel}', overflow: TextOverflow.ellipsis),
         actions: [IconButton(tooltip: l.refresh, onPressed: _busy ? null : _refresh, icon: const Icon(Icons.refresh))],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(widget.serverLabel, style: Theme.of(context).textTheme.titleMedium),
           if (_busy) const LinearProgressIndicator(),
           if (_failure case final failure?) ...[
             Text(processingFailureLabel(context, failure)),
@@ -250,12 +252,8 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
             ),
           ],
           if (state != null) ...[
-            Text(pairedSettingsLabel(context, 'processingPublished')),
-            Text(pairedSettingsLabel(context, 'localProcessingHelp')),
             Text(pairedSettingsLabel(context, 'localProcessingApplyHelp')),
             const SizedBox(height: 8),
-            for (final stage in NextProcessingStage.values)
-              if (state.supports(stage)) _stage(context, state, stage),
             if (widget.client.summaryTemplatesRequest case final request?)
               ListTile(
                 title: Text(l.summaryTemplate),
@@ -269,6 +267,8 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
                         if (mounted) await _refresh();
                       },
               ),
+            for (final stage in NextProcessingStage.values)
+              if (state.supports(stage)) _stage(context, state, stage),
           ],
         ],
       ),

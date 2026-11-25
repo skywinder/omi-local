@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,13 +14,12 @@ import 'cv1_transport.dart';
 import 'live_preview.dart';
 import 'live_view.dart';
 import 'paired_library.dart';
-import 'processing.dart';
-import 'processing_page.dart';
 import 'settings_labels.dart';
 
 class LocalNextCapturePanel extends StatefulWidget {
-  const LocalNextCapturePanel({required this.library, this.onDelivered, super.key});
+  const LocalNextCapturePanel({required this.library, required this.serverName, this.onDelivered, super.key});
   final PairedLibrary library;
+  final String serverName;
   final VoidCallback? onDelivered;
 
   @override
@@ -35,10 +35,7 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
   LocalAudioJournal? _journal;
   int _deliveryRevision = 0;
   NextCaptureInputs? _inputs;
-  late final _processing = widget.library.processingClient(
-    permitsActivation: () =>
-        !_closed && widget.library.ownerChange.permitsCapture && _inputs?.hasCaptureInProgress == false,
-  );
+  final _hasCv1 = defaultTargetPlatform == TargetPlatform.iOS;
   bool _storageFailed = false;
   bool _closed = false;
   int? _groupSilence;
@@ -83,10 +80,10 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
         NextPhoneCapture(
           journal,
           library.audioOwnerId,
-          IosPhoneMicrophone(),
+          FlutterPhoneMicrophone(),
           preview: NextLivePreview(library.audioOwnerId, library.connectPreview),
         ),
-        IosCv1Transport(),
+        _hasCv1 ? IosCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
       );
       journal.retry();
@@ -137,8 +134,8 @@ class _CapturePanelState extends State<LocalNextCapturePanel> {
     }
     return LocalNextCaptureControls(
       inputs: inputs,
-      serverLabel: widget.library.origin.authority,
-      processing: _processing,
+      serverLabel: widget.serverName,
+      hasCv1: _hasCv1,
       library: widget.library,
       groupSilence: _groupSilence,
       onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
@@ -268,7 +265,7 @@ class LocalNextCaptureControls extends StatelessWidget {
   const LocalNextCaptureControls({
     required this.inputs,
     this.serverLabel = '',
-    this.processing,
+    this.hasCv1 = true,
     this.library,
     this.groupSilence,
     this.onGroupSilence,
@@ -276,7 +273,7 @@ class LocalNextCaptureControls extends StatelessWidget {
   });
   final NextCaptureInputs inputs;
   final String serverLabel;
-  final NextProcessingClient? processing;
+  final bool hasCv1;
   final PairedLibrary? library;
   final int? groupSilence;
   final Future<void> Function(int?)? onGroupSilence;
@@ -380,35 +377,10 @@ class LocalNextCaptureControls extends StatelessWidget {
                   icon: Icon(cv1.intent == Cv1CaptureIntent.muted ? Icons.mic_off : Icons.mic),
                   onPressed: inputs.switching ? null : cv1.toggleMute,
                 ),
-              if (inputs.preview case final preview?)
-                LocalNextLiveButton(
-                  preview: preview,
-                  capture: captureState,
-                  isRecording: () => inputs.isRecording,
-                  isMuted: () => cv1.intent == Cv1CaptureIntent.muted,
-                  onStop: inputs.stopRecording,
-                  serverLabel: serverLabel,
-                  library: library,
-                ),
-              if (processing case final client?)
-                IconButton(
-                  tooltip: l.processing,
-                  icon: const Icon(Icons.tune),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => LocalNextProcessingPage(
-                        client: client,
-                        serverLabel: serverLabel,
-                        capture: captureState,
-                        isRecording: () => inputs.isRecording,
-                      ),
-                    ),
-                  ),
-                ),
               if (library?.conversationGroups == true && onGroupSilence != null)
                 PopupMenuButton<int>(
                   tooltip: pairedSettingsLabel(context, 'groupCaptureLabel'),
-                  icon: const Icon(Icons.call_split),
+                  icon: const Icon(Icons.settings_outlined),
                   enabled: !inputs.hasCaptureInProgress && library?.ownerChange.permitsCapture == true,
                   initialValue: groupSilence ?? -1,
                   onSelected: (value) => unawaited(onGroupSilence!(value == -1 ? null : value)),
@@ -422,38 +394,39 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ),
                   ],
                 ),
-              TextButton.icon(
-                key: const ValueKey('next-cv1-devices'),
-                icon: Icon(cv1.linked ? Icons.bluetooth_connected : Icons.bluetooth),
-                label: Text(cv1.linked || cv1.active ? l.device : l.connectDevice),
-                onPressed: () {
-                  if (link.phase == Cv1LinkPhase.idle || link.phase == Cv1LinkPhase.failed) {
-                    unawaited(link.scan());
-                  }
-                  unawaited(_devices(context));
-                },
-              ),
+              if (hasCv1)
+                TextButton.icon(
+                  key: const ValueKey('next-cv1-devices'),
+                  icon: Icon(cv1.linked ? Icons.bluetooth_connected : Icons.bluetooth),
+                  label: Text(
+                    link.phase == Cv1LinkPhase.idle && !cv1.active
+                        ? l.connectDevice
+                        : [
+                            'CV1',
+                            switch (link.phase) {
+                              Cv1LinkPhase.idle => l.disconnected,
+                              Cv1LinkPhase.unavailable => l.bluetoothNeeded,
+                              Cv1LinkPhase.scanning => l.searchingForDevices,
+                              Cv1LinkPhase.connecting => l.deviceConnecting,
+                              Cv1LinkPhase.ready => l.connected,
+                              Cv1LinkPhase.reconnecting => l.reconnecting,
+                              Cv1LinkPhase.failed => l.connectionFailed,
+                            },
+                            if (cv1.intent == Cv1CaptureIntent.muted)
+                              l.muted
+                            else if (cv1.active && cv1.linked)
+                              cv1.hasPersistedAudio ? l.recording : l.waitingForData,
+                          ].join(' · '),
+                  ),
+                  onPressed: () {
+                    if (link.phase == Cv1LinkPhase.idle || link.phase == Cv1LinkPhase.failed) {
+                      unawaited(link.scan());
+                    }
+                    unawaited(_devices(context));
+                  },
+                ),
             ],
           ),
-          if (link.phase != Cv1LinkPhase.idle || cv1.active)
-            Text(
-              [
-                'CV1',
-                switch (link.phase) {
-                  Cv1LinkPhase.idle => l.disconnected,
-                  Cv1LinkPhase.unavailable => l.bluetoothNeeded,
-                  Cv1LinkPhase.scanning => l.searchingForDevices,
-                  Cv1LinkPhase.connecting => l.deviceConnecting,
-                  Cv1LinkPhase.ready => l.connected,
-                  Cv1LinkPhase.reconnecting => l.reconnecting,
-                  Cv1LinkPhase.failed => l.connectionFailed,
-                },
-                if (cv1.intent == Cv1CaptureIntent.muted)
-                  l.muted
-                else if (cv1.active && cv1.linked)
-                  cv1.hasPersistedAudio ? l.recording : l.waitingForData,
-              ].join(' · '),
-            ),
           if (cv1.problem != null)
             Text(switch (cv1.problem!) {
               Cv1CaptureProblem.unsupportedCodec => l.captureRecordingError(l.audioFormatLabel),
@@ -471,6 +444,16 @@ class LocalNextCaptureControls extends StatelessWidget {
             }),
           if (journal.pendingParts > 0) Text(l.nPending(journal.pendingParts)),
           if (journal.deliveryFailed) TextButton(onPressed: journal.retry, child: Text(l.captureBannerRetrySync)),
+          if (inputs.preview case final preview?)
+            LocalNextLiveButton(
+              preview: preview,
+              capture: captureState,
+              isRecording: () => inputs.isRecording,
+              isMuted: () => cv1.active && cv1.intent == Cv1CaptureIntent.muted,
+              onStop: inputs.stopRecording,
+              serverLabel: serverLabel,
+              library: library,
+            ),
         ],
       ),
     );

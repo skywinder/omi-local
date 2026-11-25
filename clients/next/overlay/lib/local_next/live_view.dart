@@ -108,25 +108,71 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
     super.dispose();
   }
 
+  Future<void> _open() async {
+    if (_route != null) return;
+    final view = widget;
+    final route = _route = MaterialPageRoute<void>(
+      builder: (_) => _LivePage(
+        view: view,
+        change: (target, other) {
+          if (mounted && widget.preview == view.preview) _change(target, other);
+        },
+      ),
+    );
+    await Navigator.of(context).push(route);
+    if (_route == route) _route = null;
+  }
+
   @override
-  Widget build(BuildContext context) => TextButton.icon(
-    icon: const Icon(Icons.subtitles_outlined),
-    label: Text(context.l10n.liveTranscript),
-    onPressed: () async {
-      if (_route != null) return;
-      final view = widget;
-      final route = _route = MaterialPageRoute<void>(
-        builder: (_) => _LivePage(
-          view: view,
-          change: (target, other) {
-            if (mounted && widget.preview == view.preview) _change(target, other);
-          },
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([widget.capture, widget.preview]),
+    builder: (context, _) {
+      final l = context.l10n;
+      if (!widget.isRecording()) {
+        return TextButton.icon(
+          icon: const Icon(Icons.subtitles_outlined),
+          label: Text(l.liveTranscript),
+          onPressed: _open,
+        );
+      }
+      final preview = widget.preview;
+      final muted = widget.isMuted?.call() == true;
+      final status = _liveStatus(context, preview, recording: true, muted: muted);
+      final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
+          ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
+          : '';
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+        child: Card(
+          margin: EdgeInsets.zero,
+          color: OmiColors.surface1,
+          elevation: 0,
+          shape: const RoundedRectangleBorder(borderRadius: OmiRadius.mdAll),
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            key: const ValueKey('next-live-strip'),
+            leading: const Icon(Icons.subtitles_outlined),
+            title: Text('${l.liveTranscript} · $status', maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: line.isEmpty ? null : Text(line, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _open,
+          ),
         ),
       );
-      await Navigator.of(context).push(route);
-      if (_route == route) _route = null;
     },
   );
+}
+
+String _liveStatus(BuildContext context, NextLivePreview preview, {required bool recording, required bool muted}) {
+  final l = context.l10n;
+  if (recording && muted) return l.muted;
+  return switch (preview.phase) {
+    NextPreviewPhase.idle => recording ? l.waitingForData : l.off,
+    NextPreviewPhase.connecting => preview.lines.isEmpty ? l.livePreviewStarting : l.reconnecting,
+    NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
+    NextPreviewPhase.unavailable when preview.reason == 'disabled' => l.off,
+    NextPreviewPhase.unavailable => recording ? l.transcriptionUnavailableRecordingContinues : l.statusFailed,
+  };
 }
 
 class _LivePage extends StatefulWidget {
@@ -139,7 +185,6 @@ class _LivePage extends StatefulWidget {
 
 class _LivePageState extends State<_LivePage> {
   bool _stopping = false;
-  bool _settings = false;
 
   Future<void> _stop() async {
     if (_stopping) return;
@@ -151,6 +196,36 @@ class _LivePageState extends State<_LivePage> {
     }
   }
 
+  Future<void> _openSettings(BuildContext context, LocalNextLiveButton view) => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (context) => Scaffold(
+        appBar: AppBar(title: Text(context.l10n.settings)),
+        body: SafeArea(
+          child: Column(
+            children: [
+              if (view.library case final library?)
+                ListTile(
+                  leading: const Icon(Icons.groups_outlined),
+                  title: Text(pairedSettingsLabel(context, 'liveSpeakerLimit')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (_) => NextLiveTuningSheet(library: library),
+                  ),
+                ),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: view.preview,
+                  builder: (context, _) => _TranslationSettings(preview: view.preview, change: widget.change),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final view = widget.view;
@@ -160,29 +235,16 @@ class _LivePageState extends State<_LivePage> {
       listenable: Listenable.merge([view.capture, preview]),
       builder: (context, _) {
         final recording = view.isRecording();
-        final status = recording && view.isMuted?.call() == true
-            ? l.muted
-            : switch (preview.phase) {
-                NextPreviewPhase.idle => recording ? l.waitingForData : l.off,
-                NextPreviewPhase.connecting => l.livePreviewStarting,
-                NextPreviewPhase.listening => l.deviceOnboardingListening,
-                NextPreviewPhase.unavailable when preview.reason == 'disabled' => l.off,
-                NextPreviewPhase.unavailable =>
-                  recording ? l.transcriptionUnavailableRecordingContinues : l.statusFailed,
-              };
+        final status = _liveStatus(context, preview, recording: recording, muted: view.isMuted?.call() == true);
         return Scaffold(
           appBar: AppBar(
             title: Text(l.liveTranscript),
             actions: [
-              if (view.library case final library?)
-                IconButton(
-                  icon: const Icon(Icons.tune),
-                  tooltip: pairedSettingsLabel(context, 'liveSpeakerLimit'),
-                  onPressed: () => showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => NextLiveTuningSheet(library: library),
-                  ),
-                ),
+              IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: l.settings,
+                onPressed: () => _openSettings(context, view),
+              ),
               if (recording)
                 TextButton.icon(onPressed: _stopping ? null : _stop, icon: const Icon(Icons.stop), label: Text(l.stop)),
             ],
@@ -194,11 +256,6 @@ class _LivePageState extends State<_LivePage> {
                   leading: const Icon(Icons.dns_outlined),
                   title: Text(view.serverLabel),
                   subtitle: Text(status),
-                  trailing: IconButton(
-                    icon: Icon(_settings ? Icons.close : Icons.translate),
-                    tooltip: _settings ? l.close : pairedSettingsLabel(context, 'liveTranslation'),
-                    onPressed: () => setState(() => _settings = !_settings),
-                  ),
                 ),
                 if (preview.speakerStatus case final reporting?)
                   Padding(
@@ -221,11 +278,7 @@ class _LivePageState extends State<_LivePage> {
                       ),
                     ),
                   ),
-                Expanded(
-                  child: _settings
-                      ? _TranslationSettings(preview: preview, change: widget.change)
-                      : _Transcript(lines: preview.lines),
-                ),
+                Expanded(child: _Transcript(lines: preview.lines)),
               ],
             ),
           ),

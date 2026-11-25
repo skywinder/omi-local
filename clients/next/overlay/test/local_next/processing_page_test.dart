@@ -84,7 +84,6 @@ void main() {
     );
     await _open(tester, client, recording);
     final link = find.text('Summary Template');
-    await tester.scrollUntilVisible(link, 150);
     await tester.tap(link);
     await tester.pumpAndSettle();
     expect(find.widgetWithText(ListTile, 'Standard recap'), findsOneWidget);

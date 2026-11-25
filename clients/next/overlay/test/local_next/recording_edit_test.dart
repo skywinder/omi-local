@@ -162,9 +162,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Select recordings'));
     await tester.pumpAndSettle();
@@ -207,7 +209,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
     await tester.pumpAndSettle();
@@ -259,7 +261,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
     await tester.pumpAndSettle();

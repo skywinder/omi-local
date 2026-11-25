@@ -28,6 +28,7 @@ KEYS = (
 # establish whether a service started or whether an interrupted request applied.
 PROCESSING_MESSAGES = {
     'en': {
+        'processingApply': 'Apply',
         'processingPublished': 'Active shows the profile published on the server. Live Transcript shows whether speech recognition is running.',
         'processingConflict': 'Settings changed or the server is busy. Refresh before trying again.',
         'processingIndeterminate': 'The server may have applied the change. Refresh to verify the result.',
@@ -125,6 +126,7 @@ PROCESSING_MESSAGES = {
         'serverStageStale': 'Waiting for fresh processing status.',
     },
     'ru': {
+        'processingApply': 'Применить',
         'processingPublished': 'Активный профиль выбран на сервере. Работу распознавания речи можно проверить на экране «Живая расшифровка».',
         'processingConflict': 'Настройки изменились или сервер занят. Обновите страницу перед повторной попыткой.',
         'processingIndeterminate': 'Сервер мог применить изменение. Обновите страницу и проверьте результат.',

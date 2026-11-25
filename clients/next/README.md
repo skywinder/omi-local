@@ -108,9 +108,26 @@ python3 clients/next/iphone.py /path/to/omi --install
 Use `--simulator --install` for a simulator. A device install requires a paired,
 available iPhone and a provisioning profile for the Next bundle.
 
+## Android debug build
+
+Use the pinned Flutter SDK, JDK 17, Gradle 8.14.2 and Android SDK (API 36,
+NDK 28.2.13676358). Set `ANDROID_HOME` and run from this worktree:
+
+```sh
+python3 clients/next/android.py /path/to/omi
+adb install -r /path/to/app-debug.apk
+```
+
+Use the exact APK path printed by the build. Android uses the separate
+`org.omilocal.next` package with its own saved servers and audio outbox. The
+debug build supports the archive, playback, server settings and foreground
+phone microphone with Live preview. The native CV1 bridge is iOS-only.
+
 ## Saved servers
 
-Use **Servers** to save a name, address and app key for each Local server.
+Tap the current server name in **Conversations** to open **Saved servers**.
+Add or edit a server to enter its name, address and app key. The active server
+card opens diagnostics and processing settings. Its menu contains **Disconnect**.
 Choose **Connect** to verify an address and key and make it active. A failed
 check leaves the previous connection selected. Stop any active recording before
 switching. Pending parts stay bound to the original address and key, and retry
@@ -307,6 +324,11 @@ Recovery from the wearable's offline ring has separate custody requirements.
 See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 
 ## Live transcript
+
+While recording, the strip above the archive filters shows the current
+recognition status and the latest line when available. Tap it to open the
+same full Live transcript. The Live button keeps the last session accessible
+after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
 Omi transcript list and shows where live processing runs. Translation can use

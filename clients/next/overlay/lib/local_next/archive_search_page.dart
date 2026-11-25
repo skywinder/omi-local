@@ -154,20 +154,30 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
-                for (final hit in hits) ...[
-                  ListTile(
-                    title: Text(hit.title.isEmpty ? l.untitledConversation : hit.title),
-                    subtitle: Text(OmiDateFormat.of(context).date(hit.startedAt.toLocal())),
-                    onTap: () => _open(hit),
-                  ),
-                  for (final snippet in hit.snippets)
-                    ListTile(
-                      leading: const Icon(Icons.notes),
-                      title: Text(snippet.text, maxLines: 3, overflow: TextOverflow.ellipsis),
-                      subtitle: snippet.start == null ? null : Text(OmiDuration.offset(snippet.start!)),
-                      onTap: () => _open(hit, snippet),
+                for (final hit in hits)
+                  Card(
+                    color: OmiColors.surface1,
+                    elevation: 0,
+                    clipBehavior: Clip.antiAlias,
+                    margin: const EdgeInsets.fromLTRB(OmiSpacing.md, 0, OmiSpacing.md, OmiSpacing.sm),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ListTile(
+                          title: Text(hit.title.isEmpty ? l.untitledConversation : hit.title),
+                          subtitle: Text(OmiDateFormat.of(context).date(hit.startedAt.toLocal())),
+                          onTap: () => _open(hit),
+                        ),
+                        for (final snippet in hit.snippets)
+                          ListTile(
+                            leading: const Icon(Icons.notes),
+                            title: Text(snippet.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                            subtitle: snippet.start == null ? null : Text(OmiDuration.offset(snippet.start!)),
+                            onTap: () => _open(hit, snippet),
+                          ),
+                      ],
                     ),
-                ],
+                  ),
                 if (_loading) const LinearProgressIndicator(),
                 if (_unsupported)
                   ListTile(title: Text(pairedSettingsLabel(context, 'archiveSearchUnsupported')))

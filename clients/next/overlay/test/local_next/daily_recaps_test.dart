@@ -81,9 +81,11 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Daily Recaps'));
     await tester.pumpAndSettle();

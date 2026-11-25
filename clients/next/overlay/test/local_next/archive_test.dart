@@ -73,7 +73,7 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+      home: LocalNextLibraryPage(library: library),
     ),
   );
   await tester.pump();
@@ -92,9 +92,12 @@ void main() {
     addTearDown(library.close);
     await _show(tester, library);
     expect(find.text('💻'), findsOneWidget);
-    expect(find.textContaining('💼 Work'), findsOneWidget);
+    expect(find.textContaining('· Work'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('archive-category')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'person');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('conversation-category-work')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('conversation-category-personal')));
     await tester.pumpAndSettle();
     expect(find.text('Work recording'), findsNothing);
@@ -279,7 +282,9 @@ void main() {
     expect(find.text('Current server'), findsOneWidget);
     expect(find.text('Old server'), findsNothing);
     revoked = true;
-    await tester.tap(find.byTooltip('Refresh'));
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Refresh'));
     await tester.pumpAndSettle();
     expect(find.text('Current server'), findsNothing);
     expect(find.text('Invalid key'), findsOneWidget);

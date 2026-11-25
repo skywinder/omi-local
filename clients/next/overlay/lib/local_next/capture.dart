@@ -16,7 +16,7 @@ abstract interface class NextPhoneMicrophone {
 
 class PhoneCaptureDenied implements Exception {}
 
-class IosPhoneMicrophone implements NextPhoneMicrophone {
+class FlutterPhoneMicrophone implements NextPhoneMicrophone {
   FlutterSoundRecorder? _recorder;
   StreamController<Uint8List>? _samples;
 

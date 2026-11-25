@@ -111,6 +111,28 @@ class IosCv1Transport implements Cv1Transport {
   Future<void> close() => _methods.invokeMethod<void>('close');
 }
 
+class UnavailableCv1Transport implements Cv1Transport {
+  const UnavailableCv1Transport();
+
+  @override
+  Stream<Cv1TransportEvent> get events => const Stream.empty();
+
+  @override
+  Future<void> scan() async {}
+
+  @override
+  Future<void> connect(String id) async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<void> setAudio(int generation, int subscription, bool enabled) async {}
+
+  @override
+  Future<void> close() async {}
+}
+
 /// Owns the single native event subscription and reconciles audio notification
 /// demand for the live link. Capture admission and journal custody stay with
 /// [NextCv1Capture], even if CoreBluetooth is still disabling notifications.

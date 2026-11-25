@@ -15,11 +15,9 @@ import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'paired_library.dart';
-import 'processing_page.dart';
 import 'recording_page.dart';
 import 'server_catalog.dart';
 import 'server_session.dart';
-import 'server_status_page.dart';
 import 'servers_page.dart';
 import 'settings_labels.dart';
 
@@ -32,8 +30,8 @@ class LocalNextApp extends StatelessWidget {
     title: 'Omi Local Next',
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    theme: buildOmiTheme(brightness: Brightness.light),
-    darkTheme: buildOmiTheme(),
+    theme: _nextTheme(Brightness.light),
+    darkTheme: _nextTheme(Brightness.dark),
     builder: (context, child) {
       OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
       return child!;
@@ -41,6 +39,50 @@ class LocalNextApp extends StatelessWidget {
     home: _Pairing(session: session),
   );
 }
+
+ThemeData _nextTheme(Brightness brightness) {
+  final palette = OmiColors.forBrightness(brightness);
+  final theme = buildOmiTheme(brightness: brightness);
+  final disabled = Color.alphaBlend(palette.textPrimary.withValues(alpha: .58), palette.surface0);
+  final outline = Color.alphaBlend(palette.textPrimary.withValues(alpha: .56), palette.surface0);
+  return theme.copyWith(
+    disabledColor: disabled,
+    textTheme: theme.textTheme.copyWith(
+      bodySmall: theme.textTheme.bodySmall?.copyWith(color: palette.textTertiary),
+      labelMedium: theme.textTheme.labelMedium?.copyWith(color: palette.textTertiary),
+    ),
+    iconTheme: IconThemeData(color: palette.textPrimary),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: palette.textPrimary, disabledForegroundColor: disabled),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: palette.textPrimary,
+        disabledForegroundColor: disabled,
+        side: BorderSide(color: outline),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: palette.accent,
+        foregroundColor: palette.onAccent,
+        disabledBackgroundColor: palette.surface3,
+        disabledForegroundColor: palette.textTertiary,
+      ),
+    ),
+    inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+      labelStyle: TextStyle(color: palette.textTertiary),
+      hintStyle: TextStyle(color: palette.textTertiary),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: palette.textPrimary,
+      unselectedLabelColor: palette.textTertiary,
+      indicatorColor: palette.accent,
+    ),
+  );
+}
+
+enum _ArchiveAction { refresh, tasks, recaps, goals, select }
 
 class _Pairing extends StatefulWidget {
   const _Pairing({this.session});
@@ -69,13 +111,6 @@ class _PairingState extends State<_Pairing> {
     setState(() {});
   }
 
-  Future<void> _disconnect() async {
-    await session.disconnect();
-    if (mounted && session.active != null && session.failure != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairingFailureText(context, session.failure))));
-    }
-  }
-
   @override
   void dispose() {
     session.removeListener(_changed);
@@ -92,7 +127,6 @@ class _PairingState extends State<_Pairing> {
       key: ObjectKey(active),
       library: active,
       serverName: named?.name ?? active.origin.authority,
-      disconnect: _disconnect,
       pairingBusy: session.busy,
       openServers: () => Navigator.of(
         context,
@@ -105,7 +139,6 @@ class LocalNextLibraryPage extends StatefulWidget {
   const LocalNextLibraryPage({
     super.key,
     required this.library,
-    required this.disconnect,
     this.openServers,
     this.serverName,
     this.pairingBusy = false,
@@ -114,7 +147,6 @@ class LocalNextLibraryPage extends StatefulWidget {
   final String? serverName;
   final bool pairingBusy;
   final PairedLibrary library;
-  final Future<void> Function() disconnect;
   @override
   State<LocalNextLibraryPage> createState() => _LibraryPageState();
 }
@@ -207,67 +239,72 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     final archive = _archive;
     final selection = _selection;
     final serverName = widget.serverName ?? library.origin.authority;
+    void open(Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l.conversations),
-            if (widget.serverName case final name?)
-              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelMedium),
-          ],
+        centerTitle: false,
+        title: InkWell(
+          key: const ValueKey('archive-servers'),
+          onTap: widget.pairingBusy ? null : widget.openServers,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l.conversations, maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (widget.openServers != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          serverName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: OmiColors.textTertiary),
+                        ),
+                      ),
+                      const Icon(Icons.expand_more, size: 16),
+                    ],
+                  ),
+              ],
+            ),
+          ),
         ),
         actions: [
           IconButton(
             tooltip: l.searchConversations,
             icon: const Icon(Icons.search),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => ArchiveSearchPageView(library: library, onEdited: archive.applyEdit),
-              ),
-            ),
+            onPressed: () => open(ArchiveSearchPageView(library: library, onEdited: archive.applyEdit)),
           ),
-          IconButton(
-            tooltip: pairedSettingsLabel(context, 'serverStatus'),
-            icon: const Icon(Icons.monitor_heart_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => NextServerStatusPage(library: library, serverName: serverName),
-              ),
-            ),
-          ),
-          if (!library.audioDelivery)
-            IconButton(
-              tooltip: l.processing,
-              icon: const Icon(Icons.tune),
-              onPressed: () {
-                final client = library.processingClient();
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => LocalNextProcessingPage(
-                      client: client,
-                      serverLabel: library.origin.authority,
-                      isRecording: () => false,
-                    ),
-                  ),
-                );
-              },
-            ),
-          IconButton(
-            tooltip: l.refresh,
-            onPressed: _archive.busy ? null : _archive.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          if (widget.openServers != null)
-            IconButton(
-              tooltip: pairedSettingsLabel(context, 'localMacServers'),
-              icon: const Icon(Icons.dns_outlined),
-              onPressed: widget.pairingBusy ? null : widget.openServers,
-            ),
-          IconButton(
-            tooltip: l.disconnect,
-            onPressed: widget.pairingBusy ? null : widget.disconnect,
-            icon: const Icon(Icons.link_off),
+          PopupMenuButton<_ArchiveAction>(
+            tooltip: l.moreOptions,
+            onSelected: (action) {
+              switch (action) {
+                case _ArchiveAction.refresh:
+                  archive.refresh();
+                case _ArchiveAction.tasks:
+                  open(LocalTasksPage(library: library));
+                case _ArchiveAction.recaps:
+                  open(DailyRecapsPage(library: library));
+                case _ArchiveAction.goals:
+                  open(LocalGoalsPage(library: library));
+                case _ArchiveAction.select:
+                  setState(() => _selection = {});
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(value: _ArchiveAction.refresh, enabled: !archive.busy, child: Text(l.refresh)),
+              if (library.tasksAvailable) PopupMenuItem(value: _ArchiveAction.tasks, child: Text(l.tasks)),
+              if (library.dailyRecapsAvailable) PopupMenuItem(value: _ArchiveAction.recaps, child: Text(l.dailyRecaps)),
+              if (library.goalsAvailable) PopupMenuItem(value: _ArchiveAction.goals, child: Text(l.goals)),
+              if (library.folderManagementAvailable && selection == null)
+                PopupMenuItem(
+                  value: _ArchiveAction.select,
+                  child: Text(pairedSettingsLabel(context, 'localFolderSelect')),
+                ),
+            ],
           ),
         ],
       ),
@@ -277,6 +314,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
             LocalNextCapturePanel(
               key: ValueKey(library.audioOwnerId),
               library: library,
+              serverName: serverName,
               onDelivered: _archive.refreshAfterRecording,
             ),
           Align(
@@ -341,36 +379,6 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                                     );
                                     if (choice != null) await archive.filterFolder(choice.folder);
                                   },
-                          ),
-                        if (library.tasksAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.task_alt),
-                            label: Text(l.tasks),
-                            onPressed: () => Navigator.of(
-                              context,
-                            ).push(MaterialPageRoute<void>(builder: (_) => LocalTasksPage(library: library))),
-                          ),
-                        if (library.dailyRecapsAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.calendar_view_day_outlined),
-                            label: Text(l.dailyRecaps),
-                            onPressed: () => Navigator.of(
-                              context,
-                            ).push(MaterialPageRoute<void>(builder: (_) => DailyRecapsPage(library: library))),
-                          ),
-                        if (library.goalsAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.flag_outlined),
-                            label: Text(l.goals),
-                            onPressed: () => Navigator.of(
-                              context,
-                            ).push(MaterialPageRoute<void>(builder: (_) => LocalGoalsPage(library: library))),
-                          ),
-                        if (library.folderManagementAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.checklist),
-                            label: Text(pairedSettingsLabel(context, 'localFolderSelect')),
-                            onPressed: () => setState(() => _selection = {}),
                           ),
                       ],
               ),

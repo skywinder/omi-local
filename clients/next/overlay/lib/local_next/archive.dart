@@ -312,8 +312,8 @@ class _ArchiveRow extends StatelessWidget {
     final meta = [
       OmiDateFormat.of(context).time(started),
       if (duration > 0) OmiDuration.compact(duration, context.l10n),
-      if (showCategory) conversationCategoryLabel(context, category),
-      recordingStatus(context, row),
+      if (showCategory) conversationCategoryName(context, category),
+      if (local != null || row.status != ConversationStatus.completed) recordingStatus(context, row),
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -345,11 +345,11 @@ class _ArchiveRow extends StatelessWidget {
                       Text(
                         recordingTitle(context, row),
                         style: Theme.of(context).textTheme.titleMedium,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
-                      Text(meta, style: OmiType.footnote.copyWith(color: OmiColors.textSecondary)),
+                      Text(meta, style: OmiType.footnote.copyWith(color: OmiColors.textTertiary)),
                     ],
                   ),
                 ),

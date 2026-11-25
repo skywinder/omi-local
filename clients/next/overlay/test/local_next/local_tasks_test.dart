@@ -122,7 +122,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
     await tester.pumpAndSettle();
@@ -161,7 +161,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        home: LocalNextLibraryPage(library: library, disconnect: () async {}),
+        home: LocalNextLibraryPage(library: library),
       ),
     );
     await tester.pumpAndSettle();
@@ -178,6 +178,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(library.task?.description, 'Send the budget');
     await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tasks'));
     await tester.pumpAndSettle();

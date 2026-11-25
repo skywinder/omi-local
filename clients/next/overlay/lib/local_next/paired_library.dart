@@ -41,6 +41,7 @@ class NextOwnerChangeGate extends ChangeNotifier {
   bool Function()? _captureBusy;
 
   bool get permitsCapture => !_held && !_closed;
+  bool get captureBusy => _captureBusy?.call() == true;
 
   void attachCapture(bool Function() busy) => _captureBusy = busy;
 
@@ -49,7 +50,7 @@ class NextOwnerChangeGate extends ChangeNotifier {
   }
 
   bool tryHold() {
-    if (!permitsCapture || _captureBusy?.call() == true) return false;
+    if (!permitsCapture || captureBusy) return false;
     _held = true;
     notifyListeners();
     return true;

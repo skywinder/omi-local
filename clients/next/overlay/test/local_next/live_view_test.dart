@@ -114,7 +114,7 @@ void main() {
       ),
     );
     preview.begin('fixture', 'phone', 'pcm16');
-    await tester.tap(find.text('Live Transcript'));
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     socket.send({
       'type': 'service_status',
@@ -132,7 +132,9 @@ void main() {
     });
     await tester.pump();
     expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
-    await tester.tap(find.byTooltip('Live speaker limit'));
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Live speaker limit'));
     await tester.pumpAndSettle();
 
     Future<void> select(String value) async {
@@ -156,6 +158,8 @@ void main() {
     expect(library.writes, [(4, 3), (5, 4)]);
     expect(find.text('Saved for the next recognition stream.'), findsOneWidget);
     await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
     await tester.tap(find.text('Stop'));
@@ -200,7 +204,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(preview.targetLanguage, 'ru');
     preview.begin('recording-fixture', 'phone', 'pcm16');
-    await tester.tap(find.text('Live Transcript'));
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     expect(find.text('fixture.local'), findsOneWidget);
     expect(find.text('Stop'), findsOneWidget);
@@ -231,13 +235,17 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(stops, 0);
-    await tester.tap(find.text('Live Transcript'));
+    expect(find.text('Corrected sentence'), findsOneWidget);
+    final latest = tester.widget<Text>(find.text('Corrected sentence'));
+    expect(latest.maxLines, 1);
+    expect(latest.overflow, TextOverflow.ellipsis);
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Stop'));
     await tester.pumpAndSettle();
     expect(stops, 1);
     expect(find.text('Stop'), findsNothing);
-    await tester.tap(find.byTooltip('Live translation'));
+    await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('next-live-target')));
     await tester.pumpAndSettle();

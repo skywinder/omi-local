@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:omi/ui/components/omi_search_field.dart';
+import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'settings_labels.dart';
@@ -44,46 +46,67 @@ const conversationCategories = <String, ConversationCategory>{
 
 String conversationCategoryKey(String category) => conversationCategories.containsKey(category) ? category : 'other';
 
-String conversationCategoryLabel(BuildContext context, String key) {
+String conversationCategoryName(BuildContext context, String key) {
   final category = conversationCategories[conversationCategoryKey(key)]!;
-  final name = Localizations.localeOf(context).languageCode == 'ru' ? category.ru : category.en;
-  return '${category.emoji} $name';
+  return Localizations.localeOf(context).languageCode == 'ru' ? category.ru : category.en;
 }
+
+String conversationCategoryLabel(BuildContext context, String key) =>
+    '${conversationCategories[conversationCategoryKey(key)]!.emoji} ${conversationCategoryName(context, key)}';
 
 const allConversationCategories = '*';
 
 Future<String?> pickConversationCategory(BuildContext context, {required String? current, bool filter = false}) {
   final l = context.l10n;
+  var query = '';
   return showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => FractionallySizedBox(
-      heightFactor: .72,
-      child: Column(
-        children: [
-          ListTile(title: Text(filter ? l.categories : pairedSettingsLabel(context, 'recordingEditCategory'))),
-          Expanded(
-            child: ListView(
-              children: [
-                if (filter)
-                  ListTile(
-                    title: Text(pairedSettingsLabel(context, 'allConversationCategories')),
-                    trailing: current == null ? const Icon(Icons.check) : null,
-                    onTap: () => Navigator.of(context).pop(allConversationCategories),
-                  ),
-                for (final entry in conversationCategories.keys)
-                  ListTile(
-                    key: ValueKey('conversation-category-$entry'),
-                    title: Text(conversationCategoryLabel(context, entry)),
-                    trailing: current == entry ? const Icon(Icons.check) : null,
-                    onTap: () => Navigator.of(context).pop(entry),
-                  ),
-              ],
-            ),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: FractionallySizedBox(
+          heightFactor: .78,
+          child: Column(
+            children: [
+              ListTile(title: Text(filter ? l.categories : pairedSettingsLabel(context, 'recordingEditCategory'))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+                child: OmiSearchField(
+                  placeholder: l.search,
+                  onChanged: (value) => setState(() => query = value.trim().toLowerCase()),
+                ),
+              ),
+              if (filter)
+                ListTile(
+                  title: Text(pairedSettingsLabel(context, 'allConversationCategories')),
+                  selected: current == null,
+                  selectedColor: OmiColors.textPrimary,
+                  trailing: current == null ? const Icon(Icons.check) : null,
+                  onTap: () => Navigator.of(context).pop(allConversationCategories),
+                ),
+              Expanded(
+                child: ListView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  children: [
+                    for (final entry in conversationCategories.keys)
+                      if (conversationCategoryName(context, entry).toLowerCase().contains(query))
+                        ListTile(
+                          key: ValueKey('conversation-category-$entry'),
+                          title: Text(conversationCategoryLabel(context, entry)),
+                          selected: current == entry,
+                          selectedColor: OmiColors.textPrimary,
+                          trailing: current == entry ? const Icon(Icons.check) : null,
+                          onTap: () => Navigator.of(context).pop(entry),
+                        ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     ),
   );

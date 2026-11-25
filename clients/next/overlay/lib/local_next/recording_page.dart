@@ -573,12 +573,32 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(conversationCategoryLabel(context, loaded.row.structured.category)),
                       ),
-                    TabBar(
-                      controller: tabs,
-                      tabs: [
-                        Tab(text: l.summary),
-                        Tab(text: l.transcript),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: OmiColors.border)),
+                        ),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TabBar(
+                            controller: tabs,
+                            isScrollable: true,
+                            padding: EdgeInsets.zero,
+                            tabAlignment: TabAlignment.start,
+                            labelPadding: const EdgeInsetsDirectional.only(end: 22),
+                            labelStyle: OmiType.subhead.copyWith(fontWeight: FontWeight.w600),
+                            labelColor: OmiColors.textPrimary,
+                            unselectedLabelColor: OmiColors.textTertiary,
+                            indicator: UnderlineTabIndicator(borderSide: BorderSide(color: OmiColors.accent, width: 2)),
+                            indicatorSize: TabBarIndicatorSize.label,
+                            tabs: [
+                              Tab(text: l.summary),
+                              Tab(text: l.transcript),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                     if (canPlay) _playbackControls(),
                     if (_initialExcerptUnavailable)
