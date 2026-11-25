@@ -398,18 +398,7 @@ class _EventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    final reason = switch (event.reason) {
-      Cv1LinkReason.manual => l.manualDisconnect,
-      Cv1LinkReason.radio => l.bluetoothNeeded,
-      Cv1LinkReason.permission => pairedSettingsLabel(context, 'nextCv1ScanPermission'),
-      Cv1LinkReason.timeout => l.connectionTimeout,
-      Cv1LinkReason.incompatible => pairedSettingsLabel(context, 'nextLinkIncompatible'),
-      Cv1LinkReason.dropped => pairedSettingsLabel(context, 'nextLinkLost'),
-      Cv1LinkReason.remote => l.remoteDeviceTerminated,
-      Cv1LinkReason.connect => l.connectionFailed,
-      Cv1LinkReason.audio => pairedSettingsLabel(context, 'nextLinkAudioFailure'),
-      null => cv1PhaseLabel(context, event.phase),
-    };
+    final reason = _reasonLabel(context, event.phase, event.reason);
     final details = [
       DateFormat.MMMd(Localizations.localeOf(context).toLanguageTag()).format(event.at),
       _time(context, event.at),
@@ -589,7 +578,29 @@ class _History extends StatelessWidget {
   }
 }
 
+String _reasonLabel(BuildContext context, Cv1LinkPhase phase, Cv1LinkReason? reason) {
+  final l = context.l10n;
+  return switch (reason) {
+    Cv1LinkReason.manual => l.manualDisconnect,
+    Cv1LinkReason.radio => l.bluetoothNeeded,
+    Cv1LinkReason.permission => pairedSettingsLabel(context, 'nextCv1ScanPermission'),
+    Cv1LinkReason.timeout => l.connectionTimeout,
+    Cv1LinkReason.incompatible => pairedSettingsLabel(context, 'nextLinkIncompatible'),
+    Cv1LinkReason.dropped => pairedSettingsLabel(context, 'nextLinkLost'),
+    Cv1LinkReason.remote => l.remoteDeviceTerminated,
+    Cv1LinkReason.connect => l.connectionFailed,
+    Cv1LinkReason.audio => pairedSettingsLabel(context, 'nextLinkAudioFailure'),
+    null => cv1PhaseLabel(context, phase),
+  };
+}
+
 String cv1DeviceStatus(BuildContext context, Cv1Connection link) {
+  final state = link.linkState;
+  if (state != null && state.phase == Cv1LinkPhase.failed) {
+    final label = _reasonLabel(context, state.phase, state.reason);
+    final code = state.code;
+    return code == null || code == 0 ? label : '$label · BLE $code';
+  }
   final battery = link.diagnostics?.battery;
   return link.phase == Cv1LinkPhase.ready && battery != null ? '$battery%' : cv1PhaseLabel(context, link.phase);
 }

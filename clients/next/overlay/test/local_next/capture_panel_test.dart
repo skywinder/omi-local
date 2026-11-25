@@ -32,6 +32,8 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
 
   String? selected;
   bool rejectConnection = false;
+  bool delayedConnection = false;
+  int attempts = 0;
   List<Cv1DeviceFound> nearby = const [Cv1DeviceFound('fixture', 'Studio CV1')];
 
   @override
@@ -60,7 +62,12 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   Future<void> connect(String id) async {
     if (rejectConnection) throw StateError('private Bluetooth failure');
     selected = id;
-    ready();
+    attempts++;
+    if (delayedConnection) {
+      emit(Cv1TransportState(Cv1LinkPhase.connecting, generation));
+    } else {
+      ready();
+    }
   }
 
   void ready() => emit(Cv1TransportState(Cv1LinkPhase.ready, generation, codec: 20));
@@ -261,6 +268,46 @@ void main() {
       journal.dispose();
       boundary.dispose();
       await mic.audioSession.close();
+    }
+  });
+
+  testWidgets('pairing waits for native readiness, retries a timeout once and shows the BLE code', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire()..delayedConnection = true;
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Studio CV1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Studio CV1'), findsOneWidget);
+      void timeout() =>
+          wire.emit(Cv1TransportState(Cv1LinkPhase.failed, ++wire.generation, reason: Cv1LinkReason.timeout, code: 8));
+      timeout();
+      await tester.pump(const Duration(seconds: 2));
+      expect(wire.attempts, 2);
+      timeout();
+      await tester.pump(const Duration(seconds: 3));
+      expect(wire.attempts, 2);
+      expect(find.textContaining('BLE 8. Keep the CV1 close'), findsOneWidget);
+      await tester.tap(find.text('Studio CV1'));
+      await tester.pump();
+      wire.ready();
+      await tester.pumpAndSettle();
+      expect(find.text('Studio CV1'), findsNothing);
+      expect(find.text('CV1 · Connected'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
     }
   });
 

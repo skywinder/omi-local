@@ -612,10 +612,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                 ? pairedSettingsLabel(context, 'nextConnectOmi')
                 : [
                     'CV1',
-                    if (link.diagnostics?.battery case final battery? when link.phase == Cv1LinkPhase.ready)
-                      '$battery%'
-                    else
-                      cv1PhaseLabel(context, link.phase),
+                    cv1DeviceStatus(context, link),
                     if (cv1.intent == Cv1CaptureIntent.muted)
                       l.muted
                     else if (cv1.active && cv1.linked)
@@ -810,72 +807,104 @@ String _shortCv1Id(String id) {
 
 Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) async {
   final connection = inputs.connection;
-  if (connection.phase == Cv1LinkPhase.idle || connection.phase == Cv1LinkPhase.failed) unawaited(connection.scan());
-  await showModalBottomSheet<void>(
-    context: context,
-    builder: (context) => SafeArea(
-      child: ListenableBuilder(
-        listenable: connection,
-        builder: (context, _) {
-          final l = context.l10n;
-          final selected = connection.phase == Cv1LinkPhase.ready || connection.phase == Cv1LinkPhase.reconnecting;
-          final linkedId = connection.linkedDeviceId;
-          final scanned = [for (final device in connection.devices) (device: device, shortId: _shortCv1Id(device.id))];
-          final shortIdCounts = <String, int>{};
-          for (final entry in scanned) {
-            shortIdCounts.update(entry.shortId, (count) => count + 1, ifAbsent: () => 1);
-          }
-          return ListView(
-            shrinkWrap: true,
-            children: [
-              if (selected)
-                ListTile(
-                  leading: cv1DeviceIcon(connection),
-                  title: Text('Omi CV1 · ${cv1DeviceStatus(context, connection)}'),
-                  subtitle: linkedId == null ? null : Text('${l.deviceId} · ${_shortCv1Id(linkedId)}'),
-                  trailing: TextButton(
-                    onPressed: () async {
-                      if (inputs._closed) return;
-                      await inputs.cv1.stop();
-                      if (inputs._closed) return;
-                      await connection.disconnect();
-                      if (context.mounted && !connection.operationFailed) Navigator.pop(context);
-                    },
-                    child: Text(l.forgetDevice),
-                  ),
-                )
-              else ...[
-                ListTile(
-                  leading: const Icon(Icons.bluetooth_searching),
-                  title: Text(l.connectDevice),
-                  subtitle: connection.phase == Cv1LinkPhase.scanning ? Text(l.searchingForDevices) : null,
-                  trailing: TextButton(onPressed: inputs._closed ? null : connection.scan, child: Text(l.scanAgain)),
-                ),
-                for (final (device: device, shortId: shortId) in scanned)
+  if (connection.phase == Cv1LinkPhase.idle) unawaited(connection.scan());
+  BuildContext? picker;
+  var pairing = false;
+  void closeWhenReady() {
+    final sheet = picker;
+    if (!pairing || connection.phase != Cv1LinkPhase.ready || sheet == null || !sheet.mounted) return;
+    pairing = false;
+    if (ModalRoute.isCurrentOf(sheet) == true) Navigator.pop(sheet);
+  }
+
+  connection.addListener(closeWhenReady);
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListenableBuilder(
+          listenable: connection,
+          builder: (context, _) {
+            final l = context.l10n;
+            picker = context;
+            final connecting = connection.phase == Cv1LinkPhase.connecting;
+            final selected = connection.phase == Cv1LinkPhase.ready || connection.phase == Cv1LinkPhase.reconnecting;
+            final linkedId = connection.linkedDeviceId;
+            final scanned = [
+              for (final device in connection.devices) (device: device, shortId: _shortCv1Id(device.id)),
+            ];
+            final shortIdCounts = <String, int>{};
+            for (final entry in scanned) {
+              shortIdCounts.update(entry.shortId, (count) => count + 1, ifAbsent: () => 1);
+            }
+            return ListView(
+              shrinkWrap: true,
+              children: [
+                if (selected)
                   ListTile(
-                    title: Text(device.name.trim().isEmpty ? 'Omi CV1' : device.name),
-                    subtitle: Text('${l.deviceId} · ${shortIdCounts[shortId] == 1 ? shortId : device.id}'),
-                    leading: const Icon(Icons.bluetooth),
-                    onTap: () async {
-                      if (inputs._closed) return;
-                      await connection.connect(device.id);
-                      if (context.mounted && !connection.operationFailed) Navigator.pop(context);
-                    },
+                    leading: cv1DeviceIcon(connection),
+                    title: Text('Omi CV1 · ${cv1DeviceStatus(context, connection)}'),
+                    subtitle: linkedId == null ? null : Text('${l.deviceId} · ${_shortCv1Id(linkedId)}'),
+                    trailing: TextButton(
+                      onPressed: () async {
+                        if (inputs._closed) return;
+                        await inputs.cv1.stop();
+                        if (inputs._closed) return;
+                        await connection.disconnect();
+                        if (context.mounted && !connection.operationFailed) Navigator.pop(context);
+                      },
+                      child: Text(l.forgetDevice),
+                    ),
+                  )
+                else ...[
+                  ListTile(
+                    leading: const Icon(Icons.bluetooth_searching),
+                    title: Text(connecting ? l.deviceConnecting : l.connectDevice),
+                    subtitle: connection.phase == Cv1LinkPhase.scanning ? Text(l.searchingForDevices) : null,
+                    trailing: TextButton(
+                      onPressed: inputs._closed || connecting ? null : connection.scan,
+                      child: Text(l.scanAgain),
+                    ),
                   ),
+                  for (final (device: device, shortId: shortId) in scanned)
+                    ListTile(
+                      title: Text(device.name.trim().isEmpty ? 'Omi CV1' : device.name),
+                      subtitle: Text('${l.deviceId} · ${shortIdCounts[shortId] == 1 ? shortId : device.id}'),
+                      leading: const Icon(Icons.bluetooth),
+                      onTap: connecting
+                          ? null
+                          : () {
+                              if (inputs._closed) return;
+                              pairing = true;
+                              unawaited(connection.connect(device.id));
+                            },
+                    ),
+                ],
+                if (connection.permissionDenied)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(pairedSettingsLabel(context, 'nextCv1ScanPermission')),
+                  )
+                else if (connection.operationFailed || connection.phase == Cv1LinkPhase.failed)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      connection.linkState?.reason == Cv1LinkReason.timeout && connection.phase == Cv1LinkPhase.failed
+                          ? '${cv1DeviceStatus(context, connection)}. ${pairedSettingsLabel(context, 'nextCv1TimeoutHelp')}'
+                          : connection.phase == Cv1LinkPhase.failed
+                          ? cv1DeviceStatus(context, connection)
+                          : l.connectionFailed,
+                    ),
+                  ),
+                if (connection.phase == Cv1LinkPhase.unavailable)
+                  Padding(padding: const EdgeInsets.all(16), child: Text(l.bluetoothNeeded)),
               ],
-              if (connection.permissionDenied)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(pairedSettingsLabel(context, 'nextCv1ScanPermission')),
-                )
-              else if (connection.operationFailed || connection.phase == Cv1LinkPhase.failed)
-                Padding(padding: const EdgeInsets.all(16), child: Text(l.connectionFailed)),
-              if (connection.phase == Cv1LinkPhase.unavailable)
-                Padding(padding: const EdgeInsets.all(16), child: Text(l.bluetoothNeeded)),
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
+  } finally {
+    connection.removeListener(closeWhenReady);
+  }
 }

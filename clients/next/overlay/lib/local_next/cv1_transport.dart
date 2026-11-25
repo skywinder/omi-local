@@ -251,6 +251,9 @@ class Cv1Connection extends ChangeNotifier {
   bool operationFailed = false;
   bool permissionDenied = false;
   bool audioFailed = false;
+  Cv1TransportState? linkState;
+  String? _firstPairAttempt;
+  Timer? _pairRetry;
   int? codec;
   Cv1Diagnostics? diagnostics;
   DateTime? connectedAt;
@@ -279,11 +282,14 @@ class Cv1Connection extends ChangeNotifier {
   List<Cv1DeviceFound> get devices => List.unmodifiable(_devices.values);
 
   Future<void> scan() => _command(() {
+    _cancelPairRetry();
     _devices.clear();
     return _transport.scan();
   });
 
   Future<void> connect(String id) => _command(() {
+    _cancelPairRetry();
+    _firstPairAttempt = id;
     if (_selected != id) {
       _selected = id;
       _wasConnected = false;
@@ -343,7 +349,16 @@ class Cv1Connection extends ChangeNotifier {
     if (next == Cv1LinkPhase.ready || reason == Cv1LinkReason.manual) _lostAt = null;
   }
 
-  Future<void> disconnect() => _command(_transport.disconnect);
+  void _cancelPairRetry() {
+    _firstPairAttempt = null;
+    _pairRetry?.cancel();
+    _pairRetry = null;
+  }
+
+  Future<void> disconnect() {
+    _cancelPairRetry();
+    return _command(_transport.disconnect);
+  }
 
   Future<void> _command(Future<void> Function() command) async {
     if (_closing) return;
@@ -375,6 +390,21 @@ class Cv1Connection extends ChangeNotifier {
         notifyListeners();
       case Cv1TransportState():
         if (event.generation < _generation) return;
+        linkState = event;
+        final pairingTarget = _firstPairAttempt;
+        if (event.phase == Cv1LinkPhase.failed && event.reason == Cv1LinkReason.timeout && pairingTarget != null) {
+          _firstPairAttempt = null;
+          _pairRetry = Timer(const Duration(seconds: 2), () {
+            if (!_closing && phase == Cv1LinkPhase.failed && _generation == event.generation) {
+              unawaited(_command(() => _transport.connect(pairingTarget)));
+            }
+          });
+        } else if (event.phase == Cv1LinkPhase.ready ||
+            event.phase == Cv1LinkPhase.reconnecting ||
+            event.phase == Cv1LinkPhase.unavailable ||
+            event.phase == Cv1LinkPhase.failed) {
+          _cancelPairRetry();
+        }
         final wasReady = phase == Cv1LinkPhase.ready && event.generation == _generation;
         if (phase != event.phase || event.reason != null || (phase == Cv1LinkPhase.ready && !wasReady)) {
           _recordEvent(event.phase, reason: event.reason, code: event.code);
@@ -488,6 +518,7 @@ class Cv1Connection extends ChangeNotifier {
 
   Future<void> _shutdown() async {
     _closing = true;
+    _cancelPairRetry();
     _capture.removeListener(_demandChanged);
     try {
       await _subscription.cancel();
