@@ -368,7 +368,11 @@ class NextLivePreview extends ChangeNotifier {
       if (event['provider'] == 'local_live_preview') {
         if (status == 'stt_failed') {
           final why = event['reason'];
-          _lost(epoch, terminal: true, reason: why == 'busy' || why == 'disabled' ? why as String : 'unavailable');
+          _lost(
+            epoch,
+            terminal: true,
+            reason: const {'busy', 'disabled', 'session_limit'}.contains(why) ? why as String : 'unavailable',
+          );
         } else if (status == 'ready') {
           _ready();
           notifyListeners();

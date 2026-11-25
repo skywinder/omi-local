@@ -334,6 +334,9 @@ class LocalLivePreview:
                 relay = os.getenv('OMI_LOCAL_LIVE_PROVIDER_RELAY') == '1'
                 handshake_timeout = 12 if relay else 3
                 config = json.loads(await asyncio.wait_for(socket.recv(), handshake_timeout))
+                if isinstance(config, dict) and config.get('type') == 'error' and config.get('error') == 'live session busy':
+                    self._fail('capacity_full', status_reason='session_limit')
+                    return
                 if config.get('type') != 'config' or config.get('useAudioWorklet') is not True:
                     raise RuntimeError('local_preview_pcm_contract')
                 if config.get('enabled') is False:
@@ -373,7 +376,9 @@ class LocalLivePreview:
                 'live_preview_recovering': 'recovering',
                 'live_preview_unavailable': 'unavailable',
             }.get(error.rcvd.reason, 'unavailable') if code == 1013 else 'unavailable'
-            self._fail('capacity_full' if status_reason == 'busy' else 'other', status_reason=status_reason)
+            if code == 4409:
+                status_reason = 'session_limit'
+            self._fail('capacity_full' if status_reason in {'busy', 'session_limit'} else 'other', status_reason=status_reason)
         except (ValueError, TypeError, RuntimeError):
             self._fail('other', status_reason='protocol_error')
         except Exception:

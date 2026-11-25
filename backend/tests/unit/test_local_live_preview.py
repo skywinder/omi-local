@@ -357,6 +357,7 @@ async def test_diarization_degradation_retracts_labels_and_keeps_preview_alive(m
 @pytest.mark.parametrize('mode,reason', [
     ('invalid', 'invalid_configuration'),
     ('refused', 'unavailable'), ('busy', 'busy'), ('protocol', 'protocol_error'),
+    ('session-limit-close', 'session_limit'), ('session-limit-frame', 'session_limit'),
 ])
 async def test_unavailable_preview_reports_fixed_status_without_stopping_capture(monkeypatch, mode, reason):
     from websockets.exceptions import ConnectionClosedError
@@ -370,6 +371,10 @@ async def test_unavailable_preview_reports_fixed_status_without_stopping_capture
         async def recv(self):
             if mode == 'busy':
                 raise ConnectionClosedError(Close(1013, 'live_preview_busy'), None)
+            if mode == 'session-limit-close':
+                raise ConnectionClosedError(Close(4409, 'private close detail'), None)
+            if mode == 'session-limit-frame':
+                return json.dumps({'type': 'error', 'error': 'live session busy'})
             return 'invalid protocol with private content'
 
     def connect(*args, **kwargs):

@@ -144,6 +144,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
       final preview = widget.preview;
       final muted = widget.isMuted?.call() == true;
       final status = _liveStatus(context, preview, recording: true, muted: muted);
+      final atSessionLimit = !muted && preview.reason == 'session_limit';
       final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
           ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
           : '';
@@ -158,8 +159,14 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
           child: ListTile(
             key: const ValueKey('next-live-strip'),
             leading: const Icon(Icons.subtitles_outlined),
-            title: Text('${l.liveTranscript} · $status', maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: line.isEmpty ? null : Text(line, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(
+              atSessionLimit ? l.liveTranscript : '${l.liveTranscript} · $status',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: atSessionLimit
+                ? Text(status)
+                : (line.isEmpty ? null : Text(line, maxLines: 1, overflow: TextOverflow.ellipsis)),
             trailing: const Icon(Icons.chevron_right),
             onTap: _open,
           ),
@@ -177,6 +184,10 @@ String _liveStatus(BuildContext context, NextLivePreview preview, {required bool
     NextPreviewPhase.connecting => preview.lines.isEmpty ? l.livePreviewStarting : l.reconnecting,
     NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
     NextPreviewPhase.unavailable when preview.reason == 'disabled' => l.off,
+    NextPreviewPhase.unavailable when preview.reason == 'session_limit' && recording => pairedSettingsLabel(
+      context,
+      'liveSessionLimit',
+    ),
     NextPreviewPhase.unavailable => recording ? l.transcriptionUnavailableRecordingContinues : l.statusFailed,
   };
 }
@@ -262,7 +273,9 @@ class _LivePageState extends State<_LivePage> {
                 ListTile(
                   leading: const Icon(Icons.dns_outlined),
                   title: Text(view.serverLabel),
-                  subtitle: Text(view.inputNotice?.call(context) ?? status),
+                  subtitle: Text(
+                    preview.reason == 'session_limit' ? status : (view.inputNotice?.call(context) ?? status),
+                  ),
                 ),
                 if (preview.speakerStatus case final reporting?)
                   Padding(

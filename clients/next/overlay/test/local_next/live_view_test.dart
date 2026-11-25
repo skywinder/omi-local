@@ -83,6 +83,52 @@ class _TuningPair extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final socket = _Socket();
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final recording = ValueNotifier(true);
+    final library = _TuningPair();
+    addTearDown(preview.dispose);
+    addTearDown(recording.dispose);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: recording,
+            isRecording: () => recording.value,
+            serverLabel: 'fixture.local',
+            library: library,
+            onStop: () async {
+              recording.value = false;
+            },
+          ),
+        ),
+      ),
+    );
+    preview.begin('fixture', 'phone', 'pcm16');
+    await tester.pump();
+    socket.send({
+      'type': 'service_status',
+      'provider': 'local_live_preview',
+      'status': 'stt_failed',
+      'reason': 'session_limit',
+    });
+    await tester.pump();
+    const warning = 'All live transcription slots are in use. Audio is still recording.';
+    expect(find.text(warning), findsOneWidget);
+    expect(recording.value, isTrue);
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+    await tester.pumpAndSettle();
+    expect(find.text(warning), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+  });
+
   testWidgets('saving a speaker limit requires confirmation and leaves the current stream status intact', (
     tester,
   ) async {
