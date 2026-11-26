@@ -54,21 +54,6 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
     if (!await _requestPermission()) throw PhoneCaptureDenied();
     final recorder = _recorder = _makeRecorder();
     await recorder.openRecorder();
-    if (_isIOS) {
-      // Flutter Sound otherwise selects playAndRecord without speaker routing,
-      // leaving later playback on the receiver after phone capture ends.
-      await _configureSession(
-        AudioSessionConfiguration(
-          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
-          avAudioSessionMode: AVAudioSessionMode.defaultMode,
-          avAudioSessionCategoryOptions:
-              AVAudioSessionCategoryOptions.mixWithOthers |
-              AVAudioSessionCategoryOptions.allowBluetooth |
-              AVAudioSessionCategoryOptions.allowBluetoothA2dp |
-              AVAudioSessionCategoryOptions.defaultToSpeaker,
-        ),
-      );
-    }
     final samples = _samples = StreamController<Uint8List>(sync: true);
     samples.stream.listen(onSamples, onError: (Object _) => onFailure());
     await recorder.startRecorder(
@@ -87,7 +72,16 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
     _recorder = null;
     _samples = null;
     try {
-      if (recorder != null) await recorder.closeRecorder();
+      if (recorder != null) {
+        await recorder.closeRecorder();
+        if (_isIOS) {
+          // Flutter Sound leaves its recording category active after close.
+          // The playback category lets iOS choose the speaker or connected output.
+          await _configureSession(
+            const AudioSessionConfiguration(avAudioSessionCategory: AVAudioSessionCategory.playback),
+          );
+        }
+      }
     } finally {
       await samples?.close();
     }
