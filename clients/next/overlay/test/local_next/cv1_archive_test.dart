@@ -162,7 +162,7 @@ void main() {
     expect(journal.pendingParts, 0);
     expect(accepted, isEmpty);
     final documents = Directory('${dir.path}/documents');
-    final owner = LocalAudioJournal.serverIdentity('bastion', 'mock');
+    final owner = LocalAudioJournal.serverIdentity('test-server', 'mock');
     final queue = await Directory('${documents.path}/outbox/$owner').create(recursive: true);
     await archive.staged.single.copy('${queue.path}/raw.cv1');
     expect(await PairedLibrary.retainedAudioFor(owner, documents: documents), isTrue);

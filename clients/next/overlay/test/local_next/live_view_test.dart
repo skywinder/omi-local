@@ -118,7 +118,7 @@ void main() {
             capture: capture,
             isRecording: () => false,
             onStop: () async {},
-            serverLabel: 'Bastion',
+            serverLabel: 'Test Server',
             library: library,
           ),
         ),
@@ -126,12 +126,12 @@ void main() {
     );
     await tester.tap(find.text('Live Transcript'));
     await tester.pumpAndSettle();
-    expect(find.text('Bastion · Connected'), findsOneWidget);
+    expect(find.text('Test Server · Connected'), findsOneWidget);
     expect(find.text('No active recording'), findsOneWidget);
     expect(find.text('Off'), findsNothing);
     library.connection.value = NextServerConnection.unreachable;
     await tester.pump();
-    expect(find.text('Bastion · Unreachable'), findsOneWidget);
+    expect(find.text('Test Server · Unreachable'), findsOneWidget);
     expect(find.text('No active recording'), findsOneWidget);
   });
 

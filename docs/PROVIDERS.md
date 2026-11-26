@@ -187,7 +187,7 @@ used for the request.
 
 The default for an unmarked profile with a saved model is `profile`.
 Set `OMI_SUMMARY_MODEL_DEFAULT=provider` to retain automatic behavior on an
-existing host such as Bastion. Use `.env.docker` with the Docker launcher.
+existing host. Use `.env.docker` with the Docker launcher.
 This setting preserves the registry on disk. A profile created with an explicit
 mode keeps that mode when the host default changes.
 

@@ -133,13 +133,13 @@ starts a new archive entry.
    immediately after Bluetooth loss. Software tests alone cannot establish that
    every phrase is recovered.
 
-Android has physical CV1-to-Bastion evidence for the legacy manual transfer, including
+Android has physical CV1-to-server evidence for the legacy manual transfer, including
 an offline phone. On Pixel with firmware 3.0.21, stopping a series saved 5.18 s.
 The next series began at the first unsaved record and delivered 35.28 s.
-Bastion confirmed both parts (259 and 1,764 Opus frames, zero decoding errors). With Wi-Fi and mobile data disabled, the Pixel retained a separate 34.24 s series while the paired server had no copy. After reconnect, its server receipt matched the phone file SHA-256, the phone released the part, and the WAV decoded all 1,712 frames with the original capture date. On iOS, device acceptance still needs a disposable legacy window.
+The paired server confirmed both parts (259 and 1,764 Opus frames, zero decoding errors). With Wi-Fi and mobile data disabled, the Pixel retained a separate 34.24 s series while the paired server had no copy. After reconnect, its server receipt matched the phone file SHA-256, the phone released the part, and the WAV decoded all 1,712 frames with the original capture date. On iOS, device acceptance still needs a disposable legacy window.
 In a subsequent Pixel test, disabling Bluetooth mid-series preserved 3.14 s.
 After reconnect, a new manual import started at the first unsaved record and
-delivered 38.10 s. Bastion decoded both without errors. This test establishes
+delivered 38.10 s. The paired server decoded both without errors. This test establishes
 continuity across that interruption. Firmware 3.0.21 can release records before
 the phone saves them, so other interruption timings can still leave a gap.
 Both platforms require separate work for receiver-acknowledged bulk recovery.
