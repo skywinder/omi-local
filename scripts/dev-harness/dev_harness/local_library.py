@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import urllib.request
+import uuid
 import wave
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -236,6 +237,7 @@ class Library:
                     state = job.get('state', 'unavailable')
                     state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
                     segments, summary, processing = [], None, {}
+                    summary_recording = None
                     if digest in results:
                         try:
                             raw_path, progress_path, _stamp = results[digest]
@@ -278,13 +280,18 @@ class Library:
                                     and isinstance(structured.get('title'), str) and len(structured['title']) <= 500
                                     and isinstance(structured.get('overview'), str) and len(structured['overview']) <= 20000):
                                 summary = {key: structured[key] for key in ('title', 'overview')}
+                            if (raw_path and raw_path.name == 'audio.json' and segments
+                                    and re.fullmatch(r'[a-f0-9]{64}', raw_path.parent.name)
+                                    and safe_file(raw_path.parent / 'import.json', self.transcripts)
+                                    and read_json(raw_path.parent / 'import.json').get('import') == 'passed'):
+                                summary_recording = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + raw_path.parent.name))
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
                                       **recording_origin_labels(meta),
                                       'duration': duration, 'status': state, 'segments': segments,
                                       'attempts': job.get('attempts', 0),
-                                      'summary': summary, 'processing': processing,
+                                      'summary': summary, 'processing': processing, 'summary_recording': summary_recording,
                                       'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):
                     continue
@@ -295,7 +302,9 @@ class Library:
 
     @staticmethod
     def public(record, *, detail):
-        result = {k: v for k, v in record.items() if k not in {'audio', 'segments'}}
+        result = {k: v for k, v in record.items() if k not in {'audio', 'segments', 'summary_recording'}}
+        if record.get('summary_recording'):
+            result['summary_editable'] = True
         result['preview'] = record['segments'][0]['text'][:180] if record['segments'] else ''
         if detail:
             result['segments'] = record['segments']
@@ -327,10 +336,10 @@ def byte_range(value, size):
     return start, end
 
 
-def handler(library, assets, delete=None, runtime=None, settings=None, access=None):
+def handler(library, assets, delete=None, runtime=None, settings=None, access=None, summary_jobs=None):
     access = access or Access()
     from .local_provider_api import Processing
-    processing = Processing(settings.cfg) if settings is not None else None
+    processing = Processing(settings.cfg, summary_jobs) if settings is not None else None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -418,6 +427,8 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Не удалось применить настройки. Проверьте готовность сервера.'}, 503)
 
         def do_POST(self):
+            if match := re.fullmatch(r'/api/recordings/([A-Za-z0-9_-]+)/summary', self.path):
+                return self.web_summary(match[1], write=True)
             if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='open-folder'):
@@ -432,6 +443,30 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json({'error': 'Ответ задерживается. Проверьте Finder.'}, 504)
             except (OSError, subprocess.CalledProcessError):
                 self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
+
+        def web_summary(self, token, *, write=False):
+            from .local_providers import SettingsError
+            if write and not self.allowed(request='summary'):
+                return self.reject('Доступ к итогам требует сопряжённой библиотеки.')
+            try:
+                identity = library.get(token).get('summary_recording')
+                if summary_jobs is None or not identity:
+                    raise SettingsError('Итоги записи недоступны.', status=404)
+                body = None
+                if write:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if (not 0 < length <= 64 * 1024 or self.headers.get('Transfer-Encoding')
+                            or self.headers.get_content_type() != 'application/json'):
+                        raise SettingsError('Некорректный запрос итогов.')
+                    self.connection.settimeout(15)
+                    body = json.loads(self.rfile.read(length))
+                    if not isinstance(body, dict):
+                        raise SettingsError('Некорректный запрос итогов.')
+                self.send_json(summary_jobs.web(identity, body))
+            except SettingsError as error:
+                self.send_json({'error': 'Итоги недоступны. Обновите запись или настройки.'}, error.status)
+            except (OSError, ValueError, KeyError, TypeError):
+                self.send_json({'error': 'Итоги недоступны. Проверьте запись и повторите.'}, 400 if write else 404)
 
         def do_DELETE(self):
             if self.path.startswith(('/api/settings/', '/api/processing/')):
@@ -530,6 +565,8 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                     self.send_json(processing.recording_chat_provider())
                 except (SettingsError, ValueError, KeyError):
                     self.send_json({'error': 'Recording chat provider is unavailable.'}, 503)
+            elif match := re.fullmatch(r'/api/recordings/([A-Za-z0-9_-]+)/summary', path):
+                self.web_summary(match[1])
             elif re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+(?:/audio)?', path):
                 parts = path.split('/')
                 record = library.get(parts[3])
@@ -600,6 +637,7 @@ def main():
     from .local_library_delete import delete_recording
     from .local_library_runtime import Runtime
     from .local_provider_api import Settings
+    from .local_summary_queue import SummaryJobs
 
     if sys.argv[1:] == ['hash-password']:
         import getpass
@@ -610,9 +648,11 @@ def main():
         return
     cfg = config.load_config(Path.cwd(), create_layout=False)
     safety.read_and_validate_sentinel(cfg.layout.state_root, repo_root=cfg.repo_root, instance=cfg.instance)
+    settings = Settings(cfg)
+    summaries = SummaryJobs(cfg, settings.registry)
     server = ThreadingHTTPServer(('127.0.0.1', port(cfg)), handler(
         Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio),
-        Runtime(cfg), Settings(cfg), access=Access.from_env()))
+        Runtime(cfg), settings, access=Access.from_env(), summary_jobs=summaries))
     server.daemon_threads = True
     try:
         server.serve_forever()
@@ -620,6 +660,7 @@ def main():
         pass
     finally:
         server.server_close()
+        summaries.close()
 
 
 if __name__ == '__main__':

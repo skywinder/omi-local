@@ -58,6 +58,15 @@ request ID before publication. Provider responses with only an overview
 remain readable. Source links use the local archive. Decisions and next
 steps appear in the summary, ready for review before any task is created.
 
+Servers advertising `local_summary_jobs_version: 1` expose the same durable
+queue in the library and paired app. The `summary-jobs` route accepts an
+idempotent request and returns status by request ID. Keep provider consent
+bound to the exact selected snapshot and template. The library saves unfinished
+work privately and reuses completed chunks or a saved candidate after restart.
+The worker can load verified file-backed transcripts and accepts up to two
+million formatted characters. It rechecks the source at publication. The old
+`regenerate-summary` endpoint retains its synchronous response for older apps.
+
 ## Paired task reminders
 
 The paired profile advertises `local_task_reminders_version: 1`. The existing task

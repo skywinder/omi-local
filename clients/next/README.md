@@ -238,10 +238,13 @@ meantime, refresh before editing the shared catalog again. The editor works
 with Omi Local servers that implement the same summary settings route.
 
 In an open recording use **Regenerate Recap** to select a prepared model,
-template and an optional prompt edit. Next sends the saved transcript after
-you confirm the destination. The current recap stays available until the
+template and an optional prompt edit. The server uses the saved transcript
+after you confirm the destination. The current recap stays available until the
 replacement is published. A concurrent transcript or recap edit requires a
-refresh. Very large or preview-only transcripts are outside this request.
+refresh. On servers that support background summary jobs, the same queue
+handles requests from Next and the web library. You can close and reopen the
+summary screen while the server works. The queue can load verified full
+transcripts when the archive initially displays a preview.
 
 ## Daily recaps
 

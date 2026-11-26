@@ -79,9 +79,10 @@ def is_offline_http_route_allowed(method: str, path: str) -> bool:
     ):
         return True
     if method.upper() in {'GET', 'POST'} and (
-        path == '/v1/local/conversations/{conversation_id}/regenerate-summary'
+        path in {'/v1/local/conversations/{conversation_id}/regenerate-summary',
+                 '/v1/local/conversations/{conversation_id}/summary-jobs'}
         or re.fullmatch(
-            r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/regenerate-summary', path,
+            r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/(?:regenerate-summary|summary-jobs)', path,
         )
     ):
         return True

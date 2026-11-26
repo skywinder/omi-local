@@ -20,6 +20,7 @@ scripts/dev-harness/tests/test_local_live_tuning.py
 scripts/dev-harness/tests/test_local_providers.py
 scripts/dev-harness/tests/test_local_setup.py
 scripts/dev-harness/tests/test_local_stt.py
+scripts/dev-harness/tests/test_local_summary_jobs.py
 scripts/dev-harness/tests/test_local_stt_watch.py
 scripts/dev-harness/tests/test_local_transcription.py
 scripts/dev-harness/tests/test_local_transport.py

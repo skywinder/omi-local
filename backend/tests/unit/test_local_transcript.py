@@ -360,15 +360,17 @@ def test_pending_projection_obeys_filters_and_merged_page_offsets():
     assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
 
 
-def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path):
+def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path, monkeypatch):
     import json
+    from database import local_summary
     from utils.local_transcript import grouped_import_document, hydrate_grouped_transcript
 
     data = manifest()
     data.update(conversation_group={'start_sample': 0, 'end_sample': 192000},
                 duration_seconds=12000)
-    folder = tmp_path / data['result_key']
-    folder.mkdir()
+    root = tmp_path / 'services/local-transcripts'
+    folder = root / data['result_key']
+    folder.mkdir(parents=True)
     transcript = {'segments': [{'text': 'Синтетическая реплика ' * 15 + str(i), 'start': i, 'end': i + 1}
                                 for i in range(1500)]}
     raw_path = folder / 'audio.json'
@@ -381,12 +383,18 @@ def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_tran
     assert card['external_data']['local_transcript']['segment_preview'] is True
     card['starred'] = True
     card['structured']['overview'] = 'Updated summary'
-    full = hydrate_grouped_transcript(card, tmp_path)
+    full = hydrate_grouped_transcript(card, root)
     assert full['starred'] and full['structured']['overview'] == 'Updated summary'
     assert not full['external_data']['local_transcript']['segment_preview']
     assert [s['text'] for s in full['transcript_segments']] == [s['text'] for s in transcript['segments']]
     assert full['transcript_segments'][-1]['id'] == conversation.transcript_segments[-1].id
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    source = local_summary.source(card, 'fixture-owner', background=True)
+    assert len(source.transcript) > 120_000
+    assert source.segment_ids[-1] == (conversation.transcript_segments[-1].id,)
     raw_path.write_text('{"segments": []}')
     with pytest.raises(ValueError, match='changed'):
-        hydrate_grouped_transcript(card, tmp_path)
+        hydrate_grouped_transcript(card, root)
+    with pytest.raises(local_summary.SummaryUnavailable):
+        local_summary.source(card, 'fixture-owner', background=True)
     assert len(grouped_import_document(conversation, manifest(), raw_path)['transcript_segments']) == 1500

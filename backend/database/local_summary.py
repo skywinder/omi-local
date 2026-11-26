@@ -3,14 +3,19 @@
 import hashlib
 import json
 import math
+import os
 from collections import Counter
+from pathlib import Path
 from typing import NamedTuple
 
 from google.cloud import firestore
 
 from database import conversations
 from database._client import db, run_transactional
-from utils.local_transcript import summary_labels, summary_note_fields
+from utils.local_transcript import hydrate_grouped_transcript, summary_labels, summary_note_fields
+
+SUMMARY_SHORT_LIMIT = 120_000
+SUMMARY_BACKGROUND_LIMIT = 2_000_000
 
 
 class SummaryUnavailable(ValueError):
@@ -31,6 +36,10 @@ class SummarySource(NamedTuple):
     segment_ids: list[tuple[str, ...]]
 
 
+def owner_scope(uid):
+    return hashlib.sha256(uid.encode()).hexdigest()
+
+
 def _ref(uid, conversation_id):
     return db.collection('users').document(uid).collection(conversations.conversations_collection).document(
         conversation_id,
@@ -38,16 +47,24 @@ def _ref(uid, conversation_id):
 
 
 def _check(raw):
-    if (not raw or raw.get('is_locked') or raw.get('local_chat_deleting')
+    if (not raw or conversations.is_soft_deleted(raw) or raw.get('is_locked') or raw.get('local_chat_deleting')
             or raw.get('status') not in {None, 'completed'}):
         raise SummaryUnavailable()
 
 
-def _transcript(raw, uid):
+def _transcript(raw, uid, *, background=False):
     external = raw.get('external_data') or {}
-    if (external.get('local_transcript') or {}).get('segment_preview'):
-        raise SummaryTooLarge()
     row = conversations._prepare_conversation_for_read(raw, uid)
+    if (external.get('local_transcript') or {}).get('segment_preview'):
+        if not background:
+            raise SummaryTooLarge()
+        try:
+            root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services/local-transcripts'
+            row = hydrate_grouped_transcript(row, root)
+        except (ValueError, OSError, KeyError, TypeError):
+            raise SummaryUnavailable() from None
+        if (row['external_data']['local_transcript']).get('segment_preview'):
+            raise SummaryUnavailable()
     segments = row.get('transcript_segments')
     if not isinstance(segments, list):
         return '', []
@@ -67,7 +84,7 @@ def _transcript(raw, uid):
         content = (prefix + ' '.join(text.splitlines())).replace('[src:', '[source:')
         line = f'[src:{len(lines) + 1}] ' + time + content
         length += len(line) + 1
-        if length > 120_000:
+        if length > (SUMMARY_BACKGROUND_LIMIT if background else SUMMARY_SHORT_LIMIT):
             raise SummaryTooLarge()
         lines.append(line)
         identifier = segment.get('id')
@@ -92,8 +109,8 @@ def recording(uid, conversation_id):
     return raw
 
 
-def source(raw, uid) -> SummarySource:
-    transcript, segment_ids = _transcript(raw, uid)
+def source(raw, uid, *, background=False) -> SummarySource:
+    transcript, segment_ids = _transcript(raw, uid, background=background)
     return SummarySource(transcript, _revision(raw, transcript, segment_ids), segment_ids)
 
 
@@ -107,14 +124,14 @@ def replay(raw, request_id, fingerprint):
 
 
 @firestore.transactional
-def _publish(transaction, uid, conversation_id, revision, candidate, publication):
+def _publish(transaction, uid, conversation_id, revision, candidate, publication, background=False):
     ref = _ref(uid, conversation_id)
     raw = ref.get(transaction=transaction, timeout=6).to_dict()
     _check(raw)
     previous = replay(raw, publication['request_id'], publication['fingerprint'])
     if previous is not None:
         return previous
-    snapshot = source(raw, uid)
+    snapshot = source(raw, uid, background=background)
     if snapshot.revision != revision:
         raise SummaryChanged()
     structured = raw.get('structured')
@@ -135,5 +152,5 @@ def _publish(transaction, uid, conversation_id, revision, candidate, publication
     return publication
 
 
-def publish(uid, conversation_id, revision, candidate, publication):
-    return run_transactional(db, _publish, uid, conversation_id, revision, candidate, publication)
+def publish(uid, conversation_id, revision, candidate, publication, *, background=False):
+    return run_transactional(db, _publish, uid, conversation_id, revision, candidate, publication, background)

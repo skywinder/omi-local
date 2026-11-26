@@ -2,8 +2,9 @@
 
 import hashlib
 import json
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from database import local_summary as summaries
@@ -52,6 +53,18 @@ class Regenerated(BaseModel):
     template_name: str
 
 
+class SummaryJob(BaseModel):
+    request_id: str = Field(pattern=_UUID)
+    state: Literal['queued', 'ready', 'failed', 'missing']
+    model: str | None = None
+    template_name: str | None = None
+    error: str | None = None
+
+
+class QueuedSummaryOptions(SummaryOptions):
+    job: SummaryJob | None = None
+
+
 class Candidate(BaseModel):
     category: str | None = None
     emoji: str | None = None
@@ -66,8 +79,8 @@ def _request(body=None):
     return library_request('regenerate-summary', body, timeout=215, size_limit=1024 * 1024)
 
 
-def _source(raw, uid):
-    source = summaries.source(raw, uid)
+def _source(raw, uid, *, background=False):
+    source = summaries.source(raw, uid, background=background)
     if not source.transcript:
         raise HTTPException(422, 'local_summary_transcript_unavailable')
     return source
@@ -75,8 +88,12 @@ def _source(raw, uid):
 
 @router.get('/v1/local/conversations/{conversation_id}/regenerate-summary', response_model=SummaryOptions)
 def options(conversation_id: RecordingId, response: Response, uid: str = Depends(require_paired_owner)):
+    return _options(conversation_id, response, uid)
+
+
+def _options(conversation_id, response, uid, *, background=False):
     try:
-        revision = _source(summaries.recording(uid, conversation_id), uid).revision
+        revision = _source(summaries.recording(uid, conversation_id), uid, background=background).revision
     except summaries.SummaryUnavailable:
         raise HTTPException(404, 'local_summary_recording_unavailable') from None
     except summaries.SummaryTooLarge:
@@ -87,6 +104,46 @@ def options(conversation_id: RecordingId, response: Response, uid: str = Depends
         raise HTTPException(503, 'local_summary_options_unavailable') from None
     response.headers['Cache-Control'] = 'no-store'
     return {**options.model_dump(), 'source_revision': revision}
+
+
+@router.get('/v1/local/conversations/{conversation_id}/summary-jobs', response_model=QueuedSummaryOptions | SummaryJob)
+def jobs(conversation_id: RecordingId, response: Response,
+         request_id: Annotated[str | None, Query(pattern=_UUID)] = None, uid: str = Depends(require_paired_owner)):
+    if request_id is None:
+        options = _options(conversation_id, response, uid, background=True)
+        try:
+            latest = json.loads(_job_request('summary-job-status', conversation_id, uid, {}))
+            return QueuedSummaryOptions.model_validate({**options, 'job': latest['job']})
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(503, 'local_summary_job_unavailable') from None
+    response.headers['Cache-Control'] = 'no-store'
+    job = _job('summary-job-status', conversation_id, uid, {'request_id': request_id})
+    if job.state == 'missing':
+        raise HTTPException(404, 'local_summary_request_unavailable')
+    return job
+
+
+def _job(operation, conversation_id, uid, body):
+    try:
+        return SummaryJob.model_validate_json(_job_request(operation, conversation_id, uid, body))
+    except ValidationError:
+        raise HTTPException(503, 'local_summary_job_unavailable') from None
+
+
+def _job_request(operation, conversation_id, uid, body):
+    try:
+        summaries.recording(uid, conversation_id)
+    except summaries.SummaryUnavailable:
+        raise HTTPException(404, 'local_summary_recording_unavailable') from None
+    payload = {**body, 'scope': summaries.owner_scope(uid), 'recording_id': conversation_id}
+    return library_request(operation, payload, timeout=8, size_limit=32 * 1024)
+
+
+@router.post('/v1/local/conversations/{conversation_id}/summary-jobs', response_model=SummaryJob)
+def queue_summary(conversation_id: RecordingId, body: Regenerate, response: Response,
+                  uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    return _job('summary-job', conversation_id, uid, body.model_dump())
 
 
 @router.post('/v1/local/conversations/{conversation_id}/regenerate-summary', response_model=Regenerated)

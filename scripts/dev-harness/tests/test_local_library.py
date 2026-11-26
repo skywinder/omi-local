@@ -37,7 +37,8 @@ def library(tmp_path):
     return Library(tmp_path)
 
 
-def request(library, path, *, headers=None, method='GET', delete=None, runtime=None, assets=None, http_handler=None):
+def request(library, path, *, headers=None, method='GET', delete=None, runtime=None, assets=None, http_handler=None,
+            payload=''):
     """Exercise the real HTTP handler with in-memory transport; no live server."""
     raw = f'{method} {path} HTTP/1.0\r\n'
     raw += ''.join(f'{k}: {v}\r\n' for k, v in {'Host': '127.0.0.1:20001', **(headers or {})}.items())
@@ -46,10 +47,13 @@ def request(library, path, *, headers=None, method='GET', delete=None, runtime=N
         output = io.BytesIO()
 
         def makefile(self, *_args):
-            return io.BytesIO((raw + '\r\n').encode())
+            return io.BytesIO((raw + '\r\n' + payload).encode())
 
         def sendall(self, data):
             self.output.write(data)
+
+        def settimeout(self, _seconds):
+            pass
 
     sock = Socket()
     assets = assets or Path(__file__).resolve().parents[3] / 'web-local'
@@ -58,6 +62,33 @@ def request(library, path, *, headers=None, method='GET', delete=None, runtime=N
     head, body = sock.output.getvalue().split(b'\r\n\r\n', 1)
     lines = head.decode().split('\r\n')
     return int(lines[0].split()[1]), dict(line.split(': ', 1) for line in lines[1:]), body
+
+
+def test_web_summary_uses_the_imported_recording_and_same_origin(library):
+    import uuid
+
+    key = 'a' * 64
+    old = library.transcripts / 'result'
+    folder = old.rename(library.transcripts / key)
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    seen = []
+
+    def web(identity, body):
+        seen.append((identity, body))
+        return {'job': None} if body is None else {'state': 'queued'}
+
+    assets = Path(__file__).resolve().parents[3] / 'web-local'
+    route = handler(library, assets, summary_jobs=SimpleNamespace(web=web))
+    row, = library.scan()
+    assert row['summary_editable'] and 'summary_recording' not in row
+    path = f"/api/recordings/{row['id']}/summary"
+    assert request(library, path, http_handler=route)[0] == 200
+    origin = {'Origin': 'http://127.0.0.1:20001', 'Content-Type': 'application/json', 'Content-Length': '2'}
+    assert request(library, path, http_handler=route, method='POST', headers=origin, payload='{}')[0] == 403
+    assert request(library, path, http_handler=route, method='POST', payload='{}',
+                   headers={**origin, 'X-Omiloc-Request': 'summary'})[0] == 200
+    expected = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key))
+    assert seen == [(expected, None), (expected, {})]
 
 
 def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):

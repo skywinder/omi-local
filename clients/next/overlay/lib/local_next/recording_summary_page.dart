@@ -25,6 +25,7 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
   SummaryProvider? _provider;
   SummaryTemplate? _template;
   SummaryRegeneration? _attempt;
+  SummaryJob? _job;
   Object? _error;
   bool _busy = false;
 
@@ -64,6 +65,10 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
       _provider = options.providers.where((row) => row.endpoint.binding == options.defaultBinding).firstOrNull;
       _select(options.templates.where((row) => row.id == options.defaultTemplate).firstOrNull);
     });
+    if (options.job case final job?) {
+      if (job.state == 'queued') await _waitForSummary(job);
+      if (job.state == 'failed' && mounted) setState(() => _job = job);
+    }
   });
 
   void _select(SummaryTemplate? template) {
@@ -106,9 +111,33 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
           prompt: prompt,
         );
       }
-      await widget.library.regenerateSummary(widget.id, _attempt!);
-      if (mounted) Navigator.pop(context, true);
+      if (widget.library.summaryJobsAvailable) {
+        await _waitForSummary(await widget.library.enqueueSummary(widget.id, _attempt!));
+      } else {
+        await widget.library.regenerateSummary(widget.id, _attempt!);
+        if (mounted) Navigator.pop(context, true);
+      }
     });
+  }
+
+  Future<void> _waitForSummary(SummaryJob job) async {
+    final requestId = job.requestId;
+    while (mounted) {
+      if (job.requestId != requestId) throw RecordingSummaryFailure.unavailable;
+      if (job.state == 'ready') {
+        if (mounted) Navigator.pop(context, true);
+        return;
+      }
+      setState(() => _job = job);
+      if (job.state == 'failed') {
+        // A retry is a new admission, while an interrupted submission reuses its ID.
+        _attempt = null;
+        return;
+      }
+      if (job.state != 'queued') throw RecordingSummaryFailure.unavailable;
+      await Future<void>.delayed(const Duration(seconds: 4));
+      if (mounted) job = await widget.library.readSummaryJob(widget.id, requestId);
+    }
   }
 
   @override
@@ -135,6 +164,15 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
         padding: const EdgeInsets.all(OmiSpacing.md),
         children: [
           if (_busy) const LinearProgressIndicator(),
+          if (_job?.state == 'queued' && error == null) Text(pairedSettingsLabel(context, 'summaryRegenerateQueued')),
+          if (_job?.state == 'failed' && error == null)
+            Text(
+              pairedSettingsLabel(context, switch (_job?.error) {
+                'recording_changed' => 'summaryRegenerateChanged',
+                'recording_too_large' => 'summaryRegenerateTooLong',
+                _ => 'summaryRegenerateFailed',
+              }),
+            ),
           if (error != null) Text(error),
           if (options != null) ...[
             if (options.providers.isEmpty) Text(pairedSettingsLabel(context, 'summaryRegenerateNoModel')),

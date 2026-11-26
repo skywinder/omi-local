@@ -995,7 +995,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           value: _RecordingEditAction.goalProgress,
                           child: Text(pairedSettingsLabel(context, 'localGoalLog')),
                         ),
-                      if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
+                      if ((widget.library.summaryRegenerationAvailable || widget.library.summaryJobsAvailable) &&
+                          loaded.lines.isNotEmpty)
                         PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
                       if (widget.library.tasksAvailable)
                         PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),

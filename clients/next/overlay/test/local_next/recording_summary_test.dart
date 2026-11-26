@@ -19,6 +19,7 @@ class _SummaryLibrary extends PairedLibrary {
   final requests = <SummaryRegeneration>[];
   String overview = 'Old recap';
   List<Map<String, dynamic>> sections = const [];
+  SummaryJob? pendingJob;
 
   @override
   Future<ServerConversation> detail(String id) async => ServerConversation.fromJson({
@@ -34,18 +35,26 @@ class _SummaryLibrary extends PairedLibrary {
   });
 
   @override
-  Future<RecordingSummaryOptions> readSummaryOptions(String id) async => const RecordingSummaryOptions(
+  Future<RecordingSummaryOptions> readSummaryOptions(String id) async => RecordingSummaryOptions(
     sourceRevision: 'fixture',
-    providers: [
+    providers: const [
       (
         name: 'Test provider',
         endpoint: RecordingChatProvider(binding: 'bound', host: 'model.example', model: 'fixture'),
       ),
     ],
-    templates: [(id: 'standard', name: 'Default template', prompt: 'Summarize.', digest: 'test-digest')],
+    templates: const [(id: 'standard', name: 'Default template', prompt: 'Summarize.', digest: 'test-digest')],
     defaultBinding: 'bound',
     defaultTemplate: 'standard',
+    job: pendingJob,
   );
+
+  @override
+  Future<SummaryJob> readSummaryJob(String id, String requestId) async {
+    expect(requestId, pendingJob?.requestId);
+    overview = 'Published in background';
+    return (requestId: requestId, state: 'ready', error: null);
+  }
 
   @override
   Future<void> regenerateSummary(String id, SummaryRegeneration request) async {
@@ -56,6 +65,31 @@ class _SummaryLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('opening the background recap resumes an already submitted job', (tester) async {
+    final library = _SummaryLibrary()
+      ..summaryJobsAvailable = true
+      ..pendingJob = (requestId: 'existing-request', state: 'queued', error: null);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingPage(id: _id, library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Regenerate Recap'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('The server is preparing the recap'), findsOneWidget);
+    expect(library.requests, isEmpty);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Published in background', findRichText: true), findsOneWidget);
+  });
+
   testWidgets('a generated note section opens its source in the transcript', (tester) async {
     final library = _SummaryLibrary()
       ..overview = '## Decision\n\nWe will keep a local archive.'

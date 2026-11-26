@@ -99,6 +99,7 @@ class PairedLibrary {
   bool taskRemindersAvailable = false;
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
+  bool summaryJobsAvailable = false;
   bool dailyRecapsAvailable = false;
   bool goalsAvailable = false;
   bool foldersAvailable = false;
@@ -141,6 +142,7 @@ class PairedLibrary {
     _taskDues.clear();
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
+    summaryJobsAvailable = false;
     dailyRecapsAvailable = false;
     goalsAvailable = false;
     foldersAvailable = false;
@@ -512,6 +514,7 @@ class PairedLibrary {
     taskRemindersAvailable = tasksAvailable && data['local_task_reminders_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
+    summaryJobsAvailable = data['local_summary_jobs_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
     goalsAvailable = data['local_goals_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
@@ -879,27 +882,41 @@ class PairedLibrary {
     return result;
   }
 
+  Map<String, String> _summaryBody(SummaryRegeneration request) => {
+    'request_id': request.requestId,
+    'source_revision': request.sourceRevision,
+    'provider_binding': request.binding,
+    'template_id': request.templateId,
+    'template_digest': request.templateDigest,
+    'prompt': request.prompt,
+  };
+
   Future<void> regenerateSummary(String id, SummaryRegeneration request) async {
-    final result = await _summaryRequest(
-      id,
-      body: {
-        'request_id': request.requestId,
-        'source_revision': request.sourceRevision,
-        'provider_binding': request.binding,
-        'template_id': request.templateId,
-        'template_digest': request.templateDigest,
-        'prompt': request.prompt,
-      },
-    );
+    final result = await _summaryRequest(id, body: _summaryBody(request));
     if (result['request_id'] != request.requestId) throw RecordingSummaryFailure.unavailable;
   }
 
-  Future<Map<String, dynamic>> _summaryRequest(String id, {Map<String, String>? body}) async {
-    if (!isSignedIn || !summaryRegenerationAvailable) throw RecordingSummaryFailure.unavailable;
+  Future<SummaryJob> enqueueSummary(String id, SummaryRegeneration request) async =>
+      decodeSummaryJob(await _summaryRequest(id, body: _summaryBody(request), background: true));
+
+  Future<SummaryJob> readSummaryJob(String id, String requestId) async =>
+      decodeSummaryJob(await _summaryRequest(id, query: {'request_id': requestId}, background: true));
+
+  Future<Map<String, dynamic>> _summaryRequest(
+    String id, {
+    Map<String, String>? body,
+    Map<String, String>? query,
+    bool? background,
+  }) async {
+    final useQueue = background ?? (body == null && summaryJobsAvailable);
+    if (!isSignedIn || !(useQueue ? summaryJobsAvailable : summaryRegenerationAvailable)) {
+      throw RecordingSummaryFailure.unavailable;
+    }
     _conversation(id);
     final result = await _request(
-      '/v1/local/conversations/$id/regenerate-summary',
+      '/v1/local/conversations/$id/${useQueue ? 'summary-jobs' : 'regenerate-summary'}',
       (response) async => await _json(response, 1024 << 10) as Map<String, dynamic>,
+      query: query,
       body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
       bodyType: ContentType.json,
       statusFailure: (status) => switch (status) {
@@ -908,7 +925,7 @@ class PairedLibrary {
         422 => RecordingSummaryFailure.noTranscript,
         _ => RecordingSummaryFailure.unavailable,
       },
-      overallTimeout: body == null ? _deadline : const Duration(seconds: 225),
+      overallTimeout: body == null || useQueue ? _deadline : const Duration(seconds: 225),
     );
     if (!isSignedIn) throw LibraryFailure.key;
     return result;

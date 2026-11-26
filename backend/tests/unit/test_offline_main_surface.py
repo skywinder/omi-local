@@ -454,6 +454,9 @@ from database import local_summary as summary_db
 summary_path = '/v1/local/conversations/' + documents[-1].id + '/regenerate-summary'
 assert client.get(summary_path).status_code == 401
 assert client.post(summary_path, json={}).status_code == 401
+queue_path = summary_path.replace('/regenerate-summary', '/summary-jobs')
+assert client.get(queue_path).status_code == 401
+assert client.post(queue_path, json={}).status_code == 401
 raw = {'status': 'completed', 'user_title': 'Mine',
        'structured': {'title': 'Mine', 'overview': 'Previous', 'sections': [
            {'heading': 'Previous', 'body_markdown': 'Stale source.', 'source_segment_ids': ['line']},
@@ -464,6 +467,13 @@ summary_db._ref = lambda *_: reference
 reference.get.return_value.to_dict.return_value = raw
 snapshot = summary_db.source(raw, 'fixture-owner')
 assert snapshot.transcript == '[src:1] [1.0] Corrected transcript.'
+long = {'status': 'completed', 'transcript_segments': [{'id': 'long', 'text': 'a' * 125000, 'start': 0}]}
+assert len(summary_db.source(long, 'fixture-owner', background=True).transcript) > 120000
+try:
+    summary_db.source(long, 'fixture-owner')
+    raise AssertionError('The synchronous route has a smaller input budget')
+except summary_db.SummaryTooLarge:
+    pass
 revision = snapshot.revision
 publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
 candidate = {'title': 'Generated title', 'overview': 'New recap', 'category': 'education', 'emoji': '📚'}
@@ -575,6 +585,7 @@ print(json.dumps({
         '/v1/local/action-items/{task_id}',
         '/v1/local/conversations/{conversation_id}/task-suggestions',
         '/v1/local/conversations/{conversation_id}/regenerate-summary',
+        '/v1/local/conversations/{conversation_id}/summary-jobs',
         '/v1/local/conversations/{conversation_id}/retry-processing',
         '/v1/local/preview',
         '/v1/local/processing',

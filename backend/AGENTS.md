@@ -104,6 +104,12 @@ loopback service. Publication compares transcript and summary revisions in
 one transaction, preserving user titles and unrelated recording data.
 Resolve numbered summary sources to canonical segment IDs within that
 publication. Keep Omi's Markdown projection aligned with the stored sections.
+Background summary jobs from the paired app and web library share the
+library's private on-disk queue. The trusted-host summary worker reads and
+publishes through the paired database under the admitted owner scope. Recover
+chunk checkpoints after restart and verify file-backed transcript checksums and
+the original summary revision before publication. Only the library process
+contacts the selected model. Preserve the synchronous endpoint for older apps.
 Generated next steps stay in notes until the owner creates a task.
 Paired daily recaps use the canonical daily summary collection. Start/end
 are the phone's local calendar midnights converted to UTC. The archive

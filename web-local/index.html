@@ -41,6 +41,7 @@
         <header class="detail-heading"><div class="detail-actions"><p id="recording-date" class="eyebrow"></p><button id="delete" class="delete-button">Удалить запись</button></div><h2 id="recording-title"></h2><div id="recording-meta" class="recording-meta"></div></header>
         <section id="recording-processing" class="recording-processing" aria-label="Этапы обработки" hidden></section>
         <section id="recording-summary" class="recording-summary" aria-label="Краткое содержание" hidden></section>
+        <button id="summary-edit" hidden>Сгенерировать итоги заново</button>
         <div class="transcript-heading"><h3>Транскрипт</h3><span>Нажмите на фразу, чтобы послушать</span></div>
         <div id="transcript" class="transcript"></div>
       </div>
@@ -52,6 +53,17 @@
       </footer>
     </section>
   </main>
+  <dialog id="summary-dialog" aria-labelledby="summary-title">
+    <h2 id="summary-title">Сгенерировать итоги</h2>
+    <form id="summary-form">
+      <p class="dialog-note">Расшифровка будет отправлена выбранной модели. Новый итог появится после обработки.</p>
+      <p><label>Модель <select id="summary-provider" required></select></label></p>
+      <p><label>Шаблон <select id="summary-template" required></select></label></p>
+      <p><label>Инструкция <textarea id="summary-prompt" rows="4" maxlength="8000" required></textarea></label></p>
+      <p id="summary-status" role="status"></p>
+      <div class="dialog-actions"><button type="button" id="summary-close">Закрыть</button><button id="summary-submit" disabled>Запустить</button></div>
+    </form>
+  </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
     <h2 id="delete-title">Удалить запись?</h2>
     <p id="delete-description">Аудио, транскрипт и связанный разговор в приложении будут удалены с Mac. Это действие нельзя отменить.</p>

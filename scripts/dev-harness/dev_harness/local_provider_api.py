@@ -75,6 +75,10 @@ class Processing(Settings):
     }
     PRIVATE_FIELDS = {'python', 'model_dir', 'library_path', 'assets_path', 'speaker_python'}
 
+    def __init__(self, cfg, summary_jobs=None):
+        super().__init__(cfg)
+        self.summary_jobs = summary_jobs
+
     @classmethod
     def can_edit(cls, profile):
         if not isinstance(profile, dict):
@@ -115,6 +119,11 @@ class Processing(Settings):
             return daily_recap(self.registry, body)
         if method == 'POST' and operation == 'regenerate-summary':
             return local_summary_regeneration.regenerate(self.registry, body)
+        if method == 'POST' and self.summary_jobs is not None:
+            if operation == 'summary-job':
+                return self.summary_jobs.submit(body)
+            if operation == 'summary-job-status':
+                return self.summary_jobs.status(body) if 'request_id' in body else self.summary_jobs.latest(body)
         if method == 'POST' and operation == 'summary-settings':
             return self.registry.summary_settings(body)
         if method == 'POST' and operation in {'recording-chat', 'archive-chat'}:

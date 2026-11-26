@@ -56,8 +56,7 @@ function renderList() {
 }
 
 function renderTranscript(record) {
-  $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
-  renderProcessing($('recording-processing'), $('recording-summary'), record);
+  renderRecap(record);
   const fragment = document.createDocumentFragment();
   record.segments.forEach((segment, index) => {
     const button = node('button', 'segment');
@@ -81,6 +80,20 @@ function renderTranscript(record) {
   $('transcript').replaceChildren(fragment);
   state.active = -1;
   syncPlayer();
+}
+
+let canonicalRecap;
+function renderRecap(record) {
+  $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
+  $('summary-edit').hidden = !record.summary_editable;
+  const summary = canonicalRecap?.id === record.id ? {...record.summary, overview: canonicalRecap.overview} : record.summary;
+  renderProcessing($('recording-processing'), $('recording-summary'), {...record, summary});
+}
+
+function syncRecap(id, options) {
+  if (state.detail?.id !== id || typeof options.overview !== 'string') return;
+  canonicalRecap = {id, overview: options.overview};
+  renderRecap(state.detail);
 }
 
 async function select(id, open = true) {
@@ -109,12 +122,81 @@ async function select(id, open = true) {
     audio.playbackRate = Number($('speed').value);
     if (record.decode_warning) message('В записи возможны пропуски звука.');
     renderTranscript(record);
+    if (record.summary_editable) {
+      get(`/api/recordings/${id}/summary`).then(options => syncRecap(id, options)).catch(() => {});
+    }
   } catch {
     if (request !== state.request) return;
     $('connection').textContent = 'Не удалось открыть запись. Обновите список и попробуйте ещё раз.';
     $('connection').hidden = false;
   }
 }
+
+let summaryDialog;
+function drawSummaryOptions(id, options, {preserve = false} = {}) {
+  if (!$('summary-dialog').open || summaryDialog?.id !== id) return;
+  summaryDialog.options = options;
+  syncRecap(id, options);
+  const state = options.job?.state;
+  if (state === 'failed') summaryDialog.signature = null;
+  $('summary-status').textContent = state === 'queued' ? 'Сервер готовит итоги. Можно закрыть окно.'
+    : state === 'ready' ? 'Итоги готовы.'
+    : state === 'failed' ? 'Не удалось обновить итоги. Проверьте запись и настройки модели.' : '';
+  if (!preserve) {
+    $('summary-provider').replaceChildren(...options.providers.map(row => new Option(`${row.name} · ${row.model} · ${row.host}`, row.binding)));
+    $('summary-template').replaceChildren(...options.templates.map(row => new Option(row.name, row.id)));
+    if (options.default_provider_binding) $('summary-provider').value = options.default_provider_binding;
+    $('summary-template').value = options.default_template_id;
+    chooseSummaryTemplate();
+  }
+  $('summary-submit').disabled = state === 'queued' || !options.providers.length;
+  if (state === 'queued') {
+    const run = summaryDialog;
+    setTimeout(() => {
+      if (summaryDialog !== run || !$('summary-dialog').open) return;
+      get(`/api/recordings/${id}/summary`).then(next => drawSummaryOptions(id, next, {preserve: true})).catch(summaryLoadFailed);
+    }, 8000);
+  }
+}
+function chooseSummaryTemplate() {
+  const template = summaryDialog?.options?.templates.find(row => row.id === $('summary-template').value);
+  $('summary-prompt').value = template?.prompt || '';
+}
+function summaryLoadFailed() {
+  $('summary-status').textContent = 'Связь с сервером прервалась. Откройте итоги снова, чтобы проверить статус.';
+}
+$('summary-edit').addEventListener('click', () => {
+  const id = state.detail?.id;
+  if (!id) return;
+  summaryDialog = {id};
+  $('summary-status').textContent = 'Загрузка…';
+  $('summary-submit').disabled = true;
+  $('summary-dialog').showModal();
+  get(`/api/recordings/${id}/summary`).then(options => drawSummaryOptions(id, options)).catch(summaryLoadFailed);
+});
+$('summary-close').addEventListener('click', () => $('summary-dialog').close());
+$('summary-template').addEventListener('change', chooseSummaryTemplate);
+$('summary-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const run = summaryDialog;
+  const options = run?.options;
+  const template = options?.templates.find(row => row.id === $('summary-template').value);
+  if (!options || !template) return;
+  const path = `/api/recordings/${run.id}/summary`;
+  const parameters = {source_revision: options.source_revision, provider_binding: $('summary-provider').value,
+    template_id: template.id, template_digest: template.digest, prompt: $('summary-prompt').value.trim()};
+  const encoded = JSON.stringify(parameters);
+  if (run.signature !== encoded) { run.signature = encoded; run.requestId = crypto.randomUUID(); }
+  $('summary-submit').disabled = true;
+  try {
+    const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Omiloc-Request': 'summary'},
+      signal: AbortSignal.timeout(12000), body: JSON.stringify({...parameters, request_id: run.requestId})});
+    if (!response.ok) throw new Error('Unavailable');
+    if (summaryDialog === run) drawSummaryOptions(run.id, {...options, job: await response.json()}, {preserve: true});
+  } catch {
+    if (summaryDialog === run) { summaryLoadFailed(); $('summary-submit').disabled = false; }
+  }
+});
 
 function syncPlayer() {
   $('play').textContent = audio.paused ? '▶' : 'Ⅱ';
