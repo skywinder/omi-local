@@ -22,6 +22,8 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/conversations/semantic-search"),
         ("GET", "/v1/local/conversations/chat"),
         ("POST", "/v1/local/conversations/chat"),
+        ("GET", "/v1/local/conversations/chat/threads"),
+        ("POST", "/v1/local/conversations/chat/threads"),
         ("GET", "/v1/local/folders"),
         ("POST", "/v1/local/folders"),
         ("POST", "/v1/local/folders/reorder"),
@@ -66,6 +68,11 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method.upper() in {'GET', 'POST', 'DELETE'} and (
+        path == '/v1/local/conversations/chat/threads/{thread_id}'
+        or re.fullmatch(r'/v1/local/conversations/chat/threads/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', path)
+    ):
+        return True
     if method.upper() == 'POST' and (
         path == '/v1/local/conversations/{conversation_id}/retry-processing'
         or re.fullmatch(r'/v1/local/conversations/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}/retry-processing', path)

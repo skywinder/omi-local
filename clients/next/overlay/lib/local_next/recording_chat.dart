@@ -1,6 +1,16 @@
 import 'package:omi/models/chat_evidence_reference.dart';
 
-enum RecordingChatFailure implements Exception { changed, unavailable, noMatches, scanLimited }
+enum RecordingChatFailure implements Exception {
+  changed,
+  unavailable,
+  noMatches,
+  scanLimited,
+  threadMissing,
+  threadLimit,
+  turnLimit,
+}
+
+typedef ArchiveChatThread = ({String id, String title});
 
 class RecordingChatProvider {
   const RecordingChatProvider({required this.binding, required this.host, required this.model});
@@ -63,6 +73,7 @@ class RecordingChatPageData {
     required this.provider,
     required this.hasTranscript,
     this.storedHistory = false,
+    this.archiveThreads = false,
   });
 
   factory RecordingChatPageData.fromJson(Map<String, dynamic> json, String? recordingId) => RecordingChatPageData(
@@ -76,6 +87,7 @@ class RecordingChatPageData {
         : RecordingChatProvider.fromJson(json['provider'] as Map<String, dynamic>),
     hasTranscript: json['has_transcript'] as bool,
     storedHistory: json['stored_history'] == true,
+    archiveThreads: json['archive_threads'] == true,
   );
 
   final List<RecordingChatTurn> turns;
@@ -83,4 +95,5 @@ class RecordingChatPageData {
   final RecordingChatProvider? provider;
   final bool hasTranscript;
   final bool storedHistory;
+  final bool archiveThreads;
 }

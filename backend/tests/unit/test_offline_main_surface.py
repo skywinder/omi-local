@@ -625,7 +625,7 @@ def saved_reply(body, *, archive):
     assert archive and body['history'] == [{'question': 'First question', 'answer': 'Server context'}]
     return json.dumps({'answer': 'Saved answer.', 'sources': [body['sources'].index(edit['value'])+1]})
 
-def save_archive(uid, request_id, previous, revisions, payload):
+def save_archive(uid, request_id, previous, revisions, payload, *, thread_id=None):
     assert uid == fixture_uid and previous == prior_id and revisions == {conversation.id: grouped_doc.update_time}
     assert set(payload['source_ids']) == {prior_source, conversation.id}
     return {**payload, 'id': request_id, 'sequence': 3, 'created_at': datetime.now(timezone.utc)}
@@ -645,7 +645,8 @@ with ExitStack() as stack:
     saved = client.get(archive_chat, headers=headers, params={'stored': 'true', 'before': 4})
     assert saved.headers['Cache-Control'] == 'no-store'
     assert saved.json()['stored_history'] and saved.json()['turns'][0]['id'] == prior_id
-    pages.assert_called_once_with(fixture_uid, before=4)
+    assert saved.json()['archive_threads'] is True
+    pages.assert_called_once_with(fixture_uid, before=4, thread_id=None)
     stored_request = {**question, 'store': True, 'previous': prior_id}
     assert client.post(archive_chat, headers=headers, json={**stored_request, 'previous': None}).status_code == 409
     assert client.post(archive_chat, headers=headers, json={**stored_request, 'history': [{'question':'fake', 'answer':'fake'}]}).status_code == 400
@@ -661,6 +662,37 @@ with ExitStack() as stack:
     assert client.post(archive_chat, headers=headers, json={**stored_request, 'question': 'Another'}).status_code == 409
     receiver.assert_called_once()
     store.assert_called_once()
+
+    threads = archive_chat + '/threads'
+    thread_id = str(uuid.uuid4())
+    thread_path = threads + '/' + thread_id
+    assert client.get(threads).status_code == 401
+    assert client.post(threads, json={'id': thread_id, 'title': 'Private'}).status_code == 401
+    assert client.delete(thread_path).status_code == 401
+    assert client.delete(threads + '/not-a-thread', headers=headers).status_code == 503
+    assert client.post(threads, headers=headers, json={'id': thread_id, 'title': '  '}).status_code == 400
+    thread_label = {'id': thread_id, 'title': 'Named archive chat', 'created_at': prior_turn['created_at']}
+    create = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'create_archive_thread', return_value=thread_label))
+    thread_reply = client.post(threads, headers=headers, json={'id': thread_id, 'title': ' Named archive chat '})
+    assert thread_reply.status_code == 201 and thread_reply.json()['title'] == thread_label['title']
+    create.assert_called_once_with(fixture_uid, thread_id, thread_label['title'])
+    listed = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'archive_threads', return_value=[thread_label]))
+    assert client.get(threads, headers=headers).json() == [thread_reply.json()]
+    listed.assert_called_once_with(fixture_uid)
+    assert client.get(thread_path, headers=headers).json()['turns'][0]['id'] == prior_id
+    pages.assert_called_with(fixture_uid, before=None, thread_id=thread_id)
+    lookup.return_value = None
+    separate = {**stored_request, 'id': str(uuid.uuid4())}
+    assert client.post(thread_path, headers=headers, json=separate).status_code == 200
+    lookup.assert_called_with(fixture_uid, separate['id'], thread_id=thread_id)
+    assert store.call_args.kwargs['thread_id'] == thread_id
+    remove = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'delete_archive_thread'))
+    assert client.delete(thread_path, headers=headers).status_code == 204
+    remove.assert_called_once_with(fixture_uid, thread_id)
+    pages.side_effect = paired_chat.chat_db.ArchiveThreadUnavailable
+    lookup.side_effect = paired_chat.chat_db.ArchiveThreadUnavailable
+    assert client.get(thread_path, headers=headers).status_code == 404
+    assert client.post(thread_path, headers=headers, json=separate).status_code == 404
 
 grouped_doc.update_time = saved_version
 old_db.get_all.return_value = search_snapshots
@@ -870,6 +902,8 @@ print(json.dumps({
         '/v1/local/conversations/classify-categories',
         '/v1/local/conversations/semantic-search',
         '/v1/local/conversations/chat',
+        '/v1/local/conversations/chat/threads',
+        '/v1/local/conversations/chat/threads/{thread_id}',
         '/v1/local/conversations/{conversation_id}/chat',
         '/v1/local/conversations/{conversation_id}/edit',
         '/v1/local/folders',

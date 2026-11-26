@@ -1208,17 +1208,79 @@ class PairedLibrary {
     return '/v1/local/conversations/$id/chat';
   }
 
-  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before}) async {
+  static const _chatThreadsPath = '/v1/local/conversations/chat/threads';
+
+  static ArchiveChatThread _archiveChatThread(Object? value) {
+    if (value is! Map || value['id'] is! String || value['title'] is! String) throw LibraryFailure.malformed;
+    final id = value['id'] as String;
+    final title = value['title'] as String;
+    if (!_archiveId.hasMatch(id) || title.trim().isEmpty || title.runes.length > 100) throw LibraryFailure.malformed;
+    return (id: id, title: title);
+  }
+
+  Future<List<ArchiveChatThread>> readArchiveChatThreads() async {
     if (!isSignedIn) throw LibraryFailure.key;
+    final rows = await _request(_chatThreadsPath, (response) async {
+      final data = await _json(response, 32 << 10);
+      if (data is! List) throw LibraryFailure.malformed;
+      return data.map(_archiveChatThread).toList();
+    });
+    if (!isSignedIn) throw LibraryFailure.key;
+    return rows;
+  }
+
+  Future<ArchiveChatThread> createArchiveChatThread(String id, String title) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+    final thread = await _request(
+      _chatThreadsPath,
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) {
+          final data = await _json(response, 4096);
+          if (data is Map && data['detail'] == 'archive_chat_thread_limit') throw RecordingChatFailure.threadLimit;
+          throw RecordingChatFailure.changed;
+        }
+        if (response.statusCode != HttpStatus.created) throw RecordingChatFailure.unavailable;
+        final saved = _archiveChatThread(await _json(response, 4096));
+        if (saved.id != id) throw LibraryFailure.malformed;
+        return saved;
+      },
+      body: Uint8List.fromList(utf8.encode(jsonEncode({'id': id, 'title': title}))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return thread;
+  }
+
+  Future<void> deleteArchiveChatThread(String id) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+    await _request(
+      '$_chatThreadsPath/$id',
+      (response) async {
+        if (response.statusCode != HttpStatus.noContent) throw RecordingChatFailure.unavailable;
+      },
+      method: 'DELETE',
+      readHttpErrors: true,
+      overallTimeout: const Duration(seconds: 25),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+  }
+
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before, String? threadId}) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (threadId != null && (id != null || !_archiveId.hasMatch(threadId))) throw LibraryFailure.malformed;
     try {
       final page = await _request(
-        _chatPath(id),
+        threadId == null ? _chatPath(id) : '$_chatThreadsPath/$threadId',
         (response) async {
           if (await _blockedOffline(response)) return null;
+          if (threadId != null && response.statusCode == HttpStatus.notFound) throw RecordingChatFailure.threadMissing;
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
           return RecordingChatPageData.fromJson(await _json(response, 768 << 10) as Map<String, dynamic>, id);
         },
-        query: {if (id == null) 'stored': 'true', if (before != null) 'before': '$before'},
+        query: {if (id == null && threadId == null) 'stored': 'true', if (before != null) 'before': '$before'},
         readHttpErrors: true,
         overallTimeout: const Duration(seconds: 18),
       );
@@ -1239,14 +1301,18 @@ class PairedLibrary {
     required String question,
     List<RecordingChatTurn> history = const [],
     bool storeArchive = false,
+    String? threadId,
   }) async {
     if (!isSignedIn) throw LibraryFailure.key;
+    if (threadId != null && (id != null || !storeArchive || !_archiveId.hasMatch(threadId))) {
+      throw LibraryFailure.malformed;
+    }
     final payload = {
       'id': turnId,
       if (id != null || storeArchive) 'previous': previous,
       'provider_binding': binding,
       'question': question,
-      if (id == null && storeArchive) 'store': true,
+      if (id == null && storeArchive && threadId == null) 'store': true,
       if (id == null && !storeArchive)
         'history': [
           for (final turn in history.take(3)) {'question': turn.question, 'answer': turn.answer},
@@ -1254,7 +1320,7 @@ class PairedLibrary {
     };
     try {
       final turn = await _request(
-        _chatPath(id),
+        threadId == null ? _chatPath(id) : '$_chatThreadsPath/$threadId',
         (response) async {
           if (id == null && response.statusCode == HttpStatus.unprocessableEntity) {
             final error = await _json(response, 4096);
@@ -1264,7 +1330,15 @@ class PairedLibrary {
             }
             throw RecordingChatFailure.unavailable;
           }
-          if (response.statusCode == HttpStatus.conflict || await _blockedOffline(response)) {
+          if (threadId != null && response.statusCode == HttpStatus.notFound) throw RecordingChatFailure.threadMissing;
+          if (response.statusCode == HttpStatus.conflict) {
+            if (threadId != null) {
+              final data = await _json(response, 4096);
+              if (data is Map && data['detail'] == 'archive_chat_turn_limit') throw RecordingChatFailure.turnLimit;
+            }
+            throw RecordingChatFailure.changed;
+          }
+          if (await _blockedOffline(response)) {
             throw RecordingChatFailure.changed;
           }
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;

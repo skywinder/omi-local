@@ -343,8 +343,14 @@ turn from another phone or load earlier turns. An answer is hidden while one of
 its source recordings is unavailable. Older servers keep follow-up context
 for the current screen session.
 
-The screen reports when only part of the archive could be checked. Independent
-threads and history deletion controls remain open parity items.
+Tap the name of the current conversation to open **Archive conversations**.
+**Shared history** keeps the original chat available. **New conversation**
+starts a named history with its own context. Phones using the same pairing see
+the same saved conversations after refresh. To remove a named conversation,
+use its delete button and confirm. The original archive recordings remain
+available. The server supports up to 40 named conversations and 250 replies
+per named conversation. The screen reports when only part of the archive was
+checked.
 
 ## Edit a saved recording
 

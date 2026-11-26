@@ -185,6 +185,19 @@ the direct source revisions in the same transaction. A repeated request returns
 the stored result. The server checks source availability again before presenting
 an old answer or using it as model context.
 
+Named conversations use separate routes under
+`/v1/local/conversations/chat/threads`. Each one has an encrypted title, its
+own history and head, and an owner-scoped transcript lookup. Existing clients
+can still read and append to the shared history from the original route.
+Deletion clears a named conversation's messages and title in a transaction.
+It keeps the empty ID as a fence against replaying creation or publishing an
+in-flight reply. There can be up to 40 active named conversations, each with
+up to 250 replies, so a complete thread fits in a single deletion transaction.
+The Bastion acceptance used two paired clients and an isolated owner to check
+independent follow-ups, access from another owner, and deletion during inference.
+Deletion applies to the live database. Existing backup snapshots retain their
+own lifecycle.
+
 ## Bastion acceptance, November 25
 
 Bastion now serves page metadata, projected cards and authenticated WAV ranges.

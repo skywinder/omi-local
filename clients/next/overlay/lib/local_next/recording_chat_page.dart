@@ -7,6 +7,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:uuid/uuid.dart';
 
+import 'archive_chat_thread_picker.dart';
 import 'paired_library.dart';
 import 'recording_chat.dart';
 import 'settings_labels.dart';
@@ -35,6 +36,8 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
   bool _unsupported = false;
   bool _hasTranscript = false;
   bool _archiveStored = false;
+  bool _archiveThreads = false;
+  ArchiveChatThread? _thread;
   bool get _archive => widget.id == null;
 
   @override
@@ -50,7 +53,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       _error = null;
     });
     try {
-      final page = await widget.library.readRecordingChat(widget.id, before: cursor);
+      final page = await widget.library.readRecordingChat(widget.id, before: cursor, threadId: _thread?.id);
       if (!mounted) return;
       setState(() {
         _unsupported = page == null;
@@ -64,6 +67,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
           _hasTranscript = page.hasTranscript;
           final wasStored = _archiveStored;
           _archiveStored = _archive && page.storedHistory;
+          _archiveThreads = _archiveStored && page.archiveThreads;
           if (wasStored != _archiveStored) _approvedBinding = null;
           if (!_archive || _archiveStored || wasStored) _turns.clear();
         }
@@ -74,10 +78,45 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         }
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) _showError(error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _showError(Object error) {
+    setState(() {
+      _error = error;
+      if (error == RecordingChatFailure.threadMissing) {
+        _turns.clear();
+        _provider = null;
+        _attempt = null;
+        _nextBefore = null;
+      }
+    });
+  }
+
+  Future<void> _chooseThread() async {
+    final selection = await showModalBottomSheet<ArchiveChatSelection>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => ArchiveChatThreadPicker(library: widget.library, selectedId: _thread?.id),
+    );
+    if (!mounted || selection == null) return;
+    if (selection.thread?.id != _thread?.id) {
+      setState(() {
+        _thread = selection.thread;
+        _turns.clear();
+        _input.clear();
+        _attempt = null;
+        _provider = null;
+        _approvedBinding = null;
+        _nextBefore = null;
+      });
+    }
+    await _load();
   }
 
   Future<bool> _approve(RecordingChatProvider provider) async {
@@ -89,7 +128,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         title: Text(_archive ? pairedSettingsLabel(context, 'archiveChatTitle') : l.askOmi),
         content: Text(
           '${pairedSettingsLabel(context, _archive ? 'archiveChatConsent' : 'recordingChatConsent')}'
-          '${_archiveStored ? '\n\n${pairedSettingsLabel(context, 'archiveChatStoredConsent')}' : ''}'
+          '${_archiveStored ? '\n\n${pairedSettingsLabel(context, _thread == null ? 'archiveChatStoredConsent' : 'archiveChatThreadConsent')}' : ''}'
           '\n\n${provider.model}\n${provider.host}',
         ),
         actions: [
@@ -124,6 +163,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         question: question,
         history: _archive && !_archiveStored ? _turns : const [],
         storeArchive: _archiveStored,
+        threadId: _thread?.id,
       );
       if (!mounted) return;
       setState(() {
@@ -134,7 +174,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       });
       if (_scroll.hasClients) _scroll.jumpTo(0);
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) _showError(error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -156,6 +196,8 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       RecordingChatFailure.changed => pairedSettingsLabel(context, 'recordingChatChanged'),
       RecordingChatFailure.noMatches => pairedSettingsLabel(context, 'archiveChatNoMatches'),
       RecordingChatFailure.scanLimited => pairedSettingsLabel(context, 'archiveChatScanLimited'),
+      RecordingChatFailure.threadMissing => pairedSettingsLabel(context, 'archiveChatThreadMissing'),
+      RecordingChatFailure.turnLimit => pairedSettingsLabel(context, 'archiveChatTurnLimit'),
       _ when _error != null => l.couldNotLoadPage,
       _ when _busy => null,
       _ when _unsupported => pairedSettingsLabel(
@@ -174,6 +216,14 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_archiveThreads)
+              ActionChip(
+                key: const ValueKey('archive-chat-threads'),
+                avatar: const Icon(Icons.forum_outlined),
+                label: Text(_thread?.title ?? pairedSettingsLabel(context, 'archiveChatSharedThread')),
+                tooltip: pairedSettingsLabel(context, 'archiveChatThreads'),
+                onPressed: _busy ? null : _chooseThread,
+              ),
             if (provider != null) Text('${provider.model} · ${provider.host}', textAlign: TextAlign.center),
             if (_busy) const LinearProgressIndicator(),
             if (notice != null) Padding(padding: const EdgeInsets.all(OmiSpacing.md), child: Text(notice)),

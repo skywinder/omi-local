@@ -19,6 +19,18 @@ class RecordingChanged(ValueError):
     pass
 
 
+class ArchiveThreadUnavailable(ValueError):
+    pass
+
+
+class ArchiveChatLimit(ValueError):
+    pass
+
+
+_THREAD_LIMIT = 40
+_THREAD_TURN_LIMIT = 250
+
+
 def _recording(uid, conversation_id):
     return db.collection('users').document(uid).collection(conversations.conversations_collection).document(conversation_id)
 
@@ -77,8 +89,77 @@ def history(uid, conversation_id, *, before=None, limit=12):
     return _history(uid, _turns(uid, conversation_id), before, limit)
 
 
-def _archive_turns(uid):
-    return db.collection('users').document(uid).collection('local_archive_chat')
+def _archive_threads(uid):
+    return db.collection('users').document(uid).collection('local_archive_chat_threads')
+
+
+def _active_archive_threads(uid):
+    return _archive_threads(uid).where(filter=firestore.FieldFilter('state', '==', 'active')).limit(_THREAD_LIMIT)
+
+
+def _thread_label(uid, identifier, data):
+    return {'id': identifier, 'title': encryption.decrypt(data['title'], uid), 'created_at': data['created_at']}
+
+
+def archive_threads(uid):
+    rows = _active_archive_threads(uid).stream(retry=None, timeout=6)
+    labels = [_thread_label(uid, row.id, row.to_dict()) for row in rows]
+    return sorted(labels, key=lambda row: (row['created_at'], row['id']), reverse=True)
+
+
+@firestore.transactional
+def _create_archive_thread(transaction, uid, thread_id, title):
+    ref = _archive_threads(uid).document(thread_id)
+    existing = ref.get(transaction=transaction, timeout=6).to_dict()
+    if existing is not None:
+        if existing['state'] != 'active':
+            raise ArchiveThreadUnavailable()
+        label = _thread_label(uid, thread_id, existing)
+        if label['title'] != title:
+            raise RecordingChanged()
+        return label
+    if len(list(_active_archive_threads(uid).stream(transaction=transaction, retry=None, timeout=6))) >= _THREAD_LIMIT:
+        raise ArchiveChatLimit()
+    created_at = datetime.now(timezone.utc)
+    transaction.create(ref, {'state': 'active', 'title': encryption.encrypt(title, uid), 'created_at': created_at})
+    return {'id': thread_id, 'title': title, 'created_at': created_at}
+
+
+def create_archive_thread(uid, thread_id, title):
+    return run_transactional(db, _create_archive_thread, uid, thread_id, title)
+
+
+@firestore.transactional
+def _delete_archive_thread(transaction, uid, thread_id):
+    ref = _archive_threads(uid).document(thread_id)
+    thread = ref.get(transaction=transaction, timeout=6).to_dict()
+    if thread is None:
+        raise ArchiveThreadUnavailable()
+    if thread['state'] == 'deleted':
+        return
+    turns = list(ref.collection('turns').select([]).limit(_THREAD_TURN_LIMIT + 2).stream(
+        transaction=transaction, retry=None, timeout=8,
+    ))
+    if len(turns) > _THREAD_TURN_LIMIT + 1:  # One extra document is the head.
+        raise ArchiveChatLimit()
+    for turn in turns:
+        transaction.delete(turn.reference)
+    # Keep only the ID as a fence against replaying an old creation request.
+    transaction.set(ref, {'state': 'deleted'})
+
+
+def delete_archive_thread(uid, thread_id):
+    run_transactional(db, _delete_archive_thread, uid, thread_id)
+
+
+def _archive_turns(uid, thread_id, transaction=None):
+    if thread_id is None:
+        return db.collection('users').document(uid).collection('local_archive_chat')
+    ref = _archive_threads(uid).document(thread_id)
+    thread = ref.get(transaction=transaction, field_paths=['state'], retry=None, timeout=6).to_dict()
+    if not thread or thread['state'] != 'active':
+        raise ArchiveThreadUnavailable()
+    return ref.collection('turns')
 
 
 def _archive_recordings(uid, ids, transaction=None):
@@ -96,20 +177,24 @@ def _archive_redact(turn, available):
     return {**turn, 'answer': '', 'evidence_references': [], 'sources_unavailable': True}
 
 
-def archive_turn(uid, request_id):
-    ref = _archive_turns(uid).document(request_id)
+def archive_turn(uid, request_id, *, thread_id=None):
+    ref = _archive_turns(uid, thread_id).document(request_id)
     existing = _read_turn(uid, ref.get(retry=None, timeout=6))
     return _archive_redact(existing, _archive_recordings(uid, existing['source_ids'])) if existing else None
 
 
-def archive_history(uid, *, before=None, limit=12):
-    turns, next_before = _history(uid, _archive_turns(uid), before, limit)
+def archive_history(uid, *, before=None, limit=12, thread_id=None):
+    turns, next_before = _history(uid, _archive_turns(uid, thread_id), before, limit)
     available = _archive_recordings(uid, {identifier for turn in turns for identifier in turn['source_ids']})
     return [_archive_redact(turn, available) for turn in turns], next_before
 
 
 def archive_sources_available(uid, ids):
     return len(_archive_recordings(uid, ids)) == len(ids)
+
+
+def archive_thread_full(sequence):
+    return sequence >= _THREAD_TURN_LIMIT
 
 
 def _append_turn(transaction, uid, ref, head_ref, head, payload):
@@ -149,8 +234,8 @@ def publish(uid, conversation_id, request_id, previous, revision, payload):
 
 
 @firestore.transactional
-def _publish_archive(transaction, uid, request_id, previous, revisions, payload):
-    collection = _archive_turns(uid)
+def _publish_archive(transaction, uid, request_id, previous, revisions, payload, thread_id=None):
+    collection = _archive_turns(uid, thread_id, transaction)
     ref = collection.document(request_id)
     existing = _read_turn(uid, ref.get(transaction=transaction, timeout=6))
     source = existing if existing is not None else payload
@@ -161,14 +246,16 @@ def _publish_archive(transaction, uid, request_id, previous, revisions, payload)
         return _archive_redact(existing, available)
     head_ref = collection.document('head')
     head = head_ref.get(transaction=transaction, timeout=6).to_dict() or {}
+    if thread_id is not None and archive_thread_full(head.get('count', 0)):
+        raise ArchiveChatLimit()
     if (head.get('id') != previous or len(available) != len(payload['source_ids'])
             or any(available.get(identifier) != revision for identifier, revision in revisions.items())):
         raise RecordingChanged()
     return _append_turn(transaction, uid, ref, head_ref, head, payload)
 
 
-def publish_archive(uid, request_id, previous, revisions, payload):
-    return run_transactional(db, _publish_archive, uid, request_id, previous, revisions, payload)
+def publish_archive(uid, request_id, previous, revisions, payload, *, thread_id=None):
+    return run_transactional(db, _publish_archive, uid, request_id, previous, revisions, payload, thread_id)
 
 
 def delete_recording(uid, conversation_id):

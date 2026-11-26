@@ -32,6 +32,7 @@ _ARCHIVE_SEMANTIC_MIN_SCORE = 0.78
 _ARCHIVE_SEMANTIC_LIMIT = 6
 _ARCHIVE_HISTORY_SOURCE_LIMIT = 128
 RecordingId = Annotated[str, Path(pattern=_UUID)]
+ArchiveThreadId = Annotated[str, Path(pattern=_UUID)]
 
 
 class ChatProvider(BaseModel):
@@ -60,6 +61,17 @@ class ArchiveQuestion(ChatQuestion):
     store: bool = False
 
 
+class ArchiveThreadDraft(BaseModel):
+    id: str = Field(pattern=_UUID)
+    title: str = Field(min_length=1, max_length=100)
+
+
+class ArchiveThread(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+
+
 class ChatReply(BaseModel):
     answer: str = Field(min_length=1, max_length=2600)
     sources: list[Annotated[int, Field(strict=True, ge=1)]] = Field(max_length=8)
@@ -83,6 +95,7 @@ class ChatPage(BaseModel):
     provider: ChatProvider | None
     has_transcript: bool
     stored_history: bool = False
+    archive_threads: bool = False
 
 
 def _library_request(body=None, *, archive=False, suggestions=False):
@@ -216,10 +229,55 @@ def ask_recording_chat(
 @router.get('/v1/local/conversations/chat', response_model=ChatPage)
 def read_archive_chat(response: Response, stored: bool = False, before: int | None = Query(default=None, ge=1),
                       uid: str = Depends(require_paired_owner)):
+    return _archive_page(response, uid, stored=stored, before=before)
+
+
+@router.get('/v1/local/conversations/chat/threads/{thread_id}', response_model=ChatPage)
+def read_archive_thread(thread_id: ArchiveThreadId, response: Response, before: int | None = Query(default=None, ge=1),
+                        uid: str = Depends(require_paired_owner)):
+    return _archive_page(response, uid, stored=True, before=before, thread_id=thread_id)
+
+
+def _archive_page(response, uid, *, stored, before, thread_id=None):
     response.headers['Cache-Control'] = 'no-store'
-    turns, cursor = chat_db.archive_history(uid, before=before) if stored else ([], None)
+    try:
+        turns, cursor = chat_db.archive_history(uid, before=before, thread_id=thread_id) if stored else ([], None)
+    except chat_db.ArchiveThreadUnavailable:
+        raise HTTPException(404, 'archive_chat_thread_unavailable') from None
     return {'turns': turns, 'next_before': cursor, 'provider': _chat_provider(archive=True) if before is None else None,
-            'has_transcript': True, 'stored_history': stored}
+            'has_transcript': True, 'stored_history': stored, 'archive_threads': stored}
+
+
+@router.get('/v1/local/conversations/chat/threads', response_model=list[ArchiveThread])
+def list_archive_threads(response: Response, uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    return chat_db.archive_threads(uid)
+
+
+@router.post('/v1/local/conversations/chat/threads', response_model=ArchiveThread, status_code=201)
+def create_archive_thread(draft: ArchiveThreadDraft, response: Response, uid: str = Depends(require_paired_owner)):
+    title = draft.title.strip()
+    if not title or not title.isprintable():
+        raise HTTPException(400, 'archive_chat_invalid_title')
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return chat_db.create_archive_thread(uid, draft.id, title)
+    except chat_db.ArchiveThreadUnavailable:
+        raise HTTPException(404, 'archive_chat_thread_unavailable') from None
+    except chat_db.ArchiveChatLimit:
+        raise HTTPException(409, 'archive_chat_thread_limit') from None
+    except chat_db.RecordingChanged:
+        raise HTTPException(409, 'recording_chat_history_changed') from None
+
+
+@router.delete('/v1/local/conversations/chat/threads/{thread_id}', status_code=204)
+def delete_archive_thread(thread_id: ArchiveThreadId, uid: str = Depends(require_paired_owner)):
+    try:
+        chat_db.delete_archive_thread(uid, thread_id)
+    except chat_db.ArchiveThreadUnavailable:
+        raise HTTPException(404, 'archive_chat_thread_unavailable') from None
+    except chat_db.ArchiveChatLimit:
+        raise HTTPException(409, 'archive_chat_turn_limit') from None
 
 
 def _semantic_archive_sources(uid, query, hydrate):
@@ -243,6 +301,16 @@ def _semantic_archive_sources(uid, query, hydrate):
 
 @router.post('/v1/local/conversations/chat', response_model=ChatTurn)
 def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Depends(require_paired_owner)):
+    return _answer_archive_chat(prompt, response, uid)
+
+
+@router.post('/v1/local/conversations/chat/threads/{thread_id}', response_model=ChatTurn)
+def ask_archive_thread(thread_id: ArchiveThreadId, prompt: ChatQuestion, response: Response,
+                       uid: str = Depends(require_paired_owner)):
+    return _answer_archive_chat(ArchiveQuestion(**prompt.model_dump(), store=True), response, uid, thread_id=thread_id)
+
+
+def _answer_archive_chat(prompt, response, uid, *, thread_id=None):
     question = prompt.question.strip()
     if not question:
         raise HTTPException(400, 'recording_chat_empty_question')
@@ -250,14 +318,19 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
     if prompt.store and prompt.history:
         raise HTTPException(400, 'archive_chat_history_is_server_owned')
     if prompt.store:
-        existing = chat_db.archive_turn(uid, prompt.id)
-        if existing is not None:
-            if existing['question'] != question:
-                raise HTTPException(409, 'recording_chat_history_changed')
-            return existing
-        recent, _ = chat_db.archive_history(uid, limit=3)
+        try:
+            existing = chat_db.archive_turn(uid, prompt.id, thread_id=thread_id)
+            if existing is not None:
+                if existing['question'] != question:
+                    raise HTTPException(409, 'recording_chat_history_changed')
+                return existing
+            recent, _ = chat_db.archive_history(uid, limit=3, thread_id=thread_id)
+        except chat_db.ArchiveThreadUnavailable:
+            raise HTTPException(404, 'archive_chat_thread_unavailable') from None
         if prompt.previous != (recent[0]['id'] if recent else None):
             raise HTTPException(409, 'recording_chat_history_changed')
+        if thread_id is not None and recent and chat_db.archive_thread_full(recent[0]['sequence']):
+            raise HTTPException(409, 'archive_chat_turn_limit')
         history = [turn for turn in recent if not turn.get('sources_unavailable')]
     else:
         history = [turn.model_dump() for turn in prompt.history]
@@ -340,7 +413,11 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
     if prompt.store:
         try:
             return chat_db.publish_archive(uid, prompt.id, prompt.previous, revisions,
-                                           {**payload, 'source_ids': sorted(referenced_ids)})
+                                           {**payload, 'source_ids': sorted(referenced_ids)}, thread_id=thread_id)
+        except chat_db.ArchiveThreadUnavailable:
+            raise HTTPException(404, 'archive_chat_thread_unavailable') from None
+        except chat_db.ArchiveChatLimit:
+            raise HTTPException(409, 'archive_chat_turn_limit') from None
         except chat_db.RecordingChanged:
             raise HTTPException(409, 'recording_chat_history_changed') from None
     if not chat_db.sources_current(uid, revisions):
