@@ -147,6 +147,9 @@ outside the library watch tree, then atomically publishes and syncs the complete
 directory before acknowledging. A repeated identical part returns the same
 receipt. Reusing its identity with different bytes returns conflict and cannot
 overwrite the original. Interrupted staging never appears as a completed WAV.
+For new parts the saved end time is the capture start plus the decoded sample
+duration. An upload after an outage therefore retains the original recording
+time. Opus decoder context from a preceding part contributes no extra duration.
 
 The server accepts version-three grouped parts through the same endpoint.
 Grouped clients supply a recording ID, consecutive indexes, sample positions,

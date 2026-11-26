@@ -53,6 +53,7 @@ def test_lost_ack_retry_after_restart_publishes_one_identical_wav(tmp_path: Path
     metadata = json.loads((captures[0] / 'metadata.json').read_text())
     assert metadata['frames_received'] == 2
     assert metadata['started_at'] == '2026-10-27T08:00:00Z'
+    assert metadata['ended_at'] == '2026-10-27T08:00:00.020000+00:00'
     assert metadata['delivery']['recording_id'] == parse_part(body)[0]['recording_id']
     assert list((tmp_path / 'local-audio-staging').iterdir()) == []
 
@@ -151,6 +152,7 @@ def test_opus_preroll_warms_one_decoder_but_does_not_duplicate_audio_duration_or
         assert audio.readframes(640) == struct.pack('<h', 14) * 320 + struct.pack('<h', 18) * 320
     metadata = json.loads((tmp_path / 'listen-captures' / saved['id'] / 'metadata.json').read_text())
     assert metadata['duration_seconds'] == 0.04
+    assert metadata['ended_at'] == '2026-10-27T08:00:00.040000+00:00'
     assert metadata['frames_received'] == 2
     assert metadata['encoded_bytes'] == 4
     assert metadata['delivery']['preroll_frames'] == 4
