@@ -490,6 +490,73 @@ void main() {
     }
   });
 
+  testWidgets('partial CV1 measurements keep storage and following actions anchored while scrolling', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final journal = _Journal();
+    final mic = _Microphone();
+    final wire = _Wire();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43);
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire);
+    final controls = LocalNextCaptureControls(inputs: inputs, library: pair);
+    const status = (unreadBytes: 444000, freeBytes: 444, clockValid: true);
+    const info = (oldest: 42, unreadPackets: 1000, overwrittenPackets: 4, protocol: Cv1StorageProtocol.legacy);
+    void measure(Cv1Diagnostics data) => wire.emit(Cv1DiagnosticsEvent(1, data));
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) =>
+                TextButton(onPressed: () => controls.openSettings(context, pair), child: const Text('Open settings')),
+          ),
+        ),
+      );
+      wire.ready();
+      await tester.tap(find.text('Open settings'));
+      await tester.pumpAndSettle();
+      final storage = find.text('CV1 → phone');
+      final after = find.text('Clear CV1 storage');
+      await tester.ensureVisible(after);
+      await tester.pumpAndSettle();
+      final baseline = tester.getTopLeft(after);
+      final bounds = tester.getRect(find.widgetWithText(ListTile, 'CV1 → phone'));
+      expect(bounds.height, lessThanOrEqualTo(84));
+      for (final data in [
+        const Cv1Diagnostics(storage: status),
+        const Cv1Diagnostics(storage: status, storageInfo: info),
+        const Cv1Diagnostics(),
+        const Cv1Diagnostics(storage: status, storageInfo: info),
+      ]) {
+        measure(data);
+        await tester.pump();
+        expect(tester.getTopLeft(after), baseline);
+        expect(tester.getRect(find.widgetWithText(ListTile, 'CV1 → phone')), bounds);
+        expect(find.textContaining('Unread packets overwritten'), findsNothing);
+      }
+      await tester.tap(storage);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Unread packets overwritten'), findsOneWidget);
+      expect(find.textContaining('Free space:'), findsOneWidget);
+      measure(const Cv1Diagnostics(storage: status));
+      await tester.pump();
+      expect(find.textContaining('Unread packets overwritten'), findsOneWidget);
+      await tester.tapAt(const Offset(8, 8));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(after), baseline);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      await mic.audioSession.close();
+    }
+  });
+
   testWidgets('device diagnostics show real samples, hide unsupported writes and clear a lost link', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(800, 1900);

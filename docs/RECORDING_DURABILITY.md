@@ -43,8 +43,8 @@ request limits; the phone retains at most 32 context packets. PCM has no context
 ## What the status means
 
 In Next, open the gear on the conversations screen. **CV1 → phone** shows
-unread bytes, free space and whether the clock was set in the last storage
-measurement from the connected pendant. The clock flag describes that sample;
+unread bytes in a compact row. Tap it to view a snapshot with free space, clock
+state, overwrite counter and transfer capabilities. The clock flag describes that sample;
 it cannot establish when previously buffered audio was recorded. Both mobile
 platforms read the storage status characteristic while the CV1 is idle.
 An absent, uninitialized or incompatible response leaves the amount unknown.

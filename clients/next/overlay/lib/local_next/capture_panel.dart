@@ -232,7 +232,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
 
   void openSettings() {
     final inputs = _inputs;
-    if (inputs != null) _controls(inputs)._settings(context, widget.library);
+    if (inputs != null) _controls(inputs).openSettings(context, widget.library);
   }
 
   LocalNextCaptureControls _controls(NextCaptureInputs inputs) => LocalNextCaptureControls(
@@ -646,7 +646,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     );
   }
 
-  void _settings(BuildContext context, PairedLibrary library) {
+  void openSettings(BuildContext context, PairedLibrary library) {
     if (!inputs.hasCaptureInProgress) unawaited(inputs.connection.sampleDiagnostics());
     final capture = Listenable.merge([inputs, inputs.phone, inputs.cv1, inputs.ownerChange]);
     var gesture = doubleTap;
@@ -736,39 +736,14 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ),
                     ),
                     if (hasCv1)
-                      ListTile(
-                        leading: Icon(Icons.sd_storage_outlined, color: NextAccent.teal.of(context)),
-                        title: Text(pairedSettingsLabel(context, 'nextPendantOutbox')),
-                        trailing: IconButton(
-                          tooltip: l.refresh,
-                          icon: const Icon(Icons.refresh),
-                          onPressed:
-                              link.phase == Cv1LinkPhase.ready && !inputs.hasCaptureInProgress && !link.clearingStorage
-                              ? link.sampleDiagnostics
-                              : null,
-                        ),
-                        subtitle: Text(switch (link.diagnostics?.storage) {
-                          final status? => [
-                            "${pairedSettingsLabel(context, 'nextPendantUnread')}: ${_storageSize(status.unreadBytes)}",
-                            "${pairedSettingsLabel(context, 'nextPendantFree')}: ${_storageSize(status.freeBytes)}",
-                            pairedSettingsLabel(context, status.clockValid ? 'nextClockSet' : 'nextClockUnset'),
-                            if (status.almostFull) pairedSettingsLabel(context, 'nextPendantFull'),
-                            if (link.diagnostics?.storageInfo case final info?) ...[
-                              "${pairedSettingsLabel(context, 'nextPendantDropped')}: ${info.overwrittenPackets}",
-                              pairedSettingsLabel(context, switch (info.protocol) {
-                                Cv1StorageProtocol.legacy => 'nextPendantLegacy',
-                                Cv1StorageProtocol.receiverAcknowledgement => 'nextPendantAck',
-                                Cv1StorageProtocol.unconfirmed => 'nextPendantUnconfirmed',
-                              }),
-                            ],
-                            pairedSettingsLabel(context, 'nextPendantLastRead'),
-                          ].join('\n'),
-                          null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),
-                        }),
+                      _PendantStorageTile(
+                        diagnostics: link.diagnostics,
+                        onRefresh:
+                            link.phase == Cv1LinkPhase.ready && !inputs.hasCaptureInProgress && !link.clearingStorage
+                            ? link.sampleDiagnostics
+                            : null,
                       ),
-                    if (hasCv1 &&
-                        (link.diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy ||
-                            inputs.archiveMessage != null))
+                    if (hasCv1)
                       ListTile(
                         leading: Icon(Icons.download_outlined, color: NextAccent.teal.of(context)),
                         title: Text(
@@ -1174,6 +1149,79 @@ String _shortCv1Id(String id) {
   // three octets for these, and Omi's short ID for iOS peripheral UUIDs.
   final octets = id.split(':');
   return BtDevice.shortId(octets.length == 6 ? octets.skip(3).join() : id) as String;
+}
+
+class _PendantStorageTile extends StatelessWidget {
+  const _PendantStorageTile({required this.diagnostics, required this.onRefresh});
+
+  final Cv1Diagnostics? diagnostics;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    String label(String key) => pairedSettingsLabel(context, key);
+    final status = diagnostics?.storage;
+    final info = diagnostics?.storageInfo;
+    final warning = status != null && (status.almostFull || !status.clockValid);
+    final unread = status == null ? '—' : _storageSize(status.unreadBytes);
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        warning ? Icons.warning_amber_rounded : Icons.sd_storage_outlined,
+        semanticLabel: warning ? label(status.almostFull ? 'nextPendantFull' : 'nextClockUnset') : null,
+        color: (warning ? NextAccent.amber : NextAccent.teal).of(context),
+      ),
+      title: Text(label('nextPendantOutbox')),
+      subtitle: Text("${label('nextPendantUnread')}: $unread", maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(tooltip: context.l10n.refresh, icon: const Icon(Icons.refresh), onPressed: onRefresh),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label('nextPendantOutbox'), style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                if (status == null)
+                  Text(label('nextPendantUnreadUnknown'))
+                else ...[
+                  Text("${label('nextPendantUnread')}: $unread"),
+                  Text("${label('nextPendantFree')}: ${_storageSize(status.freeBytes)}"),
+                  if (status.almostFull)
+                    Text(label('nextPendantFull'), style: TextStyle(color: NextAccent.amber.of(context))),
+                  const Divider(height: 24),
+                  Text(label(status.clockValid ? 'nextClockSet' : 'nextClockUnset')),
+                  if (info != null) ...[
+                    Text("${label('nextPendantDropped')}: ${info.overwrittenPackets}"),
+                    Text(
+                      label(switch (info.protocol) {
+                        Cv1StorageProtocol.legacy => 'nextPendantLegacy',
+                        Cv1StorageProtocol.receiverAcknowledgement => 'nextPendantAck',
+                        Cv1StorageProtocol.unconfirmed => 'nextPendantUnconfirmed',
+                      }),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(label('nextPendantLastRead'), style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 void _openDiagnostics(BuildContext context, NextCaptureInputs inputs, {PairedLibrary? library}) {
