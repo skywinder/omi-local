@@ -50,6 +50,11 @@ class Cv1GainCalibration {
   WavLevel get room => _room.level;
   WavLevel get speech => _speech.level;
 
+  static double? speechAboveRoom(WavLevel room, WavLevel speech) {
+    if (room.seconds < 1.5 || speech.seconds < 4 || !room.rms.isFinite || !speech.rms.isFinite) return null;
+    return speech.rms - room.rms;
+  }
+
   WavLevel takeRecent() {
     final reading = _recent.level;
     _recent = PcmLevelMeter();

@@ -174,7 +174,11 @@ the pendant during the countdown, and play the same phrase at the same volume
 and distance. The two results show received duration, signal and peak. The
 comparison checks whether audio was already arriving just before each cue.
 Use the main microphone test to measure speech above room noise and adjust
-gain one step at a time. Both tests run in memory on the phone
+gain one step at a time. Two complete microphone measurements show the change
+in speech level, room level, and the difference between them. Use **Return to
+previous gain** to restore the earlier tested setting. During a normal CV1
+recording, the capture status shows when the first audio has not arrived or
+when the stream has gone quiet again. Both tests run in memory on the phone
 without creating recordings or running speech recognition. Stop any active
 recording before testing. For an archived comparison the phone reads at most the first ten
 seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital

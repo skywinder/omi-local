@@ -15,6 +15,7 @@ enum _Phase { waiting, settling, room, ready, countdown, speech }
 enum _Test { microphone, coldPlayback, awakePlayback }
 
 typedef _PlaybackReading = ({int gain, bool streamingBeforeCue, int? firstAudio, WavLevel level});
+typedef _GainReading = ({int gain, WavLevel room, WavLevel speech, Cv1GainAdvice advice});
 
 class Cv1GainCalibrationCard extends StatefulWidget {
   const Cv1GainCalibrationCard({
@@ -49,7 +50,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   int? _firstPlaybackAudio;
   WavLevel? _recent;
   String? _notice;
-  final _results = <({int gain, WavLevel room, WavLevel speech, Cv1GainAdvice advice})>[];
+  final _results = <_GainReading>[];
   _PlaybackReading? _coldResult;
   _PlaybackReading? _awakeResult;
   _Phase _phase = _Phase.waiting;
@@ -214,6 +215,30 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
 
   String _db(double value) => '${value.isFinite ? value.toStringAsFixed(1) : '−∞'} dBFS';
 
+  String _delta(double after, double before) {
+    final difference = (after - before).toStringAsFixed(1);
+    if (difference == '-0.0' || difference == '0.0') return '0.0 dB';
+    return '${after > before ? '+' : ''}$difference dB';
+  }
+
+  Widget? _comparison(_GainReading before, _GainReading after) {
+    final oldMargin = Cv1GainCalibration.speechAboveRoom(before.room, before.speech);
+    final newMargin = Cv1GainCalibration.speechAboveRoom(after.room, after.speech);
+    if (oldMargin == null || newMargin == null) return null;
+    String label(String key) => pairedSettingsLabel(context, key);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text('${label('gainComparison')} · ${before.gain}/8 → ${after.gain}/8'),
+      subtitle: Text(
+        [
+          '${label('gainTestSpeechLevel')} · ${_delta(after.speech.rms, before.speech.rms)}',
+          '${label('gainTestRoom')} · ${_delta(after.room.rms, before.room.rms)}',
+          '${label('gainAboveRoom')} · ${_delta(newMargin, oldMargin)}',
+        ].join('\n'),
+      ),
+    );
+  }
+
   String _coverage(BuildContext context, String key, double seconds, int expected) =>
       '${pairedSettingsLabel(context, key)} · ${seconds.toStringAsFixed(1)} / $expected s';
 
@@ -247,6 +272,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     final meter = _meter;
     final canStart = !_opening && !widget.busy() && widget.gain > 0;
     final latest = _results.firstOrNull;
+    final previous = _results.length == 2 ? _results.last : null;
     final suggestedGain = latest?.gain == widget.gain
         ? switch (latest?.advice) {
             Cv1GainAdvice.low when widget.gain < 8 => widget.gain + 1,
@@ -340,8 +366,15 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
                   onPressed: _opening || widget.busy() || widget.gain >= 8 ? null : () => changeGain(widget.gain + 1),
                   child: Text('${label('gainUp')} · ${(widget.gain + 1).clamp(0, 8)}/8'),
                 ),
+                if (previous != null && latest?.gain == widget.gain)
+                  TextButton(
+                    onPressed: canStart ? () => changeGain(previous.gain) : null,
+                    child: Text('${label('gainRestoreCompared')} · ${previous.gain}/8'),
+                  ),
               ],
             ),
+          if (previous != null && latest != null)
+            if (_comparison(previous, latest) case final comparison?) comparison,
           for (final result in _results)
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -354,11 +387,8 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
                   if (result.speech.seconds > 0) ...[
                     '${label('gainTestSpeechLevel')} · ${_db(result.speech.rms)}',
                     '${label('gainTestPeak')} · ${_db(result.speech.peak)}',
-                    if (result.room.seconds >= 1.5 &&
-                        result.speech.seconds >= 4 &&
-                        result.room.rms.isFinite &&
-                        result.speech.rms.isFinite)
-                      '${label('gainAboveRoom')} · ${(result.speech.rms - result.room.rms).toStringAsFixed(1)} dB',
+                    if (Cv1GainCalibration.speechAboveRoom(result.room, result.speech) case final margin?)
+                      '${label('gainAboveRoom')} · ${margin.toStringAsFixed(1)} dB',
                   ],
                   label('gainTestAdvice_${result.advice.name}'),
                 ].join('\n'),

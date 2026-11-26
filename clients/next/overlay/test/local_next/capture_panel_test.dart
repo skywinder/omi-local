@@ -312,6 +312,87 @@ void main() {
     }
   });
 
+  testWidgets('CV1 calibration compares measured speech with room gain and can restore the earlier level', (
+    tester,
+  ) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    late _GainDecoder decoder;
+    var gain = 6;
+    var subscription = 0;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) => Cv1GainCalibrationCard(
+                  link: inputs.connection,
+                  gain: gain,
+                  busy: () => inputs.hasCaptureInProgress,
+                  changeGain: (value) => setState(() => gain = value),
+                  openDecoder: () async => decoder = _GainDecoder(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      wire.ready();
+
+      Future<void> tap(String text) async {
+        final control = find.text(text);
+        await tester.ensureVisible(control);
+        await tester.tap(control);
+        await tester.pump();
+      }
+
+      Future<void> measure(String start, {required int room, required int speech}) async {
+        await tap(start);
+        subscription++;
+        var counter = 0;
+        void send(int count, int level) {
+          decoder.sample = level;
+          for (var i = 0; i < count; i++, counter++) {
+            wire.emit(Cv1RawAudio(1, subscription, Uint8List.fromList([counter & 255, counter >> 8, 0, 0xf8])));
+          }
+        }
+
+        send(2, room);
+        await tester.pump(const Duration(seconds: 1));
+        send(100, room);
+        await tester.pump(const Duration(seconds: 2));
+        await tap('Start speech countdown');
+        await tester.pump(const Duration(seconds: 3));
+        send(250, speech);
+        await tester.pump(const Duration(seconds: 5));
+      }
+
+      await measure('Test CV1 microphone', room: 120, speech: 1000);
+      await tap('Apply suggested gain · 7/8 (+30dB)');
+      await measure('Repeat microphone test · 7/8', room: 240, speech: 2000);
+      expect(find.text('Compare microphone tests · 6/8 → 7/8'), findsOneWidget);
+      expect(
+        find.text('Speech level · +6.0 dB\nRoom level · +6.0 dB\nSpeech above room level · 0.0 dB'),
+        findsOneWidget,
+      );
+      await tap('Return to previous gain · 6/8');
+      expect(gain, 6);
+      await tap('Repeat microphone test · 6/8');
+      await tester.pump(const Duration(seconds: 8));
+      expect(find.textContaining('Compare microphone tests'), findsNothing);
+      expect(journal.recordings, 0);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
   testWidgets('the live CV1 battery opens microphone diagnostics and clears between connections', (tester) async {
     final journal = _Journal();
     final wire = _Wire();
@@ -679,20 +760,23 @@ void main() {
       );
       wire.ready();
       await inputs.startCv1();
+      await tester.pump();
+      expect(find.textContaining('Waiting for CV1 audio'), findsOneWidget);
       void packet(int counter) =>
           inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
       packet(0);
       packet(1);
       await tester.pump();
+      expect(find.textContaining('Waiting for CV1 audio'), findsNothing);
       expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
       now = now.add(const Duration(seconds: 6));
       await tester.pump(const Duration(seconds: 6));
-      expect(find.textContaining('No new audio from CV1'), findsOneWidget);
+      expect(find.textContaining('CV1 stopped sending audio'), findsOneWidget);
       expect(find.textContaining('Waiting for data'), findsOneWidget);
       expect(inputs.cv1.active, isTrue);
       packet(2);
       await tester.pump();
-      expect(find.textContaining('No new audio from CV1'), findsNothing);
+      expect(find.textContaining('CV1 stopped sending audio'), findsNothing);
       expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
       expect(wire.subscriptions, [true]);
     } finally {

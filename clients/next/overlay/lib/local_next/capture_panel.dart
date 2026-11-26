@@ -408,6 +408,14 @@ class LocalNextCaptureControls extends StatelessWidget {
     );
   }
 
+  String? _cv1AudioNotice(BuildContext context) {
+    final cv1 = inputs.cv1;
+    if (!cv1.wantsAudio || cv1.problem != null || inputs.connection.audioFailed) return null;
+    if (!cv1.hasPersistedAudio) return pairedSettingsLabel(context, 'nextCv1WaitingForAudio');
+    if (cv1.audioPaused) return pairedSettingsLabel(context, 'nextCv1AudioGap');
+    return null;
+  }
+
   Widget _liveControls(BuildContext context) => Wrap(
     alignment: WrapAlignment.center,
     crossAxisAlignment: WrapCrossAlignment.center,
@@ -415,7 +423,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     children: [
       if (_time(context) case final timer?) timer,
       if (inputs.cv1.active) ...[_finish(context), _mute(context)],
-      if (inputs.cv1.audioPaused) Text(pairedSettingsLabel(context, 'nextCv1AudioGap')),
+      if (_cv1AudioNotice(context) case final notice?) Text(notice),
     ],
   );
 
@@ -660,8 +668,8 @@ class LocalNextCaptureControls extends StatelessWidget {
             })
           else if (link.audioFailed)
             Text(l.captureRecordingError(l.bluetooth))
-          else if (cv1.audioPaused)
-            Text(pairedSettingsLabel(context, 'nextCv1AudioGap')),
+          else if (_cv1AudioNotice(context) case final notice?)
+            Text(notice),
           if (capture.active)
             if (phoneMicNotice(context, capture) case final notice?) Text(notice),
           if (capture.problem != null)
