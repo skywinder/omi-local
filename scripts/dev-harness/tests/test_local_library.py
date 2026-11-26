@@ -717,3 +717,47 @@ def test_mutations_over_public_origin_keep_same_origin_markers(library):
     assert not deleted
     assert public(library, path, server_handler, method='DELETE', extra={**ok, 'X-Omiloc-Request': 'delete'})[0] == 200
     assert deleted
+
+
+@pytest.mark.parametrize('removed', ('legacy', 'group-a', 'group-b'))
+def test_delete_identical_legacy_and_group_wavs_targets_only_selected_conversation(library, monkeypatch, removed):
+    from dev_harness import local_library_delete as deletion
+    monkeypatch.setattr(deletion.safety, 'read_and_validate_sentinel', lambda *args, **kwargs: None)
+    services = library.captures.parent.parent
+    cfg = SimpleNamespace(layout=SimpleNamespace(services_dir=services, state_root=services),
+                          repo_root=services, instance='fixture')
+    original = next(library.captures.glob('*/audio.wav'))
+    result = library.transcripts / 'result'
+    base = json.loads((result / 'manifest.json').read_text())
+    keys = {'legacy': 'a' * 64, 'group-a': 'b' * 64, 'group-b': 'c' * 64}
+    original.parent.rename(library.captures / 'legacy')
+    result.rename(library.transcripts / keys['legacy'])
+    (library.transcripts / keys['legacy'] / 'manifest.json').write_text(json.dumps({**base, 'result_key': keys['legacy']}))
+    for position, name in enumerate(('group-a', 'group-b')):
+        folder = library.captures / name
+        shutil.copytree(library.captures / 'legacy', folder)
+        group = {'recording_id': 'same-run', 'start_sample': position * 48000, 'end_sample': (position + 1) * 48000}
+        meta = folder / 'metadata.json'
+        meta.write_text(json.dumps({**json.loads(meta.read_text()), 'conversation_group': group}))
+        target = library.transcripts / keys[name]
+        shutil.copytree(library.transcripts / keys['legacy'], target)
+        (target / 'manifest.json').write_text(json.dumps({**base, 'result_key': keys[name], 'conversation_group': group,
+                                                          'capture_key': hashlib.sha256(name.encode()).hexdigest()}))
+    # Distinct text makes a digest-only cross-link visible through the HTTP catalogue.
+    for name, key in keys.items():
+        (library.transcripts / key / 'audio.json').write_text(json.dumps({
+            'segments': [{'start': 0, 'end': 1, 'text': name}]}))
+    status, _, body = request(library, '/api/recordings')
+    assert status == 200
+    rows = json.loads(body)['recordings']
+    assert len(rows) == 3
+    for row in rows:
+        audio = library.get(row['id'])['audio']
+        assert row['preview'] == audio.parent.name
+    requests = []
+    deletion.delete_recording(cfg, library.captures / removed / 'audio.wav',
+                              delete_database=lambda _, digest, ids: requests.append((digest, ids)))
+    assert requests == [(base['audio_sha256'], [keys[removed]])]
+    for name, key in keys.items():
+        assert (library.captures / name / 'audio.wav').is_file() == (name != removed)
+        assert (library.transcripts / key / 'manifest.json').is_file() == (name != removed)

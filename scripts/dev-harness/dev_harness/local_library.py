@@ -199,6 +199,15 @@ def recording_origin_labels(metadata):
     return {'source': source, 'phone': phone}
 
 
+def transcript_identity(digest, group, capture_key):
+    """Ungrouped imports share a WAV result. Group results belong to one capture."""
+    if group is None:
+        return digest, None, None
+    if not isinstance(group, dict) or not isinstance(capture_key, str) or not re.fullmatch(r'[0-9a-f]{64}', capture_key):
+        raise ValueError('Invalid grouped capture identity')
+    return digest, capture_key, json.dumps(group, sort_keys=True)
+
+
 class Library:
     def __init__(self, services):
         self.captures = services / 'storage' / 'listen-captures'
@@ -232,8 +241,9 @@ class Library:
                     progress = folder / 'processing.json'
                     stamp = max(p.stat().st_mtime_ns for p in (manifest, raw, progress)
                                 if p is not None and safe_file(p, self.transcripts))
-                    if digest not in results or stamp > results[digest][2]:
-                        results[digest] = (raw, progress, stamp)
+                    result_id = transcript_identity(digest, data.get('conversation_group'), data.get('capture_key'))
+                    if result_id not in results or stamp > results[result_id][2]:
+                        results[result_id] = (raw, progress, stamp)
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
             try:
@@ -269,14 +279,16 @@ class Library:
                     if started.tzinfo is None:
                         continue
                     token = self.tokens.setdefault(audio, secrets.token_urlsafe(18))
-                    job = queue.get(hashlib.sha256(folder.name.encode()).hexdigest(), {})
+                    capture_key = hashlib.sha256(folder.name.encode()).hexdigest()
+                    result_id = transcript_identity(digest, meta.get('conversation_group'), capture_key)
+                    job = queue.get(capture_key, {})
                     state = job.get('state', 'unavailable')
                     state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
                     segments, summary, processing = [], None, {}
                     summary_recording = note_key = None
-                    if digest in results:
+                    if result_id in results:
                         try:
-                            raw_path, progress_path, _stamp = results[digest]
+                            raw_path, progress_path, _stamp = results[result_id]
                             transcript = read_json(raw_path) if raw_path else {}
                             progress = (read_json(progress_path) if safe_file(progress_path, self.transcripts)
                                         else transcript.get('processing', {}))
