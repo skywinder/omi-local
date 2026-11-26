@@ -34,6 +34,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var metricChars: [String: CBCharacteristic] = [:]
   private var pendingReads: Set<String> = []
   private var readingRSSI = false
+  private var clearReply: FlutterResult?
+  private var clearSerial = 0
   private var storageCommand: CBCharacteristic?
   private var enablingStorageNotifications = false
   private var observingBattery = false
@@ -116,6 +118,19 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case "sampleSignal":
       sampleSignal()
       result(nil)
+    case "clearStorage":
+      guard phase == "ready", let peer, let char = storageCommand, char.isNotifying, clearReply == nil,
+            args?["generation"] as? Int == generation, args?["deviceId"] as? String == peer.identifier.uuidString,
+            let info = metrics["storageInfo"] as? FlutterStandardTypedData, info.data.count >= 31,
+            info.data[29] == 1, info.data[30] == 188, !changingAudio, audioQueue.isEmpty,
+            audioChar?.isNotifying != true else { return result(problem("storage_busy")) }
+      clearSerial += 1
+      let serial = clearSerial
+      clearReply = result
+      peer.writeValue(Data([0x13]), for: char, type: .withResponse)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+        if self?.clearSerial == serial { self?.finishClear(false) }
+      }
     case "writeSetting":
       guard phase == "ready", let peer, let field = args?["field"] as? String,
             field == "led" || field == "gain", let char = metricChars[field],
@@ -185,6 +200,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     buttonConfirmed = false
     changingAudio = false
     subscription = CV1AudioSubscription()
+    finishClear(false)
     storageCommand = nil
     enablingStorageNotifications = false
     metricChars.removeAll()
@@ -483,9 +499,15 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
   }
 
+  private func finishClear(_ acknowledged: Bool) {
+    let reply = clearReply
+    clearReply = nil
+    reply?(acknowledged)
+  }
+
   // Query ring metadata only while the audio stream is idle.
   private func sampleStorageInfo() {
-    guard phase == "ready", let peer, let char = storageCommand, !changingAudio, audioQueue.isEmpty,
+    guard phase == "ready", let peer, let char = storageCommand, clearReply == nil, !changingAudio, audioQueue.isEmpty,
           audioChar?.isNotifying != true, !enablingStorageNotifications else { return }
     if char.isNotifying {
       peer.writeValue(Data([0x10]), for: char, type: .withResponse)
@@ -509,7 +531,12 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   func peripheral(_ device: CBPeripheral, didWriteValueFor char: CBCharacteristic, error: Error?) {
-    guard peer === device, let write = setting, write.char === char else { return }
+    guard peer === device else { return }
+    if char === storageCommand {
+      if error != nil { finishClear(false) }
+      return
+    }
+    guard let write = setting, write.char === char else { return }
     setting = nil
     if error == nil {
       metrics[write.field] = write.value
@@ -553,6 +580,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   func peripheral(_ device: CBPeripheral, didUpdateValueFor char: CBCharacteristic, error: Error?) {
     guard peer === device else { return }
     if char === storageCommand {
+      if error == nil, let data = char.value, data.count == 2, data.first == 1, clearReply != nil {
+        finishClear(data[1] == 0)
+        return
+      }
       if phase == "ready", error == nil, let data = char.value, data.first == 0x02, data.count == 31 || data.count == 41 {
         metrics["storageInfo"] = FlutterStandardTypedData(bytes: data)
         publishMetrics()

@@ -59,7 +59,7 @@ typedef Cv1StorageStatus = ({int unreadBytes, int freeBytes, bool clockValid});
 
 enum Cv1StorageProtocol { legacy, receiverAcknowledgement, unconfirmed }
 
-typedef Cv1StorageInfo = ({int overwrittenPackets, Cv1StorageProtocol protocol});
+typedef Cv1StorageInfo = ({int unreadPackets, int overwrittenPackets, Cv1StorageProtocol protocol});
 
 extension Cv1StorageCapacity on Cv1StorageStatus {
   bool get almostFull => freeBytes * 100 <= unreadBytes + freeBytes;
@@ -123,7 +123,7 @@ class Cv1Diagnostics {
       final supported = info.capAppAckReclaim && info.capAdvanceIdempotent && info.capRingId;
       protocol = supported ? Cv1StorageProtocol.receiverAcknowledgement : Cv1StorageProtocol.unconfirmed;
     }
-    return (overwrittenPackets: info.droppedPackets, protocol: protocol);
+    return (unreadPackets: info.unreadPackets, overwrittenPackets: info.droppedPackets, protocol: protocol);
   }
 
   factory Cv1Diagnostics.fromWire(Map values) {
@@ -206,6 +206,14 @@ abstract interface class Cv1Transport {
   Future<void> close();
 }
 
+typedef Cv1StorageTarget = ({int generation, String deviceId});
+
+enum Cv1ClearResult { empty, unavailable, unconfirmed }
+
+abstract interface class Cv1StorageTransport {
+  Future<bool> clearStorage(Cv1StorageTarget target);
+}
+
 abstract interface class Cv1DiagnosticsTransport {
   Future<void> sampleDiagnostics();
   Future<void> sampleSignal();
@@ -214,7 +222,7 @@ abstract interface class Cv1DiagnosticsTransport {
 
 class Cv1PermissionDenied implements Exception {}
 
-class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport {
+class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1StorageTransport {
   static const _methods = MethodChannel('org.omilocal.next/cv1');
   static const _events = EventChannel('org.omilocal.next/cv1.events');
 
@@ -243,6 +251,14 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport {
 
   @override
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
+
+  @override
+  Future<bool> clearStorage(Cv1StorageTarget target) async =>
+      await _methods.invokeMethod<bool>('clearStorage', {
+        'generation': target.generation,
+        'deviceId': target.deviceId,
+      }) ==
+      true;
 
   @override
   Future<void> writeSetting(int generation, String field, int value) =>
@@ -382,6 +398,63 @@ class Cv1Connection extends ChangeNotifier {
       await (transport as Cv1DiagnosticsTransport).sampleDiagnostics();
     } catch (_) {
       // The next refresh may succeed. A read failure does not change capture ownership.
+    }
+  }
+
+  bool clearingStorage = false;
+
+  Cv1StorageTarget? get storageTarget {
+    final id = linkedDeviceId;
+    if (_closing ||
+        phase != Cv1LinkPhase.ready ||
+        id == null ||
+        calibrating ||
+        _capture.active ||
+        _capture.sealing ||
+        diagnostics?.storageInfo == null ||
+        diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.unconfirmed ||
+        (diagnostics?.storage?.unreadBytes ?? 0) == 0) {
+      return null;
+    }
+    return (generation: _generation, deviceId: id);
+  }
+
+  Future<Cv1ClearResult> clearStorage(Cv1StorageTarget target) async {
+    final transport = _transport;
+    if (clearingStorage || storageTarget != target || transport is! Cv1StorageTransport) {
+      return Cv1ClearResult.unavailable;
+    }
+    clearingStorage = true;
+    notifyListeners();
+    final empty = Completer<bool>();
+    void observe() {
+      if (empty.isCompleted) return;
+      if (_closing || target.generation != _generation || linkedDeviceId != target.deviceId) {
+        empty.complete(false);
+      } else if (diagnostics?.storage?.unreadBytes == 0 && diagnostics?.storageInfo?.unreadPackets == 0) {
+        empty.complete(true);
+      }
+    }
+
+    try {
+      final acknowledged = await (transport as Cv1StorageTransport).clearStorage(target);
+      if (_closing || target.generation != _generation || linkedDeviceId != target.deviceId) {
+        return Cv1ClearResult.unconfirmed;
+      }
+      addListener(observe);
+      await sampleDiagnostics();
+      if (acknowledged && await empty.future.timeout(const Duration(seconds: 6), onTimeout: () => false)) {
+        return Cv1ClearResult.empty;
+      }
+      return Cv1ClearResult.unconfirmed;
+    } on PlatformException catch (error) {
+      return error.code == 'storage_busy' ? Cv1ClearResult.unavailable : Cv1ClearResult.unconfirmed;
+    } catch (_) {
+      return Cv1ClearResult.unconfirmed;
+    } finally {
+      removeListener(observe);
+      clearingStorage = false;
+      if (!_closing) notifyListeners();
     }
   }
 

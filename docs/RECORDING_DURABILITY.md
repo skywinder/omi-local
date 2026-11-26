@@ -56,6 +56,15 @@ reply identifies the legacy transfer contract. For a complete v1 reply Next
 recognizes the advertised receiver-acknowledged mode only with a nonzero ring
 identity, receiver acknowledgement and idempotent advance. Capability discovery
 does not negotiate that mode or read audio.
+Use the refresh icon to request a new measurement. **Clear CV1 storage**
+is available for an idle, recognized ring with unread audio. The confirmation
+names the pendant and its measured unread size. The command is bound to that
+Bluetooth connection. Next sends it once and reports success only after the
+firmware acknowledges it and fresh status and INFO both report an empty ring.
+After an interruption, refresh before deciding whether to try again. The
+command clears unread audio on the CV1. Phone parts and server recordings
+remain available independently.
+
 **Phone → server** counts the journal of this app installation, including
 its open part. The original Local app and Next each have their own journal.
 

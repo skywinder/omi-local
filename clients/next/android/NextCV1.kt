@@ -52,6 +52,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var lastAudio = 0
     private var diagnosticsRequested = false
     private var storageNotifications = false
+    private var clearReply: MethodChannel.Result? = null
     private var rssiPending = false
     private val operations = ArrayDeque<Job>()
     private var active: Job? = null
@@ -121,7 +122,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 }
                 "setAudio" -> setAudio(call, result)
                 "sampleDiagnostics" -> {
-                    if (phase == "ready" && desiredAudio == null && confirmedAudio == null) {
+                    if (phase == "ready" && clearReply == null && desiredAudio == null && confirmedAudio == null) {
                         diagnosticsRequested = true
                         advance()
                     }
@@ -131,6 +132,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     sampleSignal()
                     result.success(null)
                 }
+                "clearStorage" -> clearStorage(call, result)
                 "writeSetting" -> writeSetting(call, result)
                 else -> result.notImplemented()
             }
@@ -187,6 +189,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val pending = listOfNotNull(active) + operations
         active = null
         operations.clear()
+        finishClear(false)
         stats.clear()
         diagnosticsRequested = false
         storageNotifications = false
@@ -468,6 +471,27 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         }
     }
 
+    private fun finishClear(acknowledged: Boolean) {
+        val reply = clearReply ?: return
+        clearReply = null
+        reply.success(acknowledged)
+    }
+
+    private fun clearStorage(call: MethodCall, reply: MethodChannel.Result) {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
+        val info = stats["storageInfo"] as? ByteArray
+        if (phase != "ready" || call.argument<Int>("generation") != generation ||
+            call.argument<String>("deviceId") != target || clearReply != null || !storageNotifications ||
+            char == null || info == null || info[29].toInt() != 1 || info[30].toInt().and(255) != 188 ||
+            desiredAudio != null || confirmedAudio != null || active != null || operations.isNotEmpty()) {
+            reply.error("storage_busy", null, null)
+            return
+        }
+        clearReply = reply
+        writeIdle(char, byteArrayOf(0x13)) { if (it == null && clearReply === reply) finishClear(false) }
+        handler.postDelayed({ if (clearReply === reply) finishClear(false) }, 20000)
+    }
+
     // INFO returns ring metadata. It does not start an SD download or advance its cursor.
     private fun sampleStorageInfo() {
         val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand) ?: return
@@ -604,6 +628,10 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     stats["battery"] = level
                     telemetry("battery")
                 } else if (char.uuid == Cv1Uuid.storageCommand) {
+                    if (value.size == 2 && value[0].toInt() == 1 && clearReply != null) {
+                        finishClear(value[1].toInt() == 0)
+                        return@post
+                    }
                     if ((value.size == 31 || value.size == 41) && value[0].toInt() == 2) {
                         stats["storageInfo"] = value.copyOf()
                         telemetry()

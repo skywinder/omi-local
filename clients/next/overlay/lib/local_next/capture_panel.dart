@@ -450,6 +450,44 @@ class LocalNextCaptureControls extends StatelessWidget {
     ],
   );
 
+  Future<void> _clearPendant(BuildContext context, Cv1Connection link) async {
+    final target = link.storageTarget;
+    final bytes = link.diagnostics?.storage?.unreadBytes;
+    if (target == null || bytes == null || inputs.hasCaptureInProgress) return;
+    String label(String key) => pairedSettingsLabel(context, key);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(label('nextPendantClearTitle')),
+        content: Text(
+          'CV1 · ${_shortCv1Id(target.deviceId)} · ${_storageSize(bytes)}\n\n${label('nextPendantClearHint')}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(context.l10n.cancel)),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(dialog).colorScheme.error),
+            onPressed: () => Navigator.pop(dialog, true),
+            child: Text(label('nextPendantClearConfirm')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final outcome = inputs.hasCaptureInProgress ? Cv1ClearResult.unavailable : await link.clearStorage(target);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          label(switch (outcome) {
+            Cv1ClearResult.empty => 'nextPendantCleared',
+            Cv1ClearResult.unavailable => 'nextPendantClearUnavailable',
+            Cv1ClearResult.unconfirmed => 'nextPendantClearUnknown',
+          }),
+        ),
+      ),
+    );
+  }
+
   void _settings(BuildContext context, PairedLibrary library) {
     if (!inputs.hasCaptureInProgress) unawaited(inputs.connection.sampleDiagnostics());
     final capture = Listenable.merge([inputs, inputs.phone, inputs.cv1, inputs.ownerChange]);
@@ -543,6 +581,14 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ListTile(
                         leading: Icon(Icons.sd_storage_outlined, color: NextAccent.teal.of(context)),
                         title: Text(pairedSettingsLabel(context, 'nextPendantOutbox')),
+                        trailing: IconButton(
+                          tooltip: l.refresh,
+                          icon: const Icon(Icons.refresh),
+                          onPressed:
+                              link.phase == Cv1LinkPhase.ready && !inputs.hasCaptureInProgress && !link.clearingStorage
+                              ? link.sampleDiagnostics
+                              : null,
+                        ),
                         subtitle: Text(switch (link.diagnostics?.storage) {
                           final status? => [
                             "${pairedSettingsLabel(context, 'nextPendantUnread')}: ${_storageSize(status.unreadBytes)}",
@@ -561,6 +607,16 @@ class LocalNextCaptureControls extends StatelessWidget {
                           ].join('\n'),
                           null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),
                         }),
+                      ),
+                    if (hasCv1)
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline),
+                        title: Text(pairedSettingsLabel(context, 'nextPendantClearAction')),
+                        enabled: !inputs.hasCaptureInProgress && link.storageTarget != null && !link.clearingStorage,
+                        trailing: link.clearingStorage
+                            ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : null,
+                        onTap: () => _clearPendant(context, link),
                       ),
                     ListTile(
                       leading: Icon(Icons.cloud_upload_outlined, color: NextAccent.amber.of(context)),
