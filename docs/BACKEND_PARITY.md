@@ -106,6 +106,27 @@ verified folder moves, stale-write rejection, deletion that preserved the
 recording, manual speaker assignment and suggestions from the selected model
 with transcript timestamps. Requests without a paired key were rejected.
 
+## Daily recaps and manual goal progress
+
+The paired profile advertises `local_daily_recaps_version` and
+`local_goals_version`. A day recap uses the calendar bounds chosen on the
+phone, including shorter and longer days at daylight saving transitions.
+The preview lists eligible sources and the selected summary model. After
+consent the server uses the applied model through the private library relay,
+resolves citations to the saved conversations, and checks the archive revision
+before publishing. An identical retry returns the saved overview.
+
+Goals reuse the original Firestore collection and read route. A paired owner
+can add a goal and append a manual progress event with an optional metric and
+recording link. Replays return the same event. A conflicting revision or an
+unavailable source is rejected before changing the goal.
+
+Bastion enabled both capabilities on November 26. An isolated owner verified
+generation through the applied model, listing the saved recap, creating a
+goal, and checking a replayed progress event with a recording reference.
+In Next, open **Daily Recaps** or **Goals** from the archive menu. Open
+**Log progress** from a completed conversation to attach it to a goal entry.
+
 ## Semantic archive search
 
 Next offers **Words** and **Meaning** in the archive search screen. The paired

@@ -74,6 +74,8 @@ assert profile['local_task_reminders_version'] == 1
 assert profile['local_folders_version'] == 2
 assert profile['local_speaker_labels_version'] == 1
 assert profile['local_task_suggestions_version'] == 1
+assert profile['local_daily_recaps_version'] == 1
+assert profile['local_goals_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
@@ -808,6 +810,7 @@ assert local_daily_recaps._day(local_daily_recaps.DayInput(**spring)).end - date
     2026, 3, 28, 23, tzinfo=timezone.utc,
 ) == timedelta(hours=23)
 assert client.post('/v1/local/daily-recaps/preview', json=spring).status_code == 401
+assert client.post('/v1/local/daily-recaps/generate', json={}).status_code == 401
 invalid = {**spring, 'end': '2026-03-31T22:00:00Z'}
 assert client.post('/v1/local/daily-recaps/preview', json=invalid, headers=headers).status_code == 422
 
