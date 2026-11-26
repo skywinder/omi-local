@@ -123,5 +123,5 @@ starts a new archive entry.
 Android has physical CV1-to-Bastion evidence for the legacy manual transfer, including
 an offline phone. On Pixel with firmware 3.0.21, stopping a series saved 5.18 s.
 The next series began at the first unsaved record and delivered 35.28 s.
-Bastion confirmed both parts (259 and 1,764 Opus frames, zero decoding errors). On iOS, device acceptance still needs a disposable legacy window.
+Bastion confirmed both parts (259 and 1,764 Opus frames, zero decoding errors). With Wi-Fi and mobile data disabled, the Pixel retained a separate 34.24 s series while the paired server had no copy. After reconnect, its server receipt matched the phone file SHA-256, the phone released the part, and the WAV decoded all 1,712 frames with the original capture date. On iOS, device acceptance still needs a disposable legacy window.
 Both platforms require separate work for receiver-acknowledged bulk recovery.
