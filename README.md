@@ -344,8 +344,7 @@ speech fixture retain their original text.
 
 Read [AGENTS.md](AGENTS.md) and the relevant component guide before changing code.
 Use the standalone repository's commands, add regression tests for bug fixes,
-and describe your verification in the pull request. Remove secrets and personal
-recording content from reports.
+and describe your verification in the pull request. For reproducible problems, see the [project repository](https://github.com/skywinder/omi-local); remove secrets and personal recording content from reports.
 
 ## License and acknowledgements
 
