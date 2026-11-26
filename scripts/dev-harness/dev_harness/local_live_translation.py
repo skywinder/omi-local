@@ -67,7 +67,7 @@ def request_translations(settings, key, language, texts, *, other_language=None)
             '(the translation), exactly one object per input string in the same order. '
             'Do not merge, split, drop or add items; do not include explanations or the original text.'
         )
-    body = {'model': settings['model'],
+    body = {'model': settings.get('model'),
             'messages': [{'role': 'system', 'content': system},
                          {'role': 'user', 'content': json.dumps(list(texts), ensure_ascii=False)}],
             'temperature': 0, 'max_tokens': 4000}
@@ -75,6 +75,8 @@ def request_translations(settings, key, language, texts, *, other_language=None)
         # Same opt-in switch as the summary stage (Qwen3 on llama.cpp/vLLM).
         body['chat_template_kwargs'] = {'enable_thinking': False}
     with transport.client(key=key, timeout=REQUEST_TIMEOUT) as client:
+        if settings.get('model_source') == 'provider':
+            body['model'] = transport.summary_model(client, settings['base_url'])
         payload = transport.post_json(client, endpoint, json=body, deadline_seconds=REQUEST_TIMEOUT)
     choice = payload['choices'][0]
     if choice.get('finish_reason') not in (None, 'stop'):

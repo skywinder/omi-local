@@ -9,7 +9,7 @@ from .local_providers import SettingsError
 
 
 def _provider(registry):
-    profile = registry.snapshot('summary')
+    profile = registry.resolve_summary(registry.snapshot('summary'))
     if not profile or profile['kind'] != 'openai-compatible':
         return None, None
     settings = profile['settings']

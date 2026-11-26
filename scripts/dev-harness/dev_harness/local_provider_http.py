@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ipaddress
 import math
+import os
 import time
 from urllib.parse import urlsplit
 
@@ -21,6 +22,46 @@ class ProviderResponseError(ValueError):
     def __init__(self, code, message):
         super().__init__(message)
         self.diagnostic_code = code
+
+
+def default_summary_model_source():
+    return 'provider' if os.environ.get('OMI_SUMMARY_MODEL_DEFAULT') == 'provider' else 'profile'
+
+
+def follows_summary_provider(settings, *, allow_legacy_default=True):
+    source = settings.get('model_source')
+    return source == 'provider' or (source is None and (
+        not settings.get('model') or
+        allow_legacy_default and default_summary_model_source() == 'provider'
+    ))
+
+
+def summary_model(client, base):
+    """Select a usable text model from the configured provider's catalogue."""
+    response = metadata_get(client, validate_url(base) + '/models')
+    if response.status_code in {404, 405, 503}:
+        raise ProviderResponseError(f'http_{response.status_code}', 'Список моделей суммаризации недоступен.')
+    data = json_response(response)
+    valid_ids = set(model_ids(data))
+    first = None
+    non_text = ('embedding', 'embeddings', 'rerank', 'reranker', 'transcription', 'stt', 'speech', 'tts')
+    for row in data['data'][:2000]:
+        if not isinstance(row, dict) or not isinstance(model := row.get('id'), str) or model not in valid_ids:
+            continue
+        status = row.get('status')
+        if isinstance(status, dict):
+            status = status.get('value')
+        if status in ('unloaded', 'loading', 'failed', 'unavailable') or row.get('type') in non_text:
+            continue
+        capabilities = row.get('capabilities')
+        if isinstance(capabilities, list) and capabilities and all(item in non_text for item in capabilities):
+            continue
+        if status in ('loaded', 'ready', 'running'):
+            return model
+        first = first or model
+    if first:
+        return first
+    raise ProviderResponseError('summary_model_unavailable', 'Нет доступных моделей суммаризации.')
 
 
 def rejected_response(status):

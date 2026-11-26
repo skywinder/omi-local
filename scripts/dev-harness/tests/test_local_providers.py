@@ -590,6 +590,71 @@ def test_live_activation_indeterminate_is_distinct_from_ordinary_failure(cfg, mo
     assert Registry(cfg).read() == saved
 
 
+def test_legacy_summary_policy_survives_restart_and_explicit_selection_wins(cfg, monkeypatch):
+    from dev_harness import local_live_translation, local_pipeline, local_provider_health, local_provider_http
+    from dev_harness.local_provider_cli import editable
+    from dev_harness.local_recording_chat import chat_provider
+
+    registry = Registry(cfg)
+    old = registry.save({'revision': 0, 'profile': summary(base='http://127.0.0.1:10373/v1'),
+                         'api_key': 'synthetic-key'})
+    profile_id = old['profiles'][-1]['id']
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': profile_id}, prepare=lambda _, publish: publish())
+    assert registry.snapshot('summary')['settings']['model'] == 'synthetic-model'
+    original = registry.path.read_bytes()
+
+    monkeypatch.setenv('OMI_SUMMARY_MODEL_DEFAULT', 'provider')
+    registry = Registry(cfg)
+    assert 'model' not in registry.read()['effective']['summary']['settings']
+    assert registry.path.read_bytes() == original
+    assert editable(registry.read()['profiles'][-1])['settings']['model_source'] == 'provider'
+    assert chat_provider(registry)['provider'] is None
+
+    requests = []
+    catalogue = [{'id': 'embedding', 'status': 'loaded', 'type': 'embedding'}, {'id': 'fallback'},
+                 {'id': 'loaded-text', 'status': {'value': 'loaded'}}, {'id': 'explicit-model'}]
+
+    def respond(request):
+        assert request.headers['Authorization'] == 'Bearer synthetic-key'
+        if request.url.path == '/v1/models':
+            return httpx.Response(200, json={'data': catalogue})
+        assert request.url.path == '/v1/chat/completions'
+        body = json.loads(request.content)
+        requests.append(body['model'])
+        translation = body['messages'][0]['content'].startswith('Translate every string')
+        content = ['Translated'] if translation else {'title': 'Handled', 'overview': 'Profile policy worked.'}
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(content)}}]})
+
+    def client(*, key='', timeout=10):
+        return httpx.Client(transport=httpx.MockTransport(respond), timeout=timeout,
+                            headers=local_provider_http.auth_headers(key))
+
+    monkeypatch.setattr(local_provider_http, 'client', client)
+    for expected in ('loaded-text', 'explicit-model'):
+        if expected == 'explicit-model':
+            status, saved = phone_request(cfg, '/save', payload={
+                'revision': 2, 'profile': {**registry.read()['profiles'][-1], 'settings': {
+                    'base_url': 'http://127.0.0.1:10373/v1', 'model': expected, 'model_source': 'profile'}},
+            })
+            assert status == 200 and saved['effective']['summary']['settings'].get('model') is None
+            assert phone_request(cfg, '/activate', payload={'revision': 3, 'stage': 'summary', 'id': profile_id})[0] == 200
+        else:
+            report = local_provider_health.collect(cfg)
+            local_provider_health.write(cfg, report)
+            assert registry.summary_choices()[1][0]['settings']['model'] == expected
+            report['stages']['summary']['configuration_revision'] += 1
+            local_provider_health.write(cfg, report)
+            assert chat_provider(registry)['provider'] is None
+            local_provider_health.write(cfg, local_provider_health.collect(cfg))
+
+        snapshot = registry.pipeline()['summary']
+        key = registry.key(snapshot)
+        assert chat_provider(registry)['provider']['model'] == expected
+        assert local_pipeline.summarize_text(snapshot, key, 'Fixture.', cfg.repo_root, lambda *_: None)['title'] == 'Handled'
+        assert local_live_translation.request_translations(registry.snapshot('translation')['settings'], key, 'ru', ['Fixture.']) == ['Translated']
+        assert requests[-2:] == [expected, expected]
+
+
 def test_summary_reasoning_option_is_validated(cfg):
     from dev_harness.local_providers import validate_profile, SettingsError
     profile = summary()

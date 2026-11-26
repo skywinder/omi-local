@@ -165,9 +165,20 @@ default for servers that reject unknown fields.
 
 Next can read the configured endpoint's model catalogue or accept a model name
 entered manually. Saving and applying a summary profile in Next records an
-explicit model selection for that profile. On a server configured to follow the
-provider's loaded model, existing automatic profiles keep that behavior until
-replaced by an explicitly applied profile.
+explicit model selection for that profile. In the web library, leave **Model**
+empty to follow the provider. A JSON profile can set `model_source` to `provider`
+for the same behavior. The harness checks that provider's own `/models`
+catalogue with the saved key, prefers a loaded text model, and uses the same
+provider for inference. The translation fallback inherits the summary mode.
+Archive chat and manually regenerated recaps use a recent model observation
+for the applied revision so the model shown before confirmation is the one
+used for the request.
+
+The default for an unmarked profile with a saved model is `profile`.
+Set `OMI_SUMMARY_MODEL_DEFAULT=provider` to retain automatic behavior on an
+existing host such as Bastion. Use `.env.docker` with the Docker launcher.
+This setting preserves the registry on disk. A profile created with an explicit
+mode keeps that mode when the host default changes.
 
 In Next, open **Processing → Summary Template** to add or edit a named prompt
 and select the default. The paired server uses the same revisioned catalog as

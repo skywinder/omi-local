@@ -48,6 +48,7 @@ OMI_DOCKER_DEVICE=cuda
 OMI_DOCKER_STT=builtin
 OMI_DOCKER_GPU_ID=0
 OMI_DOCKER_TRANSPORT=tailscale
+OMI_SUMMARY_MODEL_DEFAULT=profile
 STT_MODEL=Systran/faster-whisper-small
 # bootstrap writes the actual immutable model revision here.
 STT_THREADS=4
@@ -57,8 +58,12 @@ Supported fields are `OMI_DOCKER_STT` (`builtin` or `external`),
 `OMI_DOCKER_DEVICE` (`cpu` or `cuda`),
 `OMI_DOCKER_GPU_ID` (numeric index or `GPU-...` UUID),
 `OMI_DOCKER_TRANSPORT` (`local`, `tailscale`, or `ngrok`), `STT_MODEL`,
-`STT_REVISION`, and `STT_THREADS`. Use the CLI bootstrap flags to create or
-change it; do not edit it while services are running. For built-in STT, the model
+`STT_REVISION`, `STT_THREADS`, and `OMI_SUMMARY_MODEL_DEFAULT` (`profile` or
+`provider`). Use the CLI bootstrap flags to create it and edit the summary
+default while the services are stopped. Use `provider` when rebuilding an
+instance that already followed the loaded text model for unmarked summary
+profiles. Model selections saved explicitly in Next continue to use their
+chosen model. For built-in STT, the model
 revision written by bootstrap is an immutable snapshot revision, so startup does not silently
 resolve a moving `main` branch.
 

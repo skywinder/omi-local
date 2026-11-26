@@ -39,7 +39,8 @@ export function providerFields(profile) {
     ? [field('url', 'WebSocket URL', {required: true, placeholder: 'wss://server.example/asr'})]
     : [field('url', 'Локальный WebSocket URL', {required: true}), field('python', 'Python подготовленного сервера', {required: true}), field('model_dir', 'Папка модели', {required: true}),
       field('language', 'Язык', {options: {ru: 'Русский', en: 'English', auto: 'Автоматически'}}), field('chunk_seconds', 'Длина фрагмента, с', {type: 'number', min: 1, max: 10, step: 0.5})];
-  if (stage === 'summary' || stage === 'translation') return [field('base_url', 'Базовый URL API', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}), field('model', 'Модель', {required: true, models: true}),
+  if (stage === 'summary' || stage === 'translation') return [field('base_url', 'Базовый URL API', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}),
+    field('model', 'Модель', stage === 'summary' ? {models: true, hint: 'Пустое поле использует загруженную модель провайдера.'} : {required: true, models: true}),
     field('reasoning', 'Рассуждения модели', {options: {default: 'По умолчанию сервера', off: 'Отключить (Qwen3 на llama.cpp/vLLM)'}, hint: 'Отключайте, если модель тратит весь ответ на размышления и результат не приходит.'})];
   if (stage === 'diarization') return kind === 'mycelia'
     ? [field('base_url', 'Базовый URL сервера', {required: true, placeholder: 'https://server.example'}),
@@ -61,6 +62,7 @@ export function providerFields(profile) {
 export function draftPayload(profile, apiKey = '', clearKey = false) {
   const {id, name, stage, kind, settings} = profile;
   const payload = {profile: {...(id ? {id} : {}), name: name.trim(), stage, kind, settings: structuredClone(settings)}};
+  if (stage === 'summary') payload.profile.settings.model_source = settings.model?.trim() ? 'profile' : 'provider';
   if (clearKey) payload.clear_key = true;
   else if (apiKey.trim()) payload.api_key = apiKey.trim();
   return payload;

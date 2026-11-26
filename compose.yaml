@@ -20,6 +20,7 @@ services:
       OMI_HARNESS_PORT_OFFSET: '13000'
       OMI_DEV_BIND_HOST: 127.0.0.1
       OMI_HARNESS_PRIVATE_UMASK: '077'
+      OMI_SUMMARY_MODEL_DEFAULT: ${OMI_SUMMARY_MODEL_DEFAULT:-profile}
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
       # Optional remote library access through Tailscale Serve; see docs/DOCKER.md.
       OMI_LIBRARY_PUBLIC_ORIGIN: ${OMI_LIBRARY_PUBLIC_ORIGIN:-}

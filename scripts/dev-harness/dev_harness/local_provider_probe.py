@@ -43,6 +43,10 @@ def probe(cfg, profile, *, key='', models=False):
         if stage in {'stt', 'summary', 'translation'}:
             base = transport.validate_url(settings.get('provider_url') or settings.get('base_url', ''))
             with transport.client(key=key, timeout=8) as client:
+                if not models and (stage == 'summary' or profile.get('inherited_from') == 'summary'):
+                    if transport.follows_summary_provider(settings):
+                        model = transport.summary_model(client, base)
+                        return result('ready', 'Доступна модель провайдера.', models=[model], model=model)
                 response = transport.metadata_get(client, base + '/models')
                 if response.status_code in {404, 405}:
                     return result('available', 'Сервер доступен, список моделей не поддерживается. Укажите модель вручную.', models=[])
@@ -73,6 +77,8 @@ def probe(cfg, profile, *, key='', models=False):
         if data.get('ready') is False:
             return result('unavailable', 'Сервер сообщает, что модель ещё не готова.')
         return result('available', 'Сервер отвечает, готовность модели не подтверждена.')
+    except transport.ProviderResponseError as error:
+        return result('misconfigured' if error.diagnostic_code == 'configuration' else 'unavailable', str(error))
     except subprocess.TimeoutExpired:
         return result('unavailable', 'Проверка локального окружения превысила время ожидания.')
     except (httpx.HTTPError, OSError):

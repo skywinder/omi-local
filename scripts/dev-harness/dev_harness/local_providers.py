@@ -15,7 +15,7 @@ import re
 import tempfile
 import uuid
 
-from .local_provider_http import auth_headers, validate_url
+from .local_provider_http import auth_headers, default_summary_model_source, follows_summary_provider, validate_url
 
 
 STAGES = ('live', 'stt', 'diarization', 'summary', 'translation')
@@ -188,9 +188,12 @@ def validate_profile(value, *, models=False):
     else:
         data['base_url'] = endpoint(data, 'base_url')
         if stage in {'summary', 'translation'}:
-            if 'model_source' in data and data['model_source'] != 'profile':
-                raise SettingsError('Выберите модель профиля.', field='model_source')
-            text_field(data, 'model', required=not models, limit=256)
+            if 'model_source' in data and data['model_source'] not in ('profile', 'provider'):
+                raise SettingsError('Недопустимый режим выбора модели.', field='model_source')
+            if data.get('model_source') == 'provider':
+                data.pop('model', None)
+            else:
+                text_field(data, 'model', required=not models, limit=256)
             if data.get('reasoning', 'default') not in {'default', 'off'}:
                 raise SettingsError('Режим рассуждений: по умолчанию или отключён.', field='reasoning')
             if data.get('reasoning') == 'default':
@@ -294,11 +297,25 @@ class Registry:
             yield state
 
     @staticmethod
-    def _public(profile):
+    def _summary_policy(profile):
+        if not isinstance(profile, dict) or profile.get('stage') != 'summary':
+            return profile
+        settings = profile.get('settings')
+        if not isinstance(settings, dict) or not follows_summary_provider(settings):
+            return profile
+        settings = {**settings, 'model_source': 'provider'}
+        settings.pop('model', None)
+        return {**profile, 'settings': settings}
+
+    @classmethod
+    def _public(cls, profile):
         if profile is None:
             return None
-        return {**{k: deepcopy(v) for k, v in profile.items() if k != 'credential_ref'},
-                'has_key': bool(profile.get('credential_ref'))}
+        public = {k: deepcopy(v) for k, v in cls._summary_policy(profile).items() if k != 'credential_ref'}
+        if public['settings'].get('model_source') == 'provider':
+            # The paired editor represents automatic mode by an empty model field.
+            public['settings'].pop('model_source')
+        return {**public, 'has_key': bool(profile.get('credential_ref'))}
 
     def read(self):
         state = self._load()
@@ -308,8 +325,8 @@ class Registry:
                 'profiles': [self._public(p) for p in state['profiles']], 'effective': effective,
                 'active': {stage: p['id'] if (p := state['effective'].get(stage)) else None for stage in STAGES}}
 
-    @staticmethod
-    def _translation(state):
+    @classmethod
+    def _translation(cls, state):
         """An explicit translator overrides the connected server's active text LLM.
 
         Resolve only applied settings, never drafts or speech-recognition models.
@@ -318,7 +335,7 @@ class Registry:
         effective = state['effective']
         if effective.get('translation'):
             return deepcopy(effective['translation'])
-        summary = effective.get('summary')
+        summary = cls._summary_policy(effective.get('summary'))
         if summary and summary['kind'] == 'openai-compatible':
             return {**deepcopy(summary), 'stage': 'translation', 'inherited_from': 'summary'}
         return None
@@ -327,12 +344,13 @@ class Registry:
         if stage not in STAGES:
             raise SettingsError('Неизвестный этап обработки.')
         state = self._load()
-        return self._translation(state) if stage == 'translation' else deepcopy(state['effective'].get(stage))
+        return self._translation(state) if stage == 'translation' else deepcopy(self._summary_policy(state['effective'].get(stage)))
 
     def pipeline(self):
         state = self._load()
         pipeline = {stage: deepcopy(state['effective'].get(stage)) for stage in ('stt', 'diarization', 'summary')}
         if pipeline['summary']:
+            pipeline['summary'] = self._summary_policy(pipeline['summary'])
             config = summary_templates(state)
             template = next(item for item in config['templates'] if item['id'] == config['default_template_id'])
             if template != DEFAULT_SUMMARY_TEMPLATE:
@@ -361,17 +379,36 @@ class Registry:
     def summary_choices(self):
         state = self._load()
         active = state['effective'].get('summary')
-        return summary_templates(state), self._summary_profiles(state), active['id'] if active else None
+        profiles = []
+        for row in self._summary_profiles(state):
+            if row is active:
+                row = self.resolve_summary(row)
+            else:
+                row = self._summary_policy(row)
+            if row and row['settings'].get('model'):
+                profiles.append(row)
+        return summary_templates(state), profiles, active['id'] if active else None
 
-    @staticmethod
-    def _summary_settings(state):
+    def resolve_summary(self, profile):
+        """Freeze the model named by a warm, matching observation for approval-bound requests."""
+        profile = self._summary_policy(profile)
+        if profile is None or profile['settings'].get('model_source') != 'provider':
+            return profile
+        from .local_provider_health import observed_summary_model
+        model = observed_summary_model(self.cfg, profile)
+        if model is None:
+            return None
+        return {**profile, 'settings': {**profile['settings'], 'model_source': 'profile', 'model': model}}
+
+    def _summary_settings(self, state):
         active = state['effective'].get('summary')
+        profiles = []
+        for row in self._summary_profiles(state):
+            profile = self.resolve_summary(row) if row is active else self._summary_policy(row)
+            profiles.append({'id': row['id'], 'name': row['name'], 'model': profile['settings'].get('model') if profile else None})
         return {
             **summary_templates(state), 'revision': state['revision'],
-            'profiles': [
-                {'id': profile['id'], 'name': profile['name'], 'model': profile['settings']['model']}
-                for profile in Registry._summary_profiles(state)
-            ],
+            'profiles': profiles,
             'default_profile_id': active['id'] if active else None,
         }
 
@@ -388,7 +425,10 @@ class Registry:
         return key
 
     def _draft(self, body, state, *, models=False):
-        profile = validate_profile(body.get('profile'), models=models)
+        card = body.get('profile')
+        if not models and default_summary_model_source() == 'provider':
+            card = self._summary_policy(card)
+        profile = validate_profile(card, models=models)
         previous = next((p for p in state['profiles'] if p['id'] == profile.get('id')), None)
         if previous and (previous['stage'], previous['kind']) != (profile['stage'], profile['kind']):
             raise SettingsError('Для другого типа создайте новую карточку.')
@@ -439,7 +479,7 @@ class Registry:
             selected = next((p for p in state['profiles'] if p['id'] == body.get('id') and p['stage'] == stage), None)
             if body.get('id') is not None and selected is None:
                 raise SettingsError('Провайдер не найден.', status=404)
-            selected = deepcopy(selected)
+            selected = deepcopy(self._summary_policy(selected))
             next_stt = selected if stage == 'stt' else state['effective'].get('stt')
             next_diarization = selected if stage == 'diarization' else state['effective'].get('diarization')
             if (stage in {'stt', 'diarization'} and next_diarization and next_diarization.get('embedded')

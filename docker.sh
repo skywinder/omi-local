@@ -34,6 +34,7 @@ OMI_DOCKER_DEVICE=${OMI_DOCKER_DEVICE:-cpu}
 OMI_DOCKER_STT=${OMI_DOCKER_STT:-builtin}
 OMI_DOCKER_GPU_ID=${OMI_DOCKER_GPU_ID:-0}
 OMI_DOCKER_TRANSPORT=${OMI_DOCKER_TRANSPORT:-local}
+OMI_SUMMARY_MODEL_DEFAULT=${OMI_SUMMARY_MODEL_DEFAULT:-profile}
 STT_MODEL=${STT_MODEL:-Systran/faster-whisper-small}
 STT_REVISION=${STT_REVISION:-main}
 STT_THREADS=${STT_THREADS:-4}
@@ -52,7 +53,7 @@ if [[ -e "$config_file" ]]; then
     [[ -n "$line" && "$line" != \#* ]] || continue
     [[ "$line" == *=* ]] || fail 'Use NAME=value lines in .env.docker.'
     name=${line%%=*}; value=${line#*=}
-    case "$name" in OMI_DOCKER_DEVICE|OMI_DOCKER_STT|OMI_DOCKER_GPU_ID|OMI_DOCKER_TRANSPORT|STT_MODEL|STT_REVISION|STT_THREADS) ;;
+    case "$name" in OMI_DOCKER_DEVICE|OMI_DOCKER_STT|OMI_DOCKER_GPU_ID|OMI_DOCKER_TRANSPORT|OMI_SUMMARY_MODEL_DEFAULT|STT_MODEL|STT_REVISION|STT_THREADS) ;;
       *) fail 'Unknown field in .env.docker. See docs/DOCKER.md.' ;;
     esac
     [[ "$seen" != *" $name "* ]] || fail 'Duplicate field in .env.docker.'
@@ -86,11 +87,12 @@ done
 case "$OMI_DOCKER_DEVICE" in cpu|cuda) ;; *) fail 'Device must be cpu or cuda; choose it with bootstrap --device.' ;; esac
 case "$OMI_DOCKER_STT" in builtin|external) ;; *) fail 'STT must be builtin or external; choose it with bootstrap --stt.' ;; esac
 case "$OMI_DOCKER_TRANSPORT" in local|ngrok|tailscale) ;; *) fail 'Transport must be local, tailscale or ngrok.' ;; esac
+case "$OMI_SUMMARY_MODEL_DEFAULT" in profile|provider) ;; *) fail 'OMI_SUMMARY_MODEL_DEFAULT must be profile or provider.' ;; esac
 [[ "$OMI_DOCKER_GPU_ID" =~ ^([0-9]+|GPU-[a-fA-F0-9-]+)$ ]] || fail 'GPU must be an index or NVIDIA GPU UUID.'
 [[ "$STT_MODEL" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$ ]] || fail 'Model must be a Hugging Face owner/model ID.'
 [[ "$STT_REVISION" =~ ^[a-zA-Z0-9_./-]+$ ]] || fail 'Invalid model revision.'
 [[ "$STT_THREADS" =~ ^[1-9][0-9]*$ ]] || fail 'Threads must be a positive integer.'
-export OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS
+export OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT OMI_SUMMARY_MODEL_DEFAULT STT_MODEL STT_REVISION STT_THREADS
 transport=$OMI_DOCKER_TRANSPORT
 files=(-f compose.yaml)
 [[ "$OMI_DOCKER_STT" != external ]] || files+=(-f compose.external.yaml)
@@ -211,7 +213,7 @@ case "$command" in
     pending=$(mktemp .env.docker.XXXXXX)
     {
       echo '# Docker host settings. Literal values only; no native credentials.'
-      for name in OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT STT_MODEL STT_REVISION STT_THREADS; do
+      for name in OMI_DOCKER_DEVICE OMI_DOCKER_STT OMI_DOCKER_GPU_ID OMI_DOCKER_TRANSPORT OMI_SUMMARY_MODEL_DEFAULT STT_MODEL STT_REVISION STT_THREADS; do
         printf '%s=%s\n' "$name" "${!name}"
       done
     } > "$pending"

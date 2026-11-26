@@ -240,13 +240,23 @@ def summary_reduction_text(summaries, sourced):
 
 
 def summarize(snapshot, key, raw, folder, write):
-    return summarize_text(snapshot, key, numbered_summary_text(raw), folder, write, sourced=True)
+    return summarize_text(snapshot, key, numbered_summary_text(raw), folder, write, sourced=True, include_model=True)
 
 
-def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced=False, progress=None):
+def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced=False, progress=None, include_model=False):
     settings = snapshot['settings']
     endpoint = transport.validate_url(settings['base_url']) + '/chat/completions'
-    model = settings['model']
+    model = settings.get('model')
+    if transport.follows_summary_provider(settings, allow_legacy_default=deadline is None):
+        try:
+            timeout = 8 if deadline is None else min(8, deadline - monotonic())
+            if timeout <= 0:
+                raise PipelineError('Summary processing deadline elapsed', code='timeout')
+            with transport.client(key=key, timeout=timeout) as client:
+                model = transport.summary_model(client, settings['base_url'])
+        except (httpx.HTTPError, OSError, ValueError) as error:
+            raise PipelineError('Could not discover summary model', code=failure_code(error)) from None
+        settings = {**settings, 'model': model}
     language = settings.get('language', 'auto')
     template = snapshot.get('template')
     if not isinstance(model, str) or not model or not re.fullmatch(r'[a-z]{2,3}|auto', language):
@@ -343,7 +353,7 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced
         summaries = [request(chunk, reduction=True) for chunk in text_chunks(summary_reduction_text(summaries, sourced))]
     if not summaries:
         raise PipelineError('No speech to summarize')
-    return summaries[0]
+    return {**summaries[0], 'model': model} if include_model else summaries[0]
 
 
 def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
@@ -363,12 +373,18 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
         write(status_path, processing)
         try:
             value = _read(path) if path.exists() else run()
+            stored = value
             if name != 'summary':
                 validate_transcript(value, manifest['duration_seconds'])
             else:
+                model = value.get('model') if isinstance(value, dict) else None
                 value = validate_summary(value)
+                stored = value
+                if isinstance(model, str) and 0 < len(model) <= 256 and model.isprintable():
+                    processing[name]['model'] = model
+                    stored = {**value, 'model': model}
             if not path.exists():
-                write(path, value)
+                write(path, stored)
         except Exception as error:
             processing[name].update(status='failed', error_code=failure_code(error))
             write(status_path, processing)

@@ -23,10 +23,13 @@ test('draft requests retain local settings and explicitly replace or clear a sec
   assert.equal(body.profile.name, 'Local model');
   assert.equal(body.api_key, undefined);
   assert.equal(body.profile.has_key, undefined);
+  assert.equal(body.profile.settings.model_source, 'provider');
   assert.equal(body.profile.settings.advanced.preserved, true);
   assert.notEqual(body.profile.settings, profile.settings);
   assert.equal(draftPayload(profile, 'synthetic-secret').api_key, 'synthetic-secret');
   assert.deepEqual(Object.keys(draftPayload(profile, 'synthetic-secret', true)), ['profile', 'clear_key']);
+  profile.settings.model = 'selected';
+  assert.equal(draftPayload(profile).profile.settings.model_source, 'profile');
 });
 
 test('saved profile differs from effective configuration until applied', () => {
@@ -247,10 +250,12 @@ test('model discovery works before choosing a model and leaves manual entry avai
   ui.click('Загрузить модели'); await settle();
   assert.equal(calls.at(-1).path, '/models');
   assert.equal(calls.at(-1).body.profile.settings.model, '');
-  assert.equal(model.required, true, 'saving still requires a chosen model');
+  assert.equal(model.required, false, 'a blank summary model follows the provider');
   assert.equal(ui.root.querySelector('datalist').children.length, 2);
   ui.input('model', 'manual-model');
   assert.equal(model.value, 'manual-model');
+  ui.root.querySelector('form').dispatch('submit'); await settle();
+  assert.equal(calls.at(-1).body.profile.settings.model_source, 'profile');
 });
 
 test('processing display handles old records and renders untrusted summaries as plain text', t => {

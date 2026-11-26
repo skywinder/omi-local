@@ -18,6 +18,9 @@ The provider settings subsystem uses these boundaries:
 - `local_stt_watch` pins a pipeline per admitted recording. `local_stt` owns
   WAV provenance, the inference lock and backend import; `local_pipeline` caches
   completed STT/diarization/summary stages without switching providers on failure.
+- Automatic summary profiles choose a model from their own endpoint. The health
+  monitor records the observed model and applied revision for archive chat and
+  manual recap approval. An explicitly selected profile bypasses discovery.
 - `local_provider_relay` owns external Live connections. Backend only sees
   loopback; a cross-process session gate covers activation and EOF drain.
 - `local_library` projects recording artifacts and serves browser assets.
