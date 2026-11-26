@@ -14,6 +14,7 @@ import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'accents.dart';
 import 'paired_library.dart';
 import 'archive_cache.dart';
 import 'archive_visibility.dart';
@@ -539,14 +540,19 @@ class _ArchiveRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
-                      Text(meta, style: OmiType.footnote.copyWith(color: OmiColors.textTertiary)),
+                      Text(
+                        meta,
+                        style: OmiType.footnote.copyWith(
+                          color: failed ? NextAccent.red.of(context) : OmiColors.textTertiary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 if (selected != null)
                   Icon(selected! ? Icons.check_box : Icons.check_box_outline_blank)
                 else if (row.starred)
-                  Icon(Icons.star, size: 17, semanticLabel: context.l10n.starred),
+                  Icon(Icons.star, size: 17, color: NextAccent.amber.of(context), semanticLabel: context.l10n.starred),
               ],
             ),
           ),

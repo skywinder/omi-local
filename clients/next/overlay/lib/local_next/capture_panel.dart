@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/utils/l10n_extensions.dart';
+import 'accents.dart';
 import 'capture.dart';
 import 'cv1_capture.dart';
 import 'cv1_resume.dart';
@@ -462,7 +463,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                         },
                       ),
                       ListTile(
-                        leading: const Icon(Icons.monitor_heart_outlined),
+                        leading: Icon(Icons.monitor_heart_outlined, color: NextAccent.teal.of(context)),
                         title: Text(l.deviceDiagnostics),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _openDiagnostics(context, inputs, library: library),
@@ -487,7 +488,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                         ),
                       if (onDoubleTap != null)
                         ListTile(
-                          leading: const Icon(Icons.touch_app_outlined),
+                          leading: Icon(Icons.touch_app_outlined, color: NextAccent.teal.of(context)),
                           title: Text(l.doubleTap),
                           subtitle: Text(gestureLabel(gesture)),
                           trailing: PopupMenuButton<Cv1DoubleTapAction>(
@@ -506,7 +507,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                         ),
                     ],
                     ListTile(
-                      leading: const Icon(Icons.mic_none),
+                      leading: Icon(Icons.mic_none, color: NextAccent.blue.of(context)),
                       title: Text(l.recording),
                       subtitle: Text(
                         inputs.phone.active
@@ -517,7 +518,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ),
                     ),
                     ListTile(
-                      leading: const Icon(Icons.cloud_upload_outlined),
+                      leading: Icon(Icons.cloud_upload_outlined, color: NextAccent.amber.of(context)),
                       title: Text(pairedSettingsLabel(context, 'nextPhoneOutbox')),
                       subtitle: Text(
                         journal.pendingParts == 0
@@ -532,14 +533,14 @@ class LocalNextCaptureControls extends StatelessWidget {
                       _boundaries(library),
                     const Divider(),
                     ListTile(
-                      leading: const Icon(Icons.dns_outlined),
+                      leading: Icon(Icons.dns_outlined, color: NextAccent.slate.of(context)),
                       title: Text(pairedSettingsLabel(context, 'localMacServers')),
                       subtitle: Text(serverLabel),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: openServers,
                     ),
                     ListTile(
-                      leading: const Icon(Icons.health_and_safety_outlined),
+                      leading: Icon(Icons.health_and_safety_outlined, color: NextAccent.teal.of(context)),
                       title: Text(pairedSettingsLabel(context, 'serverStatus')),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => open(NextServerStatusPage(library: library, serverName: serverLabel)),
@@ -582,14 +583,24 @@ class LocalNextCaptureControls extends StatelessWidget {
     final l = context.l10n;
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
-    final buttonStyle = OutlinedButton.styleFrom(
+    ButtonStyle sourceStyle(NextAccent accent) => OutlinedButton.styleFrom(
+      foregroundColor: accent.of(context),
+      backgroundColor: accent.tint(context),
+      disabledBackgroundColor: Colors.transparent,
+      side: WidgetStateBorderSide.resolveWith(
+        (states) => BorderSide(
+          color: states.contains(WidgetState.disabled)
+              ? Theme.of(context).disabledColor
+              : accent.of(context).withValues(alpha: .52),
+        ),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       minimumSize: const Size(48, 38),
     );
     final buttons = [
       OutlinedButton.icon(
         key: const ValueKey('next-phone-capture'),
-        style: buttonStyle,
+        style: sourceStyle(capture.active ? NextAccent.red : NextAccent.blue),
         onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
             ? null
             : inputs.togglePhone,
@@ -602,7 +613,7 @@ class LocalNextCaptureControls extends StatelessWidget {
       if (cv1.linked || cv1.active)
         OutlinedButton.icon(
           key: const ValueKey('next-cv1-capture'),
-          style: buttonStyle,
+          style: sourceStyle(cv1.active ? NextAccent.red : NextAccent.teal),
           onPressed: inputs.switching || (!cv1.active && (!cv1.codecSupported || !inputs.permitsNewRecording))
               ? null
               : cv1.active
@@ -635,7 +646,7 @@ class LocalNextCaptureControls extends StatelessWidget {
             Flexible(
               child: TextButton.icon(
                 key: const ValueKey('next-audio-on-phone'),
-                icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                icon: Icon(Icons.cloud_upload_outlined, size: 16, color: NextAccent.amber.of(context)),
                 label: Text('$label · ${journal.pendingParts}', textAlign: TextAlign.start),
                 onPressed: () => showDialog<void>(
                   context: context,
@@ -649,7 +660,7 @@ class LocalNextCaptureControls extends StatelessWidget {
             ),
           if (journal.deliveryFailed)
             IconButton(
-              icon: const Icon(Icons.sync_problem_outlined),
+              icon: Icon(Icons.sync_problem_outlined, color: NextAccent.red.of(context)),
               tooltip: l.captureBannerRetrySync,
               onPressed: journal.retry,
             ),
@@ -766,7 +777,7 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
           PopupMenuItem(value: value, child: Text(_label(value == -1 ? null : value))),
       ],
       child: ListTile(
-        leading: const Icon(Icons.call_split),
+        leading: Icon(Icons.call_split, color: NextAccent.coral.of(context)),
         title: Text(pairedSettingsLabel(context, 'groupCaptureLabel')),
         subtitle: Text('${_label(widget.seconds.value)}\n${pairedSettingsLabel(context, 'nextBoundaryAppliesLater')}'),
         trailing: const Icon(Icons.arrow_drop_down),

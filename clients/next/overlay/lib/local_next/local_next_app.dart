@@ -7,6 +7,7 @@ import 'package:omi/ui/omi_theme.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'accents.dart';
 import 'archive.dart';
 import 'category_backfill.dart';
 import 'server_connection_indicator.dart';
@@ -58,7 +59,15 @@ ThemeData _nextTheme(Brightness brightness) {
   final outline = Color.alphaBlend(palette.textPrimary.withValues(alpha: .56), palette.surface0);
   const buttonPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 8);
   final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
+  final accent = NextAccent.teal.ink(brightness);
+  final onAccent = brightness == Brightness.dark ? Colors.black : Colors.white;
   return theme.copyWith(
+    colorScheme: theme.colorScheme.copyWith(
+      primary: accent,
+      onPrimary: onAccent,
+      primaryContainer: Color.alphaBlend(accent.withValues(alpha: .13), palette.surface1),
+      onPrimaryContainer: accent,
+    ),
     disabledColor: disabled,
     textTheme: theme.textTheme.copyWith(
       bodySmall: theme.textTheme.bodySmall?.copyWith(color: palette.textTertiary),
@@ -90,8 +99,8 @@ ThemeData _nextTheme(Brightness brightness) {
         padding: buttonPadding,
         minimumSize: const Size(48, 40),
         tapTargetSize: MaterialTapTargetSize.padded,
-        backgroundColor: palette.accent,
-        foregroundColor: palette.onAccent,
+        backgroundColor: accent,
+        foregroundColor: onAccent,
         disabledBackgroundColor: palette.surface3,
         disabledForegroundColor: palette.textTertiary,
       ),
@@ -103,7 +112,7 @@ ThemeData _nextTheme(Brightness brightness) {
     tabBarTheme: TabBarThemeData(
       labelColor: palette.textPrimary,
       unselectedLabelColor: palette.textTertiary,
-      indicatorColor: palette.accent,
+      indicatorColor: accent,
     ),
   );
 }
@@ -510,6 +519,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   _LibraryControl(
                     key: const ValueKey('archive-archived'),
                     icon: Icons.archive_outlined,
+                    activeIcon: Icons.archive,
+                    accent: NextAccent.slate,
                     label: pairedSettingsLabel(context, 'recordingArchive'),
                     selected: archive.archivedOnly,
                     onPressed: archive.busy ? null : () => archive.filterArchived(!archive.archivedOnly),
@@ -517,6 +528,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                 _LibraryControl(
                   key: const ValueKey('archive-starred'),
                   icon: Icons.star_outline,
+                  activeIcon: Icons.star,
+                  accent: NextAccent.amber,
                   label: l.starred,
                   selected: archive.starredOnly,
                   onPressed: archive.busy ? null : () => archive.filterStarred(!archive.starredOnly),
@@ -524,6 +537,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                 _LibraryControl(
                   key: const ValueKey('archive-category'),
                   icon: Icons.category_outlined,
+                  activeIcon: Icons.category,
+                  accent: NextAccent.coral,
                   label: archive.category == null
                       ? l.categories
                       : conversationCategoryLabel(context, archive.category!),
@@ -544,6 +559,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                 _LibraryControl(
                   key: const ValueKey('archive-visibility'),
                   icon: Icons.tune,
+                  activeIcon: Icons.tune,
+                  accent: NextAccent.teal,
                   label: l.filters,
                   selected: archive.visibility.active,
                   onPressed: () => archive.changeVisibility(context),
@@ -552,6 +569,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   _LibraryControl(
                     key: const ValueKey('archive-folder'),
                     icon: Icons.folder_outlined,
+                    activeIcon: Icons.folder,
+                    accent: NextAccent.blue,
                     selected: archive.folder != null,
                     label: archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders'),
                     onPressed: archive.busy
@@ -631,11 +650,14 @@ class _LibraryControl extends StatelessWidget {
   const _LibraryControl({
     super.key,
     required this.icon,
+    required this.activeIcon,
+    required this.accent,
     required this.label,
     required this.selected,
     required this.onPressed,
   });
-  final IconData icon;
+  final IconData icon, activeIcon;
+  final NextAccent accent;
   final String label;
   final bool selected;
   final VoidCallback? onPressed;
@@ -645,7 +667,7 @@ class _LibraryControl extends StatelessWidget {
     final color = onPressed == null
         ? Theme.of(context).disabledColor
         : selected
-        ? OmiColors.textPrimary
+        ? accent.of(context)
         : OmiColors.textSecondary;
     return Semantics(
       button: true,
@@ -654,7 +676,7 @@ class _LibraryControl extends StatelessWidget {
         message: label,
         excludeFromSemantics: true,
         child: Material(
-          color: selected ? OmiColors.surface3 : Colors.transparent,
+          color: selected ? accent.tint(context) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: onPressed,
@@ -667,7 +689,7 @@ class _LibraryControl extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, size: 18, color: color),
+                    Icon(selected ? activeIcon : icon, size: 18, color: onPressed == null ? color : accent.of(context)),
                     const SizedBox(height: 2),
                     Text(
                       label,

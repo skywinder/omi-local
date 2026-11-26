@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:omi/providers/locale_provider.dart';
 
+import 'accents.dart';
 import 'live_preview.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
@@ -19,6 +20,13 @@ import 'live_tuning.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
 import 'settings_labels.dart';
+
+Widget _liveBadge(BuildContext context, NextAccent accent, IconData icon) => Container(
+  width: 38,
+  height: 38,
+  decoration: BoxDecoration(color: accent.tint(context), borderRadius: BorderRadius.circular(12)),
+  child: Icon(icon, color: accent.of(context), size: 21),
+);
 
 class LocalNextLiveButton extends StatefulWidget {
   const LocalNextLiveButton({
@@ -145,7 +153,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
       final l = context.l10n;
       if (!widget.isRecording()) {
         return ListTile(
-          leading: const Icon(Icons.subtitles_outlined),
+          leading: _liveBadge(context, NextAccent.slate, Icons.subtitles_outlined),
           title: Text(l.liveTranscript),
           subtitle: Text(_liveStatus(context, widget.preview, recording: false, muted: false)),
           trailing: const Icon(Icons.chevron_right),
@@ -155,6 +163,14 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
       final preview = widget.preview;
       final muted = widget.isMuted?.call() == true;
       final status = _liveStatus(context, preview, recording: true, muted: muted);
+      final (accent, icon) = muted
+          ? (NextAccent.slate, Icons.mic_off_outlined)
+          : switch (preview.phase) {
+              NextPreviewPhase.listening => (NextAccent.teal, Icons.graphic_eq),
+              NextPreviewPhase.unavailable => (NextAccent.coral, Icons.subtitles_off_outlined),
+              NextPreviewPhase.connecting => (NextAccent.amber, Icons.hourglass_top),
+              NextPreviewPhase.idle => (NextAccent.slate, Icons.subtitles_outlined),
+            };
       final atSessionLimit = !muted && preview.reason == 'session_limit';
       final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
           ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
@@ -169,7 +185,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
           clipBehavior: Clip.antiAlias,
           child: ListTile(
             key: const ValueKey('next-live-strip'),
-            leading: const Icon(Icons.subtitles_outlined),
+            leading: _liveBadge(context, accent, icon),
             title: Text(
               atSessionLimit ? l.liveTranscript : '${l.liveTranscript} · $status',
               maxLines: 1,

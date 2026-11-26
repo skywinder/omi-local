@@ -135,7 +135,7 @@ uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
 The elapsed time and audio-part count appear together. Tap **Audio on phone** for an explanation. The count includes the open audio part and sealed parts awaiting a durable server receipt.
-Archive, favorites, categories, filters and folders share one toolbar. Larger text can be reached by scrolling the toolbar horizontally.
+Archive, favorites, categories, filters and folders share one toolbar. Color and icons distinguish the phone microphone, CV1, active recording, connection states, and selected filters in both themes. Larger text can be reached by scrolling the toolbar horizontally.
 The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.
 
