@@ -331,11 +331,16 @@ combines word matches with results from its local semantic index and checks
 the source versions before and after inference. The keyword scan also covers
 recordings that are new or have changed since the last index refresh. The
 model can receive excerpts, recording titles and dates and
-recent turns after confirmation. Tap a citation to open the matching
-recording. Follow-up context lasts while the chat page is open.
+recent turns after confirmation. Tap a citation to open the matching recording.
+On compatible servers the confirmation also explains that the question, answer
+and citations are stored in the paired owner's encrypted archive history. This
+history is shared across phones using that pairing. Refresh to see the latest
+turn from another phone or load earlier turns. An answer is hidden while one of
+its source recordings is unavailable. Older servers keep follow-up context
+for the current screen session.
 
-The screen reports when only part of the archive could be checked. Persistent
-archive chat history is a separate parity item.
+The screen reports when only part of the archive could be checked. Independent
+threads and history deletion controls remain open parity items.
 
 ## Edit a saved recording
 

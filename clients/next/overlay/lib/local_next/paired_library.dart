@@ -1163,7 +1163,7 @@ class PairedLibrary {
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
           return RecordingChatPageData.fromJson(await _json(response, 768 << 10) as Map<String, dynamic>, id);
         },
-        query: before == null ? null : {'before': '$before'},
+        query: {if (id == null) 'stored': 'true', if (before != null) 'before': '$before'},
         readHttpErrors: true,
         overallTimeout: const Duration(seconds: 18),
       );
@@ -1183,14 +1183,16 @@ class PairedLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
   }) async {
     if (!isSignedIn) throw LibraryFailure.key;
     final payload = {
       'id': turnId,
-      if (id != null) 'previous': previous,
+      if (id != null || storeArchive) 'previous': previous,
       'provider_binding': binding,
       'question': question,
-      if (id == null)
+      if (id == null && storeArchive) 'store': true,
+      if (id == null && !storeArchive)
         'history': [
           for (final turn in history.take(3)) {'question': turn.question, 'answer': turn.answer},
         ],
@@ -1211,7 +1213,11 @@ class PairedLibrary {
             throw RecordingChatFailure.changed;
           }
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
-          final turn = RecordingChatTurn.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>, id);
+          final data = await _json(response, 128 << 10) as Map<String, dynamic>;
+          if (storeArchive && (data['sequence'] is! int || (data['sequence'] as int) < 1)) {
+            throw RecordingChatFailure.changed;
+          }
+          final turn = RecordingChatTurn.fromJson(data, id);
           if (turn.id != turnId || turn.question != question) throw LibraryFailure.malformed;
           return turn;
         },

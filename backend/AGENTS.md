@@ -79,6 +79,10 @@ Archive chat combines keyword and local semantic results under one evidence
 budget. Resolve semantic pointers against the paired owner's current revision.
 Only the cited segment may supply text to the model. Summary windows and
 neighboring context can affect ranking without becoming transcript citations.
+Clients opt in to the stored archive chat contract. Its encrypted history is
+scoped to the paired server owner. The append transaction checks the current
+head and source revisions. Hide answers whose sources, including those supplied
+through prior turns, are no longer available to that owner.
 Paired recording edits accept JSON on the local edit route. They compare the
 prior field or transcript digest in the write transaction, preserve segment
 identity and use the existing transcript storage encoder. Large grouped imports store

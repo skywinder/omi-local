@@ -30,6 +30,7 @@ _UUID = r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
 # A floor for the deployed multilingual E5 cosine score, not a probability.
 _ARCHIVE_SEMANTIC_MIN_SCORE = 0.78
 _ARCHIVE_SEMANTIC_LIMIT = 6
+_ARCHIVE_HISTORY_SOURCE_LIMIT = 128
 RecordingId = Annotated[str, Path(pattern=_UUID)]
 
 
@@ -54,8 +55,9 @@ class ChatQuestion(ChatPrompt):
     previous: str | None = Field(default=None, pattern=_UUID)
 
 
-class ArchiveQuestion(ChatPrompt):
+class ArchiveQuestion(ChatQuestion):
     history: list[ChatContextTurn] = Field(default_factory=list, max_length=3)
+    store: bool = False
 
 
 class ChatReply(BaseModel):
@@ -72,6 +74,7 @@ class ChatTurn(BaseModel):
     evidence_references: list[ChatEvidenceReference]
     context_limited: bool
     scan_limited: bool = False
+    sources_unavailable: bool = False
 
 
 class ChatPage(BaseModel):
@@ -79,6 +82,7 @@ class ChatPage(BaseModel):
     next_before: int | None
     provider: ChatProvider | None
     has_transcript: bool
+    stored_history: bool = False
 
 
 def _library_request(body=None, *, archive=False, suggestions=False):
@@ -210,9 +214,12 @@ def ask_recording_chat(
 
 
 @router.get('/v1/local/conversations/chat', response_model=ChatPage)
-def read_archive_chat(response: Response, _uid: str = Depends(require_paired_owner)):
+def read_archive_chat(response: Response, stored: bool = False, before: int | None = Query(default=None, ge=1),
+                      uid: str = Depends(require_paired_owner)):
     response.headers['Cache-Control'] = 'no-store'
-    return {'turns': [], 'next_before': None, 'provider': _chat_provider(archive=True), 'has_transcript': True}
+    turns, cursor = chat_db.archive_history(uid, before=before) if stored else ([], None)
+    return {'turns': turns, 'next_before': cursor, 'provider': _chat_provider(archive=True) if before is None else None,
+            'has_transcript': True, 'stored_history': stored}
 
 
 def _semantic_archive_sources(uid, query, hydrate):
@@ -240,6 +247,21 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
     if not question:
         raise HTTPException(400, 'recording_chat_empty_question')
     response.headers['Cache-Control'] = 'no-store'
+    if prompt.store and prompt.history:
+        raise HTTPException(400, 'archive_chat_history_is_server_owned')
+    if prompt.store:
+        existing = chat_db.archive_turn(uid, prompt.id)
+        if existing is not None:
+            if existing['question'] != question:
+                raise HTTPException(409, 'recording_chat_history_changed')
+            return existing
+        recent, _ = chat_db.archive_history(uid, limit=3)
+        if prompt.previous != (recent[0]['id'] if recent else None):
+            raise HTTPException(409, 'recording_chat_history_changed')
+        history = [turn for turn in recent if not turn.get('sources_unavailable')]
+    else:
+        history = [turn.model_dump() for turn in prompt.history]
+
     deadline = monotonic() + 26
     scan_limited = False
     root = local_transcript_root()
@@ -275,7 +297,7 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
             if cursor is None:
                 return
 
-    previous = prompt.history[0].question if prompt.history else ''
+    previous = history[0]['question'] if history else ''
     semantic_query = '\n'.join(filter(None, (question, previous)))[:240].rstrip()
     semantic = _semantic_archive_sources(uid, semantic_query, hydrate)
     keyword = rank_archive_sources(archive_rows(), question, previous)
@@ -297,14 +319,30 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
             'recording': group, 'title': title.encode('utf-8')[:260].decode('utf-8', errors='ignore'),
             'started_at': started.isoformat() if isinstance(started, datetime) else '',
         })
-    reply = _ask_provider(
-        prompt, question, sources, [turn.model_dump() for turn in prompt.history], recordings=recordings,
-    )
-    if not chat_db.sources_current(uid, revisions):
-        raise HTTPException(409, 'recording_chat_history_changed')
+    referenced_ids = set(revisions)
+    if prompt.store:
+        context = []
+        for turn in history:
+            extended = referenced_ids.union(turn['source_ids'])
+            if len(extended) <= _ARCHIVE_HISTORY_SOURCE_LIMIT:
+                context.append(turn)
+                referenced_ids = extended
+        history = context
+        if not chat_db.archive_sources_available(uid, referenced_ids):
+            raise HTTPException(409, 'recording_chat_history_changed')
+    reply = _ask_provider(prompt, question, sources, history, recordings=recordings)
 
-    return {
-        'id': prompt.id, 'sequence': 0, 'created_at': datetime.now(timezone.utc), 'question': question,
+    payload = {
+        'question': question,
         'answer': reply.answer, 'evidence_references': _references(prompt.id, reply, sources),
         'context_limited': True, 'scan_limited': scan_limited,
     }
+    if prompt.store:
+        try:
+            return chat_db.publish_archive(uid, prompt.id, prompt.previous, revisions,
+                                           {**payload, 'source_ids': sorted(referenced_ids)})
+        except chat_db.RecordingChanged:
+            raise HTTPException(409, 'recording_chat_history_changed') from None
+    if not chat_db.sources_current(uid, revisions):
+        raise HTTPException(409, 'recording_chat_history_changed')
+    return {'id': prompt.id, 'sequence': 0, 'created_at': datetime.now(timezone.utc), **payload}

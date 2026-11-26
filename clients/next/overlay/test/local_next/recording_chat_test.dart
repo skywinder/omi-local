@@ -5,6 +5,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/archive_search_page.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_chat.dart';
+import 'package:omi/local_next/recording_chat_page.dart';
 import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/models/chat_evidence_reference.dart';
 import 'package:omi/widgets/transcript.dart';
@@ -53,6 +54,7 @@ class _ChatLibrary extends PairedLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
   }) async {
     expect(id, _id);
     expect(binding, 'selected');
@@ -80,7 +82,24 @@ class _ChatLibrary extends PairedLibrary {
 }
 
 class _ArchiveChatLibrary extends _ChatLibrary {
+  _ArchiveChatLibrary({this.stored = false});
+  final bool stored;
   final priorQuestions = <List<String>>[];
+  final previousIds = <String?>[];
+  final cursors = <int?>[];
+  RecordingChatTurn? older;
+
+  @override
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before}) async {
+    cursors.add(before);
+    return RecordingChatPageData(
+      turns: before == null ? turns : [older!],
+      nextBefore: before == null && older != null ? 4 : null,
+      provider: const RecordingChatProvider(binding: 'selected', host: 'model.example', model: 'test-model'),
+      hasTranscript: true,
+      storedHistory: stored,
+    );
+  }
 
   @override
   Future<RecordingChatTurn> askRecordingChat({
@@ -90,11 +109,14 @@ class _ArchiveChatLibrary extends _ChatLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
   }) async {
     expect(id, isNull);
     expect(binding, 'selected');
+    expect(storeArchive, stored);
+    previousIds.add(previous);
     priorQuestions.add(history.map((turn) => turn.question).toList());
-    return RecordingChatTurn(
+    final turn = RecordingChatTurn(
       id: turnId,
       question: question,
       answer: 'Two meetings discussed the plan.',
@@ -122,6 +144,8 @@ class _ArchiveChatLibrary extends _ChatLibrary {
         ),
       ],
     );
+    if (stored) turns.insert(0, turn);
+    return turn;
   }
 }
 
@@ -193,5 +217,53 @@ void main() {
       <String>[],
       ['Compare the meetings'],
     ]);
+  });
+
+  testWidgets('saved archive history reloads, pages, and sends only its head to the paired server', (tester) async {
+    final library = _ArchiveChatLibrary(stored: true);
+    addTearDown(library.close);
+    library.turns.add(
+      const RecordingChatTurn(
+        id: 'first',
+        question: 'A saved question',
+        answer: 'An answer from the server',
+        references: [],
+        contextLimited: false,
+      ),
+    );
+    library.older = const RecordingChatTurn(
+      id: 'older',
+      question: 'An older question',
+      answer: '',
+      references: [],
+      contextLimited: false,
+      sourcesUnavailable: true,
+    );
+    Widget screen() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: RecordingChatPage.archive(library: library, onOpenSource: (_, __) {}),
+    );
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(find.text('An answer from the server'), findsOneWidget);
+    final labels = AppLocalizations.of(tester.element(find.byType(RecordingChatPage)));
+    await tester.tap(find.text(labels.showMore));
+    await tester.pumpAndSettle();
+    expect(library.cursors, [null, 4]);
+    expect(find.text('An original recording is unavailable. This answer is hidden.'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'A follow-up question');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.textContaining('saved in the shared history'), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)));
+    await tester.pumpAndSettle();
+    expect(library.previousIds, ['first']);
+    expect(library.priorQuestions, [<String>[]]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(find.text('A follow-up question'), findsOneWidget);
   });
 }

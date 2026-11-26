@@ -137,6 +137,14 @@ the index rank a source. They cannot be cited as that segment. New or revised
 transcripts remain searchable by words while the index catches up. A missing or
 stale semantic index leaves the existing bounded keyword scan available.
 
+An updated client requests `stored=true` when reading archive chat and explicitly
+opts into saving a turn. Legacy requests keep their session-only response. The
+paired owner has one shared archive chat history with a paged read. Turns are
+encrypted in the local Firestore emulator. Append compares the reported head and
+the direct source revisions in the same transaction. A repeated request returns
+the stored result. The server checks source availability again before presenting
+an old answer or using it as model context.
+
 ## Bastion acceptance, November 25
 
 Bastion now serves page metadata, projected cards and authenticated WAV ranges.

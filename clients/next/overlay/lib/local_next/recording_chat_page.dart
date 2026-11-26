@@ -34,6 +34,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
   bool _busy = true;
   bool _unsupported = false;
   bool _hasTranscript = false;
+  bool _archiveStored = false;
   bool get _archive => widget.id == null;
 
   @override
@@ -53,14 +54,20 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       if (!mounted) return;
       setState(() {
         _unsupported = page == null;
-        if (page == null) return;
+        if (page == null) {
+          _provider = null;
+          return;
+        }
         _nextBefore = page.nextBefore;
         if (!earlier) {
           _provider = page.provider;
           _hasTranscript = page.hasTranscript;
-          if (!_archive) _turns.clear();
+          final wasStored = _archiveStored;
+          _archiveStored = _archive && page.storedHistory;
+          if (wasStored != _archiveStored) _approvedBinding = null;
+          if (!_archive || _archiveStored || wasStored) _turns.clear();
         }
-        if (!_archive) _turns.addAll(page.turns);
+        if (!_archive || _archiveStored) _turns.addAll(page.turns);
         if (_attempt != null && _turns.any((turn) => turn.id == _attempt!.id)) {
           _input.clear();
           _attempt = null;
@@ -82,6 +89,7 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         title: Text(_archive ? pairedSettingsLabel(context, 'archiveChatTitle') : l.askOmi),
         content: Text(
           '${pairedSettingsLabel(context, _archive ? 'archiveChatConsent' : 'recordingChatConsent')}'
+          '${_archiveStored ? '\n\n${pairedSettingsLabel(context, 'archiveChatStoredConsent')}' : ''}'
           '\n\n${provider.model}\n${provider.host}',
         ),
         actions: [
@@ -114,7 +122,8 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
         previous: _turns.firstOrNull?.id,
         binding: provider.binding,
         question: question,
-        history: _archive ? _turns : const [],
+        history: _archive && !_archiveStored ? _turns : const [],
+        storeArchive: _archiveStored,
       );
       if (!mounted) return;
       setState(() {
@@ -215,7 +224,9 @@ class _RecordingChatPageState extends State<RecordingChatPage> {
       ListTile(title: Text(turn.question, style: Theme.of(context).textTheme.titleMedium)),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md, vertical: OmiSpacing.sm),
-        child: SelectableText(turn.answer),
+        child: SelectableText(
+          turn.sourcesUnavailable ? pairedSettingsLabel(context, 'archiveChatStoredSourceUnavailable') : turn.answer,
+        ),
       ),
       if (turn.contextLimited) ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatPartialContext'))),
       if (turn.scanLimited) ListTile(title: Text(pairedSettingsLabel(context, 'archiveChatScanLimited'))),

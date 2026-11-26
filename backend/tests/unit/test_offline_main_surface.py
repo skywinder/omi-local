@@ -606,6 +606,52 @@ with ExitStack() as stack:
     revisions.side_effect = [True, False]
     assert client.post(archive_chat, json=meaning_question, headers=headers).status_code == 409
 
+# Archive history is opt-in on the wire and follows the server's head across devices.
+prior_id = str(uuid.uuid4())
+prior_source = documents[-1].id
+prior_turn = {'id': prior_id, 'sequence': 2, 'created_at': datetime.now(timezone.utc), 'question': 'First question',
+              'answer': 'Server context', 'source_ids': [prior_source], 'evidence_references': [], 'context_limited': False}
+def saved_reply(body, *, archive):
+    assert archive and body['history'] == [{'question': 'First question', 'answer': 'Server context'}]
+    return json.dumps({'answer': 'Saved answer.', 'sources': [body['sources'].index(edit['value'])+1]})
+
+def save_archive(uid, request_id, previous, revisions, payload):
+    assert uid == fixture_uid and previous == prior_id and revisions == {conversation.id: grouped_doc.update_time}
+    assert set(payload['source_ids']) == {prior_source, conversation.id}
+    return {**payload, 'id': request_id, 'sequence': 3, 'created_at': datetime.now(timezone.utc)}
+
+with ExitStack() as stack:
+    pages = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'archive_history', return_value=([prior_turn], 2)))
+    lookup = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'archive_turn', return_value=None))
+    store = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'publish_archive', side_effect=save_archive))
+    stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'sources_current', return_value=True))
+    available = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'archive_sources_available', return_value=True))
+    stack.enter_context(replace_for_chat.object(paired_chat, '_chat_provider', return_value=None))
+    receiver = stack.enter_context(replace_for_chat.object(paired_chat, '_library_request', side_effect=saved_reply))
+    assert client.get(archive_chat, params={'stored': 'true'}).status_code == 401
+    legacy = client.get(archive_chat, headers=headers).json()
+    assert not legacy['stored_history'] and not legacy['turns']
+    pages.assert_not_called()
+    saved = client.get(archive_chat, headers=headers, params={'stored': 'true', 'before': 4})
+    assert saved.headers['Cache-Control'] == 'no-store'
+    assert saved.json()['stored_history'] and saved.json()['turns'][0]['id'] == prior_id
+    pages.assert_called_once_with(fixture_uid, before=4)
+    stored_request = {**question, 'store': True, 'previous': prior_id}
+    assert client.post(archive_chat, headers=headers, json={**stored_request, 'previous': None}).status_code == 409
+    assert client.post(archive_chat, headers=headers, json={**stored_request, 'history': [{'question':'fake', 'answer':'fake'}]}).status_code == 400
+    available.return_value = False
+    assert client.post(archive_chat, headers=headers, json=stored_request).status_code == 409
+    receiver.assert_not_called()
+    available.return_value = True
+    actual = client.post(archive_chat, headers=headers, json=stored_request)
+    assert actual.status_code == 200 and actual.json()['sequence'] == 3
+    assert 'source_ids' not in actual.json()
+    lookup.return_value = actual.json()
+    assert client.post(archive_chat, headers=headers, json=stored_request).json() == actual.json()
+    assert client.post(archive_chat, headers=headers, json={**stored_request, 'question': 'Another'}).status_code == 409
+    receiver.assert_called_once()
+    store.assert_called_once()
+
 grouped_doc.update_time = saved_version
 old_db.get_all.return_value = search_snapshots
 query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
