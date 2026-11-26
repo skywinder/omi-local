@@ -41,7 +41,7 @@
         if (paused || started !== generation || !valid(next)) return;
         if (next.page !== versions.page) {
           // Preserve the visible result of an in-flight mutation and settings drafts.
-          if (!document.querySelector('#delete-confirm:disabled') && !document.querySelector('#provider-settings[aria-busy="true"], .provider-editor')) {
+          if (!document.querySelector('#delete-confirm:disabled') && !document.querySelector('#provider-settings[aria-busy="true"], .provider-editor, #summary-templates[aria-busy="true"], #summary-templates[data-dirty="true"]')) {
             reloading = true;
             location.reload();
           }

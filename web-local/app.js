@@ -1,14 +1,33 @@
 import {mountLiveTuning} from './live-tuning.mjs';
 import {formatTime, segmentAt, seekTo, playFrom, speakerBadge, findTurns} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
-import {mountSettings} from '/settings.mjs';
+import {mountSettings, mountSummaryTemplates} from '/settings.mjs';
 import {processingFailure, renderProcessing} from '/recording-processing.mjs';
 import {categories, categoryLabel} from '/recording-categories.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
-const providerSettings = mountSettings($('provider-settings'));
-const state = {records: [], selected: null, detail: null, view: 'live', archived: false, favorites: false, ready: false, category: '', noteWrite: false,
+let settingsSection = location.hash === '#summary-templates' ? 'templates' : 'providers';
+const providerSettings = mountSettings($('provider-settings'), {
+  openTemplates: () => showSettingsSection('templates', {focus: true}),
+});
+const summaryTemplates = mountSummaryTemplates($('summary-templates'), {
+  onSave: (from, to) => providerSettings.catalogSaved(from, to),
+});
+
+function showSettingsSection(section, {focus = false} = {}) {
+  settingsSection = section;
+  const templates = section === 'templates';
+  $('provider-settings').hidden = templates;
+  $('summary-templates').hidden = !templates;
+  for (const tab of ['providers', 'templates']) {
+    $(`settings-${tab}-tab`).setAttribute('aria-pressed', String(section === tab));
+  }
+  if (focus) $('settings-templates-tab').focus();
+  if (templates) summaryTemplates.show();
+  else providerSettings.show();
+}
+const state = {records: [], selected: null, detail: null, view: settingsSection === 'templates' ? 'settings' : 'live', archived: false, favorites: false, ready: false, category: '', noteWrite: false,
   noteVersion: 0, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
 const defaultVisibility = {minimumSeconds: 0, hideWithoutAudio: false, hideNoSpeech: false};
 const visibilityKey = 'omiloc.library.visibility';
@@ -62,7 +81,7 @@ function showView(view = state.view) {
   const recording = view === 'recording';
   $('live-monitor').hidden = !live;
   $('active-recordings').setAttribute('aria-pressed', String(live));
-  $('provider-settings').hidden = view !== 'settings';
+  $('settings-workspace').hidden = view !== 'settings';
   $('welcome').hidden = !recording || !!state.detail;
   $('recording-detail').hidden = !recording || !state.detail;
   $('player').hidden = !recording || !state.detail;
@@ -71,7 +90,7 @@ function showView(view = state.view) {
     $(`view-${mode}`).setAttribute('aria-pressed', String(mode === view));
   }
   if (!recording) audio.pause();
-  if (view === 'settings') providerSettings.show();
+  if (view === 'settings') showSettingsSection(settingsSection);
 }
 
 function renderList() {
@@ -531,6 +550,9 @@ $('delete-confirm').addEventListener('click', async () => {
   }
 });
 $('search').addEventListener('input', renderList);
+for (const section of ['providers', 'templates']) {
+  $(`settings-${section}-tab`).addEventListener('click', () => showSettingsSection(section));
+}
 $('back-to-recordings').addEventListener('click', () => {
   const selected = [...$('recordings').querySelectorAll('.recording')]
     .find(card => card.dataset.recordingId === state.selected);

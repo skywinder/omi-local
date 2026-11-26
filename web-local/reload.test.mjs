@@ -23,7 +23,7 @@ function browser() {
     if (selector === 'meta[name="omiloc-assets"]') return {content: JSON.stringify(original)};
     if (selector === 'link[rel="stylesheet"]') return links.find(link => !link.removed);
     if (selector === '#delete-confirm:disabled') return this.deleting ? {} : null;
-    if (selector === '#provider-settings[aria-busy="true"], .provider-editor') return this.settings ? {} : null;
+    if (selector === '#provider-settings[aria-busy="true"], .provider-editor, #summary-templates[aria-busy="true"], #summary-templates[data-dirty="true"]') return this.settings ? {} : null;
     throw new Error(`Unexpected selector: ${selector}`);
   }};
   runInNewContext(source, {

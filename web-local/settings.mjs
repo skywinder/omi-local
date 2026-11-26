@@ -1,18 +1,22 @@
 export const stages = {
-  live: {title: 'Live STT', description: 'Текст во время записи. Разделение говорящих в реальном времени настраивается на выбранном Live-сервере. Переключайте профиль после завершения записи.'},
-  stt: {title: 'Распознавание', description: 'Точный транскрипт готовой записи с таймкодами.'},
-  diarization: {title: 'Диаризация', description: 'Кто и когда говорит в готовой записи. Спикеры определяются отдельно для каждой записи. Разделение говорящих во время записи задаётся в Live STT.'},
-  summary: {title: 'Суммаризация', description: 'Заголовок и краткое содержание на языке разговора.'},
-  translation: {title: 'Перевод', description: 'По умолчанию используется активная модель суммаризации подключённого сервера. Здесь можно выбрать отдельную модель. Язык и включение перевода — в приложении.'},
+  live: {title: 'Live STT', description: 'Show text while recording.', off: 'Turn off live text',
+    effect: 'New sessions will still capture audio and get a transcript after recording.'},
+  stt: {title: 'Transcription', description: 'Turn finished recordings into timestamped text.'},
+  diarization: {title: 'Speakers', description: 'Identify who spoke in finished recordings.', off: 'Skip speaker labels',
+    effect: 'New transcripts will contain text and timestamps without identifying speakers.'},
+  summary: {title: 'Summarization', description: 'Generate a title and summary from the transcript.', off: 'Skip automatic summaries',
+    effect: 'New recordings will still have audio and a transcript. Automatic summaries will be skipped.'},
+  translation: {title: 'Translation', description: 'Choose a model for translation. Language is set in the app.',
+    off: 'Use summary model', effect: 'New translations will use the active summary model when it is available.'},
 };
 const kinds = {
-  live: {'whisperlivekit': 'WhisperLiveKit · на сервере Omi', external: 'Сервер по WebSocket · протокол WLK'},
-  stt: {whisperkit: 'WhisperKit · на сервере Omi', whisperx: 'WhisperX · на сервере Omi', 'parakeet-mlx': 'Parakeet MLX · на сервере Omi', 'openai-compatible': 'Сервер по API · OpenAI-совместимый'},
-  diarization: {pyannote: 'Pyannote · на сервере Omi', mycelia: 'Сервер по API · Mycelia'},
-  summary: {'openai-compatible': 'OpenAI-совместимая LLM'},
-  translation: {'openai-compatible': 'OpenAI-совместимая LLM'},
+  live: {'whisperlivekit': 'WhisperLiveKit · on the Omi server', external: 'WebSocket server · WLK protocol'},
+  stt: {whisperkit: 'WhisperKit · on the Omi server', whisperx: 'WhisperX · on the Omi server', 'parakeet-mlx': 'Parakeet MLX · on the Omi server', 'openai-compatible': 'API server · OpenAI compatible'},
+  diarization: {pyannote: 'Pyannote · on the Omi server', mycelia: 'Mycelia API server'},
+  summary: {'openai-compatible': 'OpenAI-compatible model'},
+  translation: {'openai-compatible': 'OpenAI-compatible model'},
 };
-const resultLabels = {ready: 'Готов к подключению', available: 'Сервер отвечает', unavailable: 'Недоступен', misconfigured: 'Проверьте настройки'};
+const resultLabels = {ready: 'Ready to connect', available: 'Server responded', unavailable: 'Unavailable', misconfigured: 'Check settings'};
 
 export function providerDefaults(stage, kind = Object.keys(kinds[stage])[0]) {
   let settings = {};
@@ -37,26 +41,26 @@ export function providerFields(profile) {
   const {stage, kind} = profile;
   if (stage === 'live') return kind === 'external'
     ? [field('url', 'WebSocket URL', {required: true, placeholder: 'wss://server.example/asr'})]
-    : [field('url', 'Локальный WebSocket URL', {required: true}), field('python', 'Python подготовленного сервера', {required: true}), field('model_dir', 'Папка модели', {required: true}),
-      field('language', 'Язык', {options: {ru: 'Русский', en: 'English', auto: 'Автоматически'}}), field('chunk_seconds', 'Длина фрагмента, с', {type: 'number', min: 1, max: 10, step: 0.5})];
-  if (stage === 'summary' || stage === 'translation') return [field('base_url', 'Базовый URL API', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}),
-    field('model', 'Модель', stage === 'summary' ? {models: true, hint: 'Пустое поле использует загруженную модель провайдера.'} : {required: true, models: true}),
-    field('reasoning', 'Рассуждения модели', {options: {default: 'По умолчанию сервера', off: 'Отключить (Qwen3 на llama.cpp/vLLM)'}, hint: 'Отключайте, если модель тратит весь ответ на размышления и результат не приходит.'})];
+    : [field('url', 'Local WebSocket URL', {required: true}), field('python', 'Server Python executable', {required: true}), field('model_dir', 'Model directory', {required: true}),
+      field('language', 'Language', {options: {ru: 'Russian', en: 'English', auto: 'Automatic'}}), field('chunk_seconds', 'Segment length (seconds)', {type: 'number', min: 1, max: 10, step: 0.5})];
+  if (stage === 'summary' || stage === 'translation') return [field('base_url', 'API base URL', {required: true, placeholder: 'http://127.0.0.1:11434/v1'}),
+    field('model', 'Model', stage === 'summary' ? {models: true, hint: 'Leave blank to use the model loaded by the provider.'} : {required: true, models: true}),
+    field('reasoning', 'Model reasoning', {options: {default: 'Server default', off: 'Off (Qwen3 on llama.cpp or vLLM)'}, hint: 'Disable if reasoning uses the full output budget and no summary appears.'})];
   if (stage === 'diarization') return kind === 'mycelia'
-    ? [field('base_url', 'Базовый URL сервера', {required: true, placeholder: 'https://server.example'}),
-      field('min_speakers', 'Минимум говорящих', {type: 'number', min: 1, max: 32, optional: true, placeholder: 'Автоматически'}),
-      field('max_speakers', 'Максимум говорящих', {type: 'number', min: 1, max: 32, optional: true, placeholder: 'Автоматически'})]
-    : [field('speaker_model', 'Модель', {required: true, models: true}), field('speaker_device', 'Устройство', {options: {cpu: 'CPU', mps: 'Apple GPU (MPS)'}}),
-      field('speaker_threads', 'Потоки CPU', {type: 'number', min: 1, max: 16}), field('speaker_count', 'Число говорящих', {type: 'number', min: 0, max: 32, hint: '0 — определить автоматически.'}),
-      field('speaker_python', 'Python', {advanced: true, hint: 'Пустое поле — подготовленная среда omiloc.'})];
-  const common = [field('model', 'Модель', {required: true, models: true}), field('language', 'Язык', {required: true, hint: 'Код языка: ru, en. Для поддерживаемых моделей: auto.'})];
-  if (kind === 'openai-compatible') return [field('provider_url', 'Базовый URL API', {required: true, placeholder: 'https://server.example/v1'}), ...common];
-  if (kind === 'whisperkit') return [field('model', 'Подготовленная модель', {readonly: true}), common[1], field('assets_path', 'Папка WhisperKit', {advanced: true, hint: 'Пустое поле — подготовленная среда omiloc.'})];
-  if (kind === 'parakeet-mlx') return [common[0], field('language', 'Язык', {readonly: true, hint: 'Parakeet определяет язык автоматически.'}),
-    field('chunk_duration', 'Длина фрагмента, с', {type: 'number', min: 10, max: 60, advanced: true}), field('overlap_duration', 'Перекрытие, с', {type: 'number', min: 1, max: 59, advanced: true}),
-    field('python', 'Python', {advanced: true}), field('assets_path', 'Папка моделей', {advanced: true})];
-  return [...common, field('compute_type', 'Вычисления', {options: {float32: 'Float32', int8: 'Int8', int8_float32: 'Int8 / Float32'}, advanced: true}),
-    field('batch_size', 'Размер пакета', {type: 'number', min: 1, max: 8, advanced: true}), field('python', 'Python', {advanced: true}), field('assets_path', 'Папка моделей', {advanced: true})];
+    ? [field('base_url', 'Server base URL', {required: true, placeholder: 'https://server.example'}),
+      field('min_speakers', 'Minimum speakers', {type: 'number', min: 1, max: 32, optional: true, placeholder: 'Automatic'}),
+      field('max_speakers', 'Maximum speakers', {type: 'number', min: 1, max: 32, optional: true, placeholder: 'Automatic'})]
+    : [field('speaker_model', 'Model', {required: true, models: true}), field('speaker_device', 'Device', {options: {cpu: 'CPU', mps: 'Apple GPU (MPS)'}}),
+      field('speaker_threads', 'CPU threads', {type: 'number', min: 1, max: 16}), field('speaker_count', 'Speaker count', {type: 'number', min: 0, max: 32, hint: 'Use 0 to detect automatically.'}),
+      field('speaker_python', 'Python', {advanced: true, hint: 'Leave blank to use the omiloc environment.'})];
+  const common = [field('model', 'Model', {required: true, models: true}), field('language', 'Language', {required: true, hint: 'Language code, such as ru or en. Supported models also accept auto.'})];
+  if (kind === 'openai-compatible') return [field('provider_url', 'API base URL', {required: true, placeholder: 'https://server.example/v1'}), ...common];
+  if (kind === 'whisperkit') return [field('model', 'Installed model', {readonly: true}), common[1], field('assets_path', 'WhisperKit directory', {advanced: true, hint: 'Leave blank to use the omiloc environment.'})];
+  if (kind === 'parakeet-mlx') return [common[0], field('language', 'Language', {readonly: true, hint: 'Parakeet detects the language automatically.'}),
+    field('chunk_duration', 'Segment length (seconds)', {type: 'number', min: 10, max: 60, advanced: true}), field('overlap_duration', 'Overlap (seconds)', {type: 'number', min: 1, max: 59, advanced: true}),
+    field('python', 'Python', {advanced: true}), field('assets_path', 'Models directory', {advanced: true})];
+  return [...common, field('compute_type', 'Compute settings', {options: {float32: 'Float32', int8: 'Int8', int8_float32: 'Int8 / Float32'}, advanced: true}),
+    field('batch_size', 'Batch size', {type: 'number', min: 1, max: 8, advanced: true}), field('python', 'Python', {advanced: true}), field('assets_path', 'Models directory', {advanced: true})];
 }
 
 export function draftPayload(profile, apiKey = '', clearKey = false) {
@@ -85,7 +89,7 @@ export async function settingsRequest(path, body, method = 'POST', fetcher = fet
     ...(method === 'GET' ? {} : {headers: {'Content-Type': 'application/json', 'X-Omiloc-Request': 'settings'}, body: JSON.stringify(body)})});
   const data = await response.json();
   if (!response.ok) {
-    const error = new Error(data.error || 'Не удалось выполнить действие.');
+    const error = new Error(data.error || 'Request failed.');
     error.status = response.status;
     error.field = data.field;
     error.outcome = data.outcome;
@@ -107,9 +111,9 @@ function button(text, action, className = 'settings-button') {
   return node;
 }
 function fingerprint(profile) { return JSON.stringify(canonical(draftPayload(profile))); }
-function profileLabel(profile) { return profile ? `${profile.name || kinds[profile.stage]?.[profile.kind] || profile.kind}${profile.settings?.model || profile.settings?.speaker_model ? ` · ${profile.settings.model || profile.settings.speaker_model}` : ''}` : 'Выключено'; }
+function profileLabel(profile) { return profile ? `${profile.name || kinds[profile.stage]?.[profile.kind] || profile.kind}${profile.settings?.model || profile.settings?.speaker_model ? ` · ${profile.settings.model || profile.settings.speaker_model}` : ''}` : 'Off'; }
 
-export function mountSettings(root, {request = settingsRequest} = {}) {
+export function mountSettings(root, {request = settingsRequest, openTemplates} = {}) {
   const state = {data: null, stage: 'live', draft: null, busy: false, models: [], checks: new Map(), loaded: false, generation: 0};
   let feedback, editor, draftKey, clearKey, fieldInputs = new Map(), disabledControls = new WeakMap();
   function message(text = '', tone = '') {
@@ -127,9 +131,9 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
     }
   }
   function fail(error) {
-    const text = error.name === 'TimeoutError' ? 'Сервер ещё не ответил. Обновите настройки перед повторным действием.'
-      : error instanceof TypeError || error instanceof SyntaxError ? 'Нет связи с аудиотекой. Повторите после восстановления подключения.'
-      : error.status === 409 ? `${error.message} Обновите настройки: черновик останется в редакторе.` : error.message;
+    const text = error.name === 'TimeoutError' ? 'The server has not responded. Refresh settings before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError ? 'Cannot reach the audio library. Try again when the connection returns.'
+      : error.status === 409 ? `${error.message} Refresh settings to try again. Your draft stays open.` : error.message;
     message(text, 'error');
     const input = fieldInputs.get(error.field?.replace(/^settings\./, ''));
     if (input) {
@@ -142,7 +146,7 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
       input.focus();
     }
   }
-  async function operation(action, success, progress = 'Выполняем действие…') {
+  async function operation(action, success, progress = 'Working…') {
     if (state.busy) return;
     busy(true);
     message(progress);
@@ -205,13 +209,13 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
     draftKey = null; clearKey = null;
     if (!state.draft) return null;
     editor = el('form', 'provider-editor');
-    editor.setAttribute('aria-label', 'Редактор провайдера');
-    editor.append(el('h3', '', state.draft.id ? 'Редактировать провайдера' : 'Новый провайдер'));
+    editor.setAttribute('aria-label', 'Provider editor');
+    editor.append(el('h3', '', state.draft.id ? 'Edit provider' : 'New provider'));
     const grid = el('div', 'settings-fields');
-    grid.append(formField(field('name', 'Название', {required: true})));
+    grid.append(formField(field('name', 'Name', {required: true})));
     const type = el('label', 'settings-field');
-    type.append(el('span', 'settings-field-label', 'Тип подключения'));
-    const select = el('select'); select.name = 'kind'; select.setAttribute('aria-label', 'Тип подключения');
+    type.append(el('span', 'settings-field-label', 'Connection type'));
+    const select = el('select'); select.name = 'kind'; select.setAttribute('aria-label', 'Connection type');
     for (const [value, text] of Object.entries(kinds[state.stage])) { const option = el('option', '', text); option.value = value; select.append(option); }
     select.value = state.draft.kind;
     select.disabled = !!state.draft.id;
@@ -221,14 +225,14 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
       render();
     });
     type.append(select);
-    if (state.draft.id) type.append(el('span', 'settings-field-hint', 'Для другого типа подключения добавьте новую карточку.'));
+    if (state.draft.id) type.append(el('span', 'settings-field-hint', 'Add a profile to use a different connection type.'));
     grid.append(type);
     const fields = providerFields(state.draft);
     for (const spec of fields.filter(item => !item.advanced)) grid.append(formField(spec));
     editor.append(grid);
     if (fields.some(item => item.advanced)) {
       const advanced = el('details', 'settings-advanced');
-      advanced.append(el('summary', '', 'Параметры выполнения'));
+      advanced.append(el('summary', '', 'Runtime settings'));
       const inner = el('div', 'settings-fields');
       fields.filter(item => item.advanced).forEach(spec => inner.append(formField(spec)));
       advanced.append(inner); editor.append(advanced);
@@ -236,31 +240,31 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
     const remote = state.draft.kind === 'openai-compatible' || state.draft.kind === 'mycelia' || state.draft.kind === 'external';
     if (remote) {
       const key = el('label', 'settings-field');
-      key.append(el('span', 'settings-field-label', 'API-ключ · необязательно'));
+      key.append(el('span', 'settings-field-label', 'API key (optional)'));
       draftKey = el('input'); draftKey.type = 'password'; draftKey.autocomplete = 'new-password'; draftKey.name = 'api-key';
-      draftKey.placeholder = state.draft.has_key ? 'Ключ сохранён. Введите новый для замены.' : 'Без ключа';
+      draftKey.placeholder = state.draft.has_key ? 'Key saved. Enter a new value to replace it.' : 'No key';
       key.append(draftKey); editor.append(key);
       if (state.draft.has_key) {
         const clear = el('label', 'settings-checkbox'); clearKey = el('input'); clearKey.type = 'checkbox';
         clearKey.addEventListener('change', () => { if (clearKey.checked) draftKey.value = ''; });
         draftKey.addEventListener('input', () => { if (draftKey.value) clearKey.checked = false; });
-        clear.append(clearKey, el('span', '', 'Удалить сохранённый ключ')); editor.append(clear);
+        clear.append(clearKey, el('span', '', 'Remove saved key')); editor.append(clear);
       }
-      editor.append(el('p', 'settings-note', 'URL должен быть доступен серверу Omi. localhost — это Mac или контейнер, где работает Omi. Ключ хранится на сервере Omi. Для HTTP/WS укажите IP сервера в LAN/VPN или localhost; для доменных имён — HTTPS/WSS.'));
+      editor.append(el('p', 'settings-note', 'Use a URL reachable from the Omi server. Localhost means the Omi host or container. Use HTTPS or WSS for domain names.'));
     }
-    if (state.stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'Сервер должен поддерживать протокол WLK /asr. Модель, язык и live-диаризация задаются на самом сервере.'));
-    if (state.stage === 'stt' && remote) editor.append(el('p', 'settings-note', 'Для перехода по фразам сервер должен возвращать таймкоды сегментов или слов.'));
-    if (state.draft.settings.diarization?.enabled) editor.append(el('p', 'settings-note', 'Для этого live-профиля сохранена диаризация потока. Её параметры сохранятся при редактировании. Вкладка «Диаризация» настраивает обработку готовых записей.'));
-    if (state.draft.embedded) editor.append(el('p', 'settings-note', 'Этот профиль сохраняет встроенную диаризацию STT. Для отдельного этапа добавьте новую карточку Pyannote или Mycelia и выберите её после проверки окружения.'));
+    if (state.stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'The server must support WLK /asr. Configure its model, language and live speaker identification on that server.'));
+    if (state.stage === 'stt' && remote) editor.append(el('p', 'settings-note', 'Phrase playback requires segment or word timestamps from the server.'));
+    if (state.draft.settings.diarization?.enabled) editor.append(el('p', 'settings-note', 'This profile keeps its live speaker settings. The Speakers category configures finished recordings.'));
+    if (state.draft.embedded) editor.append(el('p', 'settings-note', 'This profile uses built-in speaker identification. Add a Pyannote or Mycelia profile to run it separately.'));
     const models = el('datalist'); models.id = 'provider-models';
     for (const model of state.models) { const option = el('option'); option.value = model; models.append(option); }
     editor.append(models);
     const actions = el('div', 'settings-actions');
-    const save = el('button', 'settings-button primary', 'Сохранить'); save.type = 'submit';
-    actions.append(save, button('Проверить подключение', () => check('/probe')));
-    if (fields.some(item => item.models)) actions.append(button('Загрузить модели', () => check('/models')));
-    actions.append(button('Закрыть', () => { state.draft = null; render(); }));
-    editor.append(actions, el('p', 'settings-note', 'Сохранение не переключает обработку. После сохранения нажмите «Использовать» на карточке.'));
+    const save = el('button', 'settings-button primary', 'Save profile'); save.type = 'submit';
+    actions.append(save, button('Test connection', () => check('/probe')));
+    if (fields.some(item => item.models)) actions.append(button('Load models', () => check('/models')));
+    actions.append(button('Close', () => { state.draft = null; render(); }));
+    editor.append(actions, el('p', 'settings-note', 'After saving, choose Use provider to make this profile active.'));
     editor.addEventListener('submit', event => {
       event.preventDefault();
       if (!editor.reportValidity()) return;
@@ -269,7 +273,7 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
         state.data = await request('/save', {revision: state.data.revision, ...payload});
         state.checks.delete(fingerprint(payload.profile));
         state.draft = null; render();
-      }, 'Профиль сохранён. Выберите «Использовать», чтобы применить его.', 'Сохраняем профиль…');
+      }, 'Profile saved. Choose Use provider to activate it.', 'Saving profile…');
     });
     return editor;
   }
@@ -288,10 +292,10 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
         const list = editor.querySelector('datalist');
         list?.replaceChildren(...state.models.map(model => { const option = el('option'); option.value = model; return option; }));
       }
-      const label = resultLabels[result.state] || 'Проверка завершена';
-      const suffix = path === '/models' ? ` Моделей: ${state.models.length}. Название можно ввести вручную.` : ' Проверка не отправляет записи и не подтверждает качество распознавания.';
+      const label = resultLabels[result.state] || 'Test complete';
+      const suffix = path === '/models' ? ` Models found: ${state.models.length}. You can also enter a model name.` : ' This check uses no recordings.';
       message(`${label}. ${result.message || ''}${suffix}`, ['ready', 'available'].includes(result.state) ? 'success' : 'error');
-    }, '', path === '/models' ? 'Запрашиваем список моделей…' : 'Проверяем подключение и готовность провайдера…');
+    }, '', path === '/models' ? 'Loading models…' : 'Testing connection…');
   }
   function activate(id) {
     operation(async () => {
@@ -302,68 +306,231 @@ export function mountSettings(root, {request = settingsRequest} = {}) {
         let refreshed = false;
         try { state.data = await request('', undefined, 'GET'); refreshed = true; render(); }
         catch { /* The activation outcome remains unknown until the server can be read. */ }
-        throw new Error(`${error.name === 'TimeoutError' ? 'Время ожидания истекло.' : error.message} Результат применения не подтверждён. ${refreshed ? 'Действующие настройки перечитаны.' : 'Не удалось перечитать действующие настройки; нажмите «Обновить» после восстановления связи.'} Применение не повторялось.`);
+        throw new Error(`${error.name === 'TimeoutError' ? 'Request timed out.' : error.message} Change not confirmed. ${refreshed ? 'Reloaded current settings.' : 'Select Refresh after the connection returns.'} The request was not repeated.`);
       }
       render();
-    }, id ? 'Профиль применяется к новым задачам и сессиям.' : 'Этап выключен для новых задач и сессий.',
-    'Применяем настройки. Подготовка локальной модели может занять до 12 минут. Дождитесь результата; повторный запрос не требуется.');
+    }, id ? 'Provider applies to new jobs and sessions.' : 'Setting applies to new jobs and sessions.',
+    'Applying settings. Setting up a local model can take up to 12 minutes.');
   }
   function render() {
+    const tabScroll = root.querySelector('.settings-tabs')?.scrollLeft ?? 0;
     const fragment = document.createDocumentFragment();
-    const heading = el('header', 'settings-heading');
-    const title = el('div'); title.append(el('p', 'eyebrow', 'ОБРАБОТКА АУДИО'), el('h2', '', 'Настройки'));
-    heading.append(title, button('Обновить', load)); fragment.append(heading);
-    fragment.append(el('p', 'settings-intro', 'Выберите профиль для каждого этапа. Обработка может идти на сервере Omi (Mac или контейнер) либо через API своего или облачного сервера. На каждом этапе действует один профиль.'));
-    const guide = el('details', 'settings-advanced');
-    guide.append(el('summary', '', 'Как переключить обработку'));
-    guide.append(el('p', 'settings-note', 'Локально: выберите карточку подготовленного движка и нажмите «Использовать». Модели и среды сначала подготавливаются на сервере Omi.'));
-    guide.append(el('p', 'settings-note', 'По API: добавьте карточку нужного типа, укажите URL, модель (если требуется) и ключ. Сервер API может работать на том же компьютере, в вашей сети или в облаке. Адрес указывается с точки зрения сервера Omi.'));
-    guide.append(el('p', 'settings-note', 'Проверить подключение → Сохранить → Использовать. Сохранение оставляет текущий профиль действующим. Выбор применяется к новым записям; обработка старых записей сохраняет свои настройки.'));
-    fragment.append(guide);
-    const tabs = el('nav', 'settings-tabs'); tabs.setAttribute('aria-label', 'Этап обработки');
+    const tabs = el('nav', 'settings-tabs'); tabs.setAttribute('aria-label', 'Processing categories');
     for (const [stage, detail] of Object.entries(stages)) {
       const tab = button(detail.title, () => { state.stage = stage; state.draft = null; state.models = []; render(); }, `settings-tab${state.stage === stage ? ' selected' : ''}`);
       tab.setAttribute('aria-pressed', String(state.stage === stage)); tabs.append(tab);
     }
     fragment.append(tabs);
     feedback = el('p', 'settings-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; fragment.append(feedback);
-    if (!state.data) { fragment.append(el('p', 'settings-note', 'Загружаем настройки сервера…')); root.replaceChildren(fragment); return; }
-    fragment.append(el('p', 'settings-description', stages[state.stage].description));
+    if (!state.data) {
+      fragment.append(button('Reload providers', load));
+      root.replaceChildren(fragment);
+      return;
+    }
+    const stage = stages[state.stage];
+    const heading = el('header', 'provider-section-heading');
+    const description = el('div');
+    description.append(el('h3', '', stage.title), el('p', 'settings-description', stage.description));
+    heading.append(description);
+    const toolbar = el('div', 'provider-toolbar');
+    if (state.stage === 'summary' && openTemplates) toolbar.append(button('Edit summary templates', openTemplates, 'settings-button primary'));
+    toolbar.append(button('Refresh', load));
+    heading.append(toolbar);
+    fragment.append(heading);
     const selected = state.data.profiles.find(profile => profile.id === state.data.active[state.stage]);
     const effective = state.data.effective[state.stage];
     const assignment = el('div', 'settings-assignment');
-    assignment.append(el('p', '', `Выбран: ${profileLabel(selected)}`), el('p', '', `Действует: ${profileLabel(effective)}`));
-    if (selected && !profileMatches(selected, effective)) assignment.append(el('p', 'settings-pending', 'Сохранённые параметры отличаются от действующих. Нажмите «Использовать», чтобы применить их.'));
-    if (effective?.inherited_from === 'summary') assignment.append(el('p', 'settings-note', 'Автоматически: используется модель суммаризации этого сервера.'));
-    if (state.stage !== 'stt') { const off = button(state.stage === 'translation' ? 'Использовать модель суммаризации' : 'Выключить этап', () => activate(null)); off.disabled = state.stage === 'translation' ? !selected : !selected && !effective; assignment.append(off); }
+    const current = el('div');
+    current.append(el('p', 'settings-field-label', 'Active provider'), el('p', 'active-provider', profileLabel(effective)));
+    if (selected && !profileMatches(selected, effective)) {
+      current.append(el('p', 'settings-pending', 'Saved edits are pending. Choose Use provider to apply them.'));
+    }
+    if (effective?.inherited_from === 'summary') current.append(el('p', 'settings-note', 'Uses the active summary model.'));
+    assignment.append(current);
+    if (stage.off && (state.stage === 'translation' ? selected : selected || effective)) {
+      const action = el('div', 'stage-change');
+      const effect = el('p', 'settings-note', stage.effect);
+      effect.id = 'stage-change-effect';
+      const off = button(stage.off, () => activate(null));
+      off.setAttribute('aria-describedby', effect.id);
+      action.append(off, effect);
+      assignment.append(action);
+    }
     fragment.append(assignment);
     const list = el('div', 'provider-cards');
     for (const profile of state.data.profiles.filter(item => item.stage === state.stage)) {
       const active = profileMatches(profile, effective), card = el('article', `provider-card${active ? ' active' : ''}`);
       const top = el('div', 'provider-card-heading'); top.append(el('h3', '', profile.name));
-      if (active || profile.id === selected?.id) top.append(el('span', 'provider-badge', active ? 'Действует' : 'Выбран'));
+      if (active || profile.id === selected?.id) top.append(el('span', 'provider-badge', active ? 'Active' : 'Selected'));
       card.append(top, el('p', 'provider-kind', kinds[profile.stage]?.[profile.kind] || profile.kind));
       if (profile.settings.model || profile.settings.speaker_model) card.append(el('p', 'provider-model', profile.settings.model || profile.settings.speaker_model));
       const endpoint = profile.settings.base_url || profile.settings.provider_url || profile.settings.url;
       if (endpoint) card.append(el('p', 'provider-endpoint', endpoint));
-      const checked = state.checks.get(fingerprint(profile));
-      card.append(el('p', 'provider-health', checked ? resultLabels[checked.state] || 'Проверено' : 'Подключение не проверено'));
+      const key = fingerprint(profile);
+      const health = el('div', 'provider-health');
+      const label = el('p', 'connection-label');
+      const hint = el('p', 'connection-help');
+      function updateHealth() {
+        const checked = state.checks.get(key);
+        label.textContent = checked ? resultLabels[checked.state] || 'Test complete' : 'Connection not tested';
+        hint.textContent = !checked ? 'Test reachability from the Omi server. This uses no recordings.'
+          : !['ready', 'available'].includes(checked.state) ? checked.message || '' : '';
+      }
+      updateHealth();
+      health.append(label, hint, button('Test connection', () => operation(async () => {
+        const result = await request('/probe', draftPayload(profile));
+        state.checks.set(key, result);
+        updateHealth();
+        message(resultLabels[result.state] || 'Test complete', ['ready', 'available'].includes(result.state) ? 'success' : 'error');
+      }, '', 'Testing connection…')));
+      card.append(health);
       const actions = el('div', 'settings-actions');
-      actions.append(button('Редактировать', () => choose(profile)), button('Использовать', () => activate(profile.id), 'settings-button primary'));
-      const remove = button('Удалить', () => operation(async () => {
+      actions.append(button('Edit', () => choose(profile)));
+      if (!active) actions.append(button('Use provider', () => activate(profile.id), 'settings-button primary'));
+      const remove = button('Delete', () => operation(async () => {
         state.data = await request(`/profiles/${encodeURIComponent(profile.id)}`, {revision: state.data.revision}, 'DELETE');
         if (state.draft?.id === profile.id) state.draft = null;
         render();
-      }, 'Профиль удалён.'));
+      }, 'Profile deleted.'));
       remove.disabled = profile.id === selected?.id || profile.id === effective?.id;
-      if (remove.disabled) remove.title = 'Сначала выберите другой профиль или выключите этап.';
+      if (remove.disabled) remove.title = 'Choose another provider before deleting this profile.';
       actions.append(remove); card.append(actions); list.append(card);
     }
-    if (!list.children.length) list.append(el('p', 'settings-note', 'Провайдеров пока нет. Добавьте первый профиль для этого этапа.'));
-    fragment.append(list, button('+ Добавить провайдера', () => choose(), 'settings-button add-provider'));
+    if (!list.children.length) list.append(el('p', 'settings-note', 'No providers for this stage.'));
+    fragment.append(list, button('+ Add provider', () => choose(), 'settings-button add-provider'));
     const form = editorView(); if (form) fragment.append(form);
     root.replaceChildren(fragment);
+    tabs.scrollLeft = tabScroll;
   }
   render();
-  return {load, show: () => { if (!state.loaded && !state.busy) return load(); }};
+  return {load, show: () => { if (!state.loaded && !state.busy) return load(); },
+    catalogSaved(from, to) {
+      if (state.data?.revision === from && !state.busy) state.data.revision = to;
+      else state.loaded = false;
+    },
+  };
+}
+
+export function mountSummaryTemplates(root, {request = settingsRequest, onSave = () => {}} = {}) {
+  let catalog, drafts, selected, defaultId, operation = '', feedback = '';
+  const path = '/summary-settings';
+  const dirty = () => catalog && JSON.stringify([catalog.default_template_id, catalog.templates]) !== JSON.stringify([defaultId, drafts]);
+
+  function update(data) {
+    catalog = data;
+    drafts = data.templates.map(template => ({...template}));
+    defaultId = data.default_template_id;
+    if (!drafts.some(template => template.id === selected)) selected = defaultId;
+  }
+
+  async function load() {
+    if (operation) return;
+    operation = 'Loading templates…';
+    feedback = '';
+    render();
+    try { update(await request(path, undefined, 'GET')); }
+    catch { feedback = 'Could not load summary templates. Try again.'; }
+    finally { operation = ''; render(); }
+  }
+
+  async function save() {
+    if (operation || !dirty() || drafts.some(template => !template.name.trim() || !template.prompt.trim())) return;
+    operation = 'Saving templates…';
+    feedback = '';
+    render();
+    const revision = catalog.revision;
+    try {
+      update(await request(path, {revision, templates: drafts, default_template_id: defaultId}));
+      feedback = 'Templates saved.';
+      onSave(revision, catalog.revision);
+    } catch (error) {
+      feedback = error.status === 409
+        ? 'Settings changed on the server. Copy any edits you want to keep before reloading.'
+        : 'Could not save summary templates. Your edits are still here.';
+    } finally { operation = ''; render(); }
+  }
+
+  function render() {
+    const status = el('p', 'template-feedback', operation || feedback);
+    status.setAttribute('role', 'status');
+    root.setAttribute('aria-busy', String(Boolean(operation)));
+    if (!catalog) {
+      root.replaceChildren(status);
+      if (!operation) root.append(button('Retry', load));
+      return;
+    }
+    const row = drafts.find(template => template.id === selected);
+    const defaultLabel = el('p', 'template-default');
+    defaultLabel.setAttribute('aria-live', 'polite');
+    const list = el('div', 'template-list');
+    const name = el('input');
+    name.value = row.name;
+    name.maxLength = 100;
+    const prompt = el('textarea');
+    prompt.value = row.prompt;
+    prompt.rows = 10;
+    prompt.maxLength = 8000;
+    let selectedLabel;
+    for (const template of drafts) {
+      const option = button('', () => { selected = template.id; feedback = ''; render(); }, 'template-option');
+      option.setAttribute('aria-pressed', String(template.id === selected));
+      const label = el('span', '', template.name || 'Untitled');
+      option.append(label);
+      if (template.id === selected) selectedLabel = label;
+      if (template.id === defaultId) option.append(el('small', '', defaultId === catalog.default_template_id ? 'Default' : 'Pending'));
+      list.append(option);
+    }
+    const create = button('New template', () => {
+      selected = crypto.randomUUID();
+      drafts.push({id: selected, name: '', prompt: ''});
+      feedback = '';
+      render();
+      root.querySelector('input')?.focus();
+    });
+    create.disabled = drafts.length >= 24;
+    list.append(create);
+    const use = button('Set as default', () => {
+      const clean = !dirty();
+      defaultId = selected;
+      feedback = '';
+      if (clean) return save();
+      render();
+    });
+    const apply = button('Save changes', save, 'settings-button primary');
+    const actions = el('div', 'settings-actions');
+    actions.append(use, apply);
+    const editor = el('div', 'template-editor');
+    for (const [label, input] of [['Template name', name], ['Summary prompt', prompt]]) {
+      const field = el('label', 'settings-field');
+      field.append(el('span', 'settings-field-label', label), input);
+      editor.append(field);
+    }
+    editor.append(actions);
+    const body = el('div', 'template-layout');
+    body.append(list, editor);
+    const reload = button('', load);
+    function updateControls() {
+      const next = drafts.find(template => template.id === defaultId);
+      const saved = catalog.templates.find(template => template.id === catalog.default_template_id);
+      const pending = next.id !== saved.id || next.name !== saved.name;
+      defaultLabel.textContent = (pending ? 'Pending default · ' : 'Default for new recordings · ') + (next.name || 'Untitled');
+      root.dataset.dirty = String(Boolean(dirty()));
+      reload.textContent = dirty() ? 'Discard edits and reload' : 'Reload templates';
+      use.disabled = Boolean(operation) || selected === defaultId || !row.name.trim() || !row.prompt.trim();
+      apply.disabled = Boolean(operation) || !dirty() || drafts.some(template => !template.name.trim() || !template.prompt.trim());
+    }
+    function edit() {
+      if (feedback === 'Templates saved.') {
+        feedback = '';
+        status.textContent = '';
+      }
+      updateControls();
+    }
+    name.addEventListener('input', () => { row.name = name.value; selectedLabel.textContent = row.name || 'Untitled'; edit(); });
+    prompt.addEventListener('input', () => { row.prompt = prompt.value; edit(); });
+    root.replaceChildren(defaultLabel, body, status, reload);
+    updateControls();
+    if (operation) for (const control of root.querySelectorAll('button,input,textarea')) control.disabled = true;
+  }
+  return {show: () => { if (!dirty()) return load(); }};
 }

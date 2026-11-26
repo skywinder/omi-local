@@ -43,7 +43,15 @@
     <section class="detail" aria-label="Recording workspace">
       <nav class="detail-tabs" aria-label="Workspace navigation"><button id="view-live" class="selected" aria-pressed="true">Live</button><button id="view-recording" aria-pressed="false">Recording</button><button id="view-settings" aria-pressed="false">Settings</button></nav>
       <section id="live-monitor" class="live-monitor" aria-label="Live transcription"><details id="live-tuning" class="live-tuning"><summary>Live transcription settings</summary></details></section>
-      <section id="provider-settings" class="provider-settings" aria-label="Provider settings" hidden></section>
+      <section id="settings-workspace" class="provider-settings" aria-labelledby="settings-title" hidden>
+        <h2 id="settings-title">Settings</h2>
+        <nav class="settings-sections" aria-label="Settings sections">
+          <button id="settings-providers-tab" type="button" aria-controls="provider-settings" aria-pressed="true">Providers</button>
+          <button id="settings-templates-tab" type="button" aria-controls="summary-templates" aria-pressed="false">Summary templates</button>
+        </nav>
+        <section id="provider-settings" aria-label="Provider settings"></section>
+        <section id="summary-templates" aria-label="Summary templates" hidden></section>
+      </section>
       <div id="welcome" class="welcome"><h2>Select a recording</h2><p>Open a recording to play its audio and read the transcript.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>
         <button id="back-to-recordings" type="button" class="filter back-to-recordings">← Back to recordings</button>

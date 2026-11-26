@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {draftPayload, mountSettings, profileMatches, providerDefaults, providerFields, settingsRequest} from './settings.mjs';
+import {draftPayload, mountSettings, mountSummaryTemplates, profileMatches, providerDefaults, providerFields, settingsRequest} from './settings.mjs';
 import {mountLiveTuning} from './live-tuning.mjs';
 import {processingRows, renderProcessing} from './recording-processing.mjs';
 
@@ -117,11 +117,11 @@ test('translation settings explain the server model used automatically', async t
   state.effective.translation = {...state.effective.summary, stage: 'translation', inherited_from: 'summary'};
   const settings = mountSettings(ui.root, {request: async () => structuredClone(state)});
   await settings.show();
-  ui.click('Перевод');
-  assert.match(ui.root.textContent, /Автоматически: используется модель суммаризации этого сервера/);
-  assert.match(ui.root.textContent, /Действует: Local model/);
-  const automatic = ui.root.querySelectorAll('button').find(b => b.textContent === 'Использовать модель суммаризации');
-  assert.equal(automatic.disabled, true);
+  ui.click('Translation');
+  assert.match(ui.root.textContent, /Uses the active summary model/);
+  assert.match(ui.root.textContent, /Active providerLocal model/);
+  const automatic = ui.root.querySelectorAll('button').find(b => b.textContent === 'Use summary model');
+  assert.equal(automatic, undefined);
 });
 
 test('finished-recording speaker selection stays independent of the live server', async t => {
@@ -142,15 +142,15 @@ test('finished-recording speaker selection stays independent of the live server'
     return structuredClone(state);
   }});
   await settings.show();
-  assert.match(ui.root.textContent, /Mac или контейнер/);
-  assert.match(ui.root.textContent, /разделение говорящих в реальном времени/i);
-  ui.click('Диаризация');
-  assert.match(ui.root.textContent, /в готовой записи/);
-  ui.click('Использовать'); await settle();
+  assert.match(ui.root.textContent, /Show text while recording/);
+  assert.match(ui.root.textContent, /still capture audio/);
+  ui.click('Speakers');
+  assert.match(ui.root.textContent, /Identify who spoke in finished recordings/);
+  ui.click('Use provider'); await settle();
   assert.deepEqual(calls.at(-1), {path: '/activate', body: {revision: 7, stage: 'diarization', id: speakers.id}});
-  assert.match(ui.root.textContent, /Действует: Recording speakers/);
+  assert.match(ui.root.textContent, /Active providerRecording speakers/);
   ui.click('Live STT');
-  assert.match(ui.root.textContent, /Действует: Live server/);
+  assert.match(ui.root.textContent, /Active providerLive server/);
   assert.equal(calls.filter(call => call.path === '/activate').length, 1);
 });
 
@@ -164,26 +164,26 @@ test('editing and checking a draft does not save or activate; save and use are d
     return structuredClone(state);
   }});
   await settings.show();
-  ui.click('Суммаризация'); ui.click('Редактировать');
+  ui.click('Summarization'); ui.click('Edit');
   ui.input('model', 'changed-model'); ui.input('api-key', 'synthetic-secret');
   assert.equal(calls.length, 1);
-  ui.click('Проверить подключение'); await settle();
+  ui.root.querySelector('form').querySelectorAll('button').find(button => button.textContent === 'Test connection').dispatch('click'); await settle();
   assert.equal(calls.at(-1).path, '/probe');
-  assert.match(ui.root.textContent, /не отправляет записи/);
+  assert.match(ui.root.textContent, /This check uses no recordings/);
   assert.equal(ui.root.querySelectorAll('input').find(input => input.name === 'api-key').value, 'synthetic-secret');
-  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Удалить').disabled, true);
+  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Delete').disabled, true);
   ui.root.querySelector('form').dispatch('submit'); await settle();
   assert.equal(calls.at(-1).path, '/save');
   assert.equal(calls.at(-1).body.revision, 7);
   assert.equal(calls.at(-1).body.api_key, 'synthetic-secret');
-  assert.match(ui.root.textContent, /параметры отличаются от действующих/);
+  assert.match(ui.root.textContent, /Saved edits are pending/);
   assert.equal(ui.root.querySelector('form'), null);
   assert.doesNotMatch(ui.root.textContent, /synthetic-secret/);
-  ui.click('Использовать'); await settle();
+  ui.click('Use provider'); await settle();
   assert.equal(calls.at(-1).path, '/activate');
   assert.equal(calls.at(-1).body.revision, 8);
   assert.equal(calls.at(-1).body.id, 'summary-1');
-  assert.doesNotMatch(ui.root.textContent, /параметры отличаются/);
+  assert.doesNotMatch(ui.root.textContent, /Saved edits are pending/);
 });
 
 test('failed activation keeps effective profile and re-enables retry controls', async t => {
@@ -192,11 +192,11 @@ test('failed activation keeps effective profile and re-enables retry controls', 
     if (path === '/activate') throw new Error('Завершите текущую запись.');
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Суммаризация'); ui.click('Выключить этап'); await settle();
-  assert.match(ui.root.textContent, /Действует: Local model/);
+  await settings.show(); ui.click('Summarization'); ui.click('Skip automatic summaries'); await settle();
+  assert.match(ui.root.textContent, /Active providerLocal model/);
   assert.match(ui.root.textContent, /Завершите текущую запись/);
-  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Выключить этап').disabled, false);
-  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Удалить').disabled, true);
+  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Skip automatic summaries').disabled, false);
+  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Delete').disabled, true);
 });
 
 for (const outcome of ['timeout', 'indeterminate']) test(`activation ${outcome} rereads effective settings and never repeats the mutation`, async t => {
@@ -211,11 +211,11 @@ for (const outcome of ['timeout', 'indeterminate']) test(`activation ${outcome} 
     }
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Суммаризация'); ui.click('Выключить этап'); await settle();
+  await settings.show(); ui.click('Summarization'); ui.click('Skip automatic summaries'); await settle();
   assert.deepEqual(paths, ['', '/activate', '']);
-  assert.match(ui.root.textContent, /Результат применения не подтверждён/);
-  assert.match(ui.root.textContent, /Действует: Выключено/);
-  assert.match(ui.root.textContent, /Применение не повторялось/);
+  assert.match(ui.root.textContent, /Change not confirmed/);
+  assert.match(ui.root.textContent, /Active providerOff/);
+  assert.match(ui.root.textContent, /The request was not repeated/);
 });
 
 test('clearing optional speaker counts omits the properties in saved settings', async t => {
@@ -223,7 +223,7 @@ test('clearing optional speaker counts omits the properties in saved settings', 
   const settings = mountSettings(ui.root, {request: async (path, body) => {
     calls.push({path, body}); return structuredClone(state);
   }});
-  await settings.show(); ui.click('Диаризация'); ui.click('+ Добавить провайдера');
+  await settings.show(); ui.click('Speakers'); ui.click('+ Add provider');
   const kind = ui.root.querySelectorAll('select').find(input => input.name === 'kind');
   kind.value = 'mycelia'; kind.dispatch('change');
   ui.input('name', 'Speaker server'); ui.input('base_url', 'http://127.0.0.1:21003');
@@ -242,13 +242,13 @@ test('model discovery works before choosing a model and leaves manual entry avai
     if (path === '/models') return {state: 'ready', message: 'Models found', models: ['first-model', 'second-model']};
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Суммаризация'); ui.click('+ Добавить провайдера');
+  await settings.show(); ui.click('Summarization'); ui.click('+ Add provider');
   ui.input('name', 'New server'); ui.input('base_url', 'http://127.0.0.1:11434/v1');
   const model = ui.root.querySelectorAll('input').find(input => input.name === 'model');
   ui.root.querySelector('form').reportValidity = () => {
     assert.equal(model.required, false, 'discovery validates URL while allowing an empty model'); return true;
   };
-  ui.click('Загрузить модели'); await settle();
+  ui.click('Load models'); await settle();
   assert.equal(calls.at(-1).path, '/models');
   assert.equal(calls.at(-1).body.profile.settings.model, '');
   assert.equal(model.required, false, 'a blank summary model follows the provider');
@@ -318,4 +318,38 @@ test('quick controls preserve an edited revision across a poll, and require relo
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(Number(number.value), 3);
   assert.equal(form.querySelector('fieldset').disabled, false);
+});
+
+test('a provider can be tested directly without changing the active stage', async t => {
+  const ui = dom(t), state = serverState(), paths = [];
+  const settings = mountSettings(ui.root, {request: async path => {
+    paths.push(path);
+    return path === '/probe' ? {state: 'available'} : structuredClone(state);
+  }});
+  await settings.show();
+  ui.click('Summarization');
+  assert.match(ui.root.textContent, /Connection not tested/);
+  assert.match(ui.root.textContent, /Automatic summaries will be skipped/);
+  await ui.click('Test connection');
+  assert.deepEqual(paths, ['', '/probe']);
+  assert.match(ui.root.querySelector('.provider-health').textContent, /Server responded/);
+});
+
+test('switching a saved summary template updates the default and keeps the catalog', async t => {
+  const ui = dom(t), requests = [], saved = {revision: 7, default_template_id: 'short',
+    templates: [{id: 'short', name: 'Compact notes', prompt: 'Keep decisions.'},
+      {id: 'detail', name: 'Detailed notes', prompt: 'Explain decisions.'}]};
+  const templates = mountSummaryTemplates(ui.root, {request: async (path, body, method) => {
+    requests.push({path, body, method});
+    return body ? {...body, revision: 8} : structuredClone(saved);
+  }});
+  await templates.show();
+  assert.equal(ui.root.querySelector('.template-default').textContent, 'Default for new recordings · Compact notes');
+  ui.click('Detailed notes');
+  assert.equal(ui.root.querySelector('textarea').value, 'Explain decisions.');
+  const saving = ui.click('Set as default');
+  assert.equal(ui.root.querySelector('.template-default').textContent, 'Pending default · Detailed notes');
+  await saving;
+  assert.deepEqual(requests[1].body, {...saved, default_template_id: 'detail'});
+  assert.equal(ui.root.querySelector('.template-default').textContent, 'Default for new recordings · Detailed notes');
 });
