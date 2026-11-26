@@ -39,6 +39,8 @@ processes. Refreshing the page alone does not change server-side Python code.
 
 ## Live preview flow
 
+The web monitor lists connected inputs until it observes frame progress. Once a stream advances, the audio source header names the receiving devices. Each stream retains its own waiting or error indicator.
+
 The app receives complete `local_transcript_snapshot` messages over `/v4/listen`:
 `preview_id`, an increasing `revision`, and a `segments` array. A new snapshot
 atomically replaces that live session's lines, including corrections and deletions.

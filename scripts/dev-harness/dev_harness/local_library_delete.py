@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 from . import config, safety
-from .local_library import read_json, safe_file
+from .local_library import read_json, safe_file, transcript_identity
 
 
 class DeleteError(ValueError):
@@ -46,13 +46,17 @@ def delete_recording(cfg, audio, *, delete_database=database_delete):
             raise DeleteError('Сейчас идёт распознавание. Дождитесь его завершения и повторите удаление.') from None
         with audio.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        group = read_json(audio.parent / 'metadata.json').get('conversation_group')
+        capture_key = hashlib.sha256(audio.parent.name.encode()).hexdigest()
+        selected = transcript_identity(digest, group, capture_key)
         folders, keys = [], []
         for folder in transcripts.iterdir():
             manifest = folder / 'manifest.json'
             if folder.is_symlink() or not safe_file(manifest, transcripts):
                 continue
             data = read_json(manifest)
-            if data.get('audio_sha256') == digest:
+            if (data.get('audio_sha256') == digest and
+                    transcript_identity(digest, data.get('conversation_group'), data.get('capture_key')) == selected):
                 # Reject unexpected nested/symlink content before database mutation.
                 if any(p.is_symlink() for p in folder.rglob('*')):
                     raise DeleteError('Результат распознавания изменён. Удаление остановлено.')
@@ -61,15 +65,17 @@ def delete_recording(cfg, audio, *, delete_database=database_delete):
         # Identical audio captures can share one transcript/Conversation. Preserve
         # that shared result while another completed capture still references it.
         shared = False
-        for candidate in root.glob('*/audio.wav'):
-            if candidate == audio or not safe_file(candidate, root) or candidate.parent.is_symlink():
-                continue
-            if candidate.stat().st_size != audio.stat().st_size:
-                continue
-            with candidate.open('rb') as stream:
-                if hashlib.file_digest(stream, 'sha256').hexdigest() == digest:
-                    shared = True
-                    break
+        if group is None:
+            for candidate in root.glob('*/audio.wav'):
+                if candidate == audio or not safe_file(candidate, root) or candidate.parent.is_symlink():
+                    continue
+                if candidate.stat().st_size != audio.stat().st_size:
+                    continue
+                with candidate.open('rb') as stream:
+                    if (hashlib.file_digest(stream, 'sha256').hexdigest() == digest
+                            and read_json(candidate.parent / 'metadata.json').get('conversation_group') is None):
+                        shared = True
+                        break
         if not shared:
             try:
                 delete_database(cfg, digest, keys)

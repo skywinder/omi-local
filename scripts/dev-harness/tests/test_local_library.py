@@ -136,6 +136,37 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+def test_waiting_upload_is_listed_without_media_until_the_group_is_finished(library):
+    groups = library.captures.parent / 'grouped-recordings'
+    folder = groups / 'private-group'
+    folder.mkdir(parents=True)
+    row = {'source': 'phone', 'started_at': '2026-09-08T07:05:00-02:00', 'duration_seconds': 4,
+           'origin': {'phone_platform': 'android', 'phone_model': 'Fixture'}}
+    progress = folder / 'progress.json'
+    progress.write_text(json.dumps({'waiting_for_parts': True, 'waiting_row': row}))
+    status, _, body = request(library, '/api/recordings')
+    assert status == 200 and b'private-group' not in body
+    waiting, saved = json.loads(body)['recordings']
+    assert waiting['status'] == 'waiting_for_parts' and waiting['has_audio'] is False
+    assert waiting['phone'] == 'Android · Fixture' and waiting['duration'] == 4
+    assert library.scan()[0]['id'] == waiting['id']
+    for path in ('', '/audio'):
+        assert request(library, '/api/recordings/' + waiting['id'] + path)[0] == 404
+    # A stale waiting_row is ignored once the producer clears the flag.
+    progress.write_text(json.dumps({'waiting_for_parts': False, 'waiting_row': row}))
+    assert library.scan() == [saved]
+
+
+@pytest.mark.parametrize('override', [{'duration_seconds': -1}, {'started_at': 'invalid'}, {'source': []}])
+def test_bad_waiting_manifest_keeps_completed_recordings_available(library, override):
+    folder = library.captures.parent / 'grouped-recordings' / 'bad-fixture'
+    folder.mkdir(parents=True)
+    row = {'source': 'omi', 'started_at': '2026-09-08T08:00:00Z', 'duration_seconds': 2, **override}
+    (folder / 'progress.json').write_text(json.dumps({'waiting_for_parts': True, 'waiting_row': row}))
+    saved, = library.scan()
+    assert saved['status'] == 'ready'
+
+
 def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(library):
     from dev_harness.local_library_notes import NoteConflict
 
@@ -717,3 +748,47 @@ def test_mutations_over_public_origin_keep_same_origin_markers(library):
     assert not deleted
     assert public(library, path, server_handler, method='DELETE', extra={**ok, 'X-Omiloc-Request': 'delete'})[0] == 200
     assert deleted
+
+
+@pytest.mark.parametrize('removed', ('legacy', 'group-a', 'group-b'))
+def test_delete_identical_legacy_and_group_wavs_targets_only_selected_conversation(library, monkeypatch, removed):
+    from dev_harness import local_library_delete as deletion
+    monkeypatch.setattr(deletion.safety, 'read_and_validate_sentinel', lambda *args, **kwargs: None)
+    services = library.captures.parent.parent
+    cfg = SimpleNamespace(layout=SimpleNamespace(services_dir=services, state_root=services),
+                          repo_root=services, instance='fixture')
+    original = next(library.captures.glob('*/audio.wav'))
+    result = library.transcripts / 'result'
+    base = json.loads((result / 'manifest.json').read_text())
+    keys = {'legacy': 'a' * 64, 'group-a': 'b' * 64, 'group-b': 'c' * 64}
+    original.parent.rename(library.captures / 'legacy')
+    result.rename(library.transcripts / keys['legacy'])
+    (library.transcripts / keys['legacy'] / 'manifest.json').write_text(json.dumps({**base, 'result_key': keys['legacy']}))
+    for position, name in enumerate(('group-a', 'group-b')):
+        folder = library.captures / name
+        shutil.copytree(library.captures / 'legacy', folder)
+        group = {'recording_id': 'same-run', 'start_sample': position * 48000, 'end_sample': (position + 1) * 48000}
+        meta = folder / 'metadata.json'
+        meta.write_text(json.dumps({**json.loads(meta.read_text()), 'conversation_group': group}))
+        target = library.transcripts / keys[name]
+        shutil.copytree(library.transcripts / keys['legacy'], target)
+        (target / 'manifest.json').write_text(json.dumps({**base, 'result_key': keys[name], 'conversation_group': group,
+                                                          'capture_key': hashlib.sha256(name.encode()).hexdigest()}))
+    # Distinct text makes a digest-only cross-link visible through the HTTP catalogue.
+    for name, key in keys.items():
+        (library.transcripts / key / 'audio.json').write_text(json.dumps({
+            'segments': [{'start': 0, 'end': 1, 'text': name}]}))
+    status, _, body = request(library, '/api/recordings')
+    assert status == 200
+    rows = json.loads(body)['recordings']
+    assert len(rows) == 3
+    for row in rows:
+        audio = library.get(row['id'])['audio']
+        assert row['preview'] == audio.parent.name
+    requests = []
+    deletion.delete_recording(cfg, library.captures / removed / 'audio.wav',
+                              delete_database=lambda _, digest, ids: requests.append((digest, ids)))
+    assert requests == [(base['audio_sha256'], [keys[removed]])]
+    for name, key in keys.items():
+        assert (library.captures / name / 'audio.wav').is_file() == (name != removed)
+        assert (library.transcripts / key / 'manifest.json').is_file() == (name != removed)

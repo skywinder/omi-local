@@ -106,8 +106,6 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
     const sessions = data.backend === 'ready' ? (data.sessions || []) : [];
     note.hidden = sessions.length > 0 || data.backend !== 'ready';
     const live = data.live_transcript || {}, final = data.final_stt || {};
-    fields.audio.value.textContent = sessions.length ? [...new Set(sessions.map(liveSourceLabel))].join(' + ') : 'Нет активной записи';
-    fields.audio.detail.textContent = sessions.length ? `${formatTime(data.capture.audio_seconds || 0)} получено · ${data.capture.frames_received || 0} кадров` : activity.label;
     fields.live.value.textContent = live.provider || 'Live STT';
     fields.live.detail.textContent = `${states[live.state] || 'Неизвестно'} · отправлено обновлений: ${live.updates || 0}`;
     const diarization = data.diarization || {};
@@ -178,10 +176,12 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       }
       text.replaceChildren(fragment);
     }
+    const receiving = [];
     const currentStreams = new Map();
     sessions.forEach((session, index) => {
       const state = streamActivity(session, streams.get(session.preview_id), Date.now());
       if (session.preview_id) currentStreams.set(session.preview_id, state);
+      if (state.tone === 'active') receiving.push(session);
       const duration = Number.isFinite(session.audio_seconds) ? formatTime(session.audio_seconds) : '';
       indicators[index].textContent = [duration, state.label].filter(Boolean).join(' · ');
       indicators[index].dataset.tone = state.tone;
@@ -193,7 +193,23 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
         badge.dataset.tone = 'waiting';
       }
     }
-    onSources(sessions.map(liveSourceLabel), {label: badge.textContent, tone: badge.dataset.tone});
+    const sources = [...new Set((receiving.length ? receiving : sessions).map(liveSourceLabel))];
+    fields.audio.value.textContent = sources.join(' + ') || 'Нет активной записи';
+    let sourceStatus = {label: badge.textContent, tone: badge.dataset.tone};
+    if (receiving.length) {
+      sourceStatus = {label: 'Receiving audio', tone: 'active'};
+      const frames = receiving.reduce((total, session) => total + session.frames_received, 0);
+      const details = [sourceStatus.label];
+      if (receiving.every(session => Number.isFinite(session.audio_seconds))) {
+        details.push(formatTime(receiving.reduce((total, session) => total + session.audio_seconds, 0)));
+      }
+      details.push(`${frames} кадров`);
+      fields.audio.detail.textContent = details.join(' · ');
+    } else {
+      if (sessions.length && activity.tone !== 'error') sourceStatus = {label: 'Connected inputs', tone: 'waiting'};
+      fields.audio.detail.textContent = sourceStatus.label;
+    }
+    onSources(sources, sourceStatus);
     streams = currentStreams;
     const serialized = JSON.stringify(data.events || []);
     if (serialized !== lastEvents) {

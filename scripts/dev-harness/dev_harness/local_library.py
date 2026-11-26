@@ -199,6 +199,15 @@ def recording_origin_labels(metadata):
     return {'source': source, 'phone': phone}
 
 
+def transcript_identity(digest, group, capture_key):
+    """Ungrouped imports share a WAV result. Group results belong to one capture."""
+    if group is None:
+        return digest, None, None
+    if not isinstance(group, dict) or not isinstance(capture_key, str) or not re.fullmatch(r'[0-9a-f]{64}', capture_key):
+        raise ValueError('Invalid grouped capture identity')
+    return digest, capture_key, json.dumps(group, sort_keys=True)
+
+
 class Library:
     def __init__(self, services):
         self.captures = services / 'storage' / 'listen-captures'
@@ -232,8 +241,9 @@ class Library:
                     progress = folder / 'processing.json'
                     stamp = max(p.stat().st_mtime_ns for p in (manifest, raw, progress)
                                 if p is not None and safe_file(p, self.transcripts))
-                    if digest not in results or stamp > results[digest][2]:
-                        results[digest] = (raw, progress, stamp)
+                    result_id = transcript_identity(digest, data.get('conversation_group'), data.get('capture_key'))
+                    if result_id not in results or stamp > results[result_id][2]:
+                        results[result_id] = (raw, progress, stamp)
                 except (OSError, ValueError, KeyError, TypeError):
                     continue
             try:
@@ -269,14 +279,16 @@ class Library:
                     if started.tzinfo is None:
                         continue
                     token = self.tokens.setdefault(audio, secrets.token_urlsafe(18))
-                    job = queue.get(hashlib.sha256(folder.name.encode()).hexdigest(), {})
+                    capture_key = hashlib.sha256(folder.name.encode()).hexdigest()
+                    result_id = transcript_identity(digest, meta.get('conversation_group'), capture_key)
+                    job = queue.get(capture_key, {})
                     state = job.get('state', 'unavailable')
                     state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
                     segments, summary, processing = [], None, {}
                     summary_recording = note_key = None
-                    if digest in results:
+                    if result_id in results:
                         try:
-                            raw_path, progress_path, _stamp = results[digest]
+                            raw_path, progress_path, _stamp = results[result_id]
                             transcript = read_json(raw_path) if raw_path else {}
                             progress = (read_json(progress_path) if safe_file(progress_path, self.transcripts)
                                         else transcript.get('processing', {}))
@@ -336,7 +348,32 @@ class Library:
             self.records = records
             self.digests = {p: value for p, value in self.digests.items() if p in {r['audio'] for r in records.values()}}
             self.tokens = {p: token for p, token in self.tokens.items() if token in records}
-            return [self.public(r, detail=False) for r in sorted(records.values(), key=lambda r: r['started_at'], reverse=True)]
+            rows = [self.public(r, detail=False) for r in records.values()]
+            rows.extend(self.waiting_rows())
+            return sorted(rows, key=lambda r: datetime.fromisoformat(r['started_at']), reverse=True)
+
+    def waiting_rows(self):
+        groups = self.captures.parent / 'grouped-recordings'
+        if groups.is_symlink():
+            return
+        for path in groups.glob('*/progress.json'):
+            if path.parent.is_symlink() or not safe_file(path, groups):
+                continue
+            try:
+                progress = read_json(path)
+                if not isinstance(progress, dict) or progress.get('waiting_for_parts') is not True:
+                    continue
+                row = progress['waiting_row']
+                started = datetime.fromisoformat(row['started_at'])
+                duration = row['duration_seconds']
+                if (started.tzinfo is None or row['source'] not in {'phone', 'omi'}
+                        or type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0):
+                    continue
+                yield {'id': 'waiting-' + hashlib.sha256(path.parent.name.encode()).hexdigest(),
+                       'started_at': started.isoformat(), 'duration': duration, **recording_origin_labels(row),
+                       'has_audio': False, 'status': 'waiting_for_parts', 'preview': ''}
+            except (OSError, ValueError, KeyError, TypeError, OverflowError):
+                continue
 
     @staticmethod
     def public(record, *, detail):

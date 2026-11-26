@@ -241,3 +241,5 @@ upload, microphone continuity across socket failure, retained draft words,
 lost acknowledgements, restart replay, incomplete journals, quota bounds,
 checksum conflicts, request authentication/limits, and the legacy client capture path. Physical iPhone/CV1
 recording and sustained interruption recovery still require fresh evidence.
+
+The web library shows **Waiting for upload** while a group is missing parts. The card shows its source and duration. Playback becomes available on the completed recording. If opening a completed recording fails, use **Retry** on its card. Grouped recordings with identical audio retain their own transcripts when opened or deleted.
