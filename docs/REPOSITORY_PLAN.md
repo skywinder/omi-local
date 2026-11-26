@@ -110,9 +110,10 @@ original checkout already matched the Next pin; that does not establish that
 GitHub has no newer commits. Before the next pin update, fetch and inspect the
 actual delta using [the Next update procedure](../clients/next/README.md#updating-the-original).
 
-Current consolidation is on `sky/web-summary-parity`; retain `sky-dev` as the
-eventual integration target through the owner-approved landing process. Use
-`clients/next/upstream.json` as the upstream source pin. Keep shared backend
+Use `sky-dev` for new development of Omi Local Next and the shared local server.
+Merge tested changes into `main` by pull request. Start new feature branches from
+the current `sky-dev`. The source pin for upstream Omi lives in
+`clients/next/upstream.json`. Keep shared backend
 models and contracts compatible, but adapt hosted identity, triggers and jobs
 through Local's explicit paired surface. Track individual inherited-code
 backports using [the existing audit](UPSTREAM_SYNC.md); do not merge unrelated
