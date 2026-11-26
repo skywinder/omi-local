@@ -1,11 +1,15 @@
 # Recovering audio from Omi after Bluetooth loss
 
-Next on Android and iOS supports manual extraction of a short interval from a legacy CV1.
-Open Settings and diagnostics → Import oldest CV1 audio after stopping capture.
-Choose one fragment (up to 32 records or 14,208 bytes), or a series of up to
-32 fragments. Stop finishes the current Bluetooth request and saves the received
-audio. The series shows completed fragments and the duration saved on the phone. Firmware 3.0.21 releases records during transfer. A disconnect
-or app termination before phone storage can lose some of the requested audio.
+Next on Android and iOS can import audio from a legacy CV1. Open Settings and
+diagnostics → Import oldest CV1 audio after stopping capture. Choose one
+fragment (up to 32 records), a series of up to 32 fragments, or **Sync entire
+CV1**. Full sync reads up to the archive's end at the start of the run and
+publishes each series to the phone queue while reading the next one. The app
+keeps the screen awake while in the foreground and shows the number of new
+records received. Stop saves the current Bluetooth request and ends the run.
+Start sync again to read what remains. Firmware 3.0.21 releases records during
+transfer, so a disconnect or app termination before the phone writes the data
+can lose some records.
 
 ## Verified boundaries
 

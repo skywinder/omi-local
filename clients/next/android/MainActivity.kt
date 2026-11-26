@@ -4,6 +4,7 @@ import android.content.pm.ApplicationInfo
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -15,7 +16,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
-        cv1 = NextCV1(applicationContext, engine.dartExecutor.binaryMessenger)
+        cv1 = NextCV1(applicationContext, engine.dartExecutor.binaryMessenger) { awake ->
+            val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            if (awake) window.addFlags(flag) else window.clearFlags(flag)
+        }
         MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/reminders")
             .setMethodCallHandler { call, result ->
                 val reminders = NextReminders(applicationContext)

@@ -40,8 +40,13 @@ class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1Diagnostic
   final read = Completer<Cv1ArchiveBatch>();
   Cv1ArchiveBatch Function(int start)? onRead;
   final reads = <Cv1StorageTarget>[];
+  final wakeChanges = <bool>[];
+
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart) {
+  Future<void> setArchiveAwake(bool enabled) async => wakeChanges.add(enabled);
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) {
     reads.add(target);
     return onRead == null ? read.future : Future.value(onRead!(expectedStart));
   }

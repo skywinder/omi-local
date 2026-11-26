@@ -362,6 +362,8 @@ class NextCaptureInputs extends ChangeNotifier {
 
   int importWindows = 0;
   int importWindowsDone = 0;
+  bool importingAll = false;
+  int importedRecords = 0;
   bool stoppingImport = false;
 
   void stopImport() {
@@ -370,27 +372,32 @@ class NextCaptureInputs extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> importOldest(Cv1StorageTarget target, {required int windows}) async {
+  Future<void> importOldest(Cv1StorageTarget target, {required int? windows}) async {
     if (hasCaptureInProgress || !permitsNewRecording || connection.importTarget != target) return;
     final codec = connection.codec!;
     final journal = phone.journal;
     final unread = connection.diagnostics!.storageInfo!.unreadPackets;
-    final limit = windows.clamp(1, (unread / Cv1Archive.maxRecords).ceil().clamp(1, Cv1Archive.maxWindows));
+    final possibleWindows = (unread / Cv1Archive.maxRecords).ceil().clamp(1, Cv1Archive.maxWindows);
+    final limit = windows?.clamp(1, possibleWindows);
+    final chunkWindows = limit ?? Cv1Archive.maxWindows;
     await _change(() async {
       final archive = Cv1Archive(journal, phone.owner);
       if (archive.staged.isNotEmpty) {
         archiveMessage = 'nextImportRetained';
         return;
       }
-      // Account for the final envelope, including Opus packet lengths, and the raw series.
-      if (journal.pendingBytes + limit * 65536 > journal.maxStorageBytes) {
+      // Reserve space for one bounded raw chunk and its outbox envelope.
+      bool hasSpace(int count) => journal.pendingBytes + count * 65536 <= journal.maxStorageBytes;
+      if (!hasSpace(limit ?? 1)) {
         archiveMessage = 'nextImportCapacity';
         return;
       }
       archiveMessage = 'nextImportProgress';
       importedAudio = null;
-      importWindows = limit;
+      importWindows = chunkWindows;
       importWindowsDone = 0;
+      importingAll = limit == null;
+      importedRecords = 0;
       stoppingImport = false;
       if (!_closed) notifyListeners();
       try {
@@ -398,15 +405,25 @@ class NextCaptureInputs extends ChangeNotifier {
           target,
           windows: limit,
           shouldStop: () => stoppingImport || _closed,
+          beforeRead: () {
+            if (importingAll && !hasSpace(importWindowsDone % chunkWindows + 1)) {
+              throw PlatformException(code: 'phone_full');
+            }
+          },
           persist: (batch) async {
             if (batch.bytes.isNotEmpty) {
+              final previousRecords = archive.records;
               final micros = await archive.append(batch.bytes, target.deviceId, batch.start, codec);
+              importedRecords += archive.records - previousRecords;
               importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
               if (batch.complete) importWindowsDone++;
+              if (importingAll && batch.complete && importWindowsDone % chunkWindows == 0) {
+                await archive.finish();
+              }
               if (!_closed) notifyListeners();
             }
             if (!batch.complete || batch.bytes.isEmpty) {
-              archiveMessage = archive.records > 0 ? 'nextImportPartial' : 'nextImportInterrupted';
+              archiveMessage = importedRecords > 0 ? 'nextImportPartial' : 'nextImportInterrupted';
             }
           },
         );
@@ -414,7 +431,11 @@ class NextCaptureInputs extends ChangeNotifier {
           if (stoppingImport) {
             archiveMessage = 'nextImportStopped';
           } else {
-            archiveMessage = archive.records > 0 ? 'nextImportSaved' : 'nextImportAlreadySaved';
+            archiveMessage = importedRecords == 0
+                ? 'nextImportAlreadySaved'
+                : importingAll
+                ? 'nextImportAllSaved'
+                : 'nextImportSaved';
           }
         }
       } on PlatformException catch (error) {
@@ -422,18 +443,19 @@ class NextCaptureInputs extends ChangeNotifier {
           'cursor_changed' => 'nextImportMoved',
           'storage_busy' => 'nextImportBusy',
           'phone_full' => 'nextImportCapacity',
-          _ => archive.records > 0 ? 'nextImportPartial' : 'nextImportInterrupted',
+          _ => importedRecords > 0 ? 'nextImportPartial' : 'nextImportInterrupted',
         };
       } catch (_) {
         archiveMessage = 'nextImportFailed';
       } finally {
         try {
-          if (archive.records > 0) importedAudio = Duration(microseconds: await archive.finish());
+          if (archive.records > 0) await archive.finish();
         } catch (_) {
           archiveMessage = 'nextImportFailed';
         }
         if (archive.staged.isNotEmpty) archiveMessage = 'nextImportRetained';
         importWindows = 0;
+        importingAll = false;
         stoppingImport = false;
       }
     });
@@ -502,6 +524,8 @@ class NextCaptureInputs extends ChangeNotifier {
     super.dispose();
   }
 }
+
+enum _Cv1ImportScope { fragment, series, all }
 
 class LocalNextCaptureControls extends StatelessWidget {
   const LocalNextCaptureControls({
@@ -590,22 +614,37 @@ class LocalNextCaptureControls extends StatelessWidget {
     final target = link.importTarget;
     if (target == null) return;
     String label(String key) => pairedSettingsLabel(context, key);
-    final windows = await showDialog<int>(
+    final scope = await showDialog<_Cv1ImportScope>(
       context: context,
       builder: (dialog) => AlertDialog(
         title: Text(label('nextImportAction')),
         content: Text('CV1 · ${_shortCv1Id(target.deviceId)}\n\n${label('nextImportHint')}'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialog), child: Text(context.l10n.cancel)),
-          TextButton(onPressed: () => Navigator.pop(dialog, 1), child: Text(label('nextImportConfirm'))),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialog, Cv1Archive.maxWindows),
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, _Cv1ImportScope.fragment),
+            child: Text(label('nextImportConfirm')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, _Cv1ImportScope.series),
             child: Text(label('nextImportSeries')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, _Cv1ImportScope.all),
+            child: Text(label('nextImportAll')),
           ),
         ],
       ),
     );
-    if (windows != null && context.mounted) await inputs.importOldest(target, windows: windows);
+    if (scope == null || !context.mounted) return;
+    await inputs.importOldest(
+      target,
+      windows: switch (scope) {
+        _Cv1ImportScope.fragment => 1,
+        _Cv1ImportScope.series => Cv1Archive.maxWindows,
+        _Cv1ImportScope.all => null,
+      },
+    );
   }
 
   Future<void> _clearPendant(BuildContext context, Cv1Connection link) async {
@@ -757,7 +796,10 @@ class LocalNextCaptureControls extends StatelessWidget {
                             : Text(
                                 [
                                   pairedSettingsLabel(context, inputs.archiveMessage!),
-                                  if (inputs.importWindows > 0) '${inputs.importWindowsDone} / ${inputs.importWindows}',
+                                  if (inputs.importingAll)
+                                    '${pairedSettingsLabel(context, 'nextImportRecordCount')} ${inputs.importedRecords}'
+                                  else if (inputs.importWindows > 0)
+                                    '${inputs.importWindowsDone} / ${inputs.importWindows}',
                                   if (inputs.importedAudio case final duration?)
                                     '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
                                 ].join(' · '),

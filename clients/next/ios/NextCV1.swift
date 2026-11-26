@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Flutter
 import Foundation
+import UIKit
 
 // The materializer appends CV1UUID from the pinned Omi Dart protocol constants.
 final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -18,6 +19,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var peer: CBPeripheral?
   private var intent = Intent.idle
   private var phase = "idle"
+  private var idleTimerBeforeArchive: Bool?
   private var generation = 0
   private var seen: Set<UUID> = []
   private var timer: DispatchWorkItem?
@@ -83,6 +85,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    restoreArchiveIdleTimer()
     sink = nil
     close()
     return nil
@@ -121,12 +124,24 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case "sampleSignal":
       sampleSignal()
       result(nil)
+    case "setArchiveAwake":
+      if args?["enabled"] as? Bool == true {
+        if idleTimerBeforeArchive == nil {
+          idleTimerBeforeArchive = UIApplication.shared.isIdleTimerDisabled
+          UIApplication.shared.isIdleTimerDisabled = true
+        }
+      } else {
+        restoreArchiveIdleTimer()
+      }
+      result(nil)
     case "readOldest":
       guard phase == "ready", let peer, let char = storageCommand, char.isNotifying,
             args?["generation"] as? Int == generation, args?["deviceId"] as? String == peer.identifier.uuidString,
             archive == nil, clearReply == nil, !storageWritePending, setting == nil, !changingAudio,
             audioQueue.isEmpty, audioChar?.isNotifying != true, codec == 20 || codec == 21,
-            let info = metrics["storageInfo"] as? FlutterStandardTypedData, let read = CV1LegacyRead(info: info.data)
+            let limit = args?["maxRecords"] as? Int,
+            let info = metrics["storageInfo"] as? FlutterStandardTypedData,
+            let read = CV1LegacyRead(info: info.data, maxRecords: limit)
       else { return result(problem("storage_busy")) }
       guard let expected = args?["expectedStart"] as? NSNumber, expected.int64Value == Int64(read.start) else {
         return result(problem("cursor_changed"))
@@ -525,6 +540,13 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       if field == "charging", (features ?? 0) == 0 { continue }
       if ["firmware", "hardware", "model", "manufacturer"].contains(field), metrics[field] != nil { continue }
       if pendingReads.insert(field).inserted { peer.readValue(for: char) }
+    }
+  }
+
+  private func restoreArchiveIdleTimer() {
+    if let previous = idleTimerBeforeArchive {
+      idleTimerBeforeArchive = nil
+      UIApplication.shared.isIdleTimerDisabled = previous
     }
   }
 

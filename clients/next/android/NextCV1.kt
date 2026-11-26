@@ -32,7 +32,11 @@ import java.util.UUID
 
 /** A single CV1 connection, with one pending Android GATT operation at a time. */
 @SuppressLint("MissingPermission")
-internal class NextCV1(private val context: Context, messenger: BinaryMessenger) : EventChannel.StreamHandler {
+internal class NextCV1(
+    private val context: Context,
+    messenger: BinaryMessenger,
+    private val setArchiveAwake: (Boolean) -> Unit,
+) : EventChannel.StreamHandler {
     private val handler = Handler(Looper.getMainLooper())
     private val commands = MethodChannel(messenger, "org.omilocal.next/cv1")
     private val events = EventChannel(messenger, "org.omilocal.next/cv1.events")
@@ -117,6 +121,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     }
 
     fun dispose() {
+        setArchiveAwake(false)
         context.unregisterReceiver(radioState)
         commands.setMethodCallHandler(null)
         events.setStreamHandler(null)
@@ -158,6 +163,10 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 }
                 "sampleSignal" -> {
                     sampleSignal()
+                    result.success(null)
+                }
+                "setArchiveAwake" -> {
+                    setArchiveAwake(call.argument<Boolean>("enabled") == true)
                     result.success(null)
                 }
                 "readOldest" -> readOldest(call, result)
@@ -554,7 +563,9 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val end = header.getLong(9)
         if (start < 0 || end <= start || end - start > header.getInt(17).toLong() ||
             header.getShort(29).toInt() != 444) return reply.error("storage_busy", null, null)
-        val count = minOf(32L, end - start).toInt()
+        val limit = call.argument<Int>("maxRecords") ?: 0
+        if (limit !in 1..32) return reply.error("storage_busy", null, null)
+        val count = minOf(limit.toLong(), end - start).toInt()
         val pending = ArchiveRead(reply, start, count)
         archive = pending
         stats.remove("storageInfo")

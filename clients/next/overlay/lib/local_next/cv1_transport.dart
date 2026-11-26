@@ -218,7 +218,8 @@ enum Cv1ClearResult { empty, unavailable, unconfirmed }
 typedef Cv1ArchiveBatch = ({Uint8List bytes, int start, bool complete});
 
 abstract interface class Cv1ArchiveTransport {
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart);
+  Future<void> setArchiveAwake(bool enabled);
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords);
 }
 
 abstract interface class Cv1StorageTransport {
@@ -264,9 +265,13 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
 
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart) async {
+  Future<void> setArchiveAwake(bool enabled) => _methods.invokeMethod<void>('setArchiveAwake', {'enabled': enabled});
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) async {
     final reply = await _methods.invokeMapMethod<String, dynamic>('readOldest', {
       'expectedStart': expectedStart,
+      'maxRecords': maxRecords,
       'generation': target.generation,
       'deviceId': target.deviceId,
     });
@@ -448,18 +453,25 @@ class Cv1Connection extends ChangeNotifier {
   /// must start immediately after the last window the caller flushed to disk.
   Future<void> readArchive(
     Cv1StorageTarget target, {
-    required int windows,
+    required int? windows,
     required bool Function() shouldStop,
     required Future<void> Function(Cv1ArchiveBatch) persist,
+    void Function()? beforeRead,
   }) async {
-    if (target != importTarget || windows < 1 || windows > 32) throw PlatformException(code: 'storage_busy');
+    final transport = _transport;
+    if (transport is! Cv1ArchiveTransport ||
+        target != importTarget ||
+        (windows != null && (windows < 1 || windows > 32))) {
+      throw PlatformException(code: 'storage_busy');
+    }
     var next = diagnostics!.storageInfo!.oldest;
     final availableThrough = next + diagnostics!.storageInfo!.unreadPackets;
     int? previousStart;
     importingStorage = true;
     notifyListeners();
     try {
-      for (var i = 0; i < windows && next < availableThrough && !shouldStop(); i++) {
+      if (windows == null) await (transport as Cv1ArchiveTransport).setArchiveAwake(true);
+      for (var i = 0; (windows == null || i < windows) && next < availableThrough && !shouldStop(); i++) {
         final wait = Stopwatch()..start();
         var refreshAt = 1000;
         while (true) {
@@ -477,9 +489,11 @@ class Cv1Connection extends ChangeNotifier {
           // Some legacy firmware sends DONE before its final transmit callbacks
           // advance the persisted cursor. Re-read only from the observed oldest record.
           if (info != null && info.oldest <= next && (previousStart == null || info.oldest > previousStart)) {
+            beforeRead?.call();
             Cv1ArchiveBatch? batch;
             try {
-              batch = await (_transport as Cv1ArchiveTransport).readOldest(target, info.oldest);
+              final count = (availableThrough - info.oldest).clamp(1, 32);
+              batch = await (transport as Cv1ArchiveTransport).readOldest(target, info.oldest, count);
             } on PlatformException catch (error) {
               // Only storage_busy guarantees the native side never issued READ.
               if (error.code != 'storage_busy') rethrow;
@@ -499,10 +513,16 @@ class Cv1Connection extends ChangeNotifier {
           }
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
-        if (i + 1 < windows && next < availableThrough && !shouldStop()) await sampleDiagnostics();
+        if ((windows == null || i + 1 < windows) && next < availableThrough && !shouldStop()) {
+          await sampleDiagnostics();
+        }
       }
     } finally {
-      importingStorage = false;
+      try {
+        if (windows == null) await (transport as Cv1ArchiveTransport).setArchiveAwake(false);
+      } finally {
+        importingStorage = false;
+      }
       if (!_closing) {
         notifyListeners();
         unawaited(sampleDiagnostics());

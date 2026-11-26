@@ -89,6 +89,54 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   }
 }
 
+class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
+  int oldest = 0;
+  int reads = 0;
+  static const records = 32 * 32 + 12;
+  static const target = 'test-cv1';
+
+  @override
+  Future<void> sampleDiagnostics() async {
+    final remaining = records - oldest + (reads >= 32 ? 20 : 0);
+    emit(
+      Cv1DiagnosticsEvent(
+        generation,
+        Cv1Diagnostics(
+          storage: (unreadBytes: remaining * 444, freeBytes: 4440, clockValid: true),
+          storageInfo: (
+            oldest: oldest,
+            unreadPackets: remaining,
+            overwrittenPackets: 0,
+            protocol: Cv1StorageProtocol.legacy,
+          ),
+        ),
+      ),
+    );
+  }
+
+  final wakeChanges = <bool>[];
+
+  @override
+  Future<void> setArchiveAwake(bool enabled) async => wakeChanges.add(enabled);
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget selected, int expectedStart, int maxRecords) async {
+    expect(selected.deviceId, target);
+    expect(expectedStart, oldest);
+    expect(maxRecords, reads == 32 ? 12 : 32);
+    final bytes = Uint8List(maxRecords * 444);
+    final data = ByteData.sublistView(bytes);
+    for (var i = 0; i < maxRecords; i++) {
+      final offset = i * 444;
+      data.setUint32(offset, 1700000000 + (oldest + i) ~/ 50);
+      bytes.setRange(offset + 4, offset + 7, const [2, 8, 33]);
+    }
+    oldest += maxRecords;
+    reads++;
+    return (bytes: bytes, start: expectedStart, complete: true);
+  }
+}
+
 class _Subscription extends Fake implements StreamSubscription<Cv1TransportEvent> {
   _Subscription(this.onCancel);
   final VoidCallback onCancel;
@@ -487,6 +535,38 @@ void main() {
       await inputs.close();
       inputs.dispose();
       journal.dispose();
+    }
+  });
+
+  test('full CV1 sync queues audio beyond 32 BLE reads and ends at the initial archive boundary', () async {
+    final folder = await Directory.systemTemp.createTemp('next-cv1-full-sync-');
+    final journal = LocalAudioJournal(
+      directory: folder,
+      upload: (body, owner) async => throw LocalDeliveryIssue.connection,
+    );
+    final wire = _ArchiveWire();
+    final mic = _Microphone();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture-owner', mic), wire);
+    try {
+      await journal.initialize();
+      wire.emit(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: _ArchiveWire.target));
+      await wire.sampleDiagnostics();
+      final target = inputs.connection.importTarget!;
+      await inputs.importOldest(target, windows: null);
+      await journal.drain();
+      expect(wire.reads, 33);
+      expect(wire.wakeChanges, [true, false]);
+      expect(inputs.importedRecords, _ArchiveWire.records);
+      expect(inputs.importedAudio, const Duration(milliseconds: 20720));
+      expect(inputs.archiveMessage, 'nextImportAllSaved');
+      expect(journal.pendingParts, 2);
+      expect(inputs.connection.importingStorage, isFalse);
+    } finally {
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
+      await mic.audioSession.close();
+      await folder.delete(recursive: true);
     }
   });
 

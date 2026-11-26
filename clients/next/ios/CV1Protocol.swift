@@ -59,14 +59,14 @@ final class CV1LegacyRead {
   private var began = false
   private var received = Data()
 
-  init?(info: Data) {
-    guard info.count == 31, info.first == 2,
+  init?(info: Data, maxRecords: Int) {
+    guard (1...32).contains(maxRecords), info.count == 31, info.first == 2,
           Self.integer(info, 29..<31) == UInt64(Self.recordSize) else { return nil }
     let oldest = Self.integer(info, 1..<9)
     let end = Self.integer(info, 9..<17)
     guard end <= UInt64(Int64.max), end > oldest, end - oldest <= Self.integer(info, 17..<21) else { return nil }
     start = oldest
-    count = Int(min(32, end - oldest))
+    count = Int(min(UInt64(maxRecords), end - oldest))
   }
 
   private static func integer(_ data: Data, _ field: Range<Int>) -> UInt64 {
