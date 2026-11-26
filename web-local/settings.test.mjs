@@ -98,7 +98,9 @@ function dom(t) {
   }});
   t.after(() => { if (old) Object.defineProperty(globalThis, 'document', old); else delete globalThis.document; });
   const root = new Element('section');
-  return {root, click: text => { const target = root.querySelectorAll('button').find(button => button.textContent === text);
+  const category = id => root.querySelectorAll('.provider-category')
+    .find(section => section.attrs['aria-labelledby'] === `provider-category-${id}`);
+  return {root, category, click: (text, stage) => { const target = (stage ? category(stage) : root).querySelectorAll('button').find(button => button.textContent === text);
     assert.ok(target, `button ${text} exists`); assert.equal(target.disabled, false); return target.dispatch('click'); },
     input: (name, value) => { const target = root.querySelectorAll('input,select').find(input => input.name === name);
       assert.ok(target, `field ${name} exists`); target.value = value; target.dispatch('input'); return target; }};
@@ -117,9 +119,8 @@ test('translation settings explain the server model used automatically', async t
   state.effective.translation = {...state.effective.summary, stage: 'translation', inherited_from: 'summary'};
   const settings = mountSettings(ui.root, {request: async () => structuredClone(state)});
   await settings.show();
-  ui.click('Translation');
-  assert.match(ui.root.textContent, /Uses the active summary model/);
-  assert.match(ui.root.textContent, /Active providerLocal model/);
+  assert.match(ui.category('translation').textContent, /Uses the active summary model/);
+  assert.match(ui.root.textContent, /Active provider · Local model/);
   const automatic = ui.root.querySelectorAll('button').find(b => b.textContent === 'Use summary model');
   assert.equal(automatic, undefined);
 });
@@ -144,13 +145,11 @@ test('finished-recording speaker selection stays independent of the live server'
   await settings.show();
   assert.match(ui.root.textContent, /Show text while recording/);
   assert.match(ui.root.textContent, /still capture audio/);
-  ui.click('Speakers');
   assert.match(ui.root.textContent, /Identify who spoke in finished recordings/);
-  ui.click('Use provider'); await settle();
+  ui.click('Use provider', 'diarization'); await settle();
   assert.deepEqual(calls.at(-1), {path: '/activate', body: {revision: 7, stage: 'diarization', id: speakers.id}});
-  assert.match(ui.root.textContent, /Active providerRecording speakers/);
-  ui.click('Live STT');
-  assert.match(ui.root.textContent, /Active providerLive server/);
+  assert.match(ui.root.textContent, /Recording speakersActive/);
+  assert.match(ui.root.textContent, /Live serverActive/);
   assert.equal(calls.filter(call => call.path === '/activate').length, 1);
 });
 
@@ -164,7 +163,7 @@ test('editing and checking a draft does not save or activate; save and use are d
     return structuredClone(state);
   }});
   await settings.show();
-  ui.click('Summarization'); ui.click('Edit');
+  ui.click('Edit');
   ui.input('model', 'changed-model'); ui.input('api-key', 'synthetic-secret');
   assert.equal(calls.length, 1);
   ui.root.querySelector('form').querySelectorAll('button').find(button => button.textContent === 'Test connection').dispatch('click'); await settle();
@@ -192,8 +191,8 @@ test('failed activation keeps effective profile and re-enables retry controls', 
     if (path === '/activate') throw new Error('Завершите текущую запись.');
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Summarization'); ui.click('Skip automatic summaries'); await settle();
-  assert.match(ui.root.textContent, /Active providerLocal model/);
+  await settings.show(); ui.click('Skip automatic summaries'); await settle();
+  assert.match(ui.root.textContent, /Local modelActive/);
   assert.match(ui.root.textContent, /Завершите текущую запись/);
   assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Skip automatic summaries').disabled, false);
   assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Delete').disabled, true);
@@ -211,10 +210,10 @@ for (const outcome of ['timeout', 'indeterminate']) test(`activation ${outcome} 
     }
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Summarization'); ui.click('Skip automatic summaries'); await settle();
+  await settings.show(); ui.click('Skip automatic summaries'); await settle();
   assert.deepEqual(paths, ['', '/activate', '']);
   assert.match(ui.root.textContent, /Change not confirmed/);
-  assert.match(ui.root.textContent, /Active providerOff/);
+  assert.match(ui.category('summary').textContent, /Stage off/);
   assert.match(ui.root.textContent, /The request was not repeated/);
 });
 
@@ -223,7 +222,7 @@ test('clearing optional speaker counts omits the properties in saved settings', 
   const settings = mountSettings(ui.root, {request: async (path, body) => {
     calls.push({path, body}); return structuredClone(state);
   }});
-  await settings.show(); ui.click('Speakers'); ui.click('+ Add provider');
+  await settings.show(); ui.click('+ Add provider', 'diarization');
   const kind = ui.root.querySelectorAll('select').find(input => input.name === 'kind');
   kind.value = 'mycelia'; kind.dispatch('change');
   ui.input('name', 'Speaker server'); ui.input('base_url', 'http://127.0.0.1:21003');
@@ -242,7 +241,7 @@ test('model discovery works before choosing a model and leaves manual entry avai
     if (path === '/models') return {state: 'ready', message: 'Models found', models: ['first-model', 'second-model']};
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Summarization'); ui.click('+ Add provider');
+  await settings.show(); ui.click('+ Add provider', 'summary');
   ui.input('name', 'New server'); ui.input('base_url', 'http://127.0.0.1:11434/v1');
   const model = ui.root.querySelectorAll('input').find(input => input.name === 'model');
   ui.root.querySelector('form').reportValidity = () => {
@@ -327,7 +326,6 @@ test('a provider can be tested directly without changing the active stage', asyn
     return path === '/probe' ? {state: 'available'} : structuredClone(state);
   }});
   await settings.show();
-  ui.click('Summarization');
   const list = ui.root.querySelector('.provider-list');
   assert.equal(list.tag, 'ul');
   assert.equal(list.querySelector('.provider-row').tag, 'li');
@@ -352,11 +350,36 @@ test('switching a saved summary template updates the default and keeps the catal
   }});
   await templates.show();
   assert.equal(ui.root.querySelector('.template-default').textContent, 'Default for new recordings · Compact notes');
+  assert.equal(ui.root.querySelector('.template-row').textContent, 'Compact notesDefault');
+  assert.equal(ui.root.querySelector('textarea'), null);
   ui.click('Detailed notes');
-  assert.equal(ui.root.querySelector('textarea').value, 'Explain decisions.');
+  assert.equal(ui.root.querySelectorAll('.template-row')[1].querySelector('textarea').value, 'Explain decisions.');
+  ui.click('Detailed notes');
+  assert.equal(ui.root.querySelector('textarea'), null);
+  ui.click('Detailed notes');
   const saving = ui.click('Set as default');
   assert.equal(ui.root.querySelector('.template-default').textContent, 'Pending default · Detailed notes');
   await saving;
   assert.deepEqual(requests[1].body, {...saved, default_template_id: 'detail'});
   assert.equal(ui.root.querySelector('.template-default').textContent, 'Default for new recordings · Detailed notes');
+});
+
+test('all provider categories share one view and only matching active rows inherit available status', async t => {
+  const ui = dom(t), state = serverState();
+  state.profiles.push({...state.profiles[0], id: 'backup', name: 'Backup'});
+  const settings = mountSettings(ui.root, {request: async () => structuredClone(state)});
+  await settings.show();
+  assert.deepEqual(ui.root.querySelectorAll('.provider-category').map(section => section.attrs['aria-labelledby']),
+    ['provider-category-live', 'provider-category-stt', 'provider-category-diarization', 'provider-category-summary', 'provider-category-translation']);
+  const health = ui.category('summary').querySelectorAll('.provider-health');
+  const report = {stale: false, checked_at: 100, summary: {status: 'ready', kind: 'openai-compatible', name: 'Local model'}};
+  settings.updateAvailability(report);
+  assert.equal(health[0].textContent, 'Available');
+  assert.equal(health[1].textContent, 'Connection not tested');
+  ui.click('Edit', 'summary');
+  const draft = ui.input('name', 'Unsaved name');
+  settings.updateAvailability({...report, stale: true});
+  assert.equal(ui.category('summary').querySelector('.provider-health').textContent, 'Connection not tested');
+  assert.equal(ui.root.querySelector('form').querySelector('input'), draft);
+  assert.equal(draft.value, 'Unsaved name');
 });

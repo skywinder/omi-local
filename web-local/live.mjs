@@ -60,7 +60,7 @@ function element(tag, cls, text) {
   return node;
 }
 
-export function mountLiveMonitor(root, {refreshControls = () => {}, controls = null, onSources = () => {}} = {}) {
+export function mountLiveMonitor(root, {refreshControls = () => {}, controls = null, onSources = () => {}, onStages = () => {}} = {}) {
   const title = element('div', 'monitor-heading');
   const heading = element('div');
   heading.append(element('p', 'eyebrow', 'РАСПОЗНАВАНИЕ НА СЕРВЕРЕ'), element('h2', '', 'Сейчас'));
@@ -123,8 +123,9 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       : 'Нет подтверждения работы диаризации.';
     fields.final.value.textContent = final.provider || 'Финальный STT';
     fields.final.detail.textContent = `${states[final.state] || 'Недоступен'}${final.jobs?.pending ? ` · в очереди: ${final.jobs.pending}` : ''}${final.jobs?.failed ? ` · ошибок: ${final.jobs.failed}` : ''}`;
+    const report = data.backend === 'ready' ? data.stages : null;
+    onStages(report);
     for (const {id, name, item} of stages) {
-      const report = data.backend === 'ready' ? data.stages : null;
       const stage = report?.stale === false ? report[id] : null;
       const state = stage?.status ?? 'unknown';
       const label = {ready: 'доступна', disabled: 'отключена', unavailable: 'недоступна',

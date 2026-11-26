@@ -11,8 +11,8 @@ The Local Mac address selects the Omi server that stores recordings; processing
 profiles select the engines that server calls. Switching an Omi server also
 changes the processing profiles shown on the phone.
 
-Open **Settings → Summary templates** to edit a summary prompt or select the
-default for new recordings. The **Summarization** category also links to the
+Open **Settings → Summary templates** and select a row to reveal its prompt.
+The template marked **Default** applies to new recordings. The **Summarization** category also links to the
 template editor. To regenerate one recording, open it and select
 **Regenerate summary**.
 
@@ -22,7 +22,7 @@ template editor. To regenerate one recording, open it and select
 |---|---|
 | iPhone | Select a profile under Live, finished transcription, or finished diarization, then **Confirm**. **Add** creates a server profile; **Edit** changes its URL, model and optional API key. |
 | Next on an updated server | **Processing** also supports summary and translation. **Save** stores a draft and **Apply** switches the active profile. |
-| Web library | Open **Settings → Providers**, select a processing category, then choose **Use provider** in the list. Each row shows its connection status. **Edit** opens the form below that provider, and **Test connection** checks reachability from Omi. |
+| Web library | Open **Settings → Providers**, scroll to a processing category and choose **Use provider** in its list. The active row shows the latest reported availability when the server has a matching check. **Edit** opens the form below that provider, and **Test connection** checks reachability from Omi. |
 | Config / terminal | Export, edit and save profile JSON, then run `providers use`; commands below. |
 
 Local means **on the Omi server**, not on the iPhone. An API endpoint can be on

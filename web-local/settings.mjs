@@ -114,7 +114,9 @@ function fingerprint(profile) { return JSON.stringify(canonical(draftPayload(pro
 function profileLabel(profile) { return profile ? `${profile.name || kinds[profile.stage]?.[profile.kind] || profile.kind}${profile.settings?.model || profile.settings?.speaker_model ? ` · ${profile.settings.model || profile.settings.speaker_model}` : ''}` : 'Off'; }
 
 export function mountSettings(root, {request = settingsRequest, openTemplates} = {}) {
-  const state = {data: null, stage: 'live', draft: null, busy: false, models: [], checks: new Map(), loaded: false, generation: 0};
+  const state = {data: null, draft: null, busy: false, models: [], checks: new Map(), loaded: false, generation: 0};
+  const unavailableUntil = new Map();
+  let availability, updateAvailabilityRows = [];
   let feedback, editor, draftKey, clearKey, fieldInputs = new Map(), disabledControls = new WeakMap();
   function message(text = '', tone = '') {
     if (!feedback) return;
@@ -161,8 +163,8 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       render();
     });
   }
-  function choose(profile = null) {
-    state.draft = profile ? structuredClone(profile) : providerDefaults(state.stage);
+  function choose(stage, profile = null) {
+    state.draft = profile ? structuredClone(profile) : providerDefaults(stage);
     state.models = [];
     state.generation++;
     render();
@@ -208,6 +210,7 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     fieldInputs = new Map();
     draftKey = null; clearKey = null;
     if (!state.draft) return null;
+    const stage = state.draft.stage;
     editor = el('form', 'provider-editor');
     editor.setAttribute('aria-label', 'Provider editor');
     editor.append(el('h3', '', state.draft.id ? 'Edit provider' : 'New provider'));
@@ -216,11 +219,11 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     const type = el('label', 'settings-field');
     type.append(el('span', 'settings-field-label', 'Connection type'));
     const select = el('select'); select.name = 'kind'; select.setAttribute('aria-label', 'Connection type');
-    for (const [value, text] of Object.entries(kinds[state.stage])) { const option = el('option', '', text); option.value = value; select.append(option); }
+    for (const [value, text] of Object.entries(kinds[stage])) { const option = el('option', '', text); option.value = value; select.append(option); }
     select.value = state.draft.kind;
     select.disabled = !!state.draft.id;
     select.addEventListener('change', () => {
-      state.draft = {...state.draft, ...providerDefaults(state.stage, select.value), name: state.draft.name};
+      state.draft = {...state.draft, ...providerDefaults(stage, select.value), name: state.draft.name};
       state.models = [];
       render();
     });
@@ -252,8 +255,8 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       }
       editor.append(el('p', 'settings-note', 'Use a URL reachable from the Omi server. Localhost means the Omi host or container. Use HTTPS or WSS for domain names.'));
     }
-    if (state.stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'The server must support WLK /asr. Configure its model, language and live speaker identification on that server.'));
-    if (state.stage === 'stt' && remote) editor.append(el('p', 'settings-note', 'Phrase playback requires segment or word timestamps from the server.'));
+    if (stage === 'live' && state.draft.kind === 'external') editor.append(el('p', 'settings-note', 'The server must support WLK /asr. Configure its model, language and live speaker identification on that server.'));
+    if (stage === 'stt' && remote) editor.append(el('p', 'settings-note', 'Phrase playback requires segment or word timestamps from the server.'));
     if (state.draft.settings.diarization?.enabled) editor.append(el('p', 'settings-note', 'This profile keeps its live speaker settings. The Speakers category configures finished recordings.'));
     if (state.draft.embedded) editor.append(el('p', 'settings-note', 'This profile uses built-in speaker identification. Add a Pyannote or Mycelia profile to run it separately.'));
     const models = el('datalist'); models.id = 'provider-models';
@@ -297,10 +300,11 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       message(`${label}. ${result.message || ''}${suffix}`, ['ready', 'available'].includes(result.state) ? 'success' : 'error');
     }, '', path === '/models' ? 'Loading models…' : 'Testing connection…');
   }
-  function activate(id) {
+  function activate(stage, id) {
     operation(async () => {
       try {
-        state.data = await request('/activate', {revision: state.data.revision, stage: state.stage, id});
+        state.data = await request('/activate', {revision: state.data.revision, stage, id});
+        unavailableUntil.set(stage, availability?.checked_at || 0);
       } catch (error) {
         if (error.name !== 'TimeoutError' && error.outcome !== 'indeterminate') throw error;
         let refreshed = false;
@@ -312,68 +316,46 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     }, id ? 'Provider applies to new jobs and sessions.' : 'Setting applies to new jobs and sessions.',
     'Applying settings. Setting up a local model can take up to 12 minutes.');
   }
-  function render() {
-    const tabScroll = root.querySelector('.settings-tabs')?.scrollLeft ?? 0;
-    const fragment = document.createDocumentFragment();
-    const tabs = el('nav', 'settings-tabs'); tabs.setAttribute('aria-label', 'Processing categories');
-    for (const [stage, detail] of Object.entries(stages)) {
-      const tab = button(detail.title, () => { state.stage = stage; state.draft = null; state.models = []; render(); }, `settings-tab${state.stage === stage ? ' selected' : ''}`);
-      tab.setAttribute('aria-pressed', String(state.stage === stage)); tabs.append(tab);
-    }
-    fragment.append(tabs);
-    feedback = el('p', 'settings-feedback'); feedback.setAttribute('role', 'status'); feedback.hidden = true; fragment.append(feedback);
-    if (!state.data) {
-      fragment.append(button('Reload providers', load));
-      root.replaceChildren(fragment);
-      return;
-    }
-    const stage = stages[state.stage];
+  function observedStatus(profile) {
+    if (availability?.stale !== false || !Number.isFinite(availability.checked_at)
+        || availability.checked_at <= (unavailableUntil.get(profile.stage) ?? -1)) return '';
+    const report = availability[profile.stage];
+    const matches = report?.name === profile.name || (profile.stage === 'summary' && report?.name === profile.settings.model);
+    if (!report || report.kind !== profile.kind || !matches) return '';
+    return report.status;
+  }
+
+  function renderCategory(stageId, stage, form) {
+    const section = el('section', 'provider-category');
+    const title = el('h3', '', stage.title);
+    title.id = `provider-category-${stageId}`;
+    section.setAttribute('aria-labelledby', title.id);
     const heading = el('header', 'provider-section-heading');
-    const description = el('div');
-    description.append(el('h3', '', stage.title), el('p', 'settings-description', stage.description));
-    heading.append(description);
+    const intro = el('div');
+    intro.append(title, el('p', 'settings-description', stage.description));
     const toolbar = el('div', 'provider-toolbar');
-    if (state.stage === 'summary' && openTemplates) toolbar.append(button('Edit summary templates', openTemplates, 'settings-button primary'));
-    toolbar.append(button('Refresh', load));
-    heading.append(toolbar);
-    fragment.append(heading);
-    const selected = state.data.profiles.find(profile => profile.id === state.data.active[state.stage]);
-    const effective = state.data.effective[state.stage];
-    const assignment = el('div', 'settings-assignment');
-    const current = el('div');
-    current.append(el('p', 'settings-field-label', 'Active provider'), el('p', 'active-provider', profileLabel(effective)));
+    if (stageId === 'summary' && openTemplates) toolbar.append(button('Edit summary templates', openTemplates));
+    toolbar.append(button('+ Add provider', () => choose(stageId), 'settings-button add-provider'));
+    heading.append(intro, toolbar);
+    section.append(heading);
+
+    const selected = state.data.profiles.find(profile => profile.id === state.data.active[stageId]);
+    const effective = state.data.effective[stageId];
+    const profiles = state.data.profiles.filter(profile => profile.stage === stageId);
+    const current = el('div', 'provider-category-current');
+    if (!profiles.some(profile => profileMatches(profile, effective))) {
+      const nameLabel = effective ? 'Active provider · ' + profileLabel(effective) : 'Stage off';
+      current.append(el('p', 'active-provider', nameLabel));
+    }
     if (selected && !profileMatches(selected, effective)) {
       current.append(el('p', 'settings-pending', 'Saved edits are pending. Choose Use provider to apply them.'));
     }
     if (effective?.inherited_from === 'summary') current.append(el('p', 'settings-note', 'Uses the active summary model.'));
-    assignment.append(current);
-    if (stage.off && (state.stage === 'translation' ? selected : selected || effective)) {
-      const action = el('div', 'stage-change');
-      const effect = el('p', 'settings-note', stage.effect);
-      effect.id = 'stage-change-effect';
-      const off = button(stage.off, () => activate(null));
-      off.setAttribute('aria-describedby', effect.id);
-      action.append(off, effect);
-      assignment.append(action);
-    }
-    fragment.append(assignment);
-    const profiles = state.data.profiles.filter(item => item.stage === state.stage);
-    const add = button('+ Add provider', () => choose(), 'settings-button add-provider');
-    const listHeading = el('div', 'provider-list-heading');
-    const headingCopy = el('div');
-    const listTitle = el('h4', '', 'Saved providers');
-    listTitle.id = 'saved-providers-title';
-    headingCopy.append(listTitle);
-    if (profiles.length) {
-      headingCopy.append(el('p', 'settings-description', 'Test connection checks reachability from Omi without sending recordings.'));
-    }
-    listHeading.append(headingCopy, add);
-    fragment.append(listHeading);
-    const form = editorView();
-    let formPlaced = false;
+    if (current.children.length) section.append(current);
+
     const list = el('ul', 'provider-list');
     list.setAttribute('role', 'list');
-    list.setAttribute('aria-labelledby', listTitle.id);
+    list.setAttribute('aria-label', stage.title + ' providers');
     for (const profile of profiles) {
       const active = profileMatches(profile, effective);
       const row = el('li', `provider-row${active ? ' active' : ''}`);
@@ -393,12 +375,16 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       const hint = el('p', 'connection-help');
       function updateHealth() {
         const checked = state.checks.get(key);
-        label.textContent = checked ? resultLabels[checked.state] || 'Test complete' : 'Connection not tested';
-        health.dataset.tone = !checked ? 'muted' : ['ready', 'available'].includes(checked.state) ? 'ready' : 'attention';
-        hint.textContent = health.dataset.tone === 'attention' ? checked.message || '' : '';
+        const observed = active ? observedStatus(profile) : '';
+        const status = checked?.state || observed;
+        label.textContent = checked ? resultLabels[status] || 'Test complete'
+          : ({ready: 'Available', unavailable: 'Unavailable', misconfigured: 'Check settings'}[observed] || 'Connection not tested');
+        health.dataset.tone = !status ? 'muted' : ['ready', 'available'].includes(status) ? 'ready' : 'attention';
+        hint.textContent = health.dataset.tone === 'attention' ? checked?.message || '' : '';
         hint.hidden = !hint.textContent;
       }
       updateHealth();
+      if (active) updateAvailabilityRows.push(updateHealth);
       health.append(label, hint);
 
       const actions = el('div', 'provider-actions');
@@ -408,8 +394,8 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
         updateHealth();
         message(resultLabels[result.state] || 'Test complete', ['ready', 'available'].includes(result.state) ? 'success' : 'error');
       }, '', 'Testing connection…'), 'settings-button provider-test');
-      actions.append(test, button('Edit', () => choose(profile), 'settings-button provider-edit'));
-      if (!active) actions.append(button('Use provider', () => activate(profile.id), 'settings-button primary provider-use'));
+      actions.append(test, button('Edit', () => choose(stageId, profile), 'settings-button provider-edit'));
+      if (!active) actions.append(button('Use provider', () => activate(stageId, profile.id), 'settings-button primary provider-use'));
       const remove = button('Delete', () => operation(async () => {
         state.data = await request(`/profiles/${encodeURIComponent(profile.id)}`, {revision: state.data.revision}, 'DELETE');
         if (state.draft?.id === profile.id) state.draft = null;
@@ -419,20 +405,49 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       if (remove.disabled) remove.title = 'Choose another provider before deleting this profile.';
       actions.append(remove);
       row.append(details, health, actions);
-      if (form && state.draft.id === profile.id) {
-        row.append(form);
-        formPlaced = true;
-      }
+      if (form && state.draft.id === profile.id) row.append(form);
       list.append(row);
     }
-    if (profiles.length) fragment.append(list);
-    else fragment.append(el('p', 'provider-empty', 'No providers for this stage.'));
-    if (form && !formPlaced) fragment.append(form);
+    if (profiles.length) section.append(list);
+    else section.append(el('p', 'provider-empty', 'No providers for this category.'));
+    if (form && state.draft.stage === stageId && !profiles.some(profile => profile.id === state.draft.id)) section.append(form);
+
+    if (stage.off && (stageId === 'translation' ? selected : selected || effective)) {
+      const change = el('div', 'stage-change');
+      const effect = el('p', 'settings-note', stage.effect);
+      effect.id = `stage-change-effect-${stageId}`;
+      const off = button(stage.off, () => activate(stageId, null));
+      off.setAttribute('aria-describedby', effect.id);
+      change.append(off, effect);
+      section.append(change);
+    }
+    return section;
+  }
+
+  function render() {
+    const fragment = document.createDocumentFragment();
+    feedback = el('p', 'settings-feedback');
+    feedback.setAttribute('role', 'status');
+    feedback.hidden = true;
+    fragment.append(feedback);
+    updateAvailabilityRows = [];
+    if (state.data) {
+      const intro = el('div', 'provider-list-heading');
+      intro.append(el('p', 'settings-description', 'Test connection checks reachability from Omi without sending recordings.'),
+        button('Refresh', load));
+      fragment.append(intro);
+      const form = editorView();
+      for (const [id, stage] of Object.entries(stages)) fragment.append(renderCategory(id, stage, form));
+    } else fragment.append(button('Reload providers', load));
     root.replaceChildren(fragment);
-    tabs.scrollLeft = tabScroll;
   }
   render();
   return {load, show: () => { if (!state.loaded && !state.busy) return load(); },
+    updateAvailability(report) {
+      if (JSON.stringify(availability) === JSON.stringify(report)) return;
+      availability = report;
+      updateAvailabilityRows.forEach(update => update());
+    },
     catalogSaved(from, to) {
       if (state.data?.revision === from && !state.busy) state.data.revision = to;
       else state.loaded = false;
@@ -449,7 +464,7 @@ export function mountSummaryTemplates(root, {request = settingsRequest, onSave =
     catalog = data;
     drafts = data.templates.map(template => ({...template}));
     defaultId = data.default_template_id;
-    if (!drafts.some(template => template.id === selected)) selected = defaultId;
+    if (!drafts.some(template => template.id === selected)) selected = null;
   }
 
   async function load() {
@@ -479,7 +494,7 @@ export function mountSummaryTemplates(root, {request = settingsRequest, onSave =
     } finally { operation = ''; render(); }
   }
 
-  function render() {
+  function render(focusId) {
     const status = el('p', 'template-feedback', operation || feedback);
     status.setAttribute('role', 'status');
     root.setAttribute('aria-busy', String(Boolean(operation)));
@@ -488,77 +503,101 @@ export function mountSummaryTemplates(root, {request = settingsRequest, onSave =
       if (!operation) root.append(button('Retry', load));
       return;
     }
-    const row = drafts.find(template => template.id === selected);
+    const toolbar = el('div', 'template-toolbar');
     const defaultLabel = el('p', 'template-default');
     defaultLabel.setAttribute('aria-live', 'polite');
-    const list = el('div', 'template-list');
-    const name = el('input');
-    name.value = row.name;
-    name.maxLength = 100;
-    const prompt = el('textarea');
-    prompt.value = row.prompt;
-    prompt.rows = 10;
-    prompt.maxLength = 8000;
-    let selectedLabel;
-    for (const template of drafts) {
-      const option = button('', () => { selected = template.id; feedback = ''; render(); }, 'template-option');
-      option.setAttribute('aria-pressed', String(template.id === selected));
-      const label = el('span', '', template.name || 'Untitled');
-      option.append(label);
-      if (template.id === selected) selectedLabel = label;
-      if (template.id === defaultId) option.append(el('small', '', defaultId === catalog.default_template_id ? 'Default' : 'Pending'));
-      list.append(option);
-    }
     const create = button('New template', () => {
       selected = crypto.randomUUID();
       drafts.push({id: selected, name: '', prompt: ''});
       feedback = '';
       render();
-      root.querySelector('input')?.focus();
+      root.querySelector('.template-editor input')?.focus();
     });
     create.disabled = drafts.length >= 24;
-    list.append(create);
-    const use = button('Set as default', () => {
-      const clean = !dirty();
-      defaultId = selected;
-      feedback = '';
-      if (clean) return save();
-      render();
-    });
-    const apply = button('Save changes', save, 'settings-button primary');
-    const actions = el('div', 'settings-actions');
-    actions.append(use, apply);
-    const editor = el('div', 'template-editor');
-    for (const [label, input] of [['Template name', name], ['Summary prompt', prompt]]) {
-      const field = el('label', 'settings-field');
-      field.append(el('span', 'settings-field-label', label), input);
-      editor.append(field);
+    toolbar.append(defaultLabel, create);
+
+    const list = el('ul', 'template-list');
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-label', 'Saved summary templates');
+    const row = drafts.find(template => template.id === selected);
+    const saved = catalog.templates.find(template => template.id === catalog.default_template_id);
+    const ordered = [drafts.find(template => template.id === saved.id), ...drafts.filter(template => template.id !== saved.id)];
+    let selectedLabel, editorParent, toggleToFocus;
+    for (const template of ordered) {
+      const id = template.id;
+      const item = el('li', 'template-row');
+      const expanded = template.id === selected;
+      const option = button('', () => {
+        selected = expanded ? null : template.id;
+        if (feedback === 'Templates saved.') feedback = '';
+        render(template.id);
+      }, 'template-option');
+      option.setAttribute('aria-expanded', String(expanded));
+      if (expanded) option.setAttribute('aria-controls', 'summary-template-editor');
+      const label = el('span', 'template-name', template.name || 'Untitled');
+      option.append(label);
+      if (expanded) { selectedLabel = label; editorParent = item; }
+      if (id === saved.id) option.append(el('small', 'template-badge', 'Default'));
+      if (id === defaultId && id !== saved.id) option.append(el('small', 'template-badge pending', 'Pending default'));
+      if (id === focusId) toggleToFocus = option;
+      item.append(option);
+      list.append(item);
     }
-    editor.append(actions);
-    const body = el('div', 'template-layout');
-    body.append(list, editor);
+
     const reload = button('', load);
+    let use, apply;
     function updateControls() {
       const next = drafts.find(template => template.id === defaultId);
-      const saved = catalog.templates.find(template => template.id === catalog.default_template_id);
       const pending = next.id !== saved.id || next.name !== saved.name;
       defaultLabel.textContent = (pending ? 'Pending default · ' : 'Default for new recordings · ') + (next.name || 'Untitled');
       root.dataset.dirty = String(Boolean(dirty()));
       reload.textContent = dirty() ? 'Discard edits and reload' : 'Reload templates';
-      use.disabled = Boolean(operation) || selected === defaultId || !row.name.trim() || !row.prompt.trim();
+      if (use) use.disabled = Boolean(operation) || selected === defaultId || !row.name.trim() || !row.prompt.trim();
       apply.disabled = Boolean(operation) || !dirty() || drafts.some(template => !template.name.trim() || !template.prompt.trim());
     }
-    function edit() {
-      if (feedback === 'Templates saved.') {
-        feedback = '';
-        status.textContent = '';
+    apply = button('Save changes', save, 'settings-button primary');
+    if (row) {
+      const editor = el('div', 'template-editor');
+      editor.id = 'summary-template-editor';
+      const name = el('input');
+      name.value = row.name;
+      name.maxLength = 100;
+      const prompt = el('textarea');
+      prompt.rows = 8;
+      prompt.maxLength = 8000;
+      prompt.value = row.prompt;
+      function edit() {
+        if (feedback === 'Templates saved.') {
+          feedback = '';
+          status.textContent = '';
+        }
+        updateControls();
       }
-      updateControls();
+      name.addEventListener('input', () => { row.name = name.value; selectedLabel.textContent = row.name || 'Untitled'; edit(); });
+      prompt.addEventListener('input', () => { row.prompt = prompt.value; edit(); });
+      for (const [label, input] of [['Template name', name], ['Summary prompt', prompt]]) {
+        const field = el('label', 'settings-field');
+        field.append(el('span', 'settings-field-label', label), input);
+        editor.append(field);
+      }
+      use = button('Set as default', () => {
+        const clean = !dirty();
+        defaultId = selected;
+        feedback = '';
+        if (clean) return save();
+        render();
+      });
+      const actions = el('div', 'settings-actions');
+      actions.append(use, apply);
+      editor.append(actions);
+      editorParent.append(editor);
     }
-    name.addEventListener('input', () => { row.name = name.value; selectedLabel.textContent = row.name || 'Untitled'; edit(); });
-    prompt.addEventListener('input', () => { row.prompt = prompt.value; edit(); });
-    root.replaceChildren(defaultLabel, body, status, reload);
+    const footer = el('div', 'template-footer');
+    if (!row && dirty()) footer.append(apply);
+    footer.append(reload, status);
+    root.replaceChildren(toolbar, list, footer);
     updateControls();
+    toggleToFocus?.focus({preventScroll: true});
     if (operation) for (const control of root.querySelectorAll('button,input,textarea')) control.disabled = true;
   }
   return {show: () => { if (!dirty()) return load(); }};

@@ -623,7 +623,7 @@ activeRecordings.addEventListener('click', () => {
 });
 const controls = $('live-tuning');
 mountLiveMonitor($('live-monitor'), {
-  controls, refreshControls: mountLiveTuning(controls),
+  controls, refreshControls: mountLiveTuning(controls), onStages: providerSettings.updateAvailability,
   onSources(labels, activity) {
     activeRecordings.hidden = !labels.length;
     activeRecordings.dataset.tone = activity.tone;
