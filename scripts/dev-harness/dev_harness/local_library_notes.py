@@ -7,6 +7,7 @@ import time
 import httpx
 
 from .local_env import read_env
+from .local_library_transcript import PairedTranscript
 
 
 class NoteConflict(Exception):
@@ -34,6 +35,9 @@ def public_note(value):
         normalized = item.replace('\u200d', '') if field == 'emoji' else item
         if normalized and normalized.isprintable():
             result[field] = item
+    revision = value.get('transcript_revision')
+    if isinstance(revision, str) and 0 < len(revision) <= 64:
+        result['transcript_revision'] = revision
     card = value.get('card')
     if isinstance(card, dict):
         fields = {key: card[key] for key, limit in (('title', 500), ('overview', 20000), ('model', 300))
@@ -46,6 +50,7 @@ def public_note(value):
 class NoteStates:
     def __init__(self, cfg):
         self.cfg = cfg
+        self.transcript = PairedTranscript(cfg)
 
     def exchange(self, keys, *, change=None, detail=False):
         key = read_env(self.cfg.repo_root / '.env')['OMI_LOCAL_APP_KEY']

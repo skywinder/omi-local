@@ -127,5 +127,7 @@ def local_library_note_states(response: Response, uid: str = Depends(require_pai
     for doc in records:
         if doc is not None and doc.exists and (key := keys.get(doc.id)):
             if (state := note_state(doc.to_dict(), key, card)) is not None:
+                if card == 'detail' and doc.update_time is not None:
+                    state['transcript_revision'] = doc.update_time.isoformat()
                 result[key] = state
     return result

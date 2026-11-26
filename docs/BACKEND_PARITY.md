@@ -93,6 +93,16 @@ model. The optional `X-Omiloc-Card` header accepts `titles` for a batch and
 `detail` for one recording. Requests without it retain the metadata-only
 response. Earlier backends ignore the header and the library uses the file card.
 
+Opening an imported recording reads the complete transcript from the paired
+conversation detail API and resolves assigned names through the paired people
+directory. The local web player therefore follows the same segment edits and
+timestamps as Next. Only the open transcript is cached. Changes to the paired
+key, the Firestore document revision or the source files invalidate it. An
+older backend without a document revision is read on each detail request.
+A temporary note-state outage labels the on-disk text as the original. An
+authorization rejection or an unverified transcript hides the turns. The
+local WAV remains playable independently.
+
 ## Paired task reminders
 
 The paired profile advertises `local_task_reminders_version: 1`. The existing task

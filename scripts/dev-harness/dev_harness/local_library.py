@@ -329,7 +329,7 @@ class Library:
                                       'attempts': job.get('attempts', 0),
                                       'summary': summary, 'processing': processing, 'summary_recording': summary_recording,
                                       'note_key': note_key,
-                                      'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
+                                      'audio_sha256': digest, 'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):
                     continue
             self.records = records
@@ -339,7 +339,7 @@ class Library:
 
     @staticmethod
     def public(record, *, detail):
-        result = {k: v for k, v in record.items() if k not in {'audio', 'segments', 'summary_recording', 'note_key'}}
+        result = {k: v for k, v in record.items() if k not in {'audio', 'audio_sha256', 'segments', 'summary_recording', 'note_key'}}
         if record.get('summary_recording'):
             result['summary_editable'] = True
         result['preview'] = record['segments'][0]['text'][:180] if record['segments'] else ''
@@ -435,17 +435,30 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
         def do_HEAD(self):
             self.do_GET()
 
-        def enrich_notes(self, records, *, detail=False):
-            keys = library.note_keys(records) if notes is not None else {}
+        def enrich_notes(self, records, *, opened=None):
+            detail = opened is not None
+            if detail:
+                key = opened.get('note_key')
+                keys = {opened['id']: key} if notes is not None and key else {}
+            else:
+                keys = library.note_keys(records) if notes is not None else {}
             if not keys:
                 return True
             try:
                 states = notes.exchange(list(dict.fromkeys(keys.values())), detail=detail)
+            except httpx.HTTPStatusError as exc:
+                if detail and exc.response.status_code in (401, 403):
+                    self.enrich_transcript(records[0], opened, opened['note_key'], None)
+                return False
             except (httpx.HTTPError, OSError, ValueError, KeyError):
                 return False
             for row in records:
-                if (note := states.get(keys.get(row['id']))) is not None:
-                    row['note'] = {key: value for key, value in note.items() if key != 'card'}
+                key = keys.get(row['id'])
+                note = states.get(key)
+                if detail and key:
+                    self.enrich_transcript(row, opened, key, note)
+                if note is not None:
+                    row['note'] = {field: value for field, value in note.items() if field not in {'card', 'transcript_revision'}}
                     if card := note.get('card'):
                         row['summary'] = {**(row.get('summary') or {}),
                                           **{key: card[key] for key in ('title', 'overview') if key in card}}
@@ -454,6 +467,25 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                             if card.get('model'):
                                 row['processing'] = {**row['processing'], 'summary': {'status': 'ready', 'model': card['model']}}
             return True
+
+        def enrich_transcript(self, row, opened, key, note):
+            # A missing owner projection may mean a deleted or locked recording.
+            row['segments'] = []
+            row['preview'] = ''
+            row['transcript_source'] = 'unavailable'
+            if note is None:
+                return
+            folder = library.transcripts / key
+            try:
+                segments, missing_names = notes.transcript.read(key, opened['audio_sha256'], opened['duration'],
+                    note.get('transcript_revision'), (folder / 'manifest.json', folder / 'audio.json'))
+            except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError):
+                return
+            row['segments'] = segments
+            row['preview'] = segments[0]['text'][:180] if segments else ''
+            row['transcript_source'] = 'paired'
+            if missing_names:
+                row['speaker_names_unavailable'] = True
 
         def do_PATCH(self):
             if not self.allowed(request='notes'):
@@ -667,8 +699,9 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 record = library.get(parts[3])
                 if len(parts) == 4:
                     detail = library.public(record, detail=True)
-                    if not self.enrich_notes([detail], detail=True):
+                    if not self.enrich_notes([detail], opened=record):
                         detail['notes_unavailable'] = True
+                        detail.setdefault('transcript_source', 'original')
                     return self.send_json(detail)
                 with record['audio'].open('rb') as stream:
                     size = os.fstat(stream.fileno()).st_size

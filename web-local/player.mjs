@@ -5,6 +5,11 @@ export function formatTime(value) {
 export function segmentAt(segments, time) {
   return segments.findIndex(s => time >= s.start && time < s.end);
 }
+export function speakerBadge(segment) {
+  const number = /^SPEAKER_\d{1,4}$/.test(segment.speaker) ? Number(segment.speaker.slice(8)) : null;
+  const label = segment.is_user ? 'Вы' : segment.speaker_name || (number === null ? '' : `Говорящий ${number + 1}`);
+  return {label, tone: number === null ? 'neutral' : String(number % 4)};
+}
 export function seekTo(audio, time, duration) {
   audio.currentTime = Math.max(0, Math.min(time, duration));
 }

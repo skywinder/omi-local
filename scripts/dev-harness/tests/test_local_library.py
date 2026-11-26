@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -147,6 +148,8 @@ def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(libra
 
     def exchange(keys, *, change=None, detail=False):
         calls.append((keys, change))
+        if available == 'forbidden':
+            httpx.Response(403, request=httpx.Request('POST', 'http://localhost')).raise_for_status()
         if not available:
             raise OSError('Unavailable')
         if 'category' in (change or {}):
@@ -158,13 +161,17 @@ def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(libra
         return {key: {**metadata, **({'card': card} if change is None else {})}}
 
     assets = Path(__file__).resolve().parents[3] / 'web-local'
-    route = handler(library, assets, notes=SimpleNamespace(exchange=exchange))
+    transcript = SimpleNamespace(read=lambda *_args: ([{'start': 1, 'end': 2, 'text': 'Edited on phone',
+                                                          'speaker_name': 'Fixture'}], False))
+    route = handler(library, assets, notes=SimpleNamespace(exchange=exchange, transcript=transcript))
     rows = request(library, '/api/recordings', http_handler=route)
     assert key.encode() not in rows[2]
     row, = json.loads(rows[2])['recordings']
     assert row['note'] == metadata and row['summary']['title'] == 'Renamed on phone'
     detail = f"/api/recordings/{row['id']}"
     shown = json.loads(request(library, detail, http_handler=route)[2])
+    assert shown['transcript_source'] == 'paired' and shown['segments'][0]['speaker_name'] == 'Fixture'
+    assert shown['preview'] == 'Edited on phone'
     assert shown['summary_current'] and shown['summary'] == {'title': 'Renamed on phone', 'overview': 'Fresh published overview'}
     assert shown['processing']['summary'] == {'status': 'ready', 'model': 'Current model'}
     payload = '{"archived":true}'
@@ -180,7 +187,20 @@ def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(libra
     available = False
     status, _, body = request(library, detail, http_handler=route)
     assert status == 200 and json.loads(body)['notes_unavailable']
+    assert json.loads(body)['transcript_source'] == 'original'
     assert request(library, detail + '/audio', http_handler=route)[0] == 200
+
+    available = True
+    def unreadable(*_args):
+        raise ValueError('Source digest mismatch')
+
+    transcript.read = unreadable
+    damaged = json.loads(request(library, detail, http_handler=route)[2])
+    assert damaged['transcript_source'] == 'unavailable' and not damaged['segments'] and not damaged['preview']
+    assert request(library, detail + '/audio', headers={'Range': 'bytes=0-43'}, http_handler=route)[0] == 206
+    available = 'forbidden'
+    denied = json.loads(request(library, detail, http_handler=route)[2])
+    assert denied['notes_unavailable'] and denied['transcript_source'] == 'unavailable' and not denied['segments']
 
 
 @pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [

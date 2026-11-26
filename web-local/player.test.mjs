@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {formatTime, segmentAt, playFrom, seekTo} from './player.mjs';
+import {formatTime, segmentAt, playFrom, seekTo, speakerBadge} from './player.mjs';
+
+test('speaker labels follow edits while numbered speakers keep their live colors', () => {
+  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05'}), {label: 'Говорящий 6', tone: '1'});
+  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05', speaker_name: 'Ира'}), {label: 'Ира', tone: '1'});
+  assert.deepEqual(speakerBadge({speaker_name: 'Ира', is_user: true}), {label: 'Вы', tone: 'neutral'});
+  assert.deepEqual(speakerBadge({speaker: 'unknown'}), {label: '', tone: 'neutral'});
+});
 
 test('clicking a phrase seeks before starting playback; seeks remain within the recording', async () => {
   const events = [];

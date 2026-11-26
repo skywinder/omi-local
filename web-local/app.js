@@ -1,5 +1,5 @@
 import {mountLiveTuning} from './live-tuning.mjs';
-import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
+import {formatTime, segmentAt, seekTo, playFrom, speakerBadge} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
 import {mountSettings} from '/settings.mjs';
 import {processingFailure, renderProcessing} from '/recording-processing.mjs';
@@ -121,12 +121,20 @@ async function changeNote(field, value) {
 function renderTranscript(record) {
   renderRecap(record);
   const fragment = document.createDocumentFragment();
-  record.segments.forEach((segment, index) => {
+  const notice = record.transcript_source === 'original' ? 'Исходная расшифровка. Сервер пока не подтвердил правки из Next.'
+    : record.speaker_names_unavailable ? 'Имена говорящих временно недоступны.' : '';
+  if (notice) fragment.append(node('p', 'monitor-note', notice));
+  record.segments.forEach(segment => {
     const button = node('button', 'segment');
-    button.setAttribute('aria-label', `Слушать с ${formatTime(segment.start)}: ${segment.text}`);
+    const speaker = speakerBadge(segment);
+    button.setAttribute('aria-label', [speaker.label, `Слушать с ${formatTime(segment.start)}: ${segment.text}`].filter(Boolean).join('. '));
     button.append(node('span', 'segment-time', formatTime(segment.start)));
     const content = node('span', '');
-    if (segment.speaker) content.append(node('span', 'segment-speaker', `Говорящий ${Number(segment.speaker.split('_')[1]) + 1}`));
+    if (speaker.label) {
+      const badge = node('span', 'segment-speaker', speaker.label);
+      badge.dataset.speaker = speaker.tone;
+      content.append(badge);
+    }
     content.append(node('span', 'segment-text', segment.text));
     button.append(content);
     button.addEventListener('click', async () => {
@@ -138,7 +146,7 @@ function renderTranscript(record) {
   });
   if (!record.segments.length) {
     const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Обработка не завершилась. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
-    fragment.append(node('p', 'empty-transcript', copy[record.status] || copy.unavailable));
+    fragment.append(node('p', 'empty-transcript', record.transcript_source === 'unavailable' ? 'Не удалось открыть актуальную расшифровку. Аудио доступно. Обновите запись для повторной проверки.' : copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
   state.active = -1;
@@ -322,8 +330,8 @@ async function refresh() {
       showView();
     }
     if (changed) renderList();
-    if (!state.selected && recordings.length) await select(recordings[0].id, false);
-    else if (state.detail) {
+    if (!state.selected && recordings.length && state.view === 'recording') await select(recordings[0].id);
+    else if (state.detail && state.view === 'recording') {
       const id = state.selected;
       const request = state.request;
       const record = await get(`/api/recordings/${id}`);
@@ -341,7 +349,7 @@ async function refresh() {
       state.detail.note = record.note;
       state.detail.notes_unavailable = record.notes_unavailable;
       renderNoteActions();
-      if (record.summary_current !== state.detail.summary_current || record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
+      if (record.transcript_source !== state.detail.transcript_source || record.speaker_names_unavailable !== state.detail.speaker_names_unavailable || record.summary_current !== state.detail.summary_current || record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
         state.detail = record;
         $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);
@@ -437,7 +445,10 @@ $('note-archive').addEventListener('click', () => changeNote('archived'));
 $('note-category').addEventListener('change', event => changeNote('category', event.target.value));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
-for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));
+for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => {
+  showView(view);
+  if (view === 'recording') refresh();
+});
 const activeRecordings = $('active-recordings');
 activeRecordings.addEventListener('click', () => {
   showView('live');

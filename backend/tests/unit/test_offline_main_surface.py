@@ -108,6 +108,7 @@ assert loopback.post(note_path, json={'keys': [note_key], 'change': {'archived':
 note_ref, note_tx, note_doc = MagicMock(), MagicMock(), MagicMock()
 note_doc.id = note_id
 note_doc.exists = True
+note_doc.update_time.isoformat.return_value = "2026-11-26T09:00:00+00:00"
 note_raw = {'status': 'completed', 'created_at': '2026-11-26T08:00:00Z', 'started_at': None, 'finished_at': None,
             'external_data': {'local_transcript': {'result_key': note_key}},
             'structured': {'category': 'education', 'emoji': '🎓'}, 'starred': True}
@@ -142,6 +143,7 @@ with patch_notes.object(local_library_notes._client, 'get_firestore_client', ret
         return loopback.post(note_path, json={'keys': [note_key]}, headers={**note_headers, 'X-Omiloc-Card': mode})
     assert projected('titles').json()[note_key]['card'] == {'title': 'Renamed in Next'}
     assert 'structured.overview' not in note_db.get_all.call_args.kwargs['field_paths']
+    assert projected('detail').json()[note_key]['transcript_revision'] == note_doc.update_time.isoformat()
     assert projected('detail').json()[note_key]['card'] == {'title': 'Renamed in Next', 'overview': 'Generated overview', 'model': 'Fixture model'}
     assert loopback.post(note_path, json={'keys': [note_key, 'b'*64]}, headers={**note_headers, 'X-Omiloc-Card':'detail'}).status_code == 400
     changed = loopback.post(note_path, json={'keys': [note_key], 'change': {'archived': True}}, headers=note_headers)
