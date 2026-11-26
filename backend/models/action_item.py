@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from models.task_due import TaskDue
 from models.task_intelligence import StableId
 
 
@@ -198,6 +199,7 @@ class ActionItemResponse(BaseModel):
     goal_id: Optional[StableId] = None
     workstream_id: Optional[StableId] = None
     owner: TaskOwner = TaskOwner.unknown
+    due: Optional[TaskDue] = None
     due_at: Optional[datetime] = None
     due_confidence: Optional[float] = Field(default=None, ge=0, le=1)
     source: str = 'legacy'

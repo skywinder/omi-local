@@ -45,6 +45,22 @@ skips both stored transcript fields. Next opens the full detail by ID.
 The existing Local app still receives the full list. Older paired servers
 accept the extra query parameter and serve their existing response.
 
+## Paired task reminders
+
+The paired profile advertises `local_task_reminders_version: 1`. The existing task
+mutation compares the prior typed deadline inside its transaction. A day keeps an
+ISO local date and IANA zone. An exact time keeps an absolute instant and its
+zone. The mutation derives the next notification time and mirrors a timed
+deadline into the legacy `due_at` field. Legacy deadlines stay readable without
+automatically opting any phone into notifications.
+
+The owner-scoped `GET /v1/local/action-items/reminders/schedule` route uses a
+single Firestore time index, returns up to 48 future reminders, and includes up
+to 48 recently due reminders for Android alarms that may still be pending.
+Phones only schedule new future alarms. Notification permission, opt-in and
+delivery are native to each paired phone. Local uses no hosted notification service.
+A failed schedule read leaves the last confirmed device schedule intact.
+
 ## Semantic archive search
 
 Next offers **Words** and **Meaning** in the archive search screen. The paired

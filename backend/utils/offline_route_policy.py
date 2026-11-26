@@ -27,6 +27,7 @@ _ALLOWED_HTTP = frozenset(
         ("GET", "/v1/local/people"),
         ("POST", "/v1/local/people"),
         ("POST", "/v1/local/action-items"),
+        ("GET", "/v1/local/action-items/reminders/schedule"),
         ("GET", "/v1/goals/all"),
         ("POST", "/v1/local/goals"),
         ("GET", "/v1/health"),

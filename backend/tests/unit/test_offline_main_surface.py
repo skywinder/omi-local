@@ -69,6 +69,7 @@ assert main.users.UserProfileResponse.model_validate(profile).model_dump()['loca
 assert profile['local_recording_edits_version'] == 1
 assert profile['local_recording_categories_version'] == 1
 assert profile['local_conversation_group_version'] == 1
+assert profile['local_task_reminders_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
@@ -346,6 +347,59 @@ query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
 
 from routers import local_tasks
 
+from datetime import timedelta
+from models.task_due import TaskDue
+
+reminder_path = '/v1/local/action-items/reminders/schedule'
+assert client.get(reminder_path).status_code == 401
+reminder_db = local_tasks.action_items
+original_rows = reminder_db.local_task_reminder_rows
+reminder_db.local_task_reminder_rows = MagicMock()
+fixture_date = '2034-07-13'
+local_date = {'kind': 'date', 'date': fixture_date, 'timezone': 'Europe/Paris'}
+instant = {'kind': 'instant', 'instant': '2034-07-13T09:45:00+04:00', 'timezone': 'Asia/Yerevan'}
+day_doc, timed_doc, closed_doc = MagicMock(), MagicMock(), MagicMock()
+day_doc.id, timed_doc.id, closed_doc.id = 'fixture-day', 'fixture-time', 'fixture-closed'
+day_doc.to_dict.return_value = {'due': local_date, 'description': 'Day task'}
+timed_doc.to_dict.return_value = {'due': instant, 'description': 'Timed task'}
+closed_doc.to_dict.return_value = {'due': local_date, 'description': 'Closed task', 'completed': True}
+reminder_db.local_task_reminder_rows.return_value = [day_doc, timed_doc, closed_doc]
+schedule = client.get(reminder_path, headers=headers)
+assert schedule.status_code == 200 and schedule.headers['Cache-Control'] == 'no-store'
+assert schedule.json() == [
+    {'id': 'fixture-time', 'description': 'Timed task', 'notify_at': '2034-07-13T05:45:00Z', 'exact_time': True},
+    {'id': 'fixture-day', 'description': 'Day task', 'notify_at': '2034-07-13T07:00:00Z', 'exact_time': False},
+]
+owner, lower_bound = reminder_db.local_task_reminder_rows.call_args.args
+assert owner == 'fixture-owner' and timedelta(minutes=59) < datetime.now(timezone.utc) - lower_bound < timedelta(minutes=61)
+reminder_db.local_task_reminder_rows.return_value = [closed_doc] * 2001
+assert client.get(reminder_path, headers=headers).status_code == 503
+reminder_db.local_task_reminder_rows = original_rows
+
+task_ref, task_tx = MagicMock(), MagicMock()
+original_task_db = reminder_db.db
+reminder_db.db = MagicMock()
+reminder_db.db.collection.return_value.document.return_value.collection.return_value.document.return_value = task_ref
+legacy = {'description': 'Legacy', 'due_at': datetime(2034, 7, 12, tzinfo=timezone.utc)}
+task_ref.get.return_value.to_dict.return_value = legacy
+patch = reminder_db._patch_local_task.to_wrap
+assert patch(task_tx, 'fixture-owner', 'fixture-task', 'due', None, local_date)[0] == 'conflict'
+task_tx.update.assert_not_called()
+expected_due = TaskDue.from_task(legacy).model_dump(mode='python', exclude_none=True)
+code, stored = patch(task_tx, 'fixture-owner', 'fixture-task', 'due', expected_due, local_date)
+assert code == 'ok' and stored['due_at'] is None
+assert stored['task_reminder_at'] == datetime(2034, 7, 13, 7, tzinfo=timezone.utc)
+task_tx.update.assert_called_once()
+task_ref.get.return_value.to_dict.return_value = stored
+assert patch(task_tx, 'fixture-owner', 'fixture-task', 'due', expected_due, local_date)[0] == 'ok'
+task_tx.update.assert_called_once()  # An acknowledged retry does not rewrite the deadline.
+code, completed = patch(task_tx, 'fixture-owner', 'fixture-task', 'completed', False, True)
+assert code == 'ok' and completed['task_reminder_at'] is None and completed['due'] == local_date
+task_ref.get.return_value.to_dict.return_value = completed
+code, reopened = patch(task_tx, 'fixture-owner', 'fixture-task', 'completed', True, False)
+assert code == 'ok' and reopened['task_reminder_at'] == stored['task_reminder_at']
+reminder_db.db = original_task_db
+
 retry_path = '/v1/local/conversations/' + documents[-1].id + '/retry-processing'
 assert client.post(retry_path).status_code == 401
 assert client.post(retry_path, headers=headers).status_code == 404
@@ -505,6 +559,7 @@ print(json.dumps({
         '/v1/local/folders/reorder',
         '/v1/local/people',
         '/v1/local/action-items',
+        '/v1/local/action-items/reminders/schedule',
         '/v1/local/action-items/{task_id}',
         '/v1/local/conversations/{conversation_id}/task-suggestions',
         '/v1/local/conversations/{conversation_id}/regenerate-summary',

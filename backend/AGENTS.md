@@ -91,6 +91,10 @@ the create transaction. A task suggestion uses bounded transcript excerpts with
 the confirmed summary provider and does not write a task. Accepting a suggestion
 compares its source text digest and uses the original recording revision in the
 create transaction. The paired task path has no hosted task side effects.
+Paired reminders compare the prior typed deadline in that transaction. Keep
+date precision and IANA timezone intact, and update the schedule index with
+task completion. Legacy deadlines are unscheduled until the owner opts in for
+the task. Serve reminder schedules only to the paired owner.
 Paired summary template settings use the harness's shared provider revision.
 The backend only forwards the catalog to the configured loopback library.
 Paired summary regeneration sends the canonical transcript to that same

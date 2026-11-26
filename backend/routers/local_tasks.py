@@ -5,13 +5,15 @@ import json
 import math
 import uuid
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, ValidationError, model_validator
 
 from database import action_items, local_recording_chat
 from models.action_item import ActionItemCreateRequest, ActionItemResponse, EvidenceRef
+from models.task_due import TaskDue
 from routers.local_recording_chat import ChatProvider, _chat_provider, _library_request
 from utils.conversations.local_chat import select_sources
 from utils.local_transport_auth import require_paired_owner
@@ -47,6 +49,25 @@ class LocalTaskCompletion(BaseModel):
     field: Literal['completed']
     expected: bool = Field(strict=True)
     value: bool = Field(strict=True)
+
+
+class LocalTaskDue(BaseModel):
+    field: Literal['due']
+    expected: TaskDue | None
+    value: TaskDue | None
+
+    @model_validator(mode='after')
+    def validate_edit(self):
+        if self.value and self.value.kind not in {'date', 'instant'}:
+            raise ValueError('Choose a date, a time, or remove the reminder')
+        return self
+
+
+class LocalTaskReminder(BaseModel):
+    id: str
+    description: str
+    notify_at: AwareDatetime
+    exact_time: bool
 
 
 def _description(value: str) -> str:
@@ -123,13 +144,56 @@ def read_task(task_id: TaskId, response: Response, uid: str = Depends(require_pa
     return _task(uid, task_id)
 
 
+@router.get('/reminders/schedule', response_model=list[LocalTaskReminder])
+def task_reminder_schedule(response: Response, uid: str = Depends(require_paired_owner)):
+    # A recent alarm can still be pending on Android when precise alarms are unavailable.
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    items = []
+    for count, snapshot in enumerate(action_items.local_task_reminder_rows(uid, since), start=1):
+        if count > 2000:
+            raise HTTPException(503, 'local_task_reminders_incomplete')
+        row = snapshot.to_dict()
+        if (
+            not row
+            or row.get('deleted')
+            or row.get('is_locked')
+            or row.get('completed')
+            or row.get('status', 'active') != 'active'
+        ):
+            continue
+        try:
+            due = TaskDue.model_validate(row.get('due'))
+        except ValidationError:
+            continue
+        notify_at = due.reminder_at()
+        description = row.get('description')
+        if notify_at is not None and notify_at >= since and isinstance(description, str) and description.strip():
+            items.append(
+                LocalTaskReminder(
+                    id=snapshot.id, description=description[:200], notify_at=notify_at, exact_time=due.kind == 'instant'
+                )
+            )
+    response.headers['Cache-Control'] = 'no-store'
+    now = datetime.now(timezone.utc)
+    future = sorted((item for item in items if item.notify_at >= now), key=lambda item: (item.notify_at, item.id))[:48]
+    recent = sorted((item for item in items if item.notify_at < now), key=lambda item: (item.notify_at, item.id))[-48:]
+    return future + recent
+
+
 @router.patch('/{task_id}', response_model=ActionItemResponse)
 def edit_task(
-    task_id: TaskId, edit: Annotated[LocalTaskDescription | LocalTaskCompletion, Field(discriminator='field')],
-    response: Response, uid: str = Depends(require_paired_owner),
+    task_id: TaskId,
+    edit: Annotated[LocalTaskDescription | LocalTaskCompletion | LocalTaskDue, Field(discriminator='field')],
+    response: Response,
+    uid: str = Depends(require_paired_owner),
 ):
-    value = edit.value if isinstance(edit, LocalTaskCompletion) else _description(edit.value)
-    status, row = action_items.patch_local_task(uid, task_id, edit.field, edit.expected, value)
+    expected = edit.expected
+    if isinstance(edit, LocalTaskDue):
+        value = edit.value.model_dump(mode='python', exclude_none=True) if edit.value else None
+        expected = edit.expected.model_dump(mode='python', exclude_none=True) if edit.expected else None
+    else:
+        value = edit.value if isinstance(edit, LocalTaskCompletion) else _description(edit.value)
+    status, row = action_items.patch_local_task(uid, task_id, edit.field, expected, value)
     if status == 'not_found':
         raise HTTPException(404, 'local_task_unavailable')
     if status != 'ok':
