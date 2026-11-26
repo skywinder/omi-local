@@ -225,7 +225,9 @@ def _accept_grouped(header, frames, digest, root, decoder_factory, check_capacit
             if finish_path.exists() and index >= groups.read_json(finish_path)['index']:
                 raise DeliveryConflict('Part beyond conversation finish')
             _store_audio(header, frames, digest, root, parts / str(index), decoder_factory, check_capacity, origin)
-        groups.advance_group(root, group, config)
+        boundary = groups.advance_group(root, group, config)
+        if boundary is not None:
+            receipt['conversation_boundary_sample'] = boundary
         return receipt
 
 

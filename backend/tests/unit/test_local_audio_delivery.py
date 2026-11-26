@@ -269,16 +269,21 @@ def test_group_29_seconds_does_not_finish_30_does_and_next_voice_starts_new_card
     voice, quiet = b'\x01\0' * 16000, b'\0\0' * 16000
     def send(i, offset, pcm):
         return accept_part(group_message(recording, i, offset*16000, pcm), tmp_path)
-    send(0, 0, voice + quiet * 29)
+    first = voice + quiet * 29
+    assert 'conversation_boundary_sample' not in send(0, 0, first)
     assert not list((tmp_path / 'listen-captures').glob('*/audio.wav'))
-    send(1, 30, quiet + quiet * 3 + voice + quiet * 30 + quiet * 2)
+    receipt = send(1, 30, quiet + quiet * 3 + voice + quiet * 30 + quiet * 2)
+    assert receipt['stored'] and receipt['conversation_boundary_sample'] == 65 * 16000
     paths = list((tmp_path / 'listen-captures').glob('*/metadata.json'))
     assert len(paths) == 2
     boundaries = [json.loads(path.read_text())['conversation_group'] for path in paths]
     ranges = sorted((g['start_sample'], g['speech_end_sample'], g['end_sample']) for g in boundaries)
     assert ranges == [(0, 16000, 31 * 16000), (34 * 16000 - 3200, 35 * 16000, 65 * 16000)]
-    accept_part(group_message(recording, 2, 0, finish=True), tmp_path)
-    assert len(list((tmp_path / 'listen-captures').glob('*/audio.wav'))) == 2
+    assert send(0, 0, first)['conversation_boundary_sample'] == 65 * 16000
+    send(2, 67, voice)
+    finish = accept_part(group_message(recording, 3, 0, finish=True), tmp_path)
+    assert finish['conversation_boundary_sample'] == 65 * 16000  # Stop is not a silence cut.
+    assert len(list((tmp_path / 'listen-captures').glob('*/audio.wav'))) == 3
 
 
 

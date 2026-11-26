@@ -159,7 +159,7 @@ def _publish(root, group, config, first_index, start, end, speech_end):
         sync_dir(captures)
 
 
-def advance_group(root: Path, group: Path, config: dict):
+def advance_group(root: Path, group: Path, config: dict) -> int | None:
     progress_path = group / 'progress.json'
     state = read_json(progress_path) if progress_path.exists() else _new_progress()
     finish = group / 'finish.json'
@@ -171,6 +171,8 @@ def advance_group(root: Path, group: Path, config: dict):
             speech_end = state['last_voice'] if by_silence else None
             _publish(root, group, config, state['open_index'], state['open_start'], end, speech_end)
             state.update(open_start=None, last_voice=None, open_index=None, last_boundary=end)
+            if by_silence:
+                state['last_silence_boundary'] = end
 
     parts = group / 'parts'
     while (folder := parts / str(state['next_index'])).exists():
@@ -245,3 +247,4 @@ def advance_group(root: Path, group: Path, config: dict):
         state['archived_before'] = keep_from
         _atomic_json(progress_path, state)
         sync_dir(group)
+    return state.get('last_silence_boundary')

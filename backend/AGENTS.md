@@ -41,6 +41,8 @@ Updated paired clients send bounded immutable parts to `/v1/local/audio/parts`.
 Grouped delivery acquires the per-recording lock, checks adjacent sample positions
 and advances only through the ordered durable prefix. Preserve immutable receipts
 and allow legacy parts to use the existing independent capture path.
+Grouped receipts may report the last durably published silence cut in samples.
+Keep it monotonic per recording and separate from the final Stop boundary.
 Authenticate before consuming bodies. Publish the complete WAV and metadata
 outside watcher staging, sync them, and return a receipt for that exact ID/hash.
 Retries must not overwrite or duplicate audio. The explicit outbox header makes

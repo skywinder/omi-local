@@ -140,7 +140,17 @@ retains version-two delivery in the one-recording-per-part mode.
 
 With silence-based grouping, Next seals a part after at most 15 seconds of
 captured audio. The paired server can publish a closed conversation while
-the phone continues capturing. The finish marker becomes ready after Stop,
+the phone continues capturing. After a silence cut is durably published,
+the grouped delivery receipt includes its recording-relative
+`conversation_boundary_sample` at 16 kHz. Next applies it only after checking
+the exact part ID and hash and only to the matching recording. The Live view
+keeps text after that point and links to the saved recordings. Capture,
+timecodes and the timer continue on the original clock. Reconnects and
+delayed transcript snapshots respect the confirmed cut. A straddling
+transcript row appears only once it has a start within the new conversation.
+Older receipts keep the continuous Live view.
+
+The finish marker becomes ready after Stop,
 or on restart after recoverable parts have been sealed. A malformed group
 part keeps its finish marker pending for recovery. A same-codec CV1 reconnect
 keeps the group and resets Opus decoder context.
