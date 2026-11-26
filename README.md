@@ -10,7 +10,7 @@ tunnel. The server keeps the audio library; the phone retains pending audio
 locally until the server confirms storage. Processing uses local engines or
 explicitly selected servers.
 
-[Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
+[Release notes](docs/releases/v0.1.0.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
