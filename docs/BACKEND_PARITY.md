@@ -87,6 +87,25 @@ Phones only schedule new future alarms. Notification permission, opt-in and
 delivery are native to each paired phone. Local uses no hosted notification service.
 A failed schedule read leaves the last confirmed device schedule intact.
 
+## Paired archive management
+
+Next reads `local_folders_version`, `local_speaker_labels_version`, and
+`local_task_suggestions_version` from the authenticated paired profile. When
+updating an existing deployment, verify those flags together with the live
+routes. A router present in Git can still be absent from a running deployment.
+
+Folders use the existing Firestore collection. Moves and ordering compare the
+expected state, and deleting a folder clears its recording assignments while
+preserving the recordings. Manual speaker names belong to the paired owner.
+Their assignments compare the prior label on stable transcript segment IDs.
+Task suggestions use the configured summary model after consent and include a
+transcript citation. Only accepting a suggestion creates a task.
+
+On November 26 Bastion enabled all three capabilities. An isolated owner
+verified folder moves, stale-write rejection, deletion that preserved the
+recording, manual speaker assignment and suggestions from the selected model
+with transcript timestamps. Requests without a paired key were rejected.
+
 ## Semantic archive search
 
 Next offers **Words** and **Meaning** in the archive search screen. The paired

@@ -71,6 +71,9 @@ assert profile['local_recording_categories_version'] == 1
 assert profile['local_category_backfill_version'] == 1
 assert profile['local_conversation_group_version'] == 1
 assert profile['local_task_reminders_version'] == 1
+assert profile['local_folders_version'] == 2
+assert profile['local_speaker_labels_version'] == 1
+assert profile['local_task_suggestions_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
@@ -84,6 +87,10 @@ collection = owner.collection.return_value
 query = collection.order_by.return_value.select.return_value
 search_url = '/v1/local/conversations/search'
 client = TestClient(main.app)
+for path in ('/v1/local/folders', '/v1/local/people'):
+    assert client.get(path).status_code == 401
+    assert client.post(path, json={'name': 'A private label'}).status_code == 401
+
 from utils import local_recording_rows
 original_canonical = main.conversations.conversations_db.get_conversations_without_photos
 original_local = local_recording_rows.local_recording_rows
