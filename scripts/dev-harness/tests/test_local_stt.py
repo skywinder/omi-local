@@ -868,6 +868,28 @@ def test_remote_diarization_rejects_invalid_turns_without_replacing_asr(tmp_path
     assert raw == {'segments': [{'text': 'Synthetic', 'start': 0, 'end': 1}]}
 
 
+def test_remote_diarization_clips_small_terminal_padding_to_the_wav(tmp_path, monkeypatch):
+    import httpx
+    from dev_harness import local_pipeline, local_provider_http
+
+    audio = audio_file(tmp_path)
+    raw = {'segments': [{'text': 'Synthetic', 'start': .25, 'end': 1}]}
+    response = {'segments': [
+        {'start': 1., 'end': 1.05, 'speaker': 'only-padding'},
+        {'start': .25, 'end': 1.638, 'speaker': 'one'},
+        {'start': 1.647, 'end': 1.664, 'speaker': 'another-padding-label'},
+    ]}
+    factory = httpx.Client
+    monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
+                        factory(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=response)), **kwargs))
+    result = local_pipeline.remote_diarization({'settings': {'base_url': 'https://speakers.example'}}, '',
+        audio, tmp_path, local_stt.inspect_audio(audio), raw)
+
+    assert result['diarization'] == {'turns': [(.25, 1, 'SPEAKER_00')], 'speakers': 1}
+    assert result['segments'][0]['speaker'] == 'SPEAKER_00'
+    local_pipeline.validate_transcript(result, 1)
+
+
 def test_selected_legacy_embedded_diarization_runs_once(tmp_path, monkeypatch):
     settings = selected_pipeline_cfg(tmp_path)
     path = settings.layout.state_root / 'providers.json'

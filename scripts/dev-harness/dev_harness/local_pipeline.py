@@ -20,6 +20,7 @@ import httpx
 
 from . import local_diarization, local_provider_http as transport, stt_install
 
+DIARIZATION_END_TOLERANCE_SECONDS = 1.0
 SUMMARY_CHARS = 12000
 SUMMARY_REVISION = 'recording-summary-v4'
 SUMMARY_SOURCE = re.compile(r'^\[src:([0-9,]{1,80})\]', re.MULTILINE)
@@ -148,16 +149,22 @@ def remote_diarization(snapshot, key, audio, folder, manifest, raw):
         if not isinstance(segments, list):
             raise ValueError()
         turns, labels = [], {}
+        duration = manifest['duration_seconds']
         for segment in segments:
             start, end, label = segment['start'], segment['end'], segment['speaker']
             if (any(type(t) not in (int, float) or not math.isfinite(t) for t in (start, end))
-                    or not 0 <= start < end <= manifest['duration_seconds'] + 0.1
+                    or not 0 <= start < end
+                    or end > duration + DIARIZATION_END_TOLERANCE_SECONDS
                     or not isinstance(label, str) or not label or len(label) > 200):
                 raise ValueError()
+            # A valid model turn wholly in the final padded window contains no recorded speech.
+            if start >= duration:
+                continue
             # Scope all provider labels to this recording; never import person IDs.
             if label not in labels:
                 labels[label] = f'SPEAKER_{len(labels):02d}'
-            turns.append((start, min(end, manifest['duration_seconds']), labels[label]))
+            # The provider's last analysis window can include padding beyond the WAV.
+            turns.append((start, min(end, duration), labels[label]))
         return {**raw, 'segments': local_diarization.reconcile(raw['segments'], turns),
                 'diarization': {'turns': turns, 'speakers': len(labels)}}
     except (ValueError, KeyError, TypeError):
