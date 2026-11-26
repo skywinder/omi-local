@@ -77,19 +77,21 @@ void main() {
   });
 
   test('CV1 storage distinguishes unread ring bytes, an empty card and an unavailable measurement', () {
-    int? unread(List<int> words) {
+    Cv1StorageStatus? storage(List<int> words) {
       final wire = ByteData(words.length * 4);
       for (var i = 0; i < words.length; i++) {
         wire.setUint32(i * 4, words[i], Endian.little);
       }
-      return Cv1Diagnostics.fromWire({'storageStatus': wire.buffer.asUint8List()}).unreadStorageBytes;
+      return Cv1Diagnostics.fromWire({'storageStatus': wire.buffer.asUint8List()}).storage;
     }
 
-    expect(unread([4440, 10, 888, 1]), 4440);
-    expect(unread([0, 0, 4440, 0]), 0);
-    expect(unread([0, 0, 0, 0]), isNull);
-    expect(unread([4440, 3]), isNull);
-    expect(unread([4440, 3, 888, 1]), isNull);
+    expect(storage([4440, 10, 888, 1]), (unreadBytes: 4440, freeBytes: 888, clockValid: true));
+    expect(storage([0, 0, 4440, 0]), (unreadBytes: 0, freeBytes: 4440, clockValid: false));
+    expect(storage([444, 1, 0, 1]), (unreadBytes: 444, freeBytes: 0, clockValid: true));
+    expect(storage([444, 1, 0, 2]), isNull);
+    expect(storage([0, 0, 0, 0]), isNull);
+    expect(storage([4440, 3]), isNull);
+    expect(storage([4440, 3, 888, 1]), isNull);
   });
 
   test('CV1 diagnostics reject invalid measurements and retire with the link generation', () async {

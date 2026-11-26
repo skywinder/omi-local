@@ -543,9 +543,13 @@ class LocalNextCaptureControls extends StatelessWidget {
                       ListTile(
                         leading: Icon(Icons.sd_storage_outlined, color: NextAccent.teal.of(context)),
                         title: Text(pairedSettingsLabel(context, 'nextPendantOutbox')),
-                        subtitle: Text(switch (link.diagnostics?.unreadStorageBytes) {
-                          final int bytes =>
-                            '${_storageSize(bytes)} · ${pairedSettingsLabel(context, 'nextPendantLastRead')}',
+                        subtitle: Text(switch (link.diagnostics?.storage) {
+                          final status? => [
+                            "${pairedSettingsLabel(context, 'nextPendantUnread')}: ${_storageSize(status.unreadBytes)}",
+                            "${pairedSettingsLabel(context, 'nextPendantFree')}: ${_storageSize(status.freeBytes)}",
+                            pairedSettingsLabel(context, status.clockValid ? 'nextClockSet' : 'nextClockUnset'),
+                            pairedSettingsLabel(context, 'nextPendantLastRead'),
+                          ].join('\n'),
                           null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),
                         }),
                       ),

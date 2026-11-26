@@ -54,6 +54,8 @@ sealed class Cv1TransportEvent {
   }
 }
 
+typedef Cv1StorageStatus = ({int unreadBytes, int freeBytes, bool clockValid});
+
 class Cv1Diagnostics {
   const Cv1Diagnostics({
     this.name,
@@ -62,7 +64,7 @@ class Cv1Diagnostics {
     this.model,
     this.manufacturer,
     this.battery,
-    this.unreadStorageBytes,
+    this.storage,
     this.rssi,
     this.led,
     this.gain,
@@ -72,13 +74,14 @@ class Cv1Diagnostics {
   });
 
   final String? name, firmware, hardware, model, manufacturer;
-  final int? battery, rssi, led, gain, unreadStorageBytes;
+  final int? battery, rssi, led, gain;
+  final Cv1StorageStatus? storage;
   final bool? charging;
   final bool ledWritable, gainWritable;
 
   // The CV1 SD ring reports four LE words. Earlier file-list firmware uses
   // different units. An uninitialized card has no usable capacity.
-  static int? _ringBytes(Object? raw) {
+  static Cv1StorageStatus? _storageStatus(Object? raw) {
     if (raw is! Uint8List || raw.length != 16) return null;
     final data = ByteData.sublistView(raw);
     final used = data.getUint32(0, Endian.little);
@@ -87,7 +90,7 @@ class Cv1Diagnostics {
     final clockValid = data.getUint32(12, Endian.little);
     const packetBytes = 444;
     if (used != packets * packetBytes || free % packetBytes != 0 || used + free == 0 || clockValid > 1) return null;
-    return used;
+    return (unreadBytes: used, freeBytes: free, clockValid: clockValid == 1);
   }
 
   factory Cv1Diagnostics.fromWire(Map values) {
@@ -108,7 +111,7 @@ class Cv1Diagnostics {
       model: text('model'),
       manufacturer: text('manufacturer'),
       battery: number('battery', 0, 100),
-      unreadStorageBytes: _ringBytes(values['storageStatus']),
+      storage: _storageStatus(values['storageStatus']),
       rssi: number('rssi', -127, -1),
       led: number('led', 0, 100),
       gain: number('gain', 0, 100),
