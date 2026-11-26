@@ -574,6 +574,15 @@ Tailscale/GPU/dev configuration and checks all published ports. It runs in the e
 ARM64 uses native wheels of the same versions, so x86_64 artifact hashes are not
 presented as an ARM64 lock.
 
+On November 26, 2026, commit `9a6da7e` built for both `linux/arm64` and
+`linux/amd64` in Docker Desktop on an Apple Silicon Mac. Each isolated
+container imported a synthetic recording, accepted edits through the paired
+API, exported Firestore at shutdown, and read back the corrected transcript,
+speaker and title in the web library after restart. The emulated x86-64
+container also served the transcript search field before and after restart.
+Both runs used private container storage with automatic STT disabled.
+Validation on a copy of Bastion's state with its configured providers is pending.
+
 Recorded verification on September 11, 2026, on this Mac using Linux ARM64 in
 Docker Desktop: CPU image builds, timestamped synthetic-speech STT, and the path
 Opus → WebSocket → WAV → automatic STT → import → browser transcript display.
