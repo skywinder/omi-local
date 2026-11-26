@@ -410,13 +410,15 @@ class Cv1Connection extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> scan() => _command(() {
+  Future<void> scan() => _command(() async {
+    if (importingStorage) return;
     _cancelPairRetry();
     _devices.clear();
-    return _transport.scan();
+    await _transport.scan();
   });
 
-  Future<void> connect(String id) => _command(() {
+  Future<void> connect(String id) => _command(() async {
+    if (importingStorage) return;
     _cancelPairRetry();
     _firstPairAttempt = id;
     if (_selected != id) {
@@ -425,7 +427,7 @@ class Cv1Connection extends ChangeNotifier {
       reconnections = 0;
       _lostAt = null;
     }
-    return _transport.connect(id);
+    await _transport.connect(id);
   });
 
   Future<void> sampleDiagnostics() async {
@@ -449,14 +451,16 @@ class Cv1Connection extends ChangeNotifier {
       ? storageTarget
       : null;
 
-  /// One confirmed run owns the idle link. Every additional consuming request
-  /// must start immediately after the last window the caller flushed to disk.
+  /// The full import owns the selected reader across Bluetooth generations.
+  /// The initial end and the last position saved on the phone bound every read.
   Future<void> readArchive(
     Cv1StorageTarget target, {
     required int? windows,
     required bool Function() shouldStop,
     required Future<void> Function(Cv1ArchiveBatch) persist,
     void Function()? beforeRead,
+    Future<void> Function()? onReconnectWait,
+    void Function(int missingRecords)? onReconnect,
   }) async {
     final transport = _transport;
     if (transport is! Cv1ArchiveTransport ||
@@ -464,70 +468,147 @@ class Cv1Connection extends ChangeNotifier {
         (windows != null && (windows < 1 || windows > 32))) {
       throw PlatformException(code: 'storage_busy');
     }
+    final reader = transport as Cv1ArchiveTransport;
+    final originalCodec = codec;
+    var activeTarget = target;
     var next = diagnostics!.storageInfo!.oldest;
     final availableThrough = next + diagnostics!.storageInfo!.unreadPackets;
     int? previousStart;
+    var completeWindows = 0;
     importingStorage = true;
     notifyListeners();
     try {
-      if (windows == null) await (transport as Cv1ArchiveTransport).setArchiveAwake(true);
-      for (var i = 0; (windows == null || i < windows) && next < availableThrough && !shouldStop(); i++) {
-        final wait = Stopwatch()..start();
-        var refreshAt = 1000;
-        while (true) {
-          if (shouldStop()) return;
-          if (_closing ||
-              phase != Cv1LinkPhase.ready ||
-              _generation != target.generation ||
-              linkedDeviceId != target.deviceId) {
-            throw PlatformException(code: 'link_changed');
-          }
-          final info = diagnostics?.storageInfo;
-          if (info != null && (info.oldest > next || info.protocol != Cv1StorageProtocol.legacy)) {
-            throw PlatformException(code: 'cursor_changed');
-          }
-          // Some legacy firmware sends DONE before its final transmit callbacks
-          // advance the persisted cursor. Re-read only from the observed oldest record.
-          if (info != null && info.oldest <= next && (previousStart == null || info.oldest > previousStart)) {
-            beforeRead?.call();
-            Cv1ArchiveBatch? batch;
-            try {
-              final count = (availableThrough - info.oldest).clamp(1, 32);
-              batch = await (transport as Cv1ArchiveTransport).readOldest(target, info.oldest, count);
-            } on PlatformException catch (error) {
-              // Only storage_busy guarantees the native side never issued READ.
-              if (error.code != 'storage_busy') rethrow;
-            }
-            if (batch != null) {
-              await persist(batch);
-              if (!batch.complete || batch.bytes.isEmpty) return;
-              previousStart = batch.start;
-              next = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
-              break;
-            }
-          }
-          if (wait.elapsed >= const Duration(seconds: 6)) throw PlatformException(code: 'storage_busy');
-          if (wait.elapsedMilliseconds >= refreshAt) {
-            refreshAt += 1000;
-            await sampleDiagnostics();
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (windows == null) await reader.setArchiveAwake(true);
+      while ((windows == null || completeWindows < windows) && next < availableThrough && !shouldStop()) {
+        Cv1ArchiveBatch? batch;
+        try {
+          batch = await _readArchiveWindow(
+            reader,
+            activeTarget,
+            next,
+            availableThrough,
+            previousStart,
+            shouldStop,
+            beforeRead,
+          );
+          if (batch == null) return;
+        } on PlatformException catch (error) {
+          if (windows != null || error.code != 'link_changed') rethrow;
         }
-        if ((windows == null || i + 1 < windows) && next < availableThrough && !shouldStop()) {
-          await sampleDiagnostics();
+        if (batch != null) {
+          await persist(batch);
+          final end = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
+          if (end > next) next = end;
+          if (batch.complete && batch.bytes.isNotEmpty) {
+            previousStart = batch.start;
+            completeWindows++;
+            if (next < availableThrough && (windows == null || completeWindows < windows) && !shouldStop()) {
+              await sampleDiagnostics();
+            }
+            continue;
+          }
+          if (windows != null) return;
         }
+        if (shouldStop()) return;
+        // A short native reply can arrive just before the link-loss event. Flush
+        // its complete records before waiting for a new generation.
+        if (next >= availableThrough) return;
+        await onReconnectWait?.call();
+        final resumed = await _waitForArchiveLink(activeTarget, originalCodec, shouldStop);
+        if (resumed == null) return;
+        final info = diagnostics!.storageInfo!;
+        if (info.oldest + info.unreadPackets < availableThrough || info.oldest < next - 32) {
+          throw PlatformException(code: 'cursor_changed');
+        }
+        final resumeAt = info.oldest.clamp(next, availableThrough);
+        onReconnect?.call(resumeAt - next);
+        next = resumeAt;
+        activeTarget = resumed;
+        previousStart = null;
       }
     } finally {
       try {
-        if (windows == null) await (transport as Cv1ArchiveTransport).setArchiveAwake(false);
+        if (windows == null) await reader.setArchiveAwake(false);
       } finally {
         importingStorage = false;
-      }
-      if (!_closing) {
-        notifyListeners();
-        unawaited(sampleDiagnostics());
+        if (!_closing) {
+          notifyListeners();
+          unawaited(sampleDiagnostics());
+        }
       }
     }
+  }
+
+  Future<Cv1ArchiveBatch?> _readArchiveWindow(
+    Cv1ArchiveTransport reader,
+    Cv1StorageTarget target,
+    int next,
+    int end,
+    int? previousStart,
+    bool Function() shouldStop,
+    void Function()? beforeRead,
+  ) async {
+    final wait = Stopwatch()..start();
+    var refreshAt = 1000;
+    while (!shouldStop()) {
+      if (_closing ||
+          phase != Cv1LinkPhase.ready ||
+          _generation != target.generation ||
+          linkedDeviceId != target.deviceId) {
+        throw PlatformException(code: 'link_changed');
+      }
+      final info = diagnostics?.storageInfo;
+      if (info != null && (info.oldest > next || info.protocol != Cv1StorageProtocol.legacy)) {
+        throw PlatformException(code: 'cursor_changed');
+      }
+      // Legacy DONE can arrive before the last BLE transmit callbacks advance
+      // the cursor. Read only from the confirmed oldest sequence.
+      if (info != null && (previousStart == null || info.oldest > previousStart)) {
+        beforeRead?.call();
+        try {
+          return await reader.readOldest(target, info.oldest, (end - info.oldest).clamp(1, 32));
+        } on PlatformException catch (error) {
+          // Only storage_busy guarantees the native side never issued READ.
+          if (error.code != 'storage_busy') rethrow;
+        }
+      }
+      if (wait.elapsed >= const Duration(seconds: 6)) throw PlatformException(code: 'storage_busy');
+      if (wait.elapsedMilliseconds >= refreshAt) {
+        refreshAt += 1000;
+        await sampleDiagnostics();
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return null;
+  }
+
+  Future<Cv1StorageTarget?> _waitForArchiveLink(
+    Cv1StorageTarget previous,
+    int? originalCodec,
+    bool Function() shouldStop,
+  ) async {
+    final wait = Stopwatch()..start();
+    var refreshAt = 0;
+    while (!_closing && !shouldStop()) {
+      if (phase == Cv1LinkPhase.ready && _generation != previous.generation) {
+        if (linkedDeviceId != previous.deviceId || codec != originalCodec) {
+          throw PlatformException(code: 'cursor_changed');
+        }
+        if (diagnostics?.storageInfo case final info?) {
+          if (info.protocol != Cv1StorageProtocol.legacy) throw PlatformException(code: 'cursor_changed');
+          return (generation: _generation, deviceId: previous.deviceId);
+        }
+        if (wait.elapsedMilliseconds >= refreshAt) {
+          refreshAt = wait.elapsedMilliseconds + 1000;
+          await sampleDiagnostics();
+        }
+      } else if (phase == Cv1LinkPhase.ready && wait.elapsed >= const Duration(seconds: 2)) {
+        // An invalid reply on a healthy link should not loop as if it were a disconnect.
+        throw PlatformException(code: 'link_changed');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    return null;
   }
 
   Cv1StorageTarget? get storageTarget {
@@ -632,6 +713,7 @@ class Cv1Connection extends ChangeNotifier {
   }
 
   Future<void> disconnect() {
+    if (importingStorage) return Future.value();
     _cancelPairRetry();
     return _command(_transport.disconnect);
   }

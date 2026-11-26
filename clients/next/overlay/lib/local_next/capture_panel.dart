@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:omi/backend/schema/bt_device/bt_device.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
+import 'package:omi/services/devices/ring_protocol.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'accents.dart';
 import 'capture.dart';
@@ -364,6 +365,7 @@ class NextCaptureInputs extends ChangeNotifier {
   int importWindowsDone = 0;
   bool importingAll = false;
   int importedRecords = 0;
+  int importMissingRecords = 0;
   bool stoppingImport = false;
 
   void stopImport() {
@@ -376,7 +378,8 @@ class NextCaptureInputs extends ChangeNotifier {
     if (hasCaptureInProgress || !permitsNewRecording || connection.importTarget != target) return;
     final codec = connection.codec!;
     final journal = phone.journal;
-    final unread = connection.diagnostics!.storageInfo!.unreadPackets;
+    final storage = connection.diagnostics!.storageInfo!;
+    final unread = storage.unreadPackets;
     final possibleWindows = (unread / Cv1Archive.maxRecords).ceil().clamp(1, Cv1Archive.maxWindows);
     final limit = windows?.clamp(1, possibleWindows);
     final chunkWindows = limit ?? Cv1Archive.maxWindows;
@@ -398,6 +401,9 @@ class NextCaptureInputs extends ChangeNotifier {
       importWindowsDone = 0;
       importingAll = limit == null;
       importedRecords = 0;
+      importMissingRecords = 0;
+      var verifiedEnd = storage.oldest;
+      var windowsInChunk = 0;
       stoppingImport = false;
       if (!_closed) notifyListeners();
       try {
@@ -406,28 +412,52 @@ class NextCaptureInputs extends ChangeNotifier {
           windows: limit,
           shouldStop: () => stoppingImport || _closed,
           beforeRead: () {
-            if (importingAll && !hasSpace(importWindowsDone % chunkWindows + 1)) {
+            if (importingAll && !hasSpace(windowsInChunk + 1)) {
               throw PlatformException(code: 'phone_full');
             }
+          },
+          onReconnectWait: () async {
+            await archive.finish();
+            windowsInChunk = 0;
+            archiveMessage = 'nextImportReconnecting';
+            if (!_closed) notifyListeners();
+          },
+          onReconnect: (missing) {
+            importMissingRecords += missing;
+            verifiedEnd += missing;
+            archiveMessage = 'nextImportProgress';
+            if (!_closed) notifyListeners();
           },
           persist: (batch) async {
             if (batch.bytes.isNotEmpty) {
               final previousRecords = archive.records;
-              final micros = await archive.append(batch.bytes, target.deviceId, batch.start, codec);
+              final micros = await archive.append(
+                batch.bytes,
+                target.deviceId,
+                batch.start,
+                codec,
+                verifyThrough: verifiedEnd,
+              );
+              final end = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
+              if (end > verifiedEnd) verifiedEnd = end;
               importedRecords += archive.records - previousRecords;
               importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
-              if (batch.complete) importWindowsDone++;
-              if (importingAll && batch.complete && importWindowsDone % chunkWindows == 0) {
+              if (batch.complete) {
+                importWindowsDone++;
+                windowsInChunk++;
+              }
+              if (importingAll && windowsInChunk == chunkWindows) {
                 await archive.finish();
+                windowsInChunk = 0;
               }
               if (!_closed) notifyListeners();
             }
-            if (!batch.complete || batch.bytes.isEmpty) {
+            if (!importingAll && (!batch.complete || batch.bytes.isEmpty)) {
               archiveMessage = importedRecords > 0 ? 'nextImportPartial' : 'nextImportInterrupted';
             }
           },
         );
-        if (archiveMessage == 'nextImportProgress') {
+        if (archiveMessage == 'nextImportProgress' || archiveMessage == 'nextImportReconnecting') {
           if (stoppingImport) {
             archiveMessage = 'nextImportStopped';
           } else {
@@ -715,9 +745,11 @@ class LocalNextCaptureControls extends StatelessWidget {
                         title: const Text('Omi CV1'),
                         subtitle: Text(cv1DeviceStatus(context, link)),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          unawaited(showNextDevices(context, inputs, library: library));
-                        },
+                        onTap: link.importingStorage
+                            ? null
+                            : () {
+                                unawaited(showNextDevices(context, inputs, library: library));
+                              },
                       ),
                       ListTile(
                         leading: Icon(Icons.monitor_heart_outlined, color: NextAccent.teal.of(context)),
@@ -800,6 +832,8 @@ class LocalNextCaptureControls extends StatelessWidget {
                                     '${pairedSettingsLabel(context, 'nextImportRecordCount')} ${inputs.importedRecords}'
                                   else if (inputs.importWindows > 0)
                                     '${inputs.importWindowsDone} / ${inputs.importWindows}',
+                                  if (inputs.importMissingRecords > 0)
+                                    '${pairedSettingsLabel(context, 'nextImportMissingRecords')} ${inputs.importMissingRecords}',
                                   if (inputs.importedAudio case final duration?)
                                     '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
                                 ].join(' · '),

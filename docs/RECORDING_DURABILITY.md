@@ -74,8 +74,11 @@ on the pendant. Its audio download protocol advances the ring cursor after BLE
 transmission completes, before a phone can acknowledge a durable journal write.
 On iOS and Android, **Import oldest CV1 audio** offers one fragment, a series
 of up to 32 fragments, or **Sync entire CV1**. Full sync queues each series and
-continues to the initial archive boundary. Each Bluetooth request carries up to
-32 legacy records. Stop finishes the current fragment before ending the run. Repeated records at a window boundary
+continues to the initial archive boundary. After loss of Bluetooth it queues
+the complete records already received, then waits for the same CV1 to reconnect.
+Repeated sequences are verified against the last saved record hashes before the
+next audio is queued. Each Bluetooth request carries up to 32 legacy records.
+Stop finishes the current fragment or cancels the wait before ending the run. Repeated records at a window boundary
 are compared by sequence and content before being removed from the incoming stream. The phone retains the complete records, separates intervals at
 clock discontinuities and queues them with their original timestamps. If processing
 fails, the raw fragment stays bound to that server and can be retried offline.

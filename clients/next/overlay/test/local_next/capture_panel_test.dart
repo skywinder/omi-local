@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/l10n/app_localizations.dart';
@@ -90,10 +92,19 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
 }
 
 class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
+  _ArchiveWire({this.records = 32 * 32 + 12, this.interrupt = false});
+
+  final int records;
+  final bool interrupt;
   int oldest = 0;
   int reads = 0;
-  static const records = 32 * 32 + 12;
+  final starts = <(int, int)>[];
   static const target = 'test-cv1';
+
+  void restoreAt(int oldest) {
+    this.oldest = oldest;
+    emit(Cv1TransportState(Cv1LinkPhase.ready, ++generation, codec: 20, deviceId: target));
+  }
 
   @override
   Future<void> sampleDiagnostics() async {
@@ -123,17 +134,23 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget selected, int expectedStart, int maxRecords) async {
     expect(selected.deviceId, target);
     expect(expectedStart, oldest);
-    expect(maxRecords, reads == 32 ? 12 : 32);
-    final bytes = Uint8List(maxRecords * 444);
+    expect(selected.generation, generation);
+    starts.add((generation, expectedStart));
+    final partial = interrupt && reads == 1;
+    final count = partial ? 10 : maxRecords;
+    final bytes = Uint8List(count * 444);
     final data = ByteData.sublistView(bytes);
-    for (var i = 0; i < maxRecords; i++) {
+    for (var i = 0; i < count; i++) {
       final offset = i * 444;
       data.setUint32(offset, 1700000000 + (oldest + i) ~/ 50);
-      bytes.setRange(offset + 4, offset + 7, const [2, 8, 33]);
+      bytes.setRange(offset + 4, offset + 7, [2, 8, (oldest + i) & 255]);
     }
-    oldest += maxRecords;
+    oldest += count;
     reads++;
-    return (bytes: bytes, start: expectedStart, complete: true);
+    if (partial) {
+      emit(Cv1TransportState(Cv1LinkPhase.reconnecting, ++generation, deviceId: target));
+    }
+    return (bytes: bytes, start: expectedStart, complete: !partial);
   }
 }
 
@@ -556,7 +573,8 @@ void main() {
       await journal.drain();
       expect(wire.reads, 33);
       expect(wire.wakeChanges, [true, false]);
-      expect(inputs.importedRecords, _ArchiveWire.records);
+      expect(wire.oldest, wire.records);
+      expect(inputs.importedRecords, wire.records);
       expect(inputs.importedAudio, const Duration(milliseconds: 20720));
       expect(inputs.archiveMessage, 'nextImportAllSaved');
       expect(journal.pendingParts, 2);
@@ -569,6 +587,73 @@ void main() {
       await folder.delete(recursive: true);
     }
   });
+
+  for (final resumeAt in [36, 44, null]) {
+    test('full sync protects the saved prefix across a reconnect at $resumeAt', () async {
+      final folder = await Directory.systemTemp.createTemp('next-cv1-reconnect-');
+      final received = <int>[];
+      final parts = <String>{};
+      final journal = LocalAudioJournal(
+        directory: folder,
+        upload: (body, owner) async {
+          final data = ByteData.sublistView(body);
+          final headerBytes = data.getUint32(8);
+          final header = jsonDecode(utf8.decode(body.sublist(12, 12 + headerBytes))) as Map<String, dynamic>;
+          expect(parts.add(header['id'] as String), isTrue);
+          for (var offset = 12 + headerBytes; offset < body.length; offset += 6) {
+            received.add(body[offset + 5]);
+          }
+          return {'stored': true, 'id': header['id'], 'sha256': sha256.convert(body).toString()};
+        },
+      );
+      final wire = _ArchiveWire(records: 96, interrupt: true);
+      final mic = _Microphone();
+      final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture-owner', mic), wire);
+      try {
+        await journal.initialize();
+        wire.emit(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: _ArchiveWire.target));
+        await wire.sampleDiagnostics();
+        final paused = Completer<void>();
+        inputs.addListener(() {
+          if (inputs.archiveMessage == 'nextImportReconnecting' && !paused.isCompleted) paused.complete();
+        });
+        final sync = inputs.importOldest(inputs.connection.importTarget!, windows: null);
+        await paused.future.timeout(const Duration(seconds: 3));
+        expect(inputs.importedRecords, 42);
+        expect(wire.wakeChanges, [true]);
+        await journal.drain();
+        expect(received, List.generate(42, (i) => i));
+        if (resumeAt == null) {
+          inputs.stopImport();
+        } else {
+          wire.restoreAt(resumeAt);
+        }
+        await sync.timeout(const Duration(seconds: 3));
+        await journal.drain();
+        expect(wire.wakeChanges, [true, false]);
+        expect(journal.pendingParts, 0);
+        if (resumeAt == null) {
+          expect(inputs.archiveMessage, 'nextImportStopped');
+          expect(wire.starts, [(1, 0), (1, 32)]);
+        } else {
+          final missed = (resumeAt - 42).clamp(0, 96);
+          expect(wire.starts[2], (3, resumeAt));
+          expect(inputs.archiveMessage, 'nextImportAllSaved');
+          expect(inputs.importMissingRecords, missed);
+          expect(received, [
+            for (var i = 0; i < 96; i++)
+              if (i < 42 || i >= resumeAt) i,
+          ]);
+        }
+      } finally {
+        await inputs.close();
+        inputs.dispose();
+        journal.dispose();
+        await mic.audioSession.close();
+        await folder.delete(recursive: true);
+      }
+    });
+  }
 
   testWidgets('partial CV1 measurements keep storage and following actions anchored while scrolling', (tester) async {
     tester.view.devicePixelRatio = 1;

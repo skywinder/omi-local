@@ -25,7 +25,7 @@ class Cv1Archive {
   static const _record = RingProtocol.recordSize;
 
   /// Each completed append is flushed before the next consuming Bluetooth request.
-  Future<int> append(Uint8List bytes, String deviceId, int sequence, int codec) async {
+  Future<int> append(Uint8List bytes, String deviceId, int sequence, int codec, {int? verifyThrough}) async {
     if (bytes.isEmpty ||
         bytes.length % _record != 0 ||
         bytes.length > maxRecords * _record ||
@@ -45,8 +45,9 @@ class Cv1Archive {
     final previous = _lastWindow ?? saved?.hashes ?? const <String>[];
     final overlapCount = (_nextSequence ?? saved?.end ?? sequence) - sequence;
     final repeated = _verifiedOverlap(previous, overlapCount, hashes);
-    if (_lastWindow != null && repeated == null) {
-      if (overlapCount > 0) {
+    final mustVerify = verifyThrough != null && sequence < verifyThrough;
+    if (repeated == null && (_lastWindow != null || mustVerify)) {
+      if (overlapCount > 0 || mustVerify) {
         final changed = await newWindowFile(sequence, bytes);
         await changed.writeAsBytes(bytes, flush: true);
       }

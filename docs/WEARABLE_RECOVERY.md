@@ -6,10 +6,13 @@ fragment (up to 32 records), a series of up to 32 fragments, or **Sync entire
 CV1**. Full sync reads up to the archive's end at the start of the run and
 publishes each series to the phone queue while reading the next one. The app
 keeps the screen awake while in the foreground and shows the number of new
-records received. Stop saves the current Bluetooth request and ends the run.
-Start sync again to read what remains. Firmware 3.0.21 releases records during
-transfer, so a disconnect or app termination before the phone writes the data
-can lose some records.
+records received. A Bluetooth interruption saves the complete records already
+received and pauses full sync. Next resumes when the same CV1 reconnects and
+reports its archive. It compares repeated records with the saved checkpoint and
+reports any missing range if the firmware advanced past the last saved record.
+Stop saves the current request and ends the run or cancels the wait. Firmware
+3.0.21 can release records before the phone writes them. After app termination,
+open Next and start sync again to continue.
 
 ## Verified boundaries
 
@@ -91,8 +94,10 @@ after publication to the phone outbox. These verify the boundary when another
 manual import starts. An interrupted reply can contain only part of the already
 saved range. Next verifies the records it received and skips a matching prefix.
 Recovery also skips staged fragments from previous versions when every complete
-record matches the saved checkpoint. A forward jump beyond the saved range
-stops the series.
+record matches the saved checkpoint. A forward jump on an active link stops
+the series. After reconnect, full sync continues with available records and
+reports the gap. A changed device, incompatible codec or backwards reset ends
+the run.
 After a restart the phone publishes the complete staged records with their
 original times; starting another Bluetooth read requires the user's action.
 Continuous audio is combined across windows; a clock jump or a part limit
