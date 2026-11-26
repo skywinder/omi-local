@@ -40,6 +40,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
 
   private let metricServices: [CBUUID: [String: CBUUID]] = [
     CV1UUID.batteryService: ["battery": CV1UUID.battery],
+    CV1UUID.storageService: ["storageStatus": CV1UUID.storageStatus],
     CV1UUID.deviceInfo: ["firmware": CV1UUID.firmware, "hardware": CV1UUID.hardware,
                          "model": CV1UUID.model, "manufacturer": CV1UUID.manufacturer],
     CV1UUID.settings: ["led": CV1UUID.led, "gain": CV1UUID.gain, "charging": CV1UUID.charging],
@@ -507,6 +508,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case "battery":
       guard let level = data?.first, level <= 100 else { return }
       metrics[field] = Int(level)
+    case "storageStatus":
+      metrics[field] = data.flatMap { $0.count == 16 ? FlutterStandardTypedData(bytes: $0) : nil }
     case "led", "gain":
       if supportsSetting(field), metricChars[field]?.properties.contains(.write) == true {
         metrics[field + "Writable"] = true

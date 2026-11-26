@@ -42,6 +42,21 @@ request limits; the phone retains at most 32 context packets. PCM has no context
 
 ## What the status means
 
+In Next, open the gear on the conversations screen. **CV1 → phone** shows
+the last unread byte count from the connected pendant's SD ring. Both mobile
+platforms read the storage status characteristic while the CV1 is idle.
+An absent, uninitialized or incompatible response leaves the amount unknown.
+**Phone → server** counts the journal of this app installation, including
+its open part. The original Local app and Next each have their own journal.
+
+CV1 firmware 3.0.21 returns four little-endian words for unread bytes, unread
+444-byte packets, free bytes and RTC validity. Reading that status leaves audio
+on the pendant. Its audio download protocol advances the ring cursor after BLE
+transmission completes, before a phone can acknowledge a durable journal write.
+Next currently supports live BLE capture and phone outbox recovery. Importing
+offline SD audio requires a transfer protocol with a durable receiver checkpoint.
+See the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
+
 The Local Mac card includes the number and size of parts retained on the phone.
 Its header names the authenticated saved server (for example, `faeon`), not the
 currently edited draft. During a network outage it shows recording on the phone,

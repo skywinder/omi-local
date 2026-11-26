@@ -24,6 +24,12 @@ import 'processing_page.dart';
 import 'server_status_page.dart';
 import 'settings_labels.dart';
 
+String _storageSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1 << 20) return '${(bytes / 1024).toStringAsFixed(1)} KiB';
+  return '${(bytes / (1 << 20)).toStringAsFixed(1)} MiB';
+}
+
 class LocalNextCapturePanel extends StatefulWidget {
   const LocalNextCapturePanel({
     required this.library,
@@ -445,6 +451,7 @@ class LocalNextCaptureControls extends StatelessWidget {
   );
 
   void _settings(BuildContext context, PairedLibrary library) {
+    if (!inputs.hasCaptureInProgress) unawaited(inputs.connection.sampleDiagnostics());
     final capture = Listenable.merge([inputs, inputs.phone, inputs.cv1, inputs.ownerChange]);
     var gesture = doubleTap;
     Navigator.of(context).push(
@@ -532,13 +539,23 @@ class LocalNextCaptureControls extends StatelessWidget {
                             : l.off,
                       ),
                     ),
+                    if (hasCv1)
+                      ListTile(
+                        leading: Icon(Icons.sd_storage_outlined, color: NextAccent.teal.of(context)),
+                        title: Text(pairedSettingsLabel(context, 'nextPendantOutbox')),
+                        subtitle: Text(switch (link.diagnostics?.unreadStorageBytes) {
+                          final int bytes =>
+                            '${_storageSize(bytes)} · ${pairedSettingsLabel(context, 'nextPendantLastRead')}',
+                          null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),
+                        }),
+                      ),
                     ListTile(
                       leading: Icon(Icons.cloud_upload_outlined, color: NextAccent.amber.of(context)),
                       title: Text(pairedSettingsLabel(context, 'nextPhoneOutbox')),
                       subtitle: Text(
                         [
                           if (journal.pendingParts > 0)
-                            "${pairedSettingsLabel(context, 'nextAudioOnPhone')} · ${journal.pendingParts} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB"
+                            "${pairedSettingsLabel(context, 'nextAudioOnPhone')} · ${journal.pendingParts} · ${_storageSize(journal.pendingBytes)}"
                           else if (!journal.deliveryFailed)
                             pairedSettingsLabel(context, 'nextOutboxHealthy'),
                           ..._deliveryReasons(context, journal),

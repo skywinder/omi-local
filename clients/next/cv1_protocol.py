@@ -9,6 +9,8 @@ MODEL_FIELDS = {
     'button': 'buttonTriggerCharacteristicUuid',
     'batteryService': 'batteryServiceUuid',
     'battery': 'batteryLevelCharacteristicUuid',
+    'storageService': 'storageDataStreamServiceUuid',
+    'storageStatus': 'storageReadControlCharacteristicUuid',
     'deviceInfo': 'deviceInformationServiceUuid',
     'firmware': 'firmwareRevisionCharacteristicUuid',
     'hardware': 'hardwareRevisionCharacteristicUuid',

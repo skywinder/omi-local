@@ -62,6 +62,7 @@ class Cv1Diagnostics {
     this.model,
     this.manufacturer,
     this.battery,
+    this.unreadStorageBytes,
     this.rssi,
     this.led,
     this.gain,
@@ -71,9 +72,23 @@ class Cv1Diagnostics {
   });
 
   final String? name, firmware, hardware, model, manufacturer;
-  final int? battery, rssi, led, gain;
+  final int? battery, rssi, led, gain, unreadStorageBytes;
   final bool? charging;
   final bool ledWritable, gainWritable;
+
+  // The CV1 SD ring reports four LE words. Earlier file-list firmware uses
+  // different units. An uninitialized card has no usable capacity.
+  static int? _ringBytes(Object? raw) {
+    if (raw is! Uint8List || raw.length != 16) return null;
+    final data = ByteData.sublistView(raw);
+    final used = data.getUint32(0, Endian.little);
+    final packets = data.getUint32(4, Endian.little);
+    final free = data.getUint32(8, Endian.little);
+    final clockValid = data.getUint32(12, Endian.little);
+    const packetBytes = 444;
+    if (used != packets * packetBytes || free % packetBytes != 0 || used + free == 0 || clockValid > 1) return null;
+    return used;
+  }
 
   factory Cv1Diagnostics.fromWire(Map values) {
     int? number(String key, int min, int max) {
@@ -93,6 +108,7 @@ class Cv1Diagnostics {
       model: text('model'),
       manufacturer: text('manufacturer'),
       battery: number('battery', 0, 100),
+      unreadStorageBytes: _ringBytes(values['storageStatus']),
       rssi: number('rssi', -127, -1),
       led: number('led', 0, 100),
       gain: number('gain', 0, 100),

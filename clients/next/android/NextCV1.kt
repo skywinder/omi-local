@@ -413,6 +413,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         }
         val fields = listOf(
             Triple(Cv1Uuid.batteryService, Cv1Uuid.battery, "battery"),
+            Triple(Cv1Uuid.storageService, Cv1Uuid.storageStatus, "storageStatus"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.firmware, "firmware"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.hardware, "hardware"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.model, "model"),
@@ -435,6 +436,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 val value = when (name) {
                     "battery", "led", "gain" -> bytes?.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 }
                     "charging" -> bytes?.firstOrNull()?.let { it.toInt() == 1 }
+                    "storageStatus" -> bytes?.takeIf { it.size == 16 }
                     else -> bytes?.takeIf { it.size <= 64 }?.toString(Charsets.UTF_8)?.trim('\u0000', ' ')?.takeIf { it.isNotEmpty() }
                 }
                 if (value != null) stats[name] = value
