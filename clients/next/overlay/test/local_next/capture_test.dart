@@ -4,11 +4,34 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:omi/local_next/capture.dart';
 import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
+
+class _Recorder implements FlutterSoundRecorder {
+  final events = <String>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName == #openRecorder) {
+      events.add('open');
+      return Future<FlutterSoundRecorder?>.value(this);
+    }
+    if (invocation.memberName == #startRecorder) {
+      events.add('start');
+      return Future<void>.value();
+    }
+    if (invocation.memberName == #closeRecorder) {
+      events.add('close');
+      return Future<void>.value();
+    }
+    return super.noSuchMethod(invocation);
+  }
+}
 
 class TestMic implements NextPhoneMicrophone {
   @override
@@ -58,6 +81,30 @@ class _Watchdog implements Timer {
 }
 
 void main() {
+  test('phone capture configures iOS speaker routing before starting the recorder', () async {
+    final recorder = _Recorder();
+    final microphone = FlutterPhoneMicrophone(
+      requestPermission: () async => true,
+      makeRecorder: () => recorder,
+      isIOS: true,
+      configureSession: (configuration) async {
+        recorder.events.add('configure');
+        expect(configuration.avAudioSessionCategory, AVAudioSessionCategory.playAndRecord);
+        expect(
+          configuration.avAudioSessionCategoryOptions!.contains(AVAudioSessionCategoryOptions.defaultToSpeaker),
+          isTrue,
+        );
+        expect(
+          configuration.avAudioSessionCategoryOptions!.contains(AVAudioSessionCategoryOptions.allowBluetooth),
+          isTrue,
+        );
+      },
+    );
+    await microphone.start((_) {}, () {});
+    await microphone.stop();
+    expect(recorder.events, ['open', 'configure', 'start', 'close']);
+  });
+
   test('system interruption and lost PCM recover within the same durable recording', () async {
     final scratch = await Directory.systemTemp.createTemp();
     addTearDown(() => scratch.delete(recursive: true));
