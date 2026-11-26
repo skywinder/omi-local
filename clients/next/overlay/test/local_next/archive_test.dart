@@ -550,6 +550,8 @@ void main() {
     await _show(tester, library);
     expect(find.textContaining('iPhone Air · Phone microphone'), findsOneWidget);
     expect(find.textContaining('HTTP 503'), findsOneWidget);
+    final failureIcon = tester.widget<Icon>(find.byIcon(Icons.error_outline).last);
+    expect(failureIcon.color, tester.widget<Text>(find.textContaining('HTTP 503')).style!.color);
     expect(find.textContaining('Attempts: 3'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     library.close();
@@ -680,6 +682,7 @@ void main() {
     TranscriptWidget transcript() => tester.widget<TranscriptWidget>(find.byType(TranscriptWidget));
     final slider = find.byType(Slider);
     expect(transcript().currentSegmentId, isNull);
+    expect(tester.widget<Slider>(slider).activeColor, isNotNull);
     final bounds = tester.getRect(slider).deflate(24);
     for (final (fraction, segment) in [(0.75, 'second'), (0.5, null), (0.16, 'first')]) {
       await tester.tapAt(Offset(bounds.left + fraction * bounds.width, bounds.center.dy));
@@ -832,7 +835,7 @@ void main() {
     expect(find.byType(ConversationStateTile), findsNWidgets(2));
     expect(find.text('📌'), findsNWidgets(2));
     expect(find.text('Recording'), findsOneWidget);
-    expect(find.textContaining(' · Pending'), findsOneWidget);
+    expect(find.text('Pending'), findsOneWidget);
     expect(find.text('Wire placeholder'), findsNothing);
     expect(find.byType(OmiPartialNotice), findsOneWidget);
     await tester.tap(find.text('show more ↓'));

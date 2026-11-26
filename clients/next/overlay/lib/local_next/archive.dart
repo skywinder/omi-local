@@ -498,12 +498,20 @@ class _ArchiveRow extends StatelessWidget {
     final showCategory = local == null && row.status == ConversationStatus.completed;
     final useCategoryEmoji =
         showCategory && category != 'other' && const {'', '🧠', '💬', '🎙️'}.contains(row.structured.emoji.trim());
+    final status = local == null ? row.status.name : local['status'];
+    final (stageAccent, stageIcon) = switch (status) {
+      'failed' => (NextAccent.red, Icons.error_outline),
+      'processing' => (NextAccent.blue, Icons.graphic_eq),
+      'pending' || 'waiting_for_parts' => (NextAccent.amber, Icons.schedule),
+      'receiving' => (NextAccent.teal, Icons.downloading_outlined),
+      'no_speech' => (NextAccent.slate, Icons.mic_off_outlined),
+      _ => (NextAccent.slate, Icons.inventory_2_outlined),
+    };
     final meta = [
       OmiDateFormat.of(context).time(started),
       if (recordingInput(context, row).isNotEmpty) recordingInput(context, row),
       if (duration > 0) OmiDuration.compact(duration, context.l10n),
       if (showCategory) conversationCategoryName(context, category),
-      if (local != null || row.status != ConversationStatus.completed) recordingStatus(context, row),
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -540,12 +548,31 @@ class _ArchiveRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
-                      Text(
-                        meta,
-                        style: OmiType.footnote.copyWith(
-                          color: failed ? NextAccent.red.of(context) : OmiColors.textTertiary,
+                      Text(meta, style: OmiType.footnote.copyWith(color: OmiColors.textTertiary)),
+                      if (local != null || row.status != ConversationStatus.completed)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(color: stageAccent.tint(context), borderRadius: OmiRadius.smAll),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(stageIcon, size: 16, color: stageAccent.of(context)),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      recordingStatus(context, row),
+                                      style: OmiType.footnote.copyWith(color: stageAccent.of(context)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

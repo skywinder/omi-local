@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'accents.dart';
+
 class RecordingPlayerBar extends StatefulWidget {
   const RecordingPlayerBar({
     super.key,
@@ -44,6 +46,7 @@ class _RecordingPlayerBarState extends State<RecordingPlayerBar> {
             children: [
               Expanded(
                 child: Slider(
+                  activeColor: NextAccent.teal.of(context),
                   value: position,
                   max: length > 0 ? length : 1,
                   semanticFormatterCallback: clock,
@@ -70,7 +73,13 @@ class _RecordingPlayerBarState extends State<RecordingPlayerBar> {
                     ? () => widget.onSeek!(Duration(milliseconds: (position - 10000).clamp(0.0, length).round()))
                     : null,
               ),
-              IconButton(
+              IconButton.filledTonal(
+                style: widget.onToggle == null
+                    ? null
+                    : IconButton.styleFrom(
+                        backgroundColor: NextAccent.teal.tint(context),
+                        foregroundColor: NextAccent.teal.of(context),
+                      ),
                 tooltip: widget.playing ? context.l10n.pause : context.l10n.play,
                 icon: Icon(widget.playing ? Icons.pause : Icons.play_arrow),
                 onPressed: widget.onToggle,
