@@ -76,7 +76,12 @@ Earlier Bastion web releases kept a published summary in
 overview and model attribution for imported recordings, including while a later
 attempt is pending. It leaves that history on disk. New requests from the web
 and Next both use the shared `summary-jobs` queue. Before replacing an older
-deployment, verify that its historical jobs have finished.
+deployment, verify that its historical jobs have finished. On November 26 the
+installed legacy worker still called the importer with `--summary-update`.
+The shared queue publishes through `scripts.local_summary_worker`. Rehearse
+the importer and worker together on an isolated copy before switching the
+production image. The deployed import also writes `summary-initial.json` beside
+the full transcript; include an existing long result when checking detail reads.
 
 ## Paired task reminders
 
