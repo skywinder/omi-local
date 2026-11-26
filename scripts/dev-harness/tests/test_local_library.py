@@ -525,7 +525,8 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
         return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
             'live_transcript': {'state': 'streaming', 'updates': 1},
             'diarization': {'state': 'labeled', 'labeled_segments': 2},
-            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик',
+                          'segments': [{'text': 'Синтетический черновик'}]}]})
     factory = httpx.Client
     def client(**kwargs):
         assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
@@ -540,7 +541,8 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
     assert data['diarization'] == {'state': 'labeled', 'labeled_segments': 2}
     assert b'synthetic-private-key' not in body
     assert 'Синтетический черновик' not in json.dumps(data['events'], ensure_ascii=False)
-    assert 'text' not in runtime.previous['sessions'][0]
+    assert data['sessions'][0]['segments'][0]['text'] == 'Синтетический черновик'
+    assert runtime.previous['sessions'] == [{'preview_id': 'ephemeral-draft', 'source': 'phone'}]
     for headers in [{'Host': 'attacker.example'}, {'Origin': 'https://attacker.example'},
                     {'X-Forwarded-For': '127.0.0.1'}, {'Sec-Fetch-Site': 'cross-site'}]:
         assert request(library, '/api/runtime', headers=headers, runtime=runtime)[0] == 403

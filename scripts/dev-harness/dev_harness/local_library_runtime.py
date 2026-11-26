@@ -107,7 +107,7 @@ class Runtime:
                 if jobs[state] > old_jobs[state]:
                     self._event(message)
         # Retain only counters/ephemeral identity for event comparison, never draft text.
-        self.previous = {**current, 'sessions': [{k: v for k, v in s.items() if k != 'text'} for s in sessions]}
+        self.previous = {**current, 'sessions': [{'preview_id': s.get('preview_id'), 'source': s['source']} for s in sessions]}
 
     def snapshot(self):
         with self.lock:
