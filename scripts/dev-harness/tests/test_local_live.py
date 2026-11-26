@@ -153,6 +153,54 @@ def test_explicit_provider_off_disables_live_without_falling_back_to_parakeet(cf
     local_setup.require_transcription_ready(cfg)
 
 
+def test_selected_parakeet_starts_owned_worker_on_each_service_start(cfg, monkeypatch):
+    from dev_harness import local_stt_services
+
+    calls = []
+    monkeypatch.setattr(local_stt_services, 'start_provider_relay', lambda _: None)
+    monkeypatch.setattr(local_stt_services, 'preflight_argmax', lambda _: {})
+    monkeypatch.setattr(local_live, 'start', lambda actual, **kwargs: calls.append((actual, kwargs)))
+    live = {'provider': 'parakeet-local', 'url': f'ws://127.0.0.1:{local_live.port(cfg)}/asr'}
+    local_stt_services.start_configured(cfg, live_override=live)
+    local_stt_services.start_configured(cfg, live_override=live)
+    assert calls == [(cfg, {'managed_override': True}), (cfg, {'managed_override': True})]
+    with pytest.raises(local_stt_services.ServiceError, match='owned loopback port'):
+        local_stt_services.start_configured(cfg, live_override={**live, 'url': 'ws://127.0.0.1:19999/asr'})
+    from dataclasses import replace
+    with pytest.raises(local_stt_services.ServiceError, match='native Mac'):
+        local_stt_services.start_configured(replace(cfg, container_runtime=True), live_override=live)
+
+
+def test_first_save_then_cold_restart_starts_the_selected_parakeet(cfg, monkeypatch):
+    from dev_harness import local_stt_services
+    from dev_harness.local_providers import Registry
+
+    registry = Registry(cfg)
+    saved = registry.save({'revision': 0, 'profile': {
+        'name': 'Synthetic summary', 'stage': 'summary', 'kind': 'openai-compatible',
+        'settings': {'base_url': 'https://synthetic.example/v1', 'model': 'synthetic'}}})
+    assert saved['effective']['live']['kind'] == 'parakeet-local'
+    records, starts = {}, []
+    monkeypatch.setattr(local_stt_services, 'start_provider_relay', lambda _: None)
+    monkeypatch.setattr(local_stt_services, 'preflight_argmax', lambda _: {})
+    monkeypatch.setattr(cli, '_require_port_available_or_owned', lambda *_: None)
+    monkeypatch.setattr(cli, '_service_record', lambda _cfg, name: records.get(name))
+    monkeypatch.setattr(local_live_install, 'installed', lambda _: (Path('/synthetic/worker'), Path('/synthetic/models')))
+    monkeypatch.setattr(local_live, 'health', lambda _cfg, **kw: {'ready': 'live-preview' in records, 'active': False})
+
+    def start(_cfg, service, command, **kwargs):
+        starts.append((service, command))
+        records[service] = {'service': service}
+
+    monkeypatch.setattr(cli, '_start_process', start)
+    local_stt_services.start_configured(cfg)
+    assert [service for service, _ in starts] == ['live-preview']
+    assert 'local_live_preview.serve_parakeet' in starts[0][1]
+    records.clear()  # Simulate an orderly process shutdown and a fresh startup.
+    local_stt_services.start_configured(cfg)
+    assert [service for service, _ in starts] == ['live-preview', 'live-preview']
+
+
 @pytest.mark.parametrize('enabled', [False, True])
 def test_registry_owns_live_without_legacy_file(cfg, monkeypatch, enabled):
     from dev_harness.local_providers import Registry

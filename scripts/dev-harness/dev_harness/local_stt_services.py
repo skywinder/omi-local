@@ -41,7 +41,7 @@ def snapshot_settings(snapshot):
     try:
         data['url'] = validate_url(data['url'], websocket=True)
         parsed = urlsplit(data['url'])
-        if data['provider'] not in {'external', 'whisperlivekit'}:
+        if data['provider'] not in {'external', 'whisperlivekit', 'parakeet-local'}:
             raise ValueError()
         if data['provider'] == 'whisperlivekit':
             if parsed.scheme != 'ws' or parsed.hostname != '127.0.0.1' or not parsed.port or parsed.path != '/asr':
@@ -184,6 +184,13 @@ def start_configured(cfg, *, live_override=_UNSET, include_argmax=True, start_re
     if start_relay and registry_exists(cfg):
         start_provider_relay(cfg)
     live = live_settings(cfg) if live_override is _UNSET else live_override
+    if live.get('provider') == 'parakeet-local':
+        from . import local_live
+        if cfg.container_runtime:
+            raise ServiceError('Local Parakeet requires the native Mac runtime')
+        if live.get('url') != f'ws://127.0.0.1:{local_live.port(cfg)}/asr':
+            raise ServiceError('Local Parakeet must use its owned loopback port')
+        local_live.start(cfg, managed_override=True)
     diarization = diarization_settings(live)
     commands = []
     if argmax.get('enabled'):

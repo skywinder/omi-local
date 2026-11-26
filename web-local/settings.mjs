@@ -6,7 +6,7 @@ export const stages = {
   translation: {title: 'Перевод', description: 'По умолчанию используется активная модель суммаризации подключённого сервера. Здесь можно выбрать отдельную модель. Язык и включение перевода — в приложении.'},
 };
 const kinds = {
-  live: {'whisperlivekit': 'WhisperLiveKit · на сервере Omi', external: 'Сервер по WebSocket · протокол WLK'},
+  live: {'whisperlivekit': 'WhisperLiveKit · на сервере Omi', 'parakeet-local': 'Parakeet · на сервере Omi', external: 'Сервер по WebSocket · протокол WLK'},
   stt: {whisperkit: 'WhisperKit · на сервере Omi', whisperx: 'WhisperX · на сервере Omi', 'parakeet-mlx': 'Parakeet MLX · на сервере Omi', 'openai-compatible': 'Сервер по API · OpenAI-совместимый'},
   diarization: {pyannote: 'Pyannote · на сервере Omi', mycelia: 'Сервер по API · Mycelia'},
   summary: {'openai-compatible': 'OpenAI-совместимая LLM'},
@@ -27,7 +27,7 @@ export function providerDefaults(stage, kind = Object.keys(kinds[stage])[0]) {
     ? {speaker_model: 'pyannote/speaker-diarization-community-1', speaker_device: 'cpu', speaker_threads: 4, speaker_count: 0}
     : {base_url: ''};
   if (stage === 'summary' || stage === 'translation') settings = {base_url: '', model: '', reasoning: 'default'};
-  if (stage === 'live') settings = kind === 'external' ? {url: ''}
+  if (stage === 'live') settings = kind === 'parakeet-local' ? {} : kind === 'external' ? {url: ''}
     : {url: 'ws://127.0.0.1:10302/asr', python: '', model_dir: '', language: 'ru', chunk_seconds: 4};
   return {name: '', stage, kind, settings};
 }
@@ -35,6 +35,7 @@ export function providerDefaults(stage, kind = Object.keys(kinds[stage])[0]) {
 const field = (key, label, extras = {}) => ({key, label, ...extras});
 export function providerFields(profile) {
   const {stage, kind} = profile;
+  if (stage === 'live' && kind === 'parakeet-local') return [];
   if (stage === 'live') return kind === 'external'
     ? [field('url', 'WebSocket URL', {required: true, placeholder: 'wss://server.example/asr'})]
     : [field('url', 'Локальный WebSocket URL', {required: true}), field('python', 'Python подготовленного сервера', {required: true}), field('model_dir', 'Папка модели', {required: true}),

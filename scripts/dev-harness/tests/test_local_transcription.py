@@ -374,6 +374,23 @@ def test_owned_argmax_cold_start_preflights_files_then_starts_before_http(owned_
     assert {name: (cfg.layout.state_root / name).read_bytes() for name in before} == before
 
 
+def test_startup_accepts_explicitly_disabled_live_provider(owned_argmax, monkeypatch):
+    from dev_harness import local_mac, local_stt_services
+    cfg, _binary, _events = owned_argmax
+    original_health = local_stt_services.health
+    monkeypatch.setattr(local_stt_services, 'registry_exists', lambda _: True)
+    monkeypatch.setattr(local_stt_services, 'live_settings', lambda _: {})
+    monkeypatch.setattr(local_stt_services, 'live_url', lambda _: 'ws://127.0.0.1:20004/asr')
+    monkeypatch.setattr(local_stt_services, 'start_provider_relay', lambda _: None)
+
+    def health(actual, service, *args):
+        assert service != 'live-stt', 'Disabled Live must not be checked as an enabled worker'
+        return original_health(actual, service, *args)
+
+    monkeypatch.setattr(local_stt_services, 'health', health)
+    assert local_mac.up(cfg) == 0
+
+
 @pytest.mark.parametrize('entrypoint', ['start', 'up'])
 def test_owned_argmax_missing_binary_does_not_start_unrelated_services(owned_argmax, entrypoint):
     from dev_harness import local_mac, local_setup
