@@ -1,6 +1,6 @@
 # Recovering audio from Omi after Bluetooth loss
 
-Next on Android supports manual extraction of a short interval from a legacy CV1.
+Next on Android and iOS supports manual extraction of a short interval from a legacy CV1.
 Open Settings and diagnostics → Import oldest CV1 audio after stopping capture.
 Each confirmation requests up to 32 records (14,208 bytes) from the oldest
 unread position. Firmware 3.0.21 releases records during transfer. A disconnect
@@ -14,7 +14,7 @@ source, not a readback of a particular device's installed binary or storage.
 
 | Interval | Current path | Recovery limitation |
 | --- | --- | --- |
-| Bluetooth disconnected | Firmware writes packed Opus records to SD when storage is available and its clock is valid. | Android Next can import the oldest legacy records. Actual stored coverage must be measured. |
+| Bluetooth disconnected | Firmware writes packed Opus records to SD when storage is available and its clock is valid. | Next can import the oldest legacy records. Actual stored coverage must be measured. |
 | Connected, audio notifications not ready | Firmware removes frames from its transmission queue but neither sends nor stores them. | Downloading the existing ring cannot recover frames that were never stored. |
 | Phone receives audio, live ASR not ready | The app journals received frames before attempting live preview. | Final processing can recover journaled audio; a replacement live preview currently starts with new audio. |
 
@@ -69,7 +69,7 @@ It confirmed advance for one-record completion, a newer start that skips older
 history, and periodic advance without an application receipt. This is a software
 boundary check, not a physical transfer test.
 
-The manual Android transfer checks the current connection, legacy INFO, acknowledged
+The manual transfer checks the current connection, legacy INFO, acknowledged
 read window, complete record boundaries and closing cursor. On interruption it
 keeps whole records received after a matching READ_BEGIN. The phone flushes the
 raw fragment to the selected server's private directory, validates the stored
@@ -109,5 +109,6 @@ releases each phone part. Live capture and ring import run separately.
    immediately after Bluetooth loss. Software tests alone cannot establish that
    every phrase is recovered.
 
-The iOS client currently exposes storage measurement and explicit clear. Manual
-extraction and receiver-acknowledged recovery are separate implementation steps there.
+Android has physical CV1-to-Bastion evidence for the legacy manual transfer, including
+an offline phone. On iOS, device acceptance still needs a disposable legacy window.
+Both platforms require separate work for receiver-acknowledged bulk recovery.

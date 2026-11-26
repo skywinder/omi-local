@@ -722,7 +722,6 @@ class LocalNextCaptureControls extends StatelessWidget {
                         }),
                       ),
                     if (hasCv1 &&
-                        defaultTargetPlatform == TargetPlatform.android &&
                         (link.diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy ||
                             inputs.archiveMessage != null))
                       ListTile(

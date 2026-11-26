@@ -431,8 +431,7 @@ class Cv1Connection extends ChangeNotifier {
   bool importingStorage = false;
 
   Cv1StorageTarget? get importTarget =>
-      defaultTargetPlatform == TargetPlatform.android &&
-          _transport is Cv1ArchiveTransport &&
+      _transport is Cv1ArchiveTransport &&
           !clearingStorage &&
           !importingStorage &&
           diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy

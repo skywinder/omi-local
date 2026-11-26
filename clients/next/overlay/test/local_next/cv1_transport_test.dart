@@ -36,7 +36,15 @@ class _Radio implements Cv1Transport {
   Future<void> close() => stream.close();
 }
 
-class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1DiagnosticsTransport {
+class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1DiagnosticsTransport, Cv1ArchiveTransport {
+  final read = Completer<Cv1ArchiveBatch>();
+  final reads = <Cv1StorageTarget>[];
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) {
+    reads.add(target);
+    return read.future;
+  }
+
   final clears = <Cv1StorageTarget>[];
   var reply = Completer<bool>();
   void Function()? sample;
@@ -183,6 +191,53 @@ void main() {
     } finally {
       await connection.close();
       connection.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
+  test('iOS admits one manual legacy read on the confirmed link and retains a partial reply', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final folder = await Directory.systemTemp.createTemp('next-ios-archive-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _StorageRadio();
+    final link = Cv1Connection(radio, capture);
+    void report(Cv1StorageProtocol protocol) {
+      radio.stream.add(
+        Cv1DiagnosticsEvent(
+          1,
+          Cv1Diagnostics(
+            storage: (unreadBytes: 888, freeBytes: 4440, clockValid: true),
+            storageInfo: (unreadPackets: 2, overwrittenPackets: 0, protocol: protocol),
+          ),
+        ),
+      );
+    }
+
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: 'selected'));
+      report(Cv1StorageProtocol.receiverAcknowledgement);
+      expect(link.importTarget, isNull);
+      report(Cv1StorageProtocol.legacy);
+      final target = link.importTarget!;
+      final operation = link.readOldest(target);
+      expect(link.importTarget, isNull);
+      expect(await link.clearStorage(target), Cv1ClearResult.unavailable);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
+      // The old link can still return records already received into its own transfer.
+      radio.read.complete((bytes: Uint8List(444), start: 17, complete: false));
+      final result = await operation;
+      expect(result.bytes.length, 444);
+      expect(result.complete, isFalse);
+      await expectLater(link.readOldest(target), throwsA(isA<PlatformException>()));
+      expect(radio.reads, [target]);
+    } finally {
+      await link.close();
+      link.dispose();
       await capture.close();
       capture.dispose();
       journal.dispose();

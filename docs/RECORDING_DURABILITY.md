@@ -72,7 +72,7 @@ CV1 firmware 3.0.21 returns four little-endian words for unread bytes, unread
 444-byte packets, free bytes and RTC validity. Reading that status leaves audio
 on the pendant. Its audio download protocol advances the ring cursor after BLE
 transmission completes, before a phone can acknowledge a durable journal write.
-On Android, **Import oldest CV1 audio** requests up to 32 legacy records per
+On iOS and Android, **Import oldest CV1 audio** requests up to 32 legacy records per
 confirmation. The phone retains the complete records, separates intervals at
 clock discontinuities and queues them with their original timestamps. If processing
 fails, the raw fragment stays bound to that server and can be retried offline.
