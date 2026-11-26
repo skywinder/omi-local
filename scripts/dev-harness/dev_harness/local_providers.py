@@ -19,7 +19,7 @@ from .local_provider_http import auth_headers, validate_url
 
 
 STAGES = ('live', 'stt', 'diarization', 'summary', 'translation')
-KINDS = {'live': {'external', 'whisperlivekit'},
+KINDS = {'live': {'external', 'whisperlivekit', 'parakeet-local'},
          'stt': {'whisperkit', 'whisperx', 'parakeet-mlx', 'openai-compatible'},
          'diarization': {'pyannote', 'mycelia'}, 'summary': {'openai-compatible'},
          'translation': {'openai-compatible'}}
@@ -164,6 +164,11 @@ def validate_profile(value, *, models=False):
             raise SettingsError('Язык не поддерживается выбранным движком.', field='language')
     elif stage == 'live':
         data['url'] = endpoint(data, 'url', websocket=True)
+        if kind == 'parakeet-local':
+            from urllib.parse import urlsplit
+            parsed = urlsplit(data['url'])
+            if parsed.scheme != 'ws' or parsed.hostname != '127.0.0.1' or parsed.path != '/asr' or set(data) != {'url'}:
+                raise SettingsError('Локальный Parakeet требует локальный адрес /asr.', field='url')
         if kind == 'whisperlivekit':
             from urllib.parse import urlsplit
             parsed = urlsplit(data['url'])
@@ -265,6 +270,20 @@ class Registry:
                         'settings': {k: v for k, v in live.items() if k in LIVE_FIELDS}}
             state['profiles'].append(snapshot)
             if live.get('enabled'):
+                state['effective']['live'] = deepcopy(snapshot)
+        elif (not (self.root / 'live-stt.json').exists()
+              and getattr(self.cfg, 'local_transport', None) in {'ngrok', 'tailscale'}
+              and not getattr(self.cfg, 'container_runtime', False)):
+            from . import local_live
+            preview = local_live.settings(self.cfg)
+            address = f'ws://127.0.0.1:{local_live.port(self.cfg)}/asr'
+            default_url = not preview.get('url') or (
+                not (self.root / 'live-preview.json').exists() and preview['url'] == address)
+            if preview['enabled'] and default_url:
+                snapshot = {'id': 'local-parakeet-live', 'name': 'Parakeet на этом Mac', 'stage': 'live',
+                            'kind': 'parakeet-local',
+                            'settings': {'url': address}}
+                state['profiles'].append(snapshot)
                 state['effective']['live'] = deepcopy(snapshot)
         return state
 

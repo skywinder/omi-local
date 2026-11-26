@@ -153,6 +153,24 @@ def test_explicit_provider_off_disables_live_without_falling_back_to_parakeet(cf
     local_setup.require_transcription_ready(cfg)
 
 
+def test_selected_parakeet_starts_owned_worker_on_each_service_start(cfg, monkeypatch):
+    from dev_harness import local_stt_services
+
+    calls = []
+    monkeypatch.setattr(local_stt_services, 'start_provider_relay', lambda _: None)
+    monkeypatch.setattr(local_stt_services, 'preflight_argmax', lambda _: {})
+    monkeypatch.setattr(local_live, 'start', lambda actual, **kwargs: calls.append((actual, kwargs)))
+    live = {'provider': 'parakeet-local', 'url': f'ws://127.0.0.1:{local_live.port(cfg)}/asr'}
+    local_stt_services.start_configured(cfg, live_override=live)
+    local_stt_services.start_configured(cfg, live_override=live)
+    assert calls == [(cfg, {'managed_override': True}), (cfg, {'managed_override': True})]
+    with pytest.raises(local_stt_services.ServiceError, match='owned loopback port'):
+        local_stt_services.start_configured(cfg, live_override={**live, 'url': 'ws://127.0.0.1:19999/asr'})
+    from dataclasses import replace
+    with pytest.raises(local_stt_services.ServiceError, match='native Mac'):
+        local_stt_services.start_configured(replace(cfg, container_runtime=True), live_override=live)
+
+
 @pytest.mark.parametrize('enabled', [False, True])
 def test_registry_owns_live_without_legacy_file(cfg, monkeypatch, enabled):
     from dev_harness.local_providers import Registry

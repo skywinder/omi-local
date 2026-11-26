@@ -85,8 +85,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def health(cfg) -> dict:
-    address = selected_endpoint(cfg)
+def health(cfg, *, address=None) -> dict:
+    address = selected_endpoint(cfg) if address is None else address
     if not address:
         return {}
     host = urlsplit(address)
@@ -146,11 +146,11 @@ def prepare_inference_lock(cfg) -> Path:
     return path
 
 
-def preflight_start(cfg) -> None:
+def preflight_start(cfg, *, managed_override=False) -> None:
     from . import cli
     from .local_stt_services import live_settings
 
-    if configured_endpoint(cfg) is not None:
+    if not managed_override and configured_endpoint(cfg) is not None:
         configured = live_settings(cfg)
         # Configured native providers are started by start_configured; an
         # external provider must already be ready. Neither owns Parakeet's port.
@@ -158,15 +158,15 @@ def preflight_start(cfg) -> None:
             require_ready(cfg)
         return
 
-    if not settings(cfg)['enabled']:
+    if not managed_override and not settings(cfg)['enabled']:
         return
-    if not managed(cfg):
+    if not managed_override and not managed(cfg):
         require_ready(cfg)
         return
     cli._require_port_available_or_owned(cfg, 'live-preview', port(cfg))
     record = cli._service_record(cfg, 'live-preview')
     if record:
-        observed = health(cfg)
+        observed = health(cfg, address=f'ws://127.0.0.1:{port(cfg)}/asr') if managed_override else health(cfg)
         if not observed:
             raise LocalLiveError('Live process state is indeterminate; inspect its owned status before restarting')
         if observed.get('ready') or observed.get('recovering') or observed.get('active'):
@@ -182,19 +182,20 @@ def preflight_start(cfg) -> None:
             raise LocalLiveError('Final transcription is busy; wait for it to finish before starting live preview') from None
 
 
-def start(cfg) -> None:
+def start(cfg, *, managed_override=False) -> None:
     from . import cli, local_live_install
 
-    if configured_endpoint(cfg) is not None:
+    if not managed_override and configured_endpoint(cfg) is not None:
         return
-    if not settings(cfg)['enabled']:
+    if not managed_override and not settings(cfg)['enabled']:
         return
-    preflight_start(cfg)
-    if not managed(cfg):
+    preflight_start(cfg, managed_override=True) if managed_override else preflight_start(cfg)
+    if not managed_override and not managed(cfg):
         return
     worker, model = local_live_install.installed(cfg.repo_root)
     existing = cli._service_record(cfg, 'live-preview')
-    observed = health(cfg) if existing else {}
+    address = f'ws://127.0.0.1:{port(cfg)}/asr'
+    observed = (health(cfg, address=address) if managed_override else health(cfg)) if existing else {}
     if not existing or not any(observed.get(key) for key in ('ready', 'active', 'recovering')):
         lock_path = prepare_inference_lock(cfg)
         cli._start_process(
@@ -206,7 +207,7 @@ def start(cfg) -> None:
         )
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
-        if health(cfg).get('ready'):
+        if (health(cfg, address=address) if managed_override else health(cfg)).get('ready'):
             return
         if not cli._service_record(cfg, 'live-preview'):
             raise LocalLiveError('Live startup failed; inspect the startup_failed event in the owned live-preview log')

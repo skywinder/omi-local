@@ -5,6 +5,9 @@ import {processingRows, renderProcessing} from './recording-processing.mjs';
 
 test('adapters expose supported settings and preserve independent diarization', () => {
   assert.deepEqual(providerFields(providerDefaults('live', 'external')).map(field => field.key), ['url']);
+  const localLive = providerDefaults('live', 'parakeet-local');
+  assert.deepEqual(providerFields(localLive).map(field => field.key), ['url']);
+  assert.equal(localLive.settings.url, 'ws://127.0.0.1:18090/asr');
   assert.deepEqual(providerFields(providerDefaults('summary', 'openai-compatible')).map(field => field.key), ['base_url', 'model', 'reasoning']);
   assert.equal(providerDefaults('summary', 'openai-compatible').settings.reasoning, 'default');
   assert.deepEqual(providerFields(providerDefaults('translation')).map(field => field.key), ['base_url', 'model', 'reasoning']);

@@ -42,7 +42,7 @@ history with the recording in local Firestore.
 
 | Stage | Supported protocol or engine |
 |---|---|
-| Live STT | Prepared WhisperLiveKit; external WLK-compatible `/asr` servers, including an existing Parakeet server |
+| Live STT | Prepared local Parakeet or WhisperLiveKit; external WLK-compatible `/asr` servers |
 | Transcription | Prepared WhisperKit, WhisperX, Parakeet MLX; OpenAI-compatible `/v1/audio/transcriptions` with timestamps |
 | Finished-recording diarization | Prepared Pyannote; Mycelia `POST /diarize` |
 | Summarization | OpenAI-compatible `/chat/completions` relative to the configured base URL, usually ending in `/v1` |
@@ -91,6 +91,9 @@ in private storage for their pinned profiles.
 The first save imports settings from `stt-engine.json` and `live-stt.json` into
 private `providers.json` in the harness state directory. The editor and workers
 then use the registry; the older JSON files remain as source copies.
+On a native paired Mac, an enabled default managed Parakeet is also imported as
+the active Live profile. An explicitly disabled Live stage stays disabled. Existing
+registries without that profile require an explicit selection of a new Parakeet card.
 A previous STT engine's built-in diarization is retained as a separate card.
 Editing or importing that card preserves its embedded execution mode. To move
 to independent diarization, add a new Pyannote/Mycelia card and select it.
