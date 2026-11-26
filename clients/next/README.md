@@ -170,12 +170,16 @@ it offers a one-step change and a retest. Compare up to two levels at equal
 distance and volume. To check whether a quiet speaker starts the stream after silence, use
 **Test quiet playback**. Stay quiet for the 12-second countdown and play the
 phrase at the cue. Tap **Repeat after waking CV1**, make a short sound next to
-the pendant during the countdown, and play the same phrase at the same volume
-and distance. The two results show received duration, signal and peak. The
-comparison checks whether audio was already arriving just before each cue.
+the pendant, and wait for Next to confirm that audio arrived and start the
+two-second countdown. Then play the same phrase at the same volume and distance.
+If no audio arrives, the test offers another wake attempt. The two results show
+received duration, signal and peak. The comparison checks whether audio was
+arriving in the last second before each cue.
 Use the main microphone test to measure speech above room noise and adjust
 gain one step at a time. Two complete microphone measurements show the change
-in speech level, room level, and the difference between them. Use **Return to
+in speech level, room level, and the difference between them. If a higher
+setting improves that difference by less than 2 dB, the comparison suggests
+keeping the lower setting. Use **Return to
 previous gain** to restore the earlier tested setting. During a normal CV1
 recording, the capture status shows when the first audio has not arrived or
 when the stream has gone quiet again. Both tests run in memory on the phone

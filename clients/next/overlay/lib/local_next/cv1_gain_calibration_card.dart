@@ -60,7 +60,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   int get _countdownSeconds => switch (_test) {
     _Test.microphone => 3,
     _Test.coldPlayback => 12,
-    _Test.awakePlayback => 4,
+    _Test.awakePlayback => 2,
   };
 
   @override
@@ -106,7 +106,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
       _lastCountdownAudio = null;
       _streamingBeforeCue = false;
       _firstPlaybackAudio = null;
-      _enter(test == _Test.microphone ? _Phase.waiting : _Phase.countdown);
+      _enter(test == _Test.coldPlayback ? _Phase.countdown : _Phase.waiting);
       _tick = Timer.periodic(const Duration(milliseconds: 250), _advance);
     } catch (_) {
       _notice = 'gainTestDecoderUnavailable';
@@ -121,7 +121,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     try {
       if (!meter.accept(raw)) return;
       if (_phase == _Phase.waiting) {
-        setState(() => _enter(_Phase.settling));
+        setState(() => _enter(_test == _Test.awakePlayback ? _Phase.countdown : _Phase.settling));
       } else if (_test != _Test.microphone) {
         if (_phase == _Phase.countdown) _lastCountdownAudio = _quarterSeconds;
         if (_phase == _Phase.speech) _firstPlaybackAudio ??= _quarterSeconds;
@@ -148,6 +148,8 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
       return;
     }
     switch (_phase) {
+      case _Phase.waiting when _test == _Test.awakePlayback && _quarterSeconds >= 32:
+        _finish(notice: 'gainWakeTimedOut');
       case _Phase.waiting when _quarterSeconds >= 32:
       case _Phase.speech when _quarterSeconds >= _speechSeconds * 4:
         _finish(report: true);
@@ -162,7 +164,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           // The cold run can begin with an awake mic that falls silent. Only
           // packets near the cue establish that audio was already streaming.
           final last = _lastCountdownAudio;
-          _streamingBeforeCue = last != null && _quarterSeconds - last <= 8;
+          _streamingBeforeCue = last != null && _quarterSeconds - last <= 4;
           _enter(_Phase.speech);
         });
       case _:
@@ -226,6 +228,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     final newMargin = Cv1GainCalibration.speechAboveRoom(after.room, after.speech);
     if (oldMargin == null || newMargin == null) return null;
     String label(String key) => pairedSettingsLabel(context, key);
+    final higherGainWithoutBetterMargin = after.gain > before.gain && newMargin - oldMargin < 2;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text('${label('gainComparison')} · ${before.gain}/8 → ${after.gain}/8'),
@@ -234,6 +237,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           '${label('gainTestSpeechLevel')} · ${_delta(after.speech.rms, before.speech.rms)}',
           '${label('gainTestRoom')} · ${_delta(after.room.rms, before.room.rms)}',
           '${label('gainAboveRoom')} · ${_delta(newMargin, oldMargin)}',
+          if (higherGainWithoutBetterMargin) label('gainComparisonKeepLower'),
         ].join('\n'),
       ),
     );
@@ -281,7 +285,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           }
         : null;
     final prompt = switch (_phase) {
-      _Phase.waiting => label('gainTestWaiting'),
+      _Phase.waiting => label(_test == _Test.awakePlayback ? 'gainWakeWaiting' : 'gainTestWaiting'),
       _Phase.settling || _Phase.room => label('gainTestQuiet'),
       _Phase.ready => label('gainTestReady'),
       _Phase.countdown =>

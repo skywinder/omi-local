@@ -257,13 +257,26 @@ void main() {
         await tester.ensureVisible(warm);
         await tester.tap(warm);
         await tester.pump();
-        expect(find.textContaining('Make a short sound close to CV1 now'), findsOneWidget);
+        expect(find.textContaining('The countdown starts when audio arrives'), findsOneWidget);
       }
 
       await startWarm();
       await tester.pump(const Duration(seconds: 4));
+      expect(find.textContaining('The countdown starts when audio arrives'), findsOneWidget);
+      expect(find.text('Play the phrase now at the same volume and distance'), findsNothing);
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.textContaining('CV1 sent no audio after the wake attempt'), findsOneWidget);
+      expect(find.text('Playback after silence · 6 / 8'), findsOneWidget);
+      expect(link.calibrating, isFalse);
+
+      await startWarm();
+      packet(0, 5);
+      packet(1, 5);
+      await tester.pump();
+      expect(find.text('CV1 audio received. Get ready to play · 2'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
       for (var counter = 0; counter < 250; counter++) {
-        packet(counter, 4);
+        packet(counter + 2, 5);
       }
       await tester.pump(const Duration(seconds: 5));
       expect(find.textContaining('CV1 audio was absent just before'), findsOneWidget);
@@ -271,11 +284,15 @@ void main() {
 
       await startWarm();
       await tester.pump(const Duration(seconds: 3));
-      packet(0, 5);
-      packet(1, 5);
-      await tester.pump(const Duration(seconds: 1));
-      for (var counter = 2; counter < 252; counter++) {
-        packet(counter, 5);
+      packet(0, 6);
+      packet(1, 6);
+      await tester.pump(const Duration(milliseconds: 1250));
+      expect(find.text('CV1 audio received. Get ready to play · 1'), findsOneWidget);
+      packet(2, 6);
+      await tester.pump(const Duration(milliseconds: 750));
+      expect(find.text('Play the phrase now at the same volume and distance'), findsOneWidget);
+      for (var counter = 3; counter < 253; counter++) {
+        packet(counter, 6);
       }
       await tester.pump(const Duration(seconds: 5));
       expect(find.text('Playback after silence · 6 / 8'), findsOneWidget);
@@ -287,8 +304,8 @@ void main() {
       await tester.tap(playback);
       await tester.pump();
       await tester.pump(const Duration(seconds: 11));
-      packet(0, 6);
-      packet(1, 6);
+      packet(0, 7);
+      packet(1, 7);
       await tester.pump(const Duration(seconds: 6));
       expect(find.textContaining('still streaming just before playback'), findsOneWidget);
       expect(find.textContaining('No CV1 audio arrived during playback'), findsOneWidget);
@@ -376,9 +393,10 @@ void main() {
       await measure('Repeat microphone test · 7/8', room: 240, speech: 2000);
       expect(find.text('Compare microphone tests · 6/8 → 7/8'), findsOneWidget);
       expect(
-        find.text('Speech level · +6.0 dB\nRoom level · +6.0 dB\nSpeech above room level · 0.0 dB'),
+        find.textContaining('Speech level · +6.0 dB\nRoom level · +6.0 dB\nSpeech above room level · 0.0 dB'),
         findsOneWidget,
       );
+      expect(find.textContaining('Try keeping the lower setting'), findsOneWidget);
       await tap('Return to previous gain · 6/8');
       expect(gain, 6);
       await tap('Repeat microphone test · 6/8');
