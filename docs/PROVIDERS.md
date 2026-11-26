@@ -22,7 +22,7 @@ template editor. To regenerate one recording, open it and select
 |---|---|
 | iPhone | Select a profile under Live, finished transcription, or finished diarization, then **Confirm**. **Add** creates a server profile; **Edit** changes its URL, model and optional API key. |
 | Next on an updated server | **Processing** also supports summary and translation. **Save** stores a draft and **Apply** switches the active profile. |
-| Web library | Open **Settings → Providers**, select a processing category, then choose **Use provider** on a saved card. Use **Test connection** to check reachability from Omi. |
+| Web library | Open **Settings → Providers**, select a processing category, then choose **Use provider** in the list. Each row shows its connection status. **Edit** opens the form below that provider, and **Test connection** checks reachability from Omi. |
 | Config / terminal | Export, edit and save profile JSON, then run `providers use`; commands below. |
 
 Local means **on the Omi server**, not on the iPhone. An API endpoint can be on

@@ -357,48 +357,77 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
       assignment.append(action);
     }
     fragment.append(assignment);
-    const list = el('div', 'provider-cards');
-    for (const profile of state.data.profiles.filter(item => item.stage === state.stage)) {
-      const active = profileMatches(profile, effective), card = el('article', `provider-card${active ? ' active' : ''}`);
-      const top = el('div', 'provider-card-heading'); top.append(el('h3', '', profile.name));
-      if (active || profile.id === selected?.id) top.append(el('span', 'provider-badge', active ? 'Active' : 'Selected'));
-      card.append(top, el('p', 'provider-kind', kinds[profile.stage]?.[profile.kind] || profile.kind));
-      if (profile.settings.model || profile.settings.speaker_model) card.append(el('p', 'provider-model', profile.settings.model || profile.settings.speaker_model));
+    const profiles = state.data.profiles.filter(item => item.stage === state.stage);
+    const add = button('+ Add provider', () => choose(), 'settings-button add-provider');
+    const listHeading = el('div', 'provider-list-heading');
+    const headingCopy = el('div');
+    const listTitle = el('h4', '', 'Saved providers');
+    listTitle.id = 'saved-providers-title';
+    headingCopy.append(listTitle);
+    if (profiles.length) {
+      headingCopy.append(el('p', 'settings-description', 'Test connection checks reachability from Omi without sending recordings.'));
+    }
+    listHeading.append(headingCopy, add);
+    fragment.append(listHeading);
+    const form = editorView();
+    let formPlaced = false;
+    const list = el('ul', 'provider-list');
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-labelledby', listTitle.id);
+    for (const profile of profiles) {
+      const active = profileMatches(profile, effective);
+      const row = el('li', `provider-row${active ? ' active' : ''}`);
+      const details = el('div', 'provider-identity');
+      const name = el('div', 'provider-name');
+      name.append(el('h5', '', profile.name));
+      if (active || profile.id === selected?.id) name.append(el('span', 'provider-badge', active ? 'Active' : 'Selected'));
+      const model = profile.settings.model || profile.settings.speaker_model;
+      const kind = kinds[profile.stage]?.[profile.kind] || profile.kind;
+      details.append(name, el('p', 'provider-kind', [kind, model].filter(Boolean).join(' · ')));
       const endpoint = profile.settings.base_url || profile.settings.provider_url || profile.settings.url;
-      if (endpoint) card.append(el('p', 'provider-endpoint', endpoint));
+      if (endpoint) details.append(el('p', 'provider-endpoint', endpoint));
+
       const key = fingerprint(profile);
       const health = el('div', 'provider-health');
-      const label = el('p', 'connection-label');
+      const label = el('span', 'connection-label');
       const hint = el('p', 'connection-help');
       function updateHealth() {
         const checked = state.checks.get(key);
         label.textContent = checked ? resultLabels[checked.state] || 'Test complete' : 'Connection not tested';
-        hint.textContent = !checked ? 'Test reachability from the Omi server. This uses no recordings.'
-          : !['ready', 'available'].includes(checked.state) ? checked.message || '' : '';
+        health.dataset.tone = !checked ? 'muted' : ['ready', 'available'].includes(checked.state) ? 'ready' : 'attention';
+        hint.textContent = health.dataset.tone === 'attention' ? checked.message || '' : '';
+        hint.hidden = !hint.textContent;
       }
       updateHealth();
-      health.append(label, hint, button('Test connection', () => operation(async () => {
+      health.append(label, hint);
+
+      const actions = el('div', 'provider-actions');
+      const test = button('Test connection', () => operation(async () => {
         const result = await request('/probe', draftPayload(profile));
         state.checks.set(key, result);
         updateHealth();
         message(resultLabels[result.state] || 'Test complete', ['ready', 'available'].includes(result.state) ? 'success' : 'error');
-      }, '', 'Testing connection…')));
-      card.append(health);
-      const actions = el('div', 'settings-actions');
-      actions.append(button('Edit', () => choose(profile)));
-      if (!active) actions.append(button('Use provider', () => activate(profile.id), 'settings-button primary'));
+      }, '', 'Testing connection…'), 'settings-button provider-test');
+      actions.append(test, button('Edit', () => choose(profile), 'settings-button provider-edit'));
+      if (!active) actions.append(button('Use provider', () => activate(profile.id), 'settings-button primary provider-use'));
       const remove = button('Delete', () => operation(async () => {
         state.data = await request(`/profiles/${encodeURIComponent(profile.id)}`, {revision: state.data.revision}, 'DELETE');
         if (state.draft?.id === profile.id) state.draft = null;
         render();
-      }, 'Profile deleted.'));
+      }, 'Profile deleted.'), 'settings-button provider-delete');
       remove.disabled = profile.id === selected?.id || profile.id === effective?.id;
       if (remove.disabled) remove.title = 'Choose another provider before deleting this profile.';
-      actions.append(remove); card.append(actions); list.append(card);
+      actions.append(remove);
+      row.append(details, health, actions);
+      if (form && state.draft.id === profile.id) {
+        row.append(form);
+        formPlaced = true;
+      }
+      list.append(row);
     }
-    if (!list.children.length) list.append(el('p', 'settings-note', 'No providers for this stage.'));
-    fragment.append(list, button('+ Add provider', () => choose(), 'settings-button add-provider'));
-    const form = editorView(); if (form) fragment.append(form);
+    if (profiles.length) fragment.append(list);
+    else fragment.append(el('p', 'provider-empty', 'No providers for this stage.'));
+    if (form && !formPlaced) fragment.append(form);
     root.replaceChildren(fragment);
     tabs.scrollLeft = tabScroll;
   }

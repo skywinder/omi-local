@@ -328,11 +328,18 @@ test('a provider can be tested directly without changing the active stage', asyn
   }});
   await settings.show();
   ui.click('Summarization');
+  const list = ui.root.querySelector('.provider-list');
+  assert.equal(list.tag, 'ul');
+  assert.equal(list.querySelector('.provider-row').tag, 'li');
   assert.match(ui.root.textContent, /Connection not tested/);
   assert.match(ui.root.textContent, /Automatic summaries will be skipped/);
   await ui.click('Test connection');
   assert.deepEqual(paths, ['', '/probe']);
   assert.match(ui.root.querySelector('.provider-health').textContent, /Server responded/);
+  ui.click('Edit');
+  assert.ok(ui.root.querySelector('.provider-row').querySelector('form'));
+  ui.click('Close');
+  assert.equal(ui.root.querySelector('form'), null);
 });
 
 test('switching a saved summary template updates the default and keeps the catalog', async t => {
