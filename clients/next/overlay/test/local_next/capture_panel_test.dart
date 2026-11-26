@@ -203,7 +203,7 @@ void main() {
         packet(counter, 2);
       }
       await tester.pump(const Duration(seconds: 2));
-      expect(find.text('Room measured. Get the phrase or speaker ready.'), findsOneWidget);
+      expect(find.textContaining('make a short sound near the CV1 during the countdown'), findsOneWidget);
       // Waiting and preparing the speaker must not enter either measurement.
       decoders.last.sample = 32767;
       packet(102, 2);
