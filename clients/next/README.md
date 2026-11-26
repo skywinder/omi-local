@@ -333,7 +333,8 @@ inference. The model can receive excerpts, recording titles and dates and
 recent turns after confirmation. Tap a citation to open the matching
 recording. Follow-up context lasts while the chat page is open.
 
-The screen reports when the scan reaches its time limit. Search by meaning,
+The screen reports when the scan reaches its time limit or when a transcript
+file could not be verified. Search by meaning,
 a persistent index and archive chat history are separate parity items.
 
 ## Edit a saved recording

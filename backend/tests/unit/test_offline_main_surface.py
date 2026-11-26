@@ -408,6 +408,8 @@ suggestion_path = '/v1/local/conversations/' + documents[-1].id + '/task-suggest
 assert client.get(suggestion_path).status_code == 401
 assert client.post(suggestion_path, json={'provider_binding': 'a' * 64}).status_code == 401
 suggestion_source = {'id': 'fixture-line', 'text': 'I will send the budget.', 'start': 4.25}
+original_recording = local_tasks.local_recording_chat.recording
+original_sources_current = local_tasks.local_recording_chat.sources_current
 local_tasks.local_recording_chat.recording = MagicMock(return_value=('revision', {
     'transcript_segments': [suggestion_source, {'text': 'Unaddressable line.'}],
 }))
@@ -429,6 +431,8 @@ local_tasks._library_request.assert_called_once_with({
 local_tasks.local_recording_chat.sources_current.return_value = False
 assert client.post(suggestion_path, json=prompt, headers=headers).status_code == 409
 local_tasks.action_items.create_action_item.assert_not_called()
+local_tasks.local_recording_chat.recording = original_recording
+local_tasks.local_recording_chat.sources_current = original_sources_current
 
 # A grouped archive can keep the full transcript in a result file.
 grouped_ref, grouped_tx = MagicMock(), MagicMock()
@@ -511,6 +515,66 @@ assert reply.status_code == 200, reply.text
 match, = reply.json()['items'][0]['match_snippets']
 assert match['segment_id'] == later.id and match['start_ms'] == 12500
 assert client.post(search_url, json={'query': 'needle'}, headers=headers).json()['items'] == []
+
+# Both chat scopes must ground citations in the checked full transcript and its edits.
+from routers import local_recording_chat as paired_chat
+from contextlib import ExitStack
+from unittest.mock import patch as replace_for_chat
+
+search_snapshots = old_db.get_all.return_value
+old_db.get_all.return_value = [grouped_doc]
+archive_chat = '/v1/local/conversations/chat'
+recording_chat = '/v1/local/conversations/' + conversation.id + '/chat'
+question = {'id': str(uuid.uuid4()), 'provider_binding': 'b' * 64, 'question': 'late-marker'}
+assert client.post(archive_chat, json=question).status_code == 401
+
+def reply_from_edited_source(payload, *, archive):
+    assert payload['question'] == question['question']
+    index = payload['sources'].index(edit['value']) + 1
+    return json.dumps({'answer': 'Found the corrected line.', 'sources': [index]})
+
+def record_turn(uid, conversation_id, request_id, previous, revision, payload):
+    assert uid == fixture_uid and conversation_id == conversation.id and previous is None
+    assert revision == grouped_doc.update_time
+    return {**payload, 'id': request_id, 'sequence': 1, 'created_at': datetime.now(timezone.utc)}
+
+def suggest_from_edited_source(payload, *, suggestions):
+    assert suggestions
+    index = payload['sources'].index(edit['value']) + 1
+    return json.dumps({'suggestions': [{'description': 'Follow up on the correction', 'source': index}]})
+
+with ExitStack() as stack:
+    def replace(name, **kwargs):
+        return stack.enter_context(replace_for_chat.object(paired_chat.chat_db, name, **kwargs))
+
+    provider = stack.enter_context(replace_for_chat.object(paired_chat, '_library_request', side_effect=reply_from_edited_source))
+    replace('sources_current', return_value=True)
+    replace('turn', return_value=None)
+    replace('history', return_value=([], None))
+    replace('publish', side_effect=record_turn)
+    suggestion_model = stack.enter_context(replace_for_chat.object(local_tasks, '_library_request',
+                                                                  side_effect=suggest_from_edited_source))
+    for chat_path in (archive_chat, recording_chat):
+        chat_reply = client.post(chat_path, json=question, headers=headers)
+        assert chat_reply.status_code == 200, chat_reply.text
+        reference, = chat_reply.json()['evidence_references']
+        assert reference['conversation_id'] == conversation.id and reference['segment_id'] == later.id
+        assert reference['start_ms'] == 12500 and reference['summary'] == edit['value']
+    task_path = recording_chat.removesuffix('/chat') + '/task-suggestions'
+    task_reply = client.post(task_path, json=prompt, headers=headers)
+    assert task_reply.status_code == 200, task_reply.text
+    task_suggestion, = task_reply.json()['suggestions']
+    assert task_suggestion['segment_id'] == later.id and task_suggestion['segment_sha256'] == digest(edit['value'])
+    assert provider.call_count == 2
+    file.write_text('{}')
+    assert client.post(archive_chat, json=question, headers=headers).json()['detail'] == 'archive_chat_scan_limited'
+    assert client.post(recording_chat, json=question, headers=headers).status_code == 404
+    assert client.post(task_path, json=prompt, headers=headers).status_code == 404
+    assert provider.call_count == 2
+    suggestion_model.assert_called_once()
+    file.write_bytes(original_bytes)
+
+old_db.get_all.return_value = search_snapshots
 query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
 
 grouped_db.db = MagicMock()

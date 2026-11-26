@@ -157,11 +157,15 @@ The Local storage contract from `625034a` now covers large grouped recordings
 in Next's backend. The detail and edit responses expand the preview from the
 checksummed transcript. Segment text and speaker changes compare against the
 complete transcript inside the recording transaction. Firestore stores the
-bounded encrypted edits and a current first-line preview. Detail, search and
-summary generation read the same edited segments. Returning a segment to its
-original text or speaker removes the corresponding override. Each Bastion release keeps
-its previous Compose file list for rollback, including the original provider
-and capture adjustments.
+bounded encrypted edits and a current first-line preview. Detail, search, summary
+generation, chat and task suggestions read the same edited segments. Chat uses
+only checked files for evidence and keeps its deadline when scanning the archive.
+Returning a segment to its original text or speaker removes its override.
+Older Bastion images need the paired chat router, its offline allowlist and
+the loopback library's chat provider module in the same release. Verify that
+the library imports the provider before restarting the app. Each Bastion release
+keeps its previous Compose file list for rollback, including the original
+provider and capture adjustments.
 
 Next can opt in to resolving a saved-recording detail with
 `GET /v1/conversations/{id}?resolve_local_recording=true`. For the paired owner,

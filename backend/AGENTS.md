@@ -72,6 +72,9 @@ subcollection. The loopback library owns inference and checks the confirmed
 summary provider binding. The backend validates cited excerpts against the
 submitted context. Trusted-host deletion marks the source unavailable to
 in-flight chat before enumerating the recording's child collections.
+Recording chat, archive chat and task suggestions use checked full transcripts,
+including manual corrections. An unreadable file is ineligible as evidence.
+Archive chat can continue across other recordings within its scan deadline.
 Paired recording edits accept JSON on the local edit route. They compare the
 prior field or transcript digest in the write transaction, preserve segment
 identity and use the existing transcript storage encoder. Large grouped imports store

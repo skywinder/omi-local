@@ -8,6 +8,7 @@ from google.cloud import firestore
 from database import conversations
 from database._client import db, run_transactional
 from utils import encryption
+from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
 
 
 class RecordingUnavailable(ValueError):
@@ -27,13 +28,13 @@ def _available(data):
 
 
 def recording(uid, conversation_id):
-    fields = ['is_locked', 'local_chat_deleting', 'data_protection_level',
-              'transcript_segments', 'transcript_segments_compressed']
-    snapshot = _recording(uid, conversation_id).get(field_paths=fields, retry=None, timeout=6)
-    data = snapshot.to_dict()
-    if not _available(data):
+    row = conversations.read_local_search_sources(uid, [conversation_id]).get(conversation_id)
+    if row is None:
         raise RecordingUnavailable()
-    return snapshot.update_time, conversations._prepare_conversation_for_read(data, uid) or {}
+    try:
+        return row['_local_read_version'], hydrate_grouped_transcript(row, local_transcript_root(), uid)
+    except (ValueError, OSError):
+        raise RecordingUnavailable() from None
 
 
 def sources_current(uid, revisions):

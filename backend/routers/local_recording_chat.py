@@ -16,6 +16,7 @@ from database.conversations import read_local_search_page
 from models.chat import ChatEvidenceReference
 from routers.local_processing import library_origin
 from utils.conversations.local_chat import provider_history, rank_archive_sources, select_sources
+from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
 from utils.local_transport_auth import require_paired_owner
 from utils.offline_network_policy import OfflineEgressBlocked
 
@@ -214,6 +215,7 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
     response.headers['Cache-Control'] = 'no-store'
     deadline = monotonic() + 26
     scan_limited = False
+    root = local_transcript_root()
 
     def archive_rows():
         nonlocal scan_limited
@@ -228,7 +230,18 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
             except DeadlineExceeded:
                 scan_limited = True
                 return
-            yield from (row for row in rows if re.fullmatch(_UUID, row['id']))
+            for row in rows:
+                if monotonic() >= deadline:
+                    scan_limited = True
+                    return
+                if not re.fullmatch(_UUID, row['id']):
+                    continue
+                try:
+                    checked = hydrate_grouped_transcript(row, root, uid)
+                except (OSError, ValueError):
+                    scan_limited = True
+                    continue
+                yield checked
             if cursor is None:
                 return
 
