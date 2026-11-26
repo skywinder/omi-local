@@ -120,6 +120,9 @@ omiloc
 
 The [audio library](http://127.0.0.1:20001/) is accessible only on your Mac. Select
 a recording to play it, or click a transcript segment to seek to that moment.
+In an open transcript, type in **Найти фразу в записи** to highlight a phrase.
+Use the arrows or Enter / Shift+Enter to browse matching turns. Playback stays
+at its current position until you click a turn.
 New recordings and completed transcripts appear automatically.
 
 The **Now** section, currently labeled **Сейчас**, shows live text, the audio

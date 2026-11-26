@@ -1,5 +1,5 @@
 import {mountLiveTuning} from './live-tuning.mjs';
-import {formatTime, segmentAt, seekTo, playFrom, speakerBadge} from '/player.mjs';
+import {formatTime, segmentAt, seekTo, playFrom, speakerBadge, findTurns} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
 import {mountSettings} from '/settings.mjs';
 import {processingFailure, renderProcessing} from '/recording-processing.mjs';
@@ -118,6 +118,51 @@ async function changeNote(field, value) {
   }
 }
 
+const turnQuery = $('turn-query');
+let turnMatches = [], turnPosition = 0, turnButtons = [], highlightedPhrase;
+
+function showTurnMatch(scroll) {
+  if (highlightedPhrase) {
+    const line = highlightedPhrase.parentElement;
+    highlightedPhrase.replaceWith(highlightedPhrase.textContent);
+    line.normalize();
+    highlightedPhrase = null;
+  }
+  const match = turnMatches[turnPosition];
+  $('turn-count').textContent = !turnQuery.value.trim() ? '' : match
+    ? `Реплика ${turnPosition + 1} из ${turnMatches.length}` : 'Совпадений нет';
+  for (const id of ['turn-prev', 'turn-next']) $(id).disabled = turnMatches.length < 2;
+  if (!match) return;
+  const button = turnButtons[match.index];
+  const line = button.querySelector('.segment-text');
+  const phrase = line.textContent;
+  highlightedPhrase = node('mark', '', phrase.slice(match.start, match.end));
+  line.replaceChildren(phrase.slice(0, match.start), highlightedPhrase, phrase.slice(match.end));
+  if (scroll) button.scrollIntoView({block: 'center'});
+}
+
+function updateTurnSearch(segments, scroll, keepIndex = -1) {
+  turnMatches = findTurns(segments, turnQuery.value);
+  turnPosition = Math.max(0, turnMatches.findIndex(match => match.index >= keepIndex));
+  showTurnMatch(scroll);
+}
+
+function stepTurn(direction) {
+  if (!turnMatches.length) return;
+  turnPosition = (turnPosition + direction + turnMatches.length) % turnMatches.length;
+  showTurnMatch(true);
+}
+
+turnQuery.addEventListener('input', () => updateTurnSearch(state.detail?.segments || [], true));
+turnQuery.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault();
+    stepTurn(event.shiftKey ? -1 : 1);
+  }
+});
+$('turn-prev').addEventListener('click', () => stepTurn(-1));
+$('turn-next').addEventListener('click', () => stepTurn(1));
+
 function renderTranscript(record) {
   renderRecap(record);
   const fragment = document.createDocumentFragment();
@@ -149,6 +194,10 @@ function renderTranscript(record) {
     fragment.append(node('p', 'empty-transcript', record.transcript_source === 'unavailable' ? 'Не удалось открыть актуальную расшифровку. Аудио доступно. Обновите запись для повторной проверки.' : copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
+  highlightedPhrase = null;
+  turnButtons = $('transcript').querySelectorAll('.segment');
+  $('transcript-find').hidden = !turnButtons.length;
+  updateTurnSearch(record.segments, false, turnMatches[turnPosition]?.index);
   state.active = -1;
   syncPlayer();
 }
@@ -173,6 +222,8 @@ function syncRecap(id, options) {
 
 async function select(id, open = true) {
   const request = ++state.request;
+  turnQuery.value = '';
+  turnMatches = [];
   audio.pause();
   audio.removeAttribute('src');
   audio.load();

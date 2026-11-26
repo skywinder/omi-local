@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {formatTime, segmentAt, playFrom, seekTo, speakerBadge} from './player.mjs';
+import {formatTime, segmentAt, playFrom, seekTo, speakerBadge, findTurns} from './player.mjs';
+
+test('finds one literal phrase per turn and preserves the displayed character offsets', () => {
+  const turns = [{text: '🎙 [Тест]+ ещё [тест]+'}, {text: 'без совпадения'}, {text: '[теСт]+ в конце'}];
+  const matches = findTurns(turns, '  [тест]+ ');
+  assert.deepEqual(matches.map(m => [m.index, turns[m.index].text.slice(m.start, m.end)]), [[0, '[Тест]+'], [2, '[теСт]+']]);
+  assert.deepEqual(findTurns(turns, '  '), []);
+  assert.deepEqual(findTurns(turns, '.*'), []);
+  assert.deepEqual(findTurns([{text:'обновлено'}], '[тест]+'), []);
+});
 
 test('speaker labels follow edits while numbered speakers keep their live colors', () => {
   assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05'}), {label: 'Говорящий 6', tone: '1'});

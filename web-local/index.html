@@ -58,6 +58,12 @@
         <section id="recording-summary" class="recording-summary" aria-label="Краткое содержание" hidden></section>
         <button id="summary-edit" hidden>Сгенерировать итоги заново</button>
         <div class="transcript-heading"><h3>Транскрипт</h3><span>Нажмите на фразу, чтобы послушать</span></div>
+        <div id="transcript-find" class="transcript-find" role="search" aria-label="Поиск в открытой записи" hidden>
+          <input id="turn-query" type="search" placeholder="Найти фразу в записи" aria-label="Найти фразу в записи" maxlength="300" aria-controls="transcript">
+          <span id="turn-count" role="status"></span>
+          <button id="turn-prev" type="button" aria-label="Предыдущая найденная реплика" title="Предыдущая реплика">↑</button>
+          <button id="turn-next" type="button" aria-label="Следующая найденная реплика" title="Следующая реплика">↓</button>
+        </div>
         <div id="transcript" class="transcript"></div>
       </div>
       <footer id="player" class="player" hidden>

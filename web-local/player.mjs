@@ -5,6 +5,19 @@ export function formatTime(value) {
 export function segmentAt(segments, time) {
   return segments.findIndex(s => time >= s.start && time < s.end);
 }
+
+// Keep one location per turn even when a common word occurs hundreds of times.
+export function findTurns(segments, query) {
+  const literal = query.trim();
+  if (!literal) return [];
+  const pattern = new RegExp(literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu');
+  const matches = [];
+  for (const [index, segment] of segments.entries()) {
+    const match = pattern.exec(segment.text);
+    if (match) matches.push({index, start: match.index, end: match.index + match[0].length});
+  }
+  return matches;
+}
 export function speakerBadge(segment) {
   const number = /^SPEAKER_\d{1,4}$/.test(segment.speaker) ? Number(segment.speaker.slice(8)) : null;
   const label = segment.is_user ? 'Вы' : segment.speaker_name || (number === null ? '' : `Говорящий ${number + 1}`);

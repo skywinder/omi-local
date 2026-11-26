@@ -87,6 +87,12 @@ h1 span { font-size:14px; font-weight:400; vertical-align:middle; color:var(--mu
 .transcript-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:20px; border-bottom:1px solid var(--line); margin-bottom:12px; }
 .transcript-heading h3 { font-size:15px; font-weight:550; margin:0; }
 .transcript-heading span { font-size:12px; color:var(--muted); }
+.transcript-find { position:sticky; top:0; z-index:1; background:var(--paper); display:flex; gap:4px; align-items:center; padding:5px 0; border-bottom:1px solid var(--line); }
+.transcript-find input { min-width:0; flex:1; border:1px solid var(--line); border-radius:6px; padding:8px; color:var(--ink); background:var(--paper); }
+.transcript-find button { min-width:38px; min-height:40px; border-radius:6px; font-size:18px; }
+.transcript-find button:hover:enabled { background:var(--panel); }
+.transcript-find [role=status] { font-size:12px; color:var(--muted); }
+.segment-text mark { background:#f7de99; color:#483316; border-radius:2px; }
 .segment { display:grid; grid-template-columns:47px minmax(0,1fr); width:100%; gap:18px; padding:20px 12px; border-left:2px solid transparent; text-align:left; border-radius:0 6px 6px 0; }
 .segment:hover { background:var(--panel); }
 .segment.current { background:#e2efe9; border-left-color:#177564; }
