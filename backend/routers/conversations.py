@@ -453,6 +453,23 @@ def search_local_archive(
     return {'items': hits, 'next_cursor': next_cursor}
 
 
+@router.post('/v1/local/conversations/semantic-search', response_model=LocalArchiveSearchPage, tags=['local'])
+def search_local_archive_by_meaning(
+    search: LocalArchiveSearchRequest, response: Response, uid: str = Depends(require_paired_owner),
+):
+    from utils.conversations import local_semantic_search
+
+    query = search.query.strip()
+    if not query or search.after is not None:
+        raise HTTPException(400, 'Invalid semantic archive search')
+    try:
+        hits = local_semantic_search.rank(uid, query)
+    except local_semantic_search.SemanticUnavailable:
+        raise HTTPException(503, 'local_semantic_unavailable', headers={'Cache-Control': 'no-store'}) from None
+    rows = conversations_db.read_local_search_sources(uid, list(dict.fromkeys(hit['id'] for hit in hits)))
+    items = local_semantic_search.resolve(hits, rows, lambda row: _paired_detail(row, uid))
+    response.headers['Cache-Control'] = 'no-store'
+    return {'items': items, 'next_cursor': None}
 class ConversationStatusResponse(BaseModel):
     status: str
 

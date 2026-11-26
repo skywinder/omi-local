@@ -23,7 +23,7 @@ test-transport-unit:
 	$(MAKE) test-docker
 	cd scripts && "$${PYTHON}" -m unittest local_live_preview.test_reset_retention local_live_preview.test_parakeet local_live_preview.test_diarization_proxy
 	$(MAKE) test-library
-	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_offline_route_policy.py
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py tests/unit/test_offline_route_policy.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_offline_audio_capture.py tests/unit/test_local_audio_delivery.py tests/unit/test_local_audio_delivery_route.py tests/unit/test_local_audio_delivery_runtime.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_live_preview.py tests/unit/test_listen_receiver_translation_control.py tests/unit/test_local_provider_stages.py
 
@@ -38,7 +38,7 @@ test-transport-app:
 
 test-offline:
 	$(MAKE) test-library
-	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transcript.py
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_verify_token_admin_and_local_dev_gating.py tests/unit/test_local_audio_delivery.py tests/unit/test_local_audio_delivery_route.py tests/unit/test_local_audio_delivery_runtime.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_offline_audio_capture.py tests/unit/test_local_live_preview.py tests/unit/test_listen_receiver_translation_control.py tests/unit/test_local_provider_stages.py tests/unit/test_offline_network_policy.py tests/unit/test_offline_route_policy.py tests/unit/test_offline_main_surface.py tests/unit/test_offline_provider_gates.py tests/unit/test_offline_voice_message_routes.py
 

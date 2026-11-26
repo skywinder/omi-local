@@ -1003,21 +1003,22 @@ class PairedLibrary {
     if (!isSignedIn) throw LibraryFailure.key;
   }
 
-  Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) async {
+  Future<ArchiveSearchPage?> searchArchive(String query, {String? after, bool byMeaning = false}) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    if (query.isEmpty || query.runes.length > 240) throw LibraryFailure.malformed;
+    if (query.isEmpty || query.runes.length > 240 || (byMeaning && after != null)) throw LibraryFailure.malformed;
     try {
       final page = await _request(
-        '/v1/local/conversations/search',
+        byMeaning ? '/v1/local/conversations/semantic-search' : '/v1/local/conversations/search',
         (response) async {
           if (response.statusCode == HttpStatus.notFound) return null;
+          if (byMeaning && response.statusCode == HttpStatus.serviceUnavailable) return null;
           if (await _blockedOffline(response)) return null;
           if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
           final data = await _json(response, 384 << 10) as Map<String, dynamic>;
           if (!data.containsKey('next_cursor')) throw LibraryFailure.malformed;
           final raw = data['items'] as List;
           final cursor = data['next_cursor'] as String?;
-          if (raw.length > 40 || (cursor != null && (cursor.isEmpty || cursor == after))) {
+          if (raw.length > 40 || (cursor != null && (byMeaning || cursor.isEmpty || cursor == after))) {
             throw LibraryFailure.malformed;
           }
           final hits = <ArchiveSearchHit>[];

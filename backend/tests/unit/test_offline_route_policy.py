@@ -14,6 +14,8 @@ def test_offline_detail_contract_does_not_open_other_conversation_actions():
     assert is_offline_http_route_allowed('GET', '/v1/conversations/{conversation_id}')
     assert is_offline_http_route_allowed('POST', '/v1/local/conversations/search')
     assert not is_offline_http_route_allowed('GET', '/v1/local/conversations/search')
+    assert is_offline_http_route_allowed('POST', '/v1/local/conversations/semantic-search')
+    assert not is_offline_http_route_allowed('GET', '/v1/local/conversations/semantic-search')
     recording_chat = '/v1/local/conversations/00000000-0000-4000-8000-000000000001/chat'
     assert is_offline_http_route_allowed('GET', recording_chat)
     assert is_offline_http_route_allowed('POST', recording_chat)

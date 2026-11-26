@@ -30,6 +30,8 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
   String? _cursor;
   bool _loading = false;
   bool _unsupported = false;
+  bool _byMeaning = false;
+  bool _meaningSubmitted = false;
   Object? _error;
 
   void _changed(String input, {bool submit = false}) {
@@ -41,7 +43,8 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
       _cursor = null;
       _error = null;
       _unsupported = false;
-      _loading = _query.isNotEmpty && _query.runes.length <= 240;
+      _meaningSubmitted = _byMeaning && submit;
+      _loading = _query.isNotEmpty && _query.runes.length <= 240 && (!_byMeaning || submit);
     });
     if (!_loading) return;
     final query = _query;
@@ -54,13 +57,15 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
 
   Future<void> _load(String query, int generation) async {
     var cursor = _cursor;
+    final byMeaning = _byMeaning;
     setState(() {
       _loading = true;
+      _unsupported = false;
       _error = null;
     });
     try {
       do {
-        final page = await widget.library.searchArchive(query, after: cursor);
+        final page = await widget.library.searchArchive(query, after: cursor, byMeaning: byMeaning);
         if (!mounted || generation != _generation) return;
         if (page == null) {
           setState(() => _unsupported = true);
@@ -91,7 +96,13 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
   void _open(ArchiveSearchHit hit, [TranscriptMatchSnippet? snippet]) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => RecordingPage(library: widget.library, id: hit.id, initialMatch: snippet, onEdited: _edited),
+        builder: (_) => RecordingPage(
+          library: widget.library,
+          id: hit.id,
+          initialMatch: snippet,
+          verifyInitialExcerpt: _byMeaning,
+          onEdited: _edited,
+        ),
       ),
     );
   }
@@ -110,7 +121,8 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    final hits = _hits.values.toList()..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final hits = _hits.values.toList();
+    if (!_byMeaning) hits.sort((a, b) => b.startedAt.compareTo(a.startedAt));
     return Scaffold(
       appBar: AppBar(
         title: Text(l.searchConversations),
@@ -142,6 +154,20 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
       body: Column(
         children: [
           Padding(
+            padding: const EdgeInsets.fromLTRB(OmiSpacing.md, OmiSpacing.sm, OmiSpacing.md, 0),
+            child: SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(value: false, label: Text(pairedSettingsLabel(context, 'archiveSearchWords'))),
+                ButtonSegment(value: true, label: Text(pairedSettingsLabel(context, 'archiveSearchMeaning'))),
+              ],
+              selected: {_byMeaning},
+              onSelectionChanged: (selection) {
+                _byMeaning = selection.single;
+                _changed(_query);
+              },
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.all(OmiSpacing.md),
             child: OmiSearchField(
               placeholder: l.searchConversations,
@@ -150,6 +176,11 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
               onSubmitted: (text) => _changed(text, submit: true),
             ),
           ),
+          if (_byMeaning && _query.isNotEmpty && _query.runes.length <= 240 && !_meaningSubmitted)
+            TextButton(
+              onPressed: () => _changed(_query, submit: true),
+              child: Text(pairedSettingsLabel(context, 'archiveSearchFindByMeaning')),
+            ),
           Expanded(
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -180,7 +211,17 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
                   ),
                 if (_loading) const LinearProgressIndicator(),
                 if (_unsupported)
-                  ListTile(title: Text(pairedSettingsLabel(context, 'archiveSearchUnsupported')))
+                  ListTile(
+                    title: Text(
+                      pairedSettingsLabel(
+                        context,
+                        _byMeaning ? 'archiveMeaningUnavailable' : 'archiveSearchUnsupported',
+                      ),
+                    ),
+                    trailing: _byMeaning
+                        ? TextButton(onPressed: () => _load(_query, _generation), child: Text(l.retry))
+                        : null,
+                  )
                 else if (_error != null)
                   ListTile(
                     title: Text(_error == LibraryFailure.key ? l.invalidKey : l.couldNotLoadPage),
@@ -190,7 +231,7 @@ class _ArchiveSearchPageViewState extends State<ArchiveSearchPageView> {
                   ListTile(title: Text(pairedSettingsLabel(context, 'archiveSearchTooLong')))
                 else if (!_loading && _cursor != null)
                   TextButton(onPressed: () => _load(_query, _generation), child: Text(l.showMore))
-                else if (!_loading && _query.isNotEmpty && hits.isEmpty)
+                else if (!_loading && _query.isNotEmpty && hits.isEmpty && (!_byMeaning || _meaningSubmitted))
                   ListTile(title: Text(l.noResultsFound)),
               ],
             ),

@@ -347,17 +347,40 @@ def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], 
     return data
 
 
+_LOCAL_SEARCH_FIELDS = [
+    'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
+    'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'deleted',
+]
+
+
+def _local_search_row(document, uid):
+    data = document.to_dict()
+    if not data or is_soft_deleted(data) or data.get('is_locked') or data.get('local_chat_deleting'):
+        return None
+    row = _prepare_conversation_for_read(data, uid)
+    if row is not None:
+        row['id'] = document.id
+        row['_local_read_version'] = document.update_time
+    return row
+
+
+def read_local_search_sources(uid, identifiers):
+    if not identifiers:
+        return {}
+    collection = db.collection('users').document(uid).collection(conversations_collection)
+    snapshots = db.get_all(
+        [collection.document(identifier) for identifier in identifiers], field_paths=_LOCAL_SEARCH_FIELDS,
+        retry=None, timeout=6,
+    )
+    return {row['id']: row for snapshot in snapshots if (row := _local_search_row(snapshot, uid)) is not None}
+
+
 def read_local_search_page(
     uid: str, after: Optional[str], limit: int, *, timeout: float = 8, end_page_after_file: bool = False,
 ) -> tuple[list[dict], Optional[str]]:
     """Read an owner-scoped slice without photos or offset scans."""
     collection = db.collection('users').document(uid).collection(conversations_collection)
-    query = collection.order_by('__name__').select(
-        [
-            'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
-            'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'deleted',
-        ]
-    )
+    query = collection.order_by('__name__').select(_LOCAL_SEARCH_FIELDS)
     if after is not None:
         query = query.start_after({'__name__': collection.document(after)})
     rows = []
@@ -368,13 +391,8 @@ def read_local_search_page(
             return rows, last_id
         last_id = document.id
         page_full = count == limit
-        data = document.to_dict()
-        if not data or is_soft_deleted(data) or data.get('is_locked') or data.get('local_chat_deleting'):
-            continue
-        row = _prepare_conversation_for_read(data, uid)
+        row = _local_search_row(document, uid)
         if row is not None:
-            row['id'] = document.id
-            row['_local_read_version'] = document.update_time
             rows.append(row)
             if end_page_after_file:
                 local = (row.get('external_data') or {}).get('local_transcript') or {}

@@ -265,6 +265,11 @@ assert client.post(search_url, json={'query': 'привет'}).status_code == 40
 db.collection.assert_not_called()
 headers = {'Authorization': 'Bearer ' + key}
 assert client.post(search_url, json={'query': '  '}, headers=headers).status_code == 400
+meaning_url = '/v1/local/conversations/semantic-search'
+assert client.post(meaning_url, json={'query': 'привет'}).status_code == 401
+assert client.post(meaning_url, json={'query': 'привет', 'after': 'page'}, headers=headers).status_code == 400
+missing_model = client.post(meaning_url, json={'query': 'привет'}, headers=headers)
+assert missing_model.status_code == 503 and missing_model.json()['detail'] == 'local_semantic_unavailable'
 assert client.post(search_url, json={'query': 'привет', 'after': 'users/other'}, headers=headers).status_code == 400
 
 timestamp = datetime(2026, 1, 2, tzinfo=timezone.utc)
@@ -490,6 +495,7 @@ print(json.dumps({
         '/v1/local/audio/parts',
         '/v1/local/conversations/{conversation_id}/audio',
         '/v1/local/conversations/search',
+        '/v1/local/conversations/semantic-search',
         '/v1/local/conversations/chat',
         '/v1/local/conversations/{conversation_id}/chat',
         '/v1/local/conversations/{conversation_id}/edit',

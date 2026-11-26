@@ -15,6 +15,9 @@ HTTP model is checked after its owned listener starts, never as a prerequisite t
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
 Paired archive search uses the same verified file-backed transcript as detail.
 After a file-backed result, the page cursor resumes at the next unscanned document.
+Meaning search ranks revision-bound pointers over the private Unix socket and
+rechecks each canonical row before returning snippets. The optional model runs
+outside FastAPI. See [Semantic archive search](../docs/BACKEND_PARITY.md#semantic-archive-search).
 Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and

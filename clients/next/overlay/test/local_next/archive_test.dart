@@ -29,7 +29,7 @@ class _ArchiveLibrary extends PairedLibrary {
   }
   final Future<_Page> Function(int) page;
   final ServerConversation record;
-  final Future<ArchiveSearchPage> Function(String, String?)? search;
+  final Future<ArchiveSearchPage?> Function(String, String?, bool)? search;
   final offsets = <int>[];
   final opened = <String>[];
 
@@ -46,7 +46,8 @@ class _ArchiveLibrary extends PairedLibrary {
   }
 
   @override
-  Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) => search!(query, after);
+  Future<ArchiveSearchPage?> searchArchive(String query, {String? after, bool byMeaning = false}) =>
+      search!(query, after, byMeaning);
 }
 
 class _RecoveringLibrary extends _ArchiveLibrary {
@@ -610,7 +611,8 @@ void main() {
     final library = _ArchiveLibrary(
       (_) async => (rows: <ServerConversation>[], consumed: 0, partial: false, more: false),
       row,
-      search: (query, cursor) async {
+      search: (query, cursor, byMeaning) async {
+        expect(byMeaning, isFalse);
         requests.add((query, cursor));
         if (cursor == null) return (hits: <ArchiveSearchHit>[], nextCursor: _firstId);
         return (
@@ -639,6 +641,51 @@ void main() {
     expect(tester.widget<TabBar>(find.byType(TabBar)).controller?.index, 1);
     expect(tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).followTargetSegmentId, 'hit');
     expect(find.textContaining('Matching words', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('meaning search waits for submission and keeps the ranked order', (tester) async {
+    final time = DateTime.utc(2026, 1, 2);
+    final older = _row(_firstId, 'Relevant older result', time);
+    final newer = _row(_secondId, 'Newer result', time.add(const Duration(days: 1)));
+    var requests = 0;
+    final library = _ArchiveLibrary(
+      (_) async => (rows: <ServerConversation>[], consumed: 0, partial: false, more: false),
+      older,
+      search: (query, cursor, byMeaning) async {
+        expect(byMeaning, isTrue);
+        expect(cursor, isNull);
+        expect(query, 'borrow money');
+        if (++requests == 1) return null;
+        return (
+          hits: [
+            (id: older.id, title: older.structured.title, startedAt: time, snippets: <TranscriptMatchSnippet>[]),
+            (
+              id: newer.id,
+              title: newer.structured.title,
+              startedAt: time.add(const Duration(days: 1)),
+              snippets: <TranscriptMatchSnippet>[],
+            ),
+          ],
+          nextCursor: null,
+        );
+      },
+    );
+    await _show(tester, library);
+    await tester.tap(find.byTooltip('Search conversations'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Meaning'));
+    await tester.enterText(find.byType(TextField), 'borrow money');
+    await tester.pumpAndSettle();
+    expect(requests, 0);
+    await tester.tap(find.text('Find by meaning'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Semantic search is unavailable'), findsOneWidget);
+    await tester.tap(find.text('Try Again'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Relevant older result')).dy,
+      lessThan(tester.getTopLeft(find.text('Newer result')).dy),
+    );
   });
 
   testWidgets('paired feed groups by local start date and opens a selected archive row after an older-page retry', (

@@ -45,6 +45,43 @@ skips both stored transcript fields. Next opens the full detail by ID.
 The existing Local app still receives the full list. Older paired servers
 accept the extra query parameter and serve their existing response.
 
+## Semantic archive search
+
+Next offers **Words** and **Meaning** in the archive search screen. The paired
+`POST /v1/local/conversations/semantic-search` route uses an optional CPU worker
+over a private Unix socket. The worker uses the pinned
+[multilingual E5 ONNX model](https://huggingface.co/intfloat/multilingual-e5-small/tree/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx).
+It verifies the model and tokenizer hashes from `local_semantic_model.py` at
+startup, reads them from disk and performs inference without an internet
+connection. A missing worker or index returns 503 for Meaning. Word search
+continues through its existing separate route.
+
+The index stores source IDs, Firestore revisions, passage positions and vectors.
+Firestore and checksummed transcript files remain authoritative. The paired
+API reads ranked candidates from the current archive revision, skips stale or
+removed sources, and returns transcript evidence with the original segment IDs
+and times. A partial scan cannot publish because the local exporter must send a
+complete inventory marker for the same owner.
+
+For an isolated rollout, use Python 3.11 or later with `onnxruntime==1.24.4` and
+`tokenizers==0.22.2` in a separate environment. Place `model.onnx` and
+`tokenizer.json` from the pinned revision in a local model directory. Use the
+live backend's paired configuration with a loopback Firestore emulator to run
+`backend/scripts/export_local_semantic_sources.py --owner-digest`. Stream the
+same command without the option straight to `python -m dev_harness.local_semantic
+--model MODEL_DIR --index INDEX --owner DIGEST build` from `scripts/dev-harness`.
+Run the exporter only through a trusted local pipe. It emits private transcript
+text for the running indexer. Repeating a full scan reuses vectors for unchanged
+records and removes sources that disappeared. Put the index on private storage.
+
+Start the worker with the same model, index and owner arguments plus
+`--socket ABSOLUTE_SOCKET_PATH serve`. The backend defaults to
+`$OMI_HARNESS_STATE_ROOT/services/semantic-search/queries.sock`. A deployment can
+override that path with `OMI_LOCAL_SEMANTIC_SOCKET`. Grant the paired backend
+access to that private socket. The worker can run in a network-disabled process.
+In this rollout the rebuild command is explicit. A new or edited recording
+appears in Meaning after its next successful scan.
+
 ## Bastion acceptance, November 25
 
 Bastion now serves page metadata, projected cards and authenticated WAV ranges.

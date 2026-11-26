@@ -31,3 +31,4 @@ scripts/dev-harness/tests/test_tailscale_backend.py
 scripts/dev-harness/tests/test_transcription_lock.py
 scripts/dev-harness/tests/test_upstream_audit.py
 scripts/dev-harness/tests/test_next_ios_identity.py
+scripts/dev-harness/tests/test_local_semantic_index.py
