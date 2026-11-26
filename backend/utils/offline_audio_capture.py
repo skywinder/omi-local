@@ -209,15 +209,14 @@ class OfflineAudioCapture:
         self.decode_errors += 1
         self._write_progress_metadata()
 
-    def finalize(self) -> dict[str, Any]:
+    def finalize(self, *, ended_at: str | None = None) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError('offline capture is already closed')
         self._closed = True
         self._pcm.flush()
         os.fsync(self._pcm.fileno())
         self._pcm.close()
-        ended_at = _utc_iso(time.time())
-        metadata = self._metadata(ended_at=ended_at, status='completed')
+        metadata = self._metadata(ended_at=ended_at or _utc_iso(time.time()), status='completed')
         _write_wav_atomic(self.pcm_part_path, self.wav_path)
         _atomic_json(self.metadata_path, metadata)
         self.pcm_part_path.unlink()

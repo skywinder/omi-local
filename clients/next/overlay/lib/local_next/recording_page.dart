@@ -21,15 +21,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'paired_library.dart';
+import 'offline_recordings.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
+import 'local_memories_page.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_export.dart';
 import 'conversation_categories.dart';
+import 'category_backfill.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
+import 'recording_summary_info.dart';
 import 'recording_player_bar.dart';
+import 'recording_playback.dart';
 import 'settings_labels.dart';
 import 'speaker_picker.dart';
 import 'task_editor.dart';
@@ -158,10 +163,17 @@ String recordingStatus(BuildContext context, ServerConversation row) {
     'failed' => local == null ? context.l10n.processingFailed : recordingFailure(context, local['failure']),
     'pending' => context.l10n.statusPending,
     'processing' => context.l10n.statusProcessing,
+    'waiting_for_parts' => pairedSettingsLabel(context, 'nextWaitingForParts'),
+    'receiving' => pairedSettingsLabel(context, 'nextReceivingRecording'),
     'no_speech' => context.l10n.noTranscriptAvailable,
     _ => context.l10n.saved,
   };
 }
+
+const _recordingProcessing = {'saved', 'pending', 'processing', 'waiting_for_parts', 'receiving'};
+
+bool canFollowSavedRecording(ServerConversation row) =>
+    const {..._recordingProcessing, 'failed', 'published'}.contains(row.externalIntegration?.localRecording?['status']);
 
 class RecordingPage extends StatefulWidget {
   const RecordingPage({
@@ -171,22 +183,41 @@ class RecordingPage extends StatefulWidget {
     this.initialMatch,
     this.verifyInitialExcerpt = false,
     this.onEdited,
+    this.fromSavedRecording = false,
+    this.onPublished,
+    this.resultsParentId,
+    this.currentResultId,
+    this.offlineOnly = false,
   });
   final PairedLibrary library;
   final String id;
   final TranscriptMatchSnippet? initialMatch;
   final bool verifyInitialExcerpt;
   final ValueChanged<ServerConversation>? onEdited;
+  final bool fromSavedRecording;
+  final void Function(String previousId, List<ServerConversation> rows)? onPublished;
+  final String? resultsParentId;
+  final String? currentResultId;
+  final bool offlineOnly;
 
   @override
   State<RecordingPage> createState() => _RecordingPageState();
 }
 
 class _RecordingPageState extends State<RecordingPage> with SingleTickerProviderStateMixin {
-  late final tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
+  late final TabController tabs;
+  late String _id = widget.id;
+  late bool _followSavedRecording = widget.fromSavedRecording;
+  String? _resultsParent;
+  OfflineRecording? _offlineCopy;
+  bool _downloaded = false;
+  bool _downloading = false;
+  bool get _readingOffline => _offlineCopy != null;
   late Future<_RecordingDetail> detail = _load();
+  Timer? _processingPoll;
   final playback = ConversationPlaybackController();
   StreamSubscription<Duration>? positionUpdates;
+  StreamSubscription<PlaybackEvent>? playbackEvents;
 
   _RecordingDetail _readDetail(ServerConversation row) {
     final loaded = _RecordingDetail(row);
@@ -198,7 +229,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   int focusRequest = 0;
   AudioPlayer? player;
   double speed = 1;
-  Directory? temp;
+  RecordingPlayback? _audioSource;
   Duration? _initialPosition;
   bool opening = false;
   bool _editing = false;
@@ -207,7 +238,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    if (widget.library.speakerLabelsAvailable) unawaited(_loadPeople());
+    tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialMatch == null ? 0 : 1);
+    if (!widget.offlineOnly && widget.library.speakerLabelsAvailable) {
+      unawaited(_loadPeople());
+    }
   }
 
   Future<void> _loadPeople() async {
@@ -261,10 +295,15 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   bool _initialExcerptUnavailable = false;
   bool _canPlay(ServerConversation row) =>
-      widget.library.audioPlayback &&
-      (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null);
+      _readingOffline ||
+      (widget.library.audioPlayback &&
+          row.externalIntegration?.localRecording?['group'] != true &&
+          row.externalIntegration?.localRecording?['results'] == null &&
+          row.externalIntegration?.localRecording?['status'] != 'waiting_for_parts' &&
+          (row.externalIntegration?.localRecording != null || row.externalIntegration?.localTranscript != null));
 
   bool _canEdit(_RecordingDetail loaded) =>
+      !_readingOffline &&
       widget.library.recordingEdits &&
       !loaded.pending &&
       !loaded.row.isLocked &&
@@ -274,7 +313,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening || _editing) throw RecordingEditFailure.unavailable;
     setState(() => _editing = true);
     try {
-      final row = await widget.library.editRecording(widget.id, edit);
+      final row = await widget.library.editRecording(_id, edit);
       if (!mounted) return;
       setState(() {
         detail = SynchronousFuture(_readDetail(row));
@@ -288,13 +327,31 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Future<void> _changeCategory(_RecordingDetail loaded) async {
     final current = conversationCategoryKey(loaded.row.structured.category);
     final choice = await pickConversationCategory(context, current: current);
-    if (!mounted || choice == null || choice == current) return;
+    if (!mounted || choice == null) return;
     try {
       await _save(RecordingEdit.category(current, choice));
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
       }
+    }
+  }
+
+  Future<void> _classifyCategory() async {
+    if (opening || _editing) return;
+    setState(() => _editing = true);
+    try {
+      if (!await runCategoryBackfill(context, widget.library, [_id]) || !mounted) return;
+      final row = await widget.library.detail(_id);
+      if (!mounted) return;
+      setState(() => detail = SynchronousFuture(_readDetail(row)));
+      widget.onEdited?.call(row);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    } finally {
+      if (mounted) setState(() => _editing = false);
     }
   }
 
@@ -349,7 +406,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final created = await createLocalTask(
       context,
       widget.library,
-      conversationId: widget.id,
+      conversationId: _id,
       segmentId: line?.id,
       initial: initial,
     );
@@ -362,6 +419,22 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     final before = loaded.row.starred;
     try {
       await _save(RecordingEdit.starred(before, !before));
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
+  Future<void> _changeArchive(_RecordingDetail loaded) async {
+    final before = loaded.row.archived;
+    try {
+      await _save(RecordingEdit.archived(before, !before));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(pairedSettingsLabel(context, before ? 'recordingRestored' : 'recordingArchived'))),
+        );
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
@@ -382,13 +455,175 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   }
 
   Future<_RecordingDetail> _load() async {
-    final loaded = _readDetail(await widget.library.detail(widget.id));
+    final library = widget.library;
+    final ServerConversation row;
+    if (widget.offlineOnly) {
+      if (!library.canOpenOffline) throw LibraryFailure.key;
+      final copy = await library.offlineRecordings.read(_id);
+      if (copy == null) throw OfflineRecordingFailure.unavailable;
+      row = await copy.readDetail();
+      if (!library.canOpenOffline) throw LibraryFailure.key;
+      if (mounted) _offlineCopy = copy;
+    } else {
+      row = await (_followSavedRecording ? library.refreshSavedRecording(_id) : library.detail(_id));
+    }
+    final loaded = _acceptRead(row);
+    if (!mounted) return loaded;
     final match = widget.initialMatch;
     if (match != null) {
       final found = _focusMatch(loaded, match, verifyExcerpt: widget.verifyInitialExcerpt);
       _initialExcerptUnavailable = widget.verifyInitialExcerpt && !found;
     }
     return loaded;
+  }
+
+  _RecordingDetail _acceptRead(ServerConversation row) {
+    final loaded = _readDetail(row);
+    if (!mounted) return loaded;
+    final before = _id;
+    _id = row.id;
+    final parent = row.externalIntegration?.localTranscript?['recording_results_id'];
+    _resultsParent = parent is String && parent != row.id && parent != widget.resultsParentId ? parent : null;
+    _followSavedRecording = canFollowSavedRecording(row);
+    _processingPoll?.cancel();
+    if (_recordingProcessing.contains(loaded.localState)) {
+      _scheduleProcessingPoll();
+    } else if (loaded.results case final results?) {
+      widget.onPublished?.call(before, results);
+    }
+    if (before != row.id) widget.onPublished?.call(before, [row]);
+    if (!_readingOffline &&
+        widget.library.audioPlayback &&
+        row.status == ConversationStatus.completed &&
+        row.externalIntegration?.localTranscript != null) {
+      unawaited(_checkDownloaded(row.id));
+    }
+    return loaded;
+  }
+
+  Future<void> _checkDownloaded(String id) async {
+    try {
+      final saved = await widget.library.offlineRecordings.read(id);
+      if (mounted && _id == id) setState(() => _downloaded = saved != null);
+    } on Exception {
+      // A storage lookup should not prevent viewing an online conversation.
+    }
+  }
+
+  Future<void> _download() async {
+    if (opening || _downloading) return;
+    setState(() => _downloading = true);
+    try {
+      await widget.library.saveOfflineRecording(_id);
+      if (mounted) setState(() => _downloaded = true);
+    } catch (error) {
+      if (mounted) {
+        final key = error == OfflineRecordingFailure.limit ? 'nextOfflineLimit' : 'nextOfflineDownloadFailed';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, key))));
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Widget _recordingResults(_RecordingDetail loaded, List<ServerConversation> rows) => ListView(
+    children: [
+      if (loaded.localState != 'published') ListTile(title: Text(recordingStatus(context, loaded.row))),
+      for (final row in rows)
+        ListTile(
+          key: ValueKey(row.id),
+          title: Text(recordingTitle(context, row)),
+          subtitle: Text(
+            [
+              if (row.startedAt case final started?)
+                MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(started.toLocal())),
+              if (_recordingMetadata(context, row) case final meta?) meta,
+              if (row.externalIntegration?.localTranscript?['model'] case final String model) model,
+              if (row.externalIntegration?.localRecording != null) recordingStatus(context, row),
+            ].join(' · '),
+          ),
+          trailing: Icon(row.id == widget.currentResultId ? Icons.check : Icons.chevron_right),
+          onTap: () => _openRecordingResult(row),
+        ),
+    ],
+  );
+
+  Future<void> _openRecordingResult(ServerConversation row) async {
+    if (row.id == widget.currentResultId) {
+      Navigator.of(context).pop();
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecordingPage(
+          library: widget.library,
+          id: row.id,
+          fromSavedRecording: canFollowSavedRecording(row),
+          resultsParentId: _id,
+          onEdited: widget.onEdited,
+          onPublished: widget.onPublished,
+        ),
+      ),
+    );
+    if (mounted && widget.library.isSignedIn) {
+      setState(() {
+        detail = _load();
+      });
+    }
+  }
+
+  Future<void> _openResultsParent() async {
+    final parent = _resultsParent;
+    if (parent == null) return;
+    try {
+      await player?.pause();
+    } catch (_) {
+      _playFailed();
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecordingPage(
+          library: widget.library,
+          id: parent,
+          fromSavedRecording: true,
+          currentResultId: _id,
+          onEdited: widget.onEdited,
+          onPublished: widget.onPublished,
+        ),
+      ),
+    );
+  }
+
+  void _scheduleProcessingPoll() {
+    _processingPoll = Timer(const Duration(seconds: 5), _refreshProcessingDetail);
+  }
+
+  bool get _canPoll =>
+      ModalRoute.isCurrentOf(context) == true &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+      !_editing &&
+      !opening;
+
+  Future<void> _refreshProcessingDetail() async {
+    if (!mounted || !widget.library.isSignedIn) return;
+    if (_canPoll) {
+      ServerConversation? row;
+      try {
+        row = await widget.library.refreshSavedRecording(_id);
+      } catch (_) {
+        // A temporary server failure leaves the last confirmed recording visible.
+      }
+      if (!mounted || !widget.library.isSignedIn) return;
+      if (row != null && _canPoll) {
+        final loaded = _acceptRead(row);
+        setState(() {
+          detail = SynchronousFuture(loaded);
+        });
+        return;
+      }
+    }
+    if (mounted && widget.library.isSignedIn) _scheduleProcessingPoll();
   }
 
   final _menu = GlobalKey();
@@ -412,13 +647,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     setState(() => opening = true);
     Directory? scratch;
     try {
-      File audio;
-      if (temp case final prepared?) {
-        audio = File('${prepared.path}/recording.wav');
-      } else {
+      var audio = _offlineCopy?.audio;
+      if (audio == null) {
         scratch = await (await getTemporaryDirectory()).createTemp('next-share-');
         audio = File('${scratch.path}/recording.wav');
-        await widget.library.downloadAudio(widget.id, audio);
+        await widget.library.downloadAudio(_id, audio);
+      } else if (!widget.library.canOpenOffline) {
+        throw LibraryFailure.key;
       }
       if (!mounted) return;
       await SharePlus.instance.share(
@@ -452,12 +687,14 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (_editing) return;
     setState(() => _editing = true);
     try {
-      await widget.library.retryProcessing(widget.id);
+      await widget.library.retryProcessing(_id);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(pairedSettingsLabel(context, 'nextRetryQueued'))));
-      setState(() => detail = _load());
+      setState(() {
+        detail = _load();
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
@@ -469,11 +706,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Future<void> _regenerateSummary() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => RecordingSummaryPage(id: widget.id, library: widget.library),
+        builder: (_) => RecordingSummaryPage(id: _id, library: widget.library),
       ),
     );
     if (!mounted || !widget.library.isSignedIn) return;
-    final refreshed = widget.library.detail(widget.id).then(_readDetail);
+    final refreshed = widget.library.detail(_id).then(_acceptRead);
     setState(() {
       detail = refreshed;
     });
@@ -506,14 +743,14 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening) return;
     final match = await Navigator.of(context).push<TranscriptMatchSnippet>(
       MaterialPageRoute(
-        builder: (_) => RecordingChatPage(id: widget.id, library: widget.library),
+        builder: (_) => RecordingChatPage(id: _id, library: widget.library),
       ),
     );
     if (!mounted || match == null) return;
     setState(() => opening = true);
     try {
       await player?.pause();
-      final loaded = _readDetail(await widget.library.detail(widget.id));
+      final loaded = _readDetail(await widget.library.detail(_id));
       if (!mounted) return;
       final focused = _focusMatch(loaded, match, verifyExcerpt: true);
       setState(() {
@@ -554,53 +791,75 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     if (opening) return;
     setState(() => opening = true);
     try {
+      final target = position ?? _initialPosition;
       if (player == null) {
-        final base = await getTemporaryDirectory();
-        final folder = await base.createTemp('next-recording-');
+        final savedAudio = _offlineCopy?.audio;
+        if (savedAudio != null && !widget.library.canOpenOffline) throw LibraryFailure.key;
+        final source = savedAudio == null ? await RecordingPlayback.open(widget.library, _id) : null;
+        if (!mounted) {
+          await source?.close();
+          return;
+        }
+        _audioSource = source;
+        final fresh = AudioPlayer();
         try {
-          final file = File('${folder.path}/recording.wav');
-          if (!mounted) return;
-          await widget.library.downloadAudio(widget.id, file);
-          if (!mounted) return;
-          final fresh = AudioPlayer();
-          try {
-            await fresh.setFilePath(file.path);
-            await fresh.setSpeed(speed);
-            if (!mounted) return;
-            player = fresh;
-            temp = folder;
-            positionUpdates = fresh.positionStream.listen((position) {
-              if (mounted) _reportPosition(position);
-            });
-          } finally {
-            if (player != fresh) await fresh.dispose();
+          if (savedAudio != null) {
+            await fresh.setFilePath(savedAudio.path, initialPosition: target);
+          } else {
+            await fresh.setUrl(source!.uri.toString(), initialPosition: target);
           }
+          await fresh.setSpeed(speed);
+          if (!mounted) return;
+          player = fresh;
+          positionUpdates = fresh.positionStream.listen((position) {
+            if (mounted) _reportPosition(position);
+          });
+          playbackEvents = fresh.playbackEventStream.listen((_) {}, onError: (Object _) => _resetPlayback(fresh));
         } finally {
-          if (temp != folder && await folder.exists()) {
-            await folder.delete(recursive: true);
+          if (player != fresh) {
+            if (identical(_audioSource, source)) _audioSource = null;
+            await source?.close();
+            await fresh.dispose();
           }
         }
+      } else if (target != null) {
+        await player!.seek(target);
+      } else if (player!.processingState == ProcessingState.completed) {
+        await player!.seek(Duration.zero);
       }
-      if (!mounted) return;
-      final current = player!;
-      final target = position ?? _initialPosition;
-      if (target != null) {
-        await current.seek(target);
-        _initialPosition = null;
-      } else if (current.processingState == ProcessingState.completed) {
-        await current.seek(Duration.zero);
-      }
+      final current = player;
+      if (!mounted || current == null) return;
+      _initialPosition = null;
       focusedLine = null;
-      if (mounted) _reportPosition(current.position);
-      if (mounted && !current.playing) {
+      _reportPosition(current.position);
+      if (!current.playing) {
         // play() completes on stop/end, so the control must be released before then.
-        unawaited(current.play().catchError((Object _) => _playFailed()));
+        unawaited(current.play().catchError((Object _) => _resetPlayback(current)));
       }
     } catch (_) {
+      if (mounted && position != null) _initialPosition = position;
       _playFailed();
     } finally {
       if (mounted) setState(() => opening = false);
     }
+  }
+
+  void _resetPlayback(AudioPlayer failed) {
+    if (!mounted || !identical(player, failed)) return;
+    setState(() {
+      _initialPosition = failed.position;
+      _releasePlayback();
+    });
+    _playFailed();
+  }
+
+  void _releasePlayback() {
+    unawaited(positionUpdates?.cancel());
+    unawaited(playbackEvents?.cancel());
+    unawaited(_audioSource?.close());
+    unawaited(player?.dispose());
+    _audioSource = null;
+    player = null;
   }
 
   bool get _hasPlayhead => player != null || _initialPosition != null;
@@ -651,21 +910,10 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 
   @override
   void dispose() {
-    unawaited(positionUpdates?.cancel());
+    _processingPoll?.cancel();
+    _releasePlayback();
     playback.dispose();
     tabs.dispose();
-    final current = player;
-    final folder = temp;
-    temp = null;
-    unawaited(() async {
-      try {
-        await current?.dispose();
-      } finally {
-        if (folder != null && await folder.exists()) {
-          await folder.delete(recursive: true);
-        }
-      }
-    }());
     super.dispose();
   }
 
@@ -710,9 +958,15 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
         final diarization = row == null ? null : recordingDiarization(context, row);
         return Scaffold(
           appBar: AppBar(
-            title: Text(row == null ? l.conversations : recordingTitle(context, row)),
+            title: Text(
+              loaded?.results != null
+                  ? pairedSettingsLabel(context, 'nextRecordingResults')
+                  : row == null
+                  ? l.conversations
+                  : recordingTitle(context, row),
+            ),
             actions: [
-              if (loaded != null)
+              if (loaded != null && loaded.results == null)
                 PopupMenuButton<_RecordingEditAction>(
                   key: _menu,
                   enabled: !opening && !_editing,
@@ -725,14 +979,23 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       l.transcriptCopiedToClipboard,
                     ),
                     _RecordingEditAction.copyId => _copy(loaded.row.id, l.conversationIdCopied),
+                    _RecordingEditAction.recordingResults => _openResultsParent(),
                     _RecordingEditAction.audio => _shareAudio(),
+                    _RecordingEditAction.offline => _download(),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
+                    _RecordingEditAction.archive => _changeArchive(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.category => _changeCategory(loaded),
+                    _RecordingEditAction.classifyCategory => _classifyCategory(),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.memories => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => LocalMemoriesPage(library: widget.library, sourceId: loaded.row.id),
+                      ),
+                    ),
                     _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
                       MaterialPageRoute(
                         builder: (_) => LocalGoalsPage(library: widget.library, conversationId: loaded.row.id),
@@ -746,6 +1009,27 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.memoriesAvailable && !_readingOffline && !loaded.pending)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.memories,
+                        child: Text(pairedSettingsLabel(context, 'memoryTitle')),
+                      ),
+                    if (!_readingOffline &&
+                        canPlay &&
+                        loaded.row.status == ConversationStatus.completed &&
+                        loaded.row.externalIntegration?.localTranscript != null)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.offline,
+                        enabled: !_downloaded && !_downloading,
+                        child: Text(
+                          pairedSettingsLabel(context, _downloaded ? 'nextOfflineDownloaded' : 'nextOfflineDownload'),
+                        ),
+                      ),
+                    if (_resultsParent != null)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.recordingResults,
+                        child: Text(pairedSettingsLabel(context, 'nextOpenRecordingResults')),
+                      ),
                     if (!loaded.pending)
                       PopupMenuItem(value: _RecordingEditAction.export, child: Text('${l.share} · TXT')),
                     if (loaded.summary.content.isNotEmpty)
@@ -760,7 +1044,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           value: _RecordingEditAction.goalProgress,
                           child: Text(pairedSettingsLabel(context, 'localGoalLog')),
                         ),
-                      if (widget.library.summaryRegenerationAvailable && loaded.lines.isNotEmpty)
+                      if ((widget.library.summaryRegenerationAvailable || widget.library.summaryJobsAvailable) &&
+                          loaded.lines.isNotEmpty)
                         PopupMenuItem(value: _RecordingEditAction.summary, child: Text(l.regenerateRecap)),
                       if (widget.library.tasksAvailable)
                         PopupMenuItem(value: _RecordingEditAction.task, child: Text(l.addTask)),
@@ -783,6 +1068,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           value: _RecordingEditAction.category,
                           child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
                         ),
+                      if (widget.library.categoryBackfill &&
+                          conversationCategoryKey(loaded.row.structured.category) == 'other')
+                        PopupMenuItem(
+                          value: _RecordingEditAction.classifyCategory,
+                          child: Text(pairedSettingsLabel(context, 'categoryBackfillAction')),
+                        ),
                       PopupMenuItem(
                         value: _RecordingEditAction.title,
                         child: Text(pairedSettingsLabel(context, 'recordingEditTitle')),
@@ -793,6 +1084,16 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
                         ),
                       ),
+                      if (widget.library.recordingArchive)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.archive,
+                          child: Text(
+                            pairedSettingsLabel(
+                              context,
+                              loaded.row.archived ? 'recordingRestoreFromArchive' : 'recordingMoveToArchive',
+                            ),
+                          ),
+                        ),
                       if (loaded.sources.isNotEmpty)
                         PopupMenuItem(
                           value: _RecordingEditAction.transcript,
@@ -801,13 +1102,13 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ],
                   ],
                 ),
-              if (loaded != null && loaded.lines.isNotEmpty)
+              if (!_readingOffline && loaded != null && loaded.lines.isNotEmpty)
                 IconButton(
                   tooltip: l.askOmi,
                   icon: const Icon(Icons.chat_bubble_outline),
                   onPressed: opening ? null : _openChat,
                 ),
-              if (loaded != null)
+              if (loaded != null && loaded.results == null)
                 IconButton(
                   tooltip: l.search,
                   icon: const Icon(Icons.search),
@@ -841,6 +1142,8 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     detail = _load();
                   }),
                 )
+              : loaded.results != null
+              ? _recordingResults(loaded, loaded.results!)
               : Column(
                   children: [
                     if (widget.library.processingRetryAvailable && loaded.failed)
@@ -850,6 +1153,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         label: Text(pairedSettingsLabel(context, 'nextRetryProcessing')),
                       ),
                     if (_recordingMetadata(context, loaded.row) case final metadata?) Text(metadata),
+                    if (_readingOffline) Text(pairedSettingsLabel(context, 'nextOfflineCopy')),
                     if (!loaded.pending && loaded.row.status == ConversationStatus.completed)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
@@ -890,13 +1194,24 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                       ),
                     if (_initialExcerptUnavailable)
                       ListTile(title: Text(pairedSettingsLabel(context, 'recordingChatSourceUnavailable'))),
-                    if (opening || _editing) const LinearProgressIndicator(),
+                    if (opening || _editing || _downloading) const LinearProgressIndicator(),
                     Expanded(
                       child: TabBarView(
                         controller: tabs,
                         children: [
                           _Summary(
                             detail: loaded,
+                            controls:
+                                !_readingOffline &&
+                                    !loaded.pending &&
+                                    (widget.library.summaryRegenerationAvailable || widget.library.summaryJobsAvailable)
+                                ? RecordingSummaryInfo(
+                                    key: ObjectKey(loaded),
+                                    id: _id,
+                                    library: widget.library,
+                                    onChoose: _regenerateSummary,
+                                  )
+                                : null,
                             onOpenLine: (line) => _openLine(line, canPlay: canPlay),
                           ),
                           loaded.lines.isEmpty
@@ -952,6 +1267,9 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 enum _RecordingEditAction {
+  memories,
+  offline,
+  recordingResults,
   export,
   audio,
   copySummary,
@@ -959,9 +1277,11 @@ enum _RecordingEditAction {
   copyId,
   title,
   star,
+  archive,
   transcript,
   folder,
   category,
+  classifyCategory,
   task,
   taskFromLine,
   taskSuggestions,
@@ -1005,11 +1325,32 @@ class _RecordingDetail {
     ServerConversation(id: row.id, createdAt: row.createdAt, structured: row.structured, transcriptSegments: sources),
   );
   bool get pending => row.externalIntegration?.localRecording != null;
-  bool get failed => row.externalIntegration?.localRecording?['status'] == 'failed';
+  Object? get localState => row.externalIntegration?.localRecording?['status'];
+  bool get failed => localState == 'failed';
+  late final List<ServerConversation>? results = _readResults();
+
+  List<ServerConversation>? _readResults() {
+    final raw = row.externalIntegration?.localRecording?['results'];
+    if (raw is! List) return null;
+    final ids = <String>{row.id};
+    final results = <ServerConversation>[];
+    for (final entry in raw.whereType<Map<String, dynamic>>()) {
+      try {
+        final result = ServerConversation.fromJson(entry);
+        if (ids.add(result.id)) results.add(result);
+      } on TypeError {
+        continue;
+      } on FormatException {
+        continue;
+      }
+    }
+    return results;
+  }
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.detail, required this.onOpenLine});
+  const _Summary({required this.detail, required this.onOpenLine, this.controls});
+  final Widget? controls;
   final _RecordingDetail detail;
   final ValueChanged<TranscriptSegment> onOpenLine;
 
@@ -1019,6 +1360,7 @@ class _Summary extends StatelessWidget {
     return SelectionArea(
       child: CustomScrollView(
         slivers: [
+          if (controls != null) SliverToBoxAdapter(child: controls),
           SliverPadding(
             padding: const EdgeInsets.all(OmiSpacing.md),
             sliver: summary.sections.isNotEmpty

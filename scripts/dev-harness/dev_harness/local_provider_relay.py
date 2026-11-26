@@ -117,7 +117,7 @@ def control_frame(raw):
         raise RelayError('Live input must be bounded PCM16 binary frames') from None
     if not isinstance(value, dict) or value.get('type') != 'translation':
         raise RelayError('Live input must be bounded PCM16 binary frames')
-    return value.get('language'), value.get('other_language')
+    return value.get('language'), value.get('other_language'), value.get('revision')
 
 
 async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False, connector=connect,
@@ -174,7 +174,9 @@ async def relay_session(downstream, snapshot, cfg, *, key='', raw_upstream=False
                     if tuning:
                         await tuning.ready.wait()
                     while True:
-                        event = await asyncio.wait_for(downstream.receive(), 60)
+                        # The capture socket owns session lifetime. A CV1 may
+                        # stop sending packets during a long quiet interval.
+                        event = await downstream.receive()
                         if event['type'] == 'websocket.disconnect':
                             disconnected = True
                             break

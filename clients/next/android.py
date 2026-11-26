@@ -7,12 +7,14 @@ import re
 import shutil
 import subprocess
 import sys
+from zipfile import ZipFile
 
+from build_info import package_version
 from cv1_protocol import cv1_feature_masks, cv1_uuids
 from prepare import HERE, PIN
 
 PLUGINS = {
-    'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio',
+    'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio', 'opus_flutter_android',
     'path_provider_android', 'permission_handler_android', 'quick_actions_android', 'share_plus', 'shared_preferences_android',
 }
 
@@ -25,7 +27,7 @@ def prepare_native(app):
         '', settings.read_text(), flags=re.MULTILINE,
     ))
     # The donor's app build config, receiver declarations and resources refer to
-    # native services that Next does not launch. Retain only Flutter's themes and icon.
+    # native services that Next does not launch. Retain Flutter's themes and install the Next launcher resources.
     main = android / 'app/src/main'
     donor_source = (main / 'kotlin', main / 'java/com')
     donor_variants = (android / 'app/src' / name for name in ('dev', 'prod', 'debug', 'profile'))
@@ -34,9 +36,10 @@ def prepare_native(app):
             shutil.rmtree(path)
     shutil.copyfile(HERE / 'android/app.gradle', android / 'app/build.gradle')
     shutil.copyfile(HERE / 'android/AndroidManifest.xml', main / 'AndroidManifest.xml')
+    shutil.copytree(HERE / 'android/res', main / 'res', dirs_exist_ok=True)
     activity = main / 'kotlin/org/omilocal/next/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
-    for source in ('MainActivity.kt', 'NextCV1.kt'):
+    for source in ('MainActivity.kt', 'NextCV1.kt', 'NextReminders.kt'):
         shutil.copyfile(HERE / 'android' / source, activity.parent / source)
     constants = [f'    val {name} = java.util.UUID.fromString("{value}")'
                  for name, value in cv1_uuids(app).items()]
@@ -90,7 +93,10 @@ def main():
         [sys.executable, HERE / 'prepare.py', args.repository, '--android'], text=True,
     ).strip())
     subprocess.run([flutter, 'pub', 'get', '--enforce-lockfile'], cwd=app, check=True)
-    (app / 'android/local.properties').write_text(f'sdk.dir={sdk}\nflutter.sdk={flutter.parent.parent}\n')
+    name, number = package_version(app)
+    (app / 'android/local.properties').write_text(
+        f'sdk.dir={sdk}\nflutter.sdk={flutter.parent.parent}\nflutter.versionName={name}\nflutter.versionCode={number}\n'
+    )
     prepare_native(app)
     gradle = shutil.which('gradle') or str(app / 'android/gradlew')
     command = [gradle, ':app:assembleDebug', '-Ptarget=lib/main_local_next.dart',
@@ -101,6 +107,9 @@ def main():
     apk = app / 'build/app/outputs/apk/debug/app-debug.apk'
     if not apk.is_file():
         raise ValueError('Android APK was not generated')
+    with ZipFile(apk) as packaged:
+        if 'lib/arm64-v8a/libopus.so' not in packaged.namelist():
+            raise ValueError('Android APK is missing the CV1 calibration decoder')
     print(apk)
 
 

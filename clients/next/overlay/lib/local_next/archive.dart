@@ -14,8 +14,11 @@ import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'accents.dart';
 import 'paired_library.dart';
 import 'archive_cache.dart';
+import 'archive_visibility.dart';
+import 'recording_edit.dart';
 import 'settings_labels.dart';
 import 'recording_page.dart';
 import 'conversation_categories.dart';
@@ -29,8 +32,41 @@ class PairedArchiveProvider extends ChangeNotifier {
   final bool Function()? _canRefreshRecordings;
   late final _cache = NextArchiveCache(_library.audioOwnerId);
   bool showingCached = false;
+  ArchiveVisibility visibility = const ArchiveVisibility();
+  bool _visibilityRequested = false;
+  bool _visibilityChanged = false;
+
+  Future<void> _restoreVisibility() async {
+    final saved = await ArchiveVisibility.read(_library.audioOwnerId);
+    if (_disposed || _visibilityChanged || !saved.active) return;
+    visibility = saved;
+    _groupEntries();
+    notifyListeners();
+  }
+
+  Future<void> changeVisibility(BuildContext context) async {
+    final choice = await showDialog<ArchiveVisibility>(
+      context: context,
+      builder: (_) => ArchiveVisibilityDialog(visibility),
+    );
+    if (choice == null || _disposed || !context.mounted) return;
+    try {
+      if (!await choice.save(_library.audioOwnerId)) throw StateError('Archive preferences unavailable');
+      if (_disposed) return;
+      visibility = choice;
+      _visibilityChanged = true;
+      _groupEntries();
+      notifyListeners();
+    } catch (_) {
+      if (!_disposed && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.failedToSaveCheckConnection)));
+      }
+    }
+  }
+
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
+  final _publicationsDuringRead = <String, List<ServerConversation>>{};
   List<({DateTime day, ServerConversation? row})> entries = const [];
   bool busy = false, more = false, partial = false;
   Object? failure;
@@ -38,6 +74,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool _disposed = false;
   bool _retryAppend = false;
   bool _starredOnly = false;
+  bool _archivedOnly = false;
   bool _refreshAfterRead = false;
   bool _paged = false;
   int _deliveryRevision = 0;
@@ -47,9 +84,26 @@ class PairedArchiveProvider extends ChangeNotifier {
   String? category;
 
   bool get starredOnly => _starredOnly;
+  bool get archivedOnly => _archivedOnly;
   Future<void> refresh() => _load(append: false);
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
+
+  Future<void> refreshAfterServerCheck({required bool periodic}) async {
+    if (_isConnectionFailure(failure)) {
+      await _load(append: _retryAppend, automatic: true);
+    } else if (periodic && failure == null && !_paged && _localRefresh == null) {
+      // A receipt may precede publication. Another phone's delivery has no local receipt at all.
+      await _load(append: false, automatic: true);
+    }
+  }
+
+  static bool _isConnectionFailure(Object? error) =>
+      error == LibraryFailure.unavailable ||
+      error is SocketException ||
+      error is TimeoutException ||
+      error is HttpException;
+
   ServerConversation? rowById(String id) => _rows[id];
 
   // A durable receipt is independent of the Live socket and survives retries.
@@ -64,7 +118,12 @@ class PairedArchiveProvider extends ChangeNotifier {
     final canRefresh = _canRefreshRecordings;
     if (_disposed || canRefresh == null || _paged || busy || (!now && _localRefresh != null)) return;
     final awaitingProcessing = _rows.values.any(
-      (row) => const {'saved', 'pending', 'processing'}.contains(row.externalIntegration?.localRecording?['status']),
+      (row) => const {
+        'saved',
+        'pending',
+        'processing',
+        'waiting_for_parts',
+      }.contains(row.externalIntegration?.localRecording?['status']),
     );
     if (_refreshedDelivery == _deliveryRevision && !awaitingProcessing) return;
     _localRefresh?.cancel();
@@ -78,9 +137,9 @@ class PairedArchiveProvider extends ChangeNotifier {
     });
   }
 
-  void refreshAfterFolderChange({String? deletedId}) {
+  void refreshAfterArchiveEdit({String? deletedFolderId}) {
     if (_disposed) return;
-    if (deletedId != null && folder?.id == deletedId) folder = null;
+    if (deletedFolderId != null && folder?.id == deletedFolderId) folder = null;
     if (busy) {
       _refreshAfterRead = true;
     } else {
@@ -91,6 +150,12 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> filterStarred(bool value) async {
     if (_disposed || busy || _starredOnly == value) return;
     _starredOnly = value;
+    await _refreshFilter();
+  }
+
+  Future<void> filterArchived(bool value) async {
+    if (_disposed || busy || !_library.recordingArchive || _archivedOnly == value) return;
+    _archivedOnly = value;
     await _refreshFilter();
   }
 
@@ -118,6 +183,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   }
 
   bool _matches(ServerConversation row) =>
+      (!_library.recordingArchive || row.archived == _archivedOnly) &&
       (!_starredOnly || row.starred) &&
       (folder == null || row.folderId == folder!.id) &&
       (category == null || conversationCategoryKey(row.structured.category) == category);
@@ -132,7 +198,12 @@ class PairedArchiveProvider extends ChangeNotifier {
 
   void applyEdit(ServerConversation row) {
     if (_disposed) return;
-    if ((_starredOnly || folder != null || category != null) && _matches(row) != _rows.containsKey(row.id)) {
+    if ((_library.recordingArchive || _starredOnly || folder != null || category != null) &&
+        _matches(row) != _rows.containsKey(row.id)) {
+      if (_rows.remove(row.id) != null) {
+        _groupEntries();
+        notifyListeners();
+      }
       if (busy) {
         _editsDuringRead[row.id] = row;
         _refreshAfterRead = true;
@@ -144,16 +215,32 @@ class PairedArchiveProvider extends ChangeNotifier {
     if (!_rows.containsKey(row.id)) return;
     if (busy) _editsDuringRead[row.id] = row;
     _rows[row.id] = row;
-    entries = List.unmodifiable(entries.map((entry) => entry.row?.id == row.id ? (day: entry.day, row: row) : entry));
+    _groupEntries();
+    notifyListeners();
+  }
+
+  void replacePending(String previousId, List<ServerConversation> rows) {
+    if (_disposed) return;
+    if (busy) _publicationsDuringRead[previousId] = rows;
+    if (_rows.remove(previousId) == null) return;
+    for (final row in rows.where(_matches)) {
+      _rows.putIfAbsent(row.id, () => row);
+    }
+    _groupEntries();
     notifyListeners();
   }
 
   void _groupEntries() {
-    final sorted = _rows.values.toList()
-      ..sort((a, b) {
-        final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
-        return time != 0 ? time : a.id.compareTo(b.id);
-      });
+    final sorted =
+        _rows.values
+            .where(
+              (row) => visibility.includes(row, cachedAudioFile: showingCached && _cache.audioFileIds.contains(row.id)),
+            )
+            .toList()
+          ..sort((a, b) {
+            final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
+            return time != 0 ? time : a.id.compareTo(b.id);
+          });
     final grouped = <({DateTime day, ServerConversation? row})>[];
     for (final row in sorted) {
       final start = (row.startedAt ?? row.createdAt).toLocal();
@@ -176,9 +263,19 @@ class PairedArchiveProvider extends ChangeNotifier {
       notifyListeners();
     }
     try {
+      if (!_visibilityRequested) {
+        _visibilityRequested = true;
+        unawaited(_restoreVisibility());
+      }
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
-      final result = await _library.list(append ? _offset : 0, starredOnly: _starredOnly, folderId: folder?.id);
+      if (!_library.recordingArchive) _archivedOnly = false;
+      final result = await _library.list(
+        append ? _offset : 0,
+        starredOnly: _starredOnly,
+        archivedOnly: _archivedOnly,
+        folderId: folder?.id,
+      );
       if (_disposed) return;
       if (!append) {
         _rows.clear();
@@ -189,28 +286,31 @@ class PairedArchiveProvider extends ChangeNotifier {
       _paged = append;
       failure = null;
       for (final row in result.rows) {
-        final fresh = _editsDuringRead[row.id] ?? row;
-        if (_matches(fresh)) _rows[fresh.id] = fresh;
+        for (final published in _publicationsDuringRead[row.id] ?? [row]) {
+          final fresh = _editsDuringRead[published.id] ?? published;
+          if (_matches(fresh)) _rows[fresh.id] = fresh;
+        }
       }
       _offset += result.consumed;
       more = result.more && result.consumed > 0;
       partial |= result.partial;
-      _groupEntries();
       showingCached = false;
-      if (!append && !result.partial && !_starredOnly && folder == null && category == null) {
+      _groupEntries();
+      if (!append && !result.partial && !_archivedOnly && !_starredOnly && folder == null && category == null) {
         unawaited(_cache.write(_rows.values.toList()));
       }
     } catch (error) {
       if (_disposed) return;
-      final offline =
-          error == LibraryFailure.unavailable ||
-          error is SocketException ||
-          error is TimeoutException ||
-          error is HttpException;
-      if (offline && entries.isEmpty && !append && !_starredOnly && folder == null && category == null) {
+      if (_isConnectionFailure(error) &&
+          entries.isEmpty &&
+          !append &&
+          !_archivedOnly &&
+          !_starredOnly &&
+          folder == null &&
+          category == null) {
         final cached = await _cache.read();
         if (_disposed) return;
-        for (final row in cached) {
+        for (final row in cached.where(_matches)) {
           _rows[row.id] = row;
         }
         showingCached = cached.isNotEmpty;
@@ -227,11 +327,12 @@ class PairedArchiveProvider extends ChangeNotifier {
         more = false;
         partial = false;
         _refreshedDelivery = _deliveryRevision;
-      } else if (!automatic || entries.isEmpty) {
+      } else if (!automatic || failure != null || entries.isEmpty) {
         failure = error;
       }
     } finally {
       _editsDuringRead.clear();
+      _publicationsDuringRead.clear();
       if (!_disposed) {
         busy = false;
         notifyListeners();
@@ -269,6 +370,42 @@ class PairedArchiveFeed extends StatelessWidget {
   final String Function(BuildContext context, Object? failure) errorText;
   final Set<String>? selection;
 
+  Future<void> _quickActions(BuildContext context, ServerConversation row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final edit = await showModalBottomSheet<RecordingEdit>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(row.starred ? Icons.star : Icons.star_outline),
+              title: Text(pairedSettingsLabel(sheet, row.starred ? 'recordingUnstar' : 'recordingStar')),
+              onTap: () => Navigator.pop(sheet, RecordingEdit.starred(row.starred, !row.starred)),
+            ),
+            if (archive._library.recordingArchive)
+              ListTile(
+                leading: Icon(row.archived ? Icons.unarchive_outlined : Icons.archive_outlined),
+                title: Text(
+                  pairedSettingsLabel(sheet, row.archived ? 'recordingRestoreFromArchive' : 'recordingMoveToArchive'),
+                ),
+                onTap: () => Navigator.pop(sheet, RecordingEdit.archived(row.archived, !row.archived)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (edit == null || archive._disposed || !context.mounted) return;
+    try {
+      final updated = await archive._library.editRecording(row.id, edit);
+      archive.applyEdit(updated);
+    } catch (error) {
+      if (archive._disposed || !context.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      if (error == RecordingEditFailure.conflict) archive.refreshAfterArchiveEdit();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
@@ -286,7 +423,14 @@ class PairedArchiveFeed extends StatelessWidget {
           onRetry: archive.refresh,
         );
       }
-      return OmiEmptyState(icon: Icons.forum_rounded, title: l.noConversationsYet);
+      return OmiEmptyState(
+        icon: Icons.forum_rounded,
+        title: archive.visibility.active
+            ? pairedSettingsLabel(context, 'archiveVisibilityEmpty')
+            : archive.archivedOnly
+            ? pairedSettingsLabel(context, 'recordingArchiveEmpty')
+            : l.noConversationsYet,
+      );
     }
     return Column(
       children: [
@@ -319,6 +463,15 @@ class PairedArchiveFeed extends StatelessWidget {
                   row: row,
                   onOpen: onOpen,
                   selected: selection?.contains(row.id),
+                  onHold:
+                      selection == null &&
+                          !archive.showingCached &&
+                          archive._library.recordingEdits &&
+                          !row.isLocked &&
+                          row.externalIntegration?.localRecording == null &&
+                          row.status == ConversationStatus.completed
+                      ? () => _quickActions(context, row)
+                      : null,
                 );
               },
             ),
@@ -330,10 +483,11 @@ class PairedArchiveFeed extends StatelessWidget {
 }
 
 class _ArchiveRow extends StatelessWidget {
-  const _ArchiveRow({super.key, required this.row, required this.onOpen, this.selected});
+  const _ArchiveRow({super.key, required this.row, required this.onOpen, this.onHold, this.selected});
   final ServerConversation row;
   final ValueChanged<String> onOpen;
   final bool? selected;
+  final VoidCallback? onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -348,12 +502,20 @@ class _ArchiveRow extends StatelessWidget {
     final showCategory = local == null && row.status == ConversationStatus.completed;
     final useCategoryEmoji =
         showCategory && category != 'other' && const {'', '🧠', '💬', '🎙️'}.contains(row.structured.emoji.trim());
+    final status = local == null ? row.status.name : local['status'];
+    final (stageAccent, stageIcon) = switch (status) {
+      'failed' => (NextAccent.red, Icons.error_outline),
+      'processing' => (NextAccent.blue, Icons.graphic_eq),
+      'pending' || 'waiting_for_parts' => (NextAccent.amber, Icons.schedule),
+      'receiving' => (NextAccent.teal, Icons.downloading_outlined),
+      'no_speech' => (NextAccent.slate, Icons.mic_off_outlined),
+      _ => (NextAccent.slate, Icons.inventory_2_outlined),
+    };
     final meta = [
       OmiDateFormat.of(context).time(started),
       if (recordingInput(context, row).isNotEmpty) recordingInput(context, row),
       if (duration > 0) OmiDuration.compact(duration, context.l10n),
       if (showCategory) conversationCategoryName(context, category),
-      if (local != null || row.status != ConversationStatus.completed) recordingStatus(context, row),
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -363,6 +525,7 @@ class _ArchiveRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => onOpen(row.id),
+          onLongPress: onHold,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -390,13 +553,37 @@ class _ArchiveRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(meta, style: OmiType.footnote.copyWith(color: OmiColors.textTertiary)),
+                      if (local != null || row.status != ConversationStatus.completed)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(color: stageAccent.tint(context), borderRadius: OmiRadius.smAll),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(stageIcon, size: 16, color: stageAccent.of(context)),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      recordingStatus(context, row),
+                                      style: OmiType.footnote.copyWith(color: stageAccent.of(context)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
                 if (selected != null)
                   Icon(selected! ? Icons.check_box : Icons.check_box_outline_blank)
                 else if (row.starred)
-                  Icon(Icons.star, size: 17, semanticLabel: context.l10n.starred),
+                  Icon(Icons.star, size: 17, color: NextAccent.amber.of(context), semanticLabel: context.l10n.starred),
               ],
             ),
           ),

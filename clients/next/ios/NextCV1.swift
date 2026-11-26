@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Flutter
 import Foundation
+import UIKit
 
 // The materializer appends CV1UUID from the pinned Omi Dart protocol constants.
 final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -18,6 +19,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var peer: CBPeripheral?
   private var intent = Intent.idle
   private var phase = "idle"
+  private var idleTimerBeforeArchive: Bool?
   private var generation = 0
   private var seen: Set<UUID> = []
   private var timer: DispatchWorkItem?
@@ -34,12 +36,19 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var metricChars: [String: CBCharacteristic] = [:]
   private var pendingReads: Set<String> = []
   private var readingRSSI = false
+  private var archive: (read: CV1LegacyRead, reply: FlutterResult)?
+  private var storageWritePending = false
+  private var clearReply: FlutterResult?
+  private var clearSerial = 0
+  private var storageCommand: CBCharacteristic?
+  private var enablingStorageNotifications = false
   private var observingBattery = false
   private var features: Int?
   private var setting: (field: String, char: CBCharacteristic, value: Int, reply: FlutterResult)?
 
   private let metricServices: [CBUUID: [String: CBUUID]] = [
     CV1UUID.batteryService: ["battery": CV1UUID.battery],
+    CV1UUID.storageService: ["storageStatus": CV1UUID.storageStatus],
     CV1UUID.deviceInfo: ["firmware": CV1UUID.firmware, "hardware": CV1UUID.hardware,
                          "model": CV1UUID.model, "manufacturer": CV1UUID.manufacturer],
     CV1UUID.settings: ["led": CV1UUID.led, "gain": CV1UUID.gain, "charging": CV1UUID.charging],
@@ -76,6 +85,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    restoreArchiveIdleTimer()
     sink = nil
     close()
     return nil
@@ -98,6 +108,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       start(.link(id), phase: "connecting")
       result(nil)
     case "setAudio":
+      guard archive == nil, clearReply == nil else { return result(problem("storage_busy")) }
       guard let requested = args?["generation"] as? Int, let token = args?["subscription"] as? Int,
             let enabled = args?["enabled"] as? Bool else {
         return result(problem("invalid_arguments"))
@@ -113,12 +124,61 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     case "sampleSignal":
       sampleSignal()
       result(nil)
+    case "setArchiveAwake":
+      if args?["enabled"] as? Bool == true {
+        if idleTimerBeforeArchive == nil {
+          idleTimerBeforeArchive = UIApplication.shared.isIdleTimerDisabled
+          UIApplication.shared.isIdleTimerDisabled = true
+        }
+      } else {
+        restoreArchiveIdleTimer()
+      }
+      result(nil)
+    case "readOldest":
+      guard phase == "ready", let peer, let char = storageCommand, char.isNotifying,
+            args?["generation"] as? Int == generation, args?["deviceId"] as? String == peer.identifier.uuidString,
+            archive == nil, clearReply == nil, !storageWritePending, setting == nil, !changingAudio,
+            audioQueue.isEmpty, audioChar?.isNotifying != true, codec == 20 || codec == 21,
+            let limit = args?["maxRecords"] as? Int,
+            let info = metrics["storageInfo"] as? FlutterStandardTypedData,
+            let read = CV1LegacyRead(info: info.data, maxRecords: limit)
+      else { return result(problem("storage_busy")) }
+      guard let expected = args?["expectedStart"] as? NSNumber, expected.int64Value == Int64(read.start) else {
+        return result(problem("cursor_changed"))
+      }
+      let volume = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+      guard let free = volume?[.systemFreeSize] as? NSNumber, free.int64Value >= 65536 else {
+        return result(problem("phone_full"))
+      }
+      archive = (read, result)
+      metrics.removeValue(forKey: "storageInfo")
+      publishMetrics()
+      storageWritePending = true
+      peer.writeValue(read.command, for: char, type: .withResponse)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak read] in
+        guard let self, let read, self.archive?.read === read else { return }
+        self.lost(true, reason: "timeout")
+      }
+    case "clearStorage":
+      guard phase == "ready", let peer, let char = storageCommand, char.isNotifying, clearReply == nil, archive == nil, !storageWritePending,
+            args?["generation"] as? Int == generation, args?["deviceId"] as? String == peer.identifier.uuidString,
+            let info = metrics["storageInfo"] as? FlutterStandardTypedData, info.data.count >= 31,
+            info.data[29] == 1, info.data[30] == 188, !changingAudio, audioQueue.isEmpty,
+            audioChar?.isNotifying != true else { return result(problem("storage_busy")) }
+      clearSerial += 1
+      let serial = clearSerial
+      clearReply = result
+      storageWritePending = true
+      peer.writeValue(Data([0x13]), for: char, type: .withResponse)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+        if self?.clearSerial == serial { self?.finishClear(false) }
+      }
     case "writeSetting":
       guard phase == "ready", let peer, let field = args?["field"] as? String,
             field == "led" || field == "gain", let char = metricChars[field],
             supportsSetting(field), char.properties.contains(.write), let value = args?["value"] as? Int,
             (0...(field == "gain" ? 8 : 100)).contains(value), args?["generation"] as? Int == generation,
-            setting == nil, !changingAudio, audioQueue.isEmpty, audioChar?.isNotifying != true else {
+            archive == nil, setting == nil, !changingAudio, audioQueue.isEmpty, audioChar?.isNotifying != true else {
         return result(problem("setting_unavailable"))
       }
       setting = (field, char, value, result)
@@ -182,6 +242,11 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     buttonConfirmed = false
     changingAudio = false
     subscription = CV1AudioSubscription()
+    finishArchive(false)
+    finishClear(false)
+    storageWritePending = false
+    storageCommand = nil
+    enablingStorageNotifications = false
     metricChars.removeAll()
     metrics.removeAll()
     pendingReads.removeAll()
@@ -348,7 +413,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     device.discoverCharacteristics([CV1UUID.button], for: button)
     for service in services {
       if let fields = metricServices[service.uuid] {
-        device.discoverCharacteristics(Array(fields.values), for: service)
+        let extra = service.uuid == CV1UUID.storageService ? [CV1UUID.storageCommand] : []
+        device.discoverCharacteristics(Array(fields.values) + extra, for: service)
       }
     }
   }
@@ -357,6 +423,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     guard peer === device else { return }
     if let fields = metricServices[service.uuid] {
       guard error == nil, let chars = service.characteristics else { return }
+      if service.uuid == CV1UUID.storageService {
+        storageCommand = chars.first { $0.uuid == CV1UUID.storageCommand && $0.properties.contains([.notify, .write]) }
+      }
       for (key, id) in fields {
         if let char = chars.first(where: { $0.uuid == id && $0.properties.contains(.read) }) {
           metricChars[key] = char
@@ -424,7 +493,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
 
   func peripheral(_ device: CBPeripheral, didUpdateNotificationStateFor char: CBCharacteristic, error: Error?) {
     guard peer === device else { return }
-    if char === buttonChar {
+    if char === storageCommand {
+      enablingStorageNotifications = false
+      if error == nil, char.isNotifying { sampleStorageInfo() }
+    } else if char === buttonChar {
       guard error == nil, char.isNotifying else { return lost(true) }
       buttonConfirmed = true
       readyIfConfigured()
@@ -448,9 +520,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   private func observeBattery() {
-    guard !observingBattery, let peer, let char = metricChars["battery"], char.properties.contains(.notify) else { return }
+    guard !observingBattery, let peer, let char = metricChars["battery"] else { return }
     observingBattery = true
-    if !char.isNotifying { peer.setNotifyValue(true, for: char) }
+    if char.properties.contains(.notify), !char.isNotifying { peer.setNotifyValue(true, for: char) }
+    if char.properties.contains(.read), pendingReads.insert("battery").inserted { peer.readValue(for: char) }
   }
 
   private func supportsSetting(_ field: String) -> Bool {
@@ -460,13 +533,46 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   private func sample() {
-    guard phase == "ready", let peer, !changingAudio, audioQueue.isEmpty, audioChar?.isNotifying != true else { return }
+    guard phase == "ready", let peer, archive == nil, clearReply == nil, !changingAudio, audioQueue.isEmpty, audioChar?.isNotifying != true else { return }
     for (field, char) in metricChars {
       if field == "features", features != nil { continue }
       if (field == "led" || field == "gain"), !supportsSetting(field) { continue }
       if field == "charging", (features ?? 0) == 0 { continue }
       if ["firmware", "hardware", "model", "manufacturer"].contains(field), metrics[field] != nil { continue }
       if pendingReads.insert(field).inserted { peer.readValue(for: char) }
+    }
+  }
+
+  private func restoreArchiveIdleTimer() {
+    if let previous = idleTimerBeforeArchive {
+      idleTimerBeforeArchive = nil
+      UIApplication.shared.isIdleTimerDisabled = previous
+    }
+  }
+
+  private func finishArchive(_ complete: Bool) {
+    guard let pending = archive else { return }
+    archive = nil
+    pending.reply(["complete": complete, "start": Int64(pending.read.start),
+                   "bytes": FlutterStandardTypedData(bytes: pending.read.wholeRecords)])
+  }
+
+  private func finishClear(_ acknowledged: Bool) {
+    let reply = clearReply
+    clearReply = nil
+    reply?(acknowledged)
+  }
+
+  // Query ring metadata only while the audio stream is idle.
+  private func sampleStorageInfo() {
+    guard phase == "ready", let peer, let char = storageCommand, archive == nil, clearReply == nil, !storageWritePending, !changingAudio, audioQueue.isEmpty,
+          audioChar?.isNotifying != true, !enablingStorageNotifications else { return }
+    if char.isNotifying {
+      storageWritePending = true
+      peer.writeValue(Data([0x10]), for: char, type: .withResponse)
+    } else {
+      enablingStorageNotifications = true
+      peer.setNotifyValue(true, for: char)
     }
   }
 
@@ -484,7 +590,16 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   func peripheral(_ device: CBPeripheral, didWriteValueFor char: CBCharacteristic, error: Error?) {
-    guard peer === device, let write = setting, write.char === char else { return }
+    guard peer === device else { return }
+    if char === storageCommand {
+      storageWritePending = false
+      if error != nil {
+        if archive != nil { return lost(true) }
+        finishClear(false)
+      }
+      return
+    }
+    guard let write = setting, write.char === char else { return }
     setting = nil
     if error == nil {
       metrics[write.field] = write.value
@@ -503,7 +618,14 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
         bytes.count >= 4 ? Int(bytes[0]) | (Int(bytes[1]) << 8) : nil
       } ?? 0
       sample()
-    case "battery", "led", "gain":
+    case "battery":
+      guard let level = data?.first, level <= 100 else { return }
+      metrics[field] = Int(level)
+    case "storageStatus":
+      metrics.removeValue(forKey: "storageInfo")
+      metrics[field] = data.flatMap { $0.count == 16 ? FlutterStandardTypedData(bytes: $0) : nil }
+      if metrics[field] != nil { sampleStorageInfo() }
+    case "led", "gain":
       if supportsSetting(field), metricChars[field]?.properties.contains(.write) == true {
         metrics[field + "Writable"] = true
       }
@@ -520,6 +642,26 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
 
   func peripheral(_ device: CBPeripheral, didUpdateValueFor char: CBCharacteristic, error: Error?) {
     guard peer === device else { return }
+    if char === storageCommand {
+      if let pending = archive {
+        guard error == nil, let frame = char.value else { return lost(true) }
+        switch pending.read.receive(frame) {
+        case .more: break
+        case .complete: finishArchive(true)
+        case .interrupted: lost(true)
+        }
+        return
+      }
+      if error == nil, let data = char.value, data.count == 2, data.first == 1, clearReply != nil {
+        finishClear(data[1] == 0)
+        return
+      }
+      if phase == "ready", error == nil, let data = char.value, data.first == 0x02, data.count == 31 || data.count == 41 {
+        metrics["storageInfo"] = FlutterStandardTypedData(bytes: data)
+        publishMetrics()
+      }
+      return
+    }
     if let field = metricChars.first(where: { $0.value === char })?.key {
       readMetric(field, data: error == nil ? char.value : nil)
       return
@@ -537,7 +679,7 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   }
 
   func peripheral(_ device: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
-    if peer === device, invalidatedServices.contains(where: { [CV1UUID.audioService, CV1UUID.buttonService].contains($0.uuid) }) {
+    if peer === device, invalidatedServices.contains(where: { [CV1UUID.audioService, CV1UUID.buttonService, CV1UUID.storageService].contains($0.uuid) }) {
       lost(true)
     }
   }

@@ -92,7 +92,7 @@ def initialize(cfg):
 
 
 def apply(cfg, values):
-    from .local_mac import cli, ngrok_port, pairing_data, private_json
+    from .local_mac import cli, ngrok_port, pairing_data, pairing_identity_matches, private_json
     mode = getattr(cfg, 'local_transport', values.get('OMI_LOCAL_TRANSPORT', 'ngrok'))
     desired = {}
     if mode == 'ngrok':
@@ -110,7 +110,9 @@ def apply(cfg, values):
         path = cfg.layout.state_root / name
         if path.is_symlink() or (path.exists() and path.stat().st_mode & 0o077):
             raise LocalEnvError('Existing local settings must be private regular files')
-        if not path.exists() or json.loads(path.read_text()) != value:
+        saved = json.loads(path.read_text()) if path.exists() else None
+        matches = pairing_identity_matches(saved, value) if name == 'pairing.json' else saved == value
+        if not matches:
             changed.append((path, value))
     if changed and any(cli._service_record(cfg, name) for name in ('backend', 'ngrok')):
         raise LocalEnvError('Stop the local stack before applying changed .env settings; current settings preserved')

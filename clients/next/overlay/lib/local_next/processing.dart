@@ -14,9 +14,9 @@ enum NextProcessingStage {
   summary,
   translation;
 
-  bool get canActivate => this == live || this == stt || this == diarization;
-  bool get canDisable => this == live || this == diarization;
-  bool get canCreateDraft => canActivate;
+  bool get usesTextModel => this == summary || this == translation;
+  bool get listsModels => this == stt || usesTextModel;
+  bool get canClearSelection => this != stt;
 
   static NextProcessingStage? _parse(Object? wire) {
     for (final stage in values) {
@@ -66,27 +66,32 @@ class NextProcessingDraft {
     this.device,
     this.minSpeakers,
     this.maxSpeakers,
+    this.reasoningOff = false,
+    this.pinsSummaryModel = false,
   });
   final NextProcessingStage stage;
   final String name, endpoint, model, language;
   final String? id, device;
   final int? minSpeakers, maxSpeakers;
+  final bool reasoningOff;
+  final bool pinsSummaryModel;
 
   String get _kind => switch (stage) {
     NextProcessingStage.live => 'external',
-    NextProcessingStage.stt => 'openai-compatible',
+    NextProcessingStage.stt || NextProcessingStage.summary || NextProcessingStage.translation => 'openai-compatible',
     NextProcessingStage.diarization => 'mycelia',
-    _ => throw NextProcessingFailure.invalid,
   };
 
   static NextProcessingDraft? _editable(Map row, NextProcessingStage stage) {
-    if (!stage.canCreateDraft || row['can_edit'] != true) return null;
+    if (row['can_edit'] != true) return null;
     final data = row['settings'];
     if (data is! Map) return null;
     final fields = switch (stage) {
       NextProcessingStage.live => const {'url'},
       NextProcessingStage.stt => const {'provider_url', 'model', 'language', 'device', 'diarization_model'},
-      _ => const {'base_url', 'min_speakers', 'max_speakers'},
+      NextProcessingStage.diarization => const {'base_url', 'min_speakers', 'max_speakers'},
+      NextProcessingStage.summary => const {'base_url', 'model', 'reasoning', 'model_source'},
+      NextProcessingStage.translation => const {'base_url', 'model', 'reasoning'},
     };
     final endpointField = switch (stage) {
       NextProcessingStage.live => 'url',
@@ -97,6 +102,8 @@ class NextProcessingDraft {
     if (url is! String ||
         data.keys.any((k) => !fields.contains(k)) ||
         (data['diarization_model'] != null && data['diarization_model'] != 'none') ||
+        !const {null, 'default', 'off'}.contains(data['reasoning']) ||
+        !const {null, 'profile'}.contains(data['model_source']) ||
         [data['model'], data['language'], data['device']].any((v) => v != null && v is! String) ||
         [data['min_speakers'], data['max_speakers']].any((v) => v != null && v is! int)) {
       return null;
@@ -111,6 +118,8 @@ class NextProcessingDraft {
       device: data['device'] as String?,
       minSpeakers: data['min_speakers'] as int?,
       maxSpeakers: data['max_speakers'] as int?,
+      reasoningOff: data['reasoning'] == 'off',
+      pinsSummaryModel: data['model_source'] == 'profile',
     );
     return row['kind'] == draft._kind && draft.hasValidEndpoint ? draft : null;
   }
@@ -144,11 +153,11 @@ class NextProcessingDraft {
 
   Map<String, dynamic> _card(NextProcessingProfile? original, {required bool listingModels}) {
     final url = endpoint.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (!stage.canCreateDraft ||
-        name.trim().isEmpty ||
+    if (name.trim().isEmpty ||
         name.runes.length > 100 ||
         name.runes.any((c) => c < 32) ||
-        !hasValidEndpoint) {
+        !hasValidEndpoint ||
+        (stage.listsModels && ((!listingModels && model.trim().isEmpty) || model.runes.length > 256))) {
       throw NextProcessingFailure.invalid;
     }
     final settings = <String, dynamic>{};
@@ -156,9 +165,7 @@ class NextProcessingDraft {
       case NextProcessingStage.live:
         settings['url'] = url;
       case NextProcessingStage.stt:
-        if ((!listingModels && model.trim().isEmpty) ||
-            model.runes.length > 256 ||
-            !RegExp(r'^(auto|[a-z]{2,3})$').hasMatch(language.trim())) {
+        if (!RegExp(r'^(auto|[a-z]{2,3})$').hasMatch(language.trim())) {
           throw NextProcessingFailure.invalid;
         }
         final originalDevice = device ?? original?.editableDraft?.device;
@@ -177,8 +184,13 @@ class NextProcessingDraft {
           if (minSpeakers != null) 'min_speakers': minSpeakers,
           if (maxSpeakers != null) 'max_speakers': maxSpeakers,
         });
-      default:
-        throw NextProcessingFailure.invalid;
+      case NextProcessingStage.summary || NextProcessingStage.translation:
+        settings.addAll({
+          'base_url': url,
+          'model': model.trim(),
+          if (stage == NextProcessingStage.summary) 'model_source': 'profile',
+          if (reasoningOff) 'reasoning': 'off',
+        });
     }
     return {if (id != null) 'id': id, 'stage': stage.name, 'kind': _kind, 'name': name.trim(), 'settings': settings};
   }
@@ -192,7 +204,11 @@ class NextProcessingDraft {
           device == sent['device'],
     NextProcessingStage.diarization =>
       endpoint == sent['base_url'] && minSpeakers == sent['min_speakers'] && maxSpeakers == sent['max_speakers'],
-    _ => false,
+    NextProcessingStage.summary || NextProcessingStage.translation =>
+      endpoint == sent['base_url'] &&
+          model == sent['model'] &&
+          reasoningOff == (sent['reasoning'] == 'off') &&
+          pinsSummaryModel == (sent['model_source'] == 'profile'),
   };
 }
 
@@ -247,10 +263,11 @@ class NextProcessingProfile {
 }
 
 class NextProcessingSettings {
-  const NextProcessingSettings._(this.revision, this.profiles, this._effective);
+  const NextProcessingSettings._(this.revision, this.profiles, this._effective, this._textModelProfiles);
   final int revision;
   final List<NextProcessingProfile> profiles;
   final Map<NextProcessingStage, NextProcessingProfile?> _effective;
+  final bool _textModelProfiles;
 
   factory NextProcessingSettings.fromJson(Map<String, dynamic> wire) {
     final revision = wire['revision'], cards = wire['profiles'], effective = wire['effective'];
@@ -263,11 +280,12 @@ class NextProcessingSettings {
     }
     final prepared = <NextProcessingProfile>[];
     final ids = <String>{};
+    final textModelProfiles = wire['text_model_profiles_version'] == 1;
     for (final row in cards) {
       if (row is! Map || row['stage'] is! String) throw NextProcessingFailure.unavailable;
       final stage = NextProcessingStage._parse(row['stage']);
       if (stage == null) continue;
-      final card = NextProcessingProfile._parse(row, stage, prepared: true);
+      final card = NextProcessingProfile._parse(row, stage, prepared: !stage.usesTextModel || textModelProfiles);
       if (!ids.add(card.id)) throw NextProcessingFailure.unavailable;
       prepared.add(card);
     }
@@ -278,18 +296,19 @@ class NextProcessingSettings {
       if (row != null && row is! Map) throw NextProcessingFailure.unavailable;
       active[stage] = row == null ? null : NextProcessingProfile._parse(row as Map, stage);
     }
-    return NextProcessingSettings._(revision, List.unmodifiable(prepared), Map.unmodifiable(active));
+    return NextProcessingSettings._(revision, List.unmodifiable(prepared), Map.unmodifiable(active), textModelProfiles);
   }
 
   bool supports(NextProcessingStage stage) => _effective.containsKey(stage);
+  bool allowsProfileControl(NextProcessingStage stage) =>
+      supports(stage) && (!stage.usesTextModel || _textModelProfiles);
   NextProcessingProfile? active(NextProcessingStage stage) => _effective[stage];
   List<NextProcessingProfile> choices(NextProcessingStage stage) =>
       profiles.where((p) => p.stage == stage).toList(growable: false);
 
   bool canActivate(NextProcessingStage stage, String? id) =>
-      stage.canActivate &&
-      supports(stage) &&
-      (id == null ? stage.canDisable : profiles.any((p) => p.stage == stage && p.id == id));
+      allowsProfileControl(stage) &&
+      (id == null ? stage.canClearSelection : profiles.any((p) => p.stage == stage && p.id == id));
 
   bool canDelete(NextProcessingProfile p) =>
       supports(p.stage) && profiles.contains(p) && p.canEdit && !_effective.values.any((active) => active?.id == p.id);
@@ -343,8 +362,16 @@ class NextProcessingClient {
     final selected = approved.profiles.where((p) => p.stage == stage && p.id == id).firstOrNull;
     return _mutate(approved, () => _activate({'revision': approved.revision, 'stage': stage.name, 'id': id}), (after) {
       final active = after.active(stage);
-      return after.supports(stage) &&
+      final summary = approved.active(NextProcessingStage.summary);
+      if (stage == NextProcessingStage.translation && id == null && summary != null) {
+        return after.allowsProfileControl(stage) &&
+            active?.inheritedFrom == NextProcessingStage.summary &&
+            active?.id == summary.id &&
+            active?.configurationRevision == summary.configurationRevision;
+      }
+      return after.allowsProfileControl(stage) &&
           active?.id == id &&
+          active?.inheritedFrom == null &&
           active?.configurationRevision == selected?.configurationRevision;
     });
   }
@@ -365,7 +392,7 @@ class NextProcessingClient {
   ) {
     _requireSnapshot(approved);
     if (_draftRequest == null) throw NextProcessingFailure.unsupported;
-    if (!approved.supports(draft.stage) || !draft.stage.canCreateDraft) throw NextProcessingFailure.invalid;
+    if (!approved.allowsProfileControl(draft.stage)) throw NextProcessingFailure.invalid;
     final original = approved.profiles.where((p) => p.id == draft.id).firstOrNull;
     if (draft.id != null && (original == null || original.stage != draft.stage || !original.canEdit)) {
       throw NextProcessingFailure.invalid;
@@ -378,7 +405,7 @@ class NextProcessingClient {
       throw NextProcessingFailure.invalid;
     }
     final listing = operation == NextDraftOperation.models;
-    if (listing && draft.stage != NextProcessingStage.stt) throw NextProcessingFailure.invalid;
+    if (listing && !draft.stage.listsModels) throw NextProcessingFailure.invalid;
     return {
       'profile': draft._card(original, listingModels: listing),
       if (operation == NextDraftOperation.save) 'revision': approved.revision,

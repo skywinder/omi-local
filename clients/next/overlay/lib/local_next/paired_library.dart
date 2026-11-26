@@ -19,17 +19,30 @@ import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import 'daily_recap.dart';
+import 'local_memory.dart';
+import 'wav_level.dart';
 import 'live_preview.dart';
 import 'local_goal.dart';
+import 'offline_recordings.dart';
 import 'processing.dart';
 import 'recording_chat.dart';
 import 'recording_summary.dart';
 import 'recording_edit.dart';
+import 'task_due.dart';
 import 'task_suggestion.dart';
 
+enum NextServerConnection { checking, connected, unreachable, rejected, invalid }
+
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
+
+enum CategoryBackfillFailure implements Exception { unavailable, providerChanged, invalidResult }
+
+enum CategoryBackfillState { updated, alreadyClassified, unclassified, unavailable, changed }
+
+typedef PlaybackRead = ({int status, int length, int? totalLength, String? contentRange, Stream<List<int>> bytes});
 
 typedef ArchiveSearchHit = ({String id, String title, DateTime startedAt, List<TranscriptMatchSnippet> snippets});
 
@@ -84,44 +97,73 @@ class PairedLibrary {
   bool audioDelivery;
   bool conversationGroups = false;
   bool recordingEdits = false;
+  bool recordingArchive = false;
   bool recordingCategories = false;
+  bool categoryBackfill = false;
   bool processingRetryAvailable = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
+  bool taskRemindersAvailable = false;
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
+  bool summaryJobsAvailable = false;
+  bool memoriesAvailable = false;
   bool dailyRecapsAvailable = false;
+  bool dailyRecapScheduleAvailable = false;
   bool goalsAvailable = false;
+  bool goalLifecycleAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
   void Function()? onKeyRejected;
   bool _closed = false;
+  final connection = ValueNotifier(NextServerConnection.checking);
   bool verified = false;
   bool get isSignedIn => verified && !_closed;
   late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
+  late final _archived = ConversationApi(
+    baseUrl: origin.origin,
+    send: (request) => _sendArchive(request, archivedOnly: true),
+  );
+  late final _savedRecording = ConversationApi(
+    baseUrl: origin.origin,
+    send: (request) => _sendArchive(request, resolveLocalRecording: true),
+  );
   Future<void>? _checking;
   late final _audioOrigin = _readAudioOrigin();
   final _clients = <HttpClient>{};
   final _previews = <WebSocket>{};
+  final _taskDues = <String, LocalTaskDue>{};
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
+  late final offlineRecordings = NextOfflineRecordings(audioOwnerId);
+  bool get canOpenOffline => !_closed;
 
   void close() {
+    if (_closed) return;
     _closed = true;
+    connection.dispose();
     ownerChange._close();
     verified = false;
     audioDelivery = false;
     conversationGroups = false;
     audioPlayback = false;
     recordingEdits = false;
+    recordingArchive = false;
     recordingCategories = false;
+    categoryBackfill = false;
     processingRetryAvailable = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
+    taskRemindersAvailable = false;
+    _taskDues.clear();
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
+    summaryJobsAvailable = false;
+    memoriesAvailable = false;
     dailyRecapsAvailable = false;
+    dailyRecapScheduleAvailable = false;
     goalsAvailable = false;
+    goalLifecycleAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -193,7 +235,10 @@ class PairedLibrary {
       final base = documents ?? await getApplicationDocumentsDirectory();
       final queue = Directory('${base.path}/outbox/$ownerId');
       return await queue.list(followLinks: false).any((entry) {
-        return entry.path.endsWith('.part') || entry.path.endsWith('.ready') || entry.path.endsWith('.finish');
+        return entry.path.endsWith('.part') ||
+            entry.path.endsWith('.ready') ||
+            entry.path.endsWith('.finish') ||
+            entry.path.endsWith('.cv1');
       });
     } on PathNotFoundException {
       return false;
@@ -215,6 +260,7 @@ class PairedLibrary {
   void _rejectKey() {
     if (_closed) return;
     unawaited(NextArchiveCache(audioOwnerId).write([]));
+    unawaited(offlineRecordings.clear());
     close();
     onKeyRejected?.call();
   }
@@ -263,14 +309,22 @@ class PairedLibrary {
     }
   }
 
-  Future<WebSocket> connectPreview(String serverId, String source, String codec) async {
+  Future<WebSocket> connectPreview(String serverId, String source, String codec, {PreviewSilence? silence}) async {
     if (_closed || serverId != audioOwnerId) throw LibraryFailure.key;
     if (!verified) await verify();
     final audioOrigin = await _audioOrigin;
     if (_closed || !audioDelivery) throw LibraryFailure.unavailable;
     final client = _directClient();
     try {
-      final socket = await upgradePairedPreview(client, origin, _key, source, codec, audioOrigin: audioOrigin);
+      final socket = await upgradePairedPreview(
+        client,
+        origin,
+        _key,
+        source,
+        codec,
+        audioOrigin: audioOrigin,
+        silence: silence,
+      );
       if (_closed) {
         abortPairedPreview(socket);
         throw LibraryFailure.key;
@@ -305,7 +359,23 @@ class PairedLibrary {
   Future<dynamic> _json(HttpClientResponse response, int limit) async =>
       jsonDecode(utf8.decode(await _bytes(response, limit)));
 
-  Future<void> verify() => _checking ??= _verify().whenComplete(() => _checking = null);
+  Future<void> verify() => _checking ??= _verifyConnection().whenComplete(() => _checking = null);
+
+  Future<void> _verifyConnection() async {
+    try {
+      await _verify();
+      if (!_closed) connection.value = NextServerConnection.connected;
+    } catch (error) {
+      if (!_closed) {
+        connection.value = switch (error) {
+          LibraryFailure.key => NextServerConnection.rejected,
+          LibraryFailure.malformed => NextServerConnection.invalid,
+          _ => NextServerConnection.unreachable,
+        };
+      }
+      rethrow;
+    }
+  }
 
   Future<LocalRuntimeStatus?> readRuntimeStatus() => _request(
     '/v1/local/status',
@@ -467,14 +537,21 @@ class PairedLibrary {
     conversationGroups = audioDelivery && data['local_conversation_group_version'] == 1;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
+    recordingArchive = recordingEdits && data['local_recording_archive_version'] == 1;
     recordingCategories = recordingEdits && data['local_recording_categories_version'] == 1;
+    categoryBackfill = recordingCategories && data['local_category_backfill_version'] == 1;
     processingRetryAvailable = data['local_processing_retry_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
+    taskRemindersAvailable = tasksAvailable && data['local_task_reminders_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
+    summaryJobsAvailable = data['local_summary_jobs_version'] == 1;
+    memoriesAvailable = data['local_memories_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
+    dailyRecapScheduleAvailable = data['local_daily_recap_schedule_version'] == 1;
     goalsAvailable = data['local_goals_version'] == 1;
+    goalLifecycleAvailable = goalsAvailable && data['local_goal_lifecycle_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -487,7 +564,11 @@ class PairedLibrary {
     ConversationStatus.failed,
   ];
 
-  Future<http.Response> _sendArchive(ApiRequest request) async {
+  Future<http.Response> _sendArchive(
+    ApiRequest request, {
+    bool resolveLocalRecording = false,
+    bool archivedOnly = false,
+  }) async {
     if (!isSignedIn) throw LibraryFailure.key;
     final uri = Uri.parse(request.url);
     if (request.method != 'GET' ||
@@ -533,7 +614,11 @@ class PairedLibrary {
         }
         return http.Response.bytes(await _bytes(response, collection ? 8 << 20 : 24 << 20), 200, headers: headers);
       },
-      query: collection ? {...query, 'list_fields_only': 'true'} : null,
+      query: collection
+          ? {...query, 'list_fields_only': 'true', if (archivedOnly) 'archived_only': 'true'}
+          : resolveLocalRecording
+          ? {'resolve_local_recording': 'true', 'include_recording_results': 'true'}
+          : {'include_recording_results': 'true'},
       readHttpErrors: true,
       overallTimeout: _deadline,
     );
@@ -548,12 +633,14 @@ class PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async {
     if (offset < 0) throw LibraryFailure.malformed;
+    if (archivedOnly && !recordingArchive) throw LibraryFailure.unavailable;
     var storageCount = 0;
     bool? hasMore;
-    final result = await _archive.list(
+    final result = await (archivedOnly ? _archived : _archive).list(
       limit: pageSize,
       offset: offset,
       statuses: _archiveStatuses,
@@ -569,7 +656,9 @@ class PairedLibrary {
         throw _archiveFailure(problem);
       case ApiSuccess(:final data, :final rejectedRows, :final truncated):
         final rows = data.where((row) => _archiveId.hasMatch(row.id)).toList();
-        if (data.isNotEmpty && rows.isEmpty) throw LibraryFailure.malformed;
+        if ((data.isNotEmpty && rows.isEmpty) || (archivedOnly && rows.any((row) => !row.archived))) {
+          throw LibraryFailure.malformed;
+        }
         final received = data.length + rejectedRows;
         if (storageCount < received || storageCount > pageSize) throw LibraryFailure.malformed;
         return (
@@ -587,16 +676,29 @@ class PairedLibrary {
     return '$_archivePath/$id';
   }
 
-  Future<ServerConversation> detail(String id) async {
+  Future<ServerConversation> detail(String id) => _readDetail(id, resolveLocalRecording: false);
+
+  Future<ServerConversation> refreshSavedRecording(String id) => _readDetail(id, resolveLocalRecording: true);
+
+  // The archive has a separate, stable alias for the results of a delivery group.
+  static String savedGroupResultsId(String recordingId) => const Uuid().v5(recordingId, 'waiting-for-parts');
+
+  Future<ServerConversation> _readDetail(String id, {required bool resolveLocalRecording}) async {
     _conversation(id);
     try {
-      final result = await _archive.byId(id);
+      final result = await (resolveLocalRecording ? _savedRecording : _archive).byId(id);
       if (!isSignedIn) throw LibraryFailure.key;
       switch (result) {
         case ApiFailure(:final problem):
           throw _archiveFailure(problem);
         case ApiSuccess(:final data):
-          if (data.id != id) throw LibraryFailure.malformed;
+          if (data.id != id &&
+              (!resolveLocalRecording ||
+                  !_archiveId.hasMatch(data.id) ||
+                  data.externalIntegration?.localTranscript == null ||
+                  data.status != ConversationStatus.completed)) {
+            throw LibraryFailure.malformed;
+          }
           return data;
       }
     } on TypeError {
@@ -616,17 +718,23 @@ class PairedLibrary {
 
   Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    if (!recordingEdits || (edit.field == 'category' && !recordingCategories)) throw RecordingEditFailure.unavailable;
+    if (!recordingEdits ||
+        (edit.field == 'category' && !recordingCategories) ||
+        (edit.field == 'archived' && !recordingArchive)) {
+      throw RecordingEditFailure.unavailable;
+    }
     _conversation(id);
     try {
       final row = await _request(
         '/v1/local/conversations/$id/edit',
         (response) async {
           if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
+          if (response.statusCode == HttpStatus.requestEntityTooLarge) throw RecordingEditFailure.transcriptEditLimit;
+          if (response.statusCode == HttpStatus.serviceUnavailable) throw RecordingEditFailure.transcriptUnavailable;
           if (response.statusCode != HttpStatus.ok) throw RecordingEditFailure.unavailable;
           final data = await _json(response, 24 << 20) as Map<String, dynamic>;
           final row = ServerConversation.fromJson(data['conversation'] as Map<String, dynamic>);
-          if (row.id != id) throw LibraryFailure.malformed;
+          if (row.id != id || (edit.field == 'archived' && row.archived != edit.value)) throw LibraryFailure.malformed;
           return row;
         },
         method: 'PATCH',
@@ -644,13 +752,83 @@ class PairedLibrary {
     }
   }
 
+  Future<RecordingChatProvider?> categoryBackfillProvider() async {
+    final data = await _categoryBackfillRequest();
+    if (data is! Map<String, dynamic> || !data.containsKey('provider')) throw CategoryBackfillFailure.invalidResult;
+    final provider = data['provider'];
+    return provider == null ? null : RecordingChatProvider.fromJson(provider as Map<String, dynamic>);
+  }
+
+  Future<List<CategoryBackfillState>> classifyRecordingCategories(List<String> ids, String binding) async {
+    if (ids.isEmpty || ids.length > 8 || ids.toSet().length != ids.length) throw LibraryFailure.malformed;
+    ids.forEach(_conversation);
+    final data = await _categoryBackfillRequest({'recording_ids': ids, 'provider_binding': binding});
+    if (data is! List || data.length != ids.length) throw CategoryBackfillFailure.invalidResult;
+    final results = <CategoryBackfillState>[];
+    for (var i = 0; i < ids.length; i++) {
+      final item = data[i];
+      if (item is! Map || item['id'] != ids[i]) throw CategoryBackfillFailure.invalidResult;
+      results.add(switch (item['state']) {
+        'updated' => CategoryBackfillState.updated,
+        'already_classified' => CategoryBackfillState.alreadyClassified,
+        'unclassified' => CategoryBackfillState.unclassified,
+        'unavailable' => CategoryBackfillState.unavailable,
+        'changed' => CategoryBackfillState.changed,
+        _ => throw CategoryBackfillFailure.invalidResult,
+      });
+    }
+    return results;
+  }
+
+  Future<dynamic> _categoryBackfillRequest([Map<String, dynamic>? body]) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!categoryBackfill) throw CategoryBackfillFailure.unavailable;
+    final data = await _request(
+      '/v1/local/conversations/classify-categories',
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) throw CategoryBackfillFailure.providerChanged;
+        if (response.statusCode == HttpStatus.badGateway) throw CategoryBackfillFailure.invalidResult;
+        if (response.statusCode != HttpStatus.ok) throw CategoryBackfillFailure.unavailable;
+        return _json(response, 32 << 10);
+      },
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: body == null ? null : ContentType.json,
+      readHttpErrors: true,
+      overallTimeout: Duration(seconds: body == null ? 15 : 105),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return data;
+  }
+
   static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+
+  LocalTaskDue? taskDue(String id) => _taskDues[id];
+
+  void _rememberTaskDue(Map<String, dynamic> data) {
+    final id = data['id'];
+    if (!isSignedIn || id is! String) return;
+    final due = LocalTaskDue.fromTask(data);
+    if (due == null) {
+      _taskDues.remove(id);
+    } else {
+      _taskDues[id] = due;
+    }
+  }
 
   Future<ActionItemsResponse> readTasks(int offset) async {
     if (!isSignedIn || !tasksAvailable) throw LibraryFailure.unavailable;
     final page = await _request(
       '/v1/action-items',
-      (response) async => ActionItemsResponse.fromJson(await _json(response, 1 << 20) as Map<String, dynamic>),
+      (response) async {
+        final data = await _json(response, 1 << 20) as Map<String, dynamic>;
+        final page = ActionItemsResponse.fromJson(data);
+        if (data['action_items'] case final List rows) {
+          for (final row in rows.whereType<Map<String, dynamic>>()) {
+            _rememberTaskDue(row);
+          }
+        }
+        return page;
+      },
       query: {'offset': '$offset', 'limit': '30'},
       overallTimeout: _deadline,
     );
@@ -659,6 +837,40 @@ class PairedLibrary {
   }
 
   Future<ActionItemWithMetadata> readTask(String id) => _taskRequest(id: id, method: 'GET');
+
+  Future<List<LocalTaskReminder>> readTaskReminders() async {
+    if (!isSignedIn || !taskRemindersAvailable) throw LibraryFailure.unavailable;
+    final items = await _request('/v1/local/action-items/reminders/schedule', (response) async {
+      final data = await _json(response, 128 << 10);
+      if (data is! List || data.length > 96) throw LibraryFailure.malformed;
+      final reminders = <LocalTaskReminder>[];
+      final ids = <String>{};
+      for (final row in data) {
+        if (row is! Map ||
+            row['id'] is! String ||
+            row['description'] is! String ||
+            row['exact_time'] is! bool ||
+            row['notify_at'] is! String) {
+          throw LibraryFailure.malformed;
+        }
+        final id = row['id'] as String;
+        final description = row['description'] as String;
+        final at = DateTime.tryParse(row['notify_at'] as String);
+        if (!_folderId.hasMatch(id) ||
+            !ids.add(id) ||
+            description.isEmpty ||
+            description.length > 400 ||
+            at == null ||
+            !at.isUtc) {
+          throw LibraryFailure.malformed;
+        }
+        reminders.add((id: id, description: description, at: at, exact: row['exact_time'] as bool));
+      }
+      return reminders;
+    });
+    if (!isSignedIn) throw LibraryFailure.key;
+    return items;
+  }
 
   Future<ActionItemWithMetadata> createTask(
     String requestId,
@@ -706,6 +918,19 @@ class PairedLibrary {
     await _goalRequest('${_goalPath(id)}/progress', body: body);
   }
 
+  Future<void> changeGoalStatus(
+    String id,
+    LocalGoalTransition transition, {
+    required String revision,
+    required String requestId,
+  }) async {
+    if (!goalLifecycleAvailable) throw LocalGoalFailure.unavailable;
+    await _goalRequest(
+      '${_goalPath(id)}/lifecycle',
+      body: {'status': transition.status, 'request_id': requestId, 'expected_revision': revision},
+    );
+  }
+
   String _goalPath(String id) {
     if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) throw LocalGoalFailure.invalid;
     return '/v1/local/goals/$id';
@@ -729,6 +954,84 @@ class PairedLibrary {
     return data;
   }
 
+  Future<LocalMemoryPage> listMemories({
+    String state = 'accepted',
+    String? sourceId,
+    String query = '',
+    String? after,
+  }) async {
+    final data = await _memoryRequest(
+      '/v1/local/memories',
+      query: {
+        'state': state,
+        if (sourceId != null) 'source_id': sourceId,
+        if (query.isNotEmpty) 'query': query,
+        if (after != null) 'after': after,
+      },
+    );
+    return (
+      items: (data['items'] as List).map((item) => LocalMemory(item as Map<String, dynamic>)).toList(),
+      next: data['next_after'] as String?,
+    );
+  }
+
+  Future<LocalMemoryProvider?> memoryProvider(String id) async {
+    final data = await _memoryRequest('/v1/local/conversations/$id/memories');
+    return data['provider'] == null ? null : LocalMemoryProvider.fromJson(data['provider'] as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> extractMemories(String id, String binding, String requestId) => _memoryRequest(
+    '/v1/local/conversations/$id/memories',
+    body: {'request_id': requestId, 'provider_binding': binding},
+    timeout: const Duration(seconds: 84),
+  );
+
+  Future<void> reviewMemory(LocalMemory fact, String action, String requestId, {String? content}) async {
+    await _memoryRequest(
+      '/v1/local/memories/${fact.id}',
+      body: {
+        'request_id': requestId,
+        'revision': fact.revision,
+        'action': action,
+        if (content != null) 'content': content,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _memoryRequest(
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = _deadline,
+  }) async {
+    if (!isSignedIn || !memoriesAvailable) throw LocalMemoryFailure.unavailable;
+    final data = await _request(
+      path,
+      (response) async => await _json(response, 1 << 20) as Map<String, dynamic>,
+      query: query,
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      overallTimeout: timeout,
+      statusFailure: (status) => status == 409
+          ? LocalMemoryFailure.changed
+          : status == 422
+          ? LocalMemoryFailure.invalid
+          : LocalMemoryFailure.unavailable,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return data;
+  }
+
+  Future<DailyRecapSchedule> dailyRecapSchedule() async {
+    if (!dailyRecapScheduleAvailable) throw DailyRecapFailure.unavailable;
+    return DailyRecapSchedule.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/schedule'));
+  }
+
+  Future<DailyRecapSchedule> saveDailyRecapSchedule(Map<String, dynamic> body) async {
+    if (!dailyRecapScheduleAvailable) throw DailyRecapFailure.unavailable;
+    return DailyRecapSchedule.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/schedule', body: body));
+  }
+
   Future<DailyRecapPreview> previewDailyRecap(DateTime date) async =>
       DailyRecapPreview.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/preview', body: dailyRecapDay(date)));
 
@@ -749,7 +1052,7 @@ class PairedLibrary {
   Future<Map<String, dynamic>> _dailyRecapRequest(
     String path, {
     Map<String, String>? query,
-    Map<String, String>? body,
+    Map<String, dynamic>? body,
     Duration timeout = _deadline,
   }) async {
     if (!isSignedIn || !dailyRecapsAvailable) throw DailyRecapFailure.unavailable;
@@ -767,27 +1070,41 @@ class PairedLibrary {
     return result;
   }
 
+  Map<String, String> _summaryBody(SummaryRegeneration request) => {
+    'request_id': request.requestId,
+    'source_revision': request.sourceRevision,
+    'provider_binding': request.binding,
+    'template_id': request.templateId,
+    'template_digest': request.templateDigest,
+    'prompt': request.prompt,
+  };
+
   Future<void> regenerateSummary(String id, SummaryRegeneration request) async {
-    final result = await _summaryRequest(
-      id,
-      body: {
-        'request_id': request.requestId,
-        'source_revision': request.sourceRevision,
-        'provider_binding': request.binding,
-        'template_id': request.templateId,
-        'template_digest': request.templateDigest,
-        'prompt': request.prompt,
-      },
-    );
+    final result = await _summaryRequest(id, body: _summaryBody(request));
     if (result['request_id'] != request.requestId) throw RecordingSummaryFailure.unavailable;
   }
 
-  Future<Map<String, dynamic>> _summaryRequest(String id, {Map<String, String>? body}) async {
-    if (!isSignedIn || !summaryRegenerationAvailable) throw RecordingSummaryFailure.unavailable;
+  Future<SummaryJob> enqueueSummary(String id, SummaryRegeneration request) async =>
+      decodeSummaryJob(await _summaryRequest(id, body: _summaryBody(request), background: true));
+
+  Future<SummaryJob> readSummaryJob(String id, String requestId) async =>
+      decodeSummaryJob(await _summaryRequest(id, query: {'request_id': requestId}, background: true));
+
+  Future<Map<String, dynamic>> _summaryRequest(
+    String id, {
+    Map<String, String>? body,
+    Map<String, String>? query,
+    bool? background,
+  }) async {
+    final useQueue = background ?? (body == null && summaryJobsAvailable);
+    if (!isSignedIn || !(useQueue ? summaryJobsAvailable : summaryRegenerationAvailable)) {
+      throw RecordingSummaryFailure.unavailable;
+    }
     _conversation(id);
     final result = await _request(
-      '/v1/local/conversations/$id/regenerate-summary',
+      '/v1/local/conversations/$id/${useQueue ? 'summary-jobs' : 'regenerate-summary'}',
       (response) async => await _json(response, 1024 << 10) as Map<String, dynamic>,
+      query: query,
       body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
       bodyType: ContentType.json,
       statusFailure: (status) => switch (status) {
@@ -796,7 +1113,7 @@ class PairedLibrary {
         422 => RecordingSummaryFailure.noTranscript,
         _ => RecordingSummaryFailure.unavailable,
       },
-      overallTimeout: body == null ? _deadline : const Duration(seconds: 225),
+      overallTimeout: body == null || useQueue ? _deadline : const Duration(seconds: 225),
     );
     if (!isSignedIn) throw LibraryFailure.key;
     return result;
@@ -839,8 +1156,10 @@ class PairedLibrary {
       (response) async {
         if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
         if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
-        final task = ActionItemWithMetadata.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>);
+        final payload = await _json(response, 128 << 10) as Map<String, dynamic>;
+        final task = ActionItemWithMetadata.fromJson(payload);
         if (id != null && task.id != id) throw LibraryFailure.malformed;
+        _rememberTaskDue(payload);
         return task;
       },
       method: method,
@@ -957,21 +1276,22 @@ class PairedLibrary {
     if (!isSignedIn) throw LibraryFailure.key;
   }
 
-  Future<ArchiveSearchPage?> searchArchive(String query, {String? after}) async {
+  Future<ArchiveSearchPage?> searchArchive(String query, {String? after, bool byMeaning = false}) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    if (query.isEmpty || query.runes.length > 240) throw LibraryFailure.malformed;
+    if (query.isEmpty || query.runes.length > 240 || (byMeaning && after != null)) throw LibraryFailure.malformed;
     try {
       final page = await _request(
-        '/v1/local/conversations/search',
+        byMeaning ? '/v1/local/conversations/semantic-search' : '/v1/local/conversations/search',
         (response) async {
           if (response.statusCode == HttpStatus.notFound) return null;
+          if (byMeaning && response.statusCode == HttpStatus.serviceUnavailable) return null;
           if (await _blockedOffline(response)) return null;
           if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
           final data = await _json(response, 384 << 10) as Map<String, dynamic>;
           if (!data.containsKey('next_cursor')) throw LibraryFailure.malformed;
           final raw = data['items'] as List;
           final cursor = data['next_cursor'] as String?;
-          if (raw.length > 40 || (cursor != null && (cursor.isEmpty || cursor == after))) {
+          if (raw.length > 40 || (cursor != null && (byMeaning || cursor.isEmpty || cursor == after))) {
             throw LibraryFailure.malformed;
           }
           final hits = <ArchiveSearchHit>[];
@@ -1019,17 +1339,79 @@ class PairedLibrary {
     return '/v1/local/conversations/$id/chat';
   }
 
-  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before}) async {
+  static const _chatThreadsPath = '/v1/local/conversations/chat/threads';
+
+  static ArchiveChatThread _archiveChatThread(Object? value) {
+    if (value is! Map || value['id'] is! String || value['title'] is! String) throw LibraryFailure.malformed;
+    final id = value['id'] as String;
+    final title = value['title'] as String;
+    if (!_archiveId.hasMatch(id) || title.trim().isEmpty || title.runes.length > 100) throw LibraryFailure.malformed;
+    return (id: id, title: title);
+  }
+
+  Future<List<ArchiveChatThread>> readArchiveChatThreads() async {
     if (!isSignedIn) throw LibraryFailure.key;
+    final rows = await _request(_chatThreadsPath, (response) async {
+      final data = await _json(response, 32 << 10);
+      if (data is! List) throw LibraryFailure.malformed;
+      return data.map(_archiveChatThread).toList();
+    });
+    if (!isSignedIn) throw LibraryFailure.key;
+    return rows;
+  }
+
+  Future<ArchiveChatThread> createArchiveChatThread(String id, String title) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+    final thread = await _request(
+      _chatThreadsPath,
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) {
+          final data = await _json(response, 4096);
+          if (data is Map && data['detail'] == 'archive_chat_thread_limit') throw RecordingChatFailure.threadLimit;
+          throw RecordingChatFailure.changed;
+        }
+        if (response.statusCode != HttpStatus.created) throw RecordingChatFailure.unavailable;
+        final saved = _archiveChatThread(await _json(response, 4096));
+        if (saved.id != id) throw LibraryFailure.malformed;
+        return saved;
+      },
+      body: Uint8List.fromList(utf8.encode(jsonEncode({'id': id, 'title': title}))),
+      bodyType: ContentType.json,
+      readHttpErrors: true,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return thread;
+  }
+
+  Future<void> deleteArchiveChatThread(String id) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!_archiveId.hasMatch(id)) throw LibraryFailure.malformed;
+    await _request(
+      '$_chatThreadsPath/$id',
+      (response) async {
+        if (response.statusCode != HttpStatus.noContent) throw RecordingChatFailure.unavailable;
+      },
+      method: 'DELETE',
+      readHttpErrors: true,
+      overallTimeout: const Duration(seconds: 25),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+  }
+
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before, String? threadId}) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (threadId != null && (id != null || !_archiveId.hasMatch(threadId))) throw LibraryFailure.malformed;
     try {
       final page = await _request(
-        _chatPath(id),
+        threadId == null ? _chatPath(id) : '$_chatThreadsPath/$threadId',
         (response) async {
           if (await _blockedOffline(response)) return null;
+          if (threadId != null && response.statusCode == HttpStatus.notFound) throw RecordingChatFailure.threadMissing;
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
           return RecordingChatPageData.fromJson(await _json(response, 768 << 10) as Map<String, dynamic>, id);
         },
-        query: before == null ? null : {'before': '$before'},
+        query: {if (id == null && threadId == null) 'stored': 'true', if (before != null) 'before': '$before'},
         readHttpErrors: true,
         overallTimeout: const Duration(seconds: 18),
       );
@@ -1049,21 +1431,27 @@ class PairedLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
+    String? threadId,
   }) async {
     if (!isSignedIn) throw LibraryFailure.key;
+    if (threadId != null && (id != null || !storeArchive || !_archiveId.hasMatch(threadId))) {
+      throw LibraryFailure.malformed;
+    }
     final payload = {
       'id': turnId,
-      if (id != null) 'previous': previous,
+      if (id != null || storeArchive) 'previous': previous,
       'provider_binding': binding,
       'question': question,
-      if (id == null)
+      if (id == null && storeArchive && threadId == null) 'store': true,
+      if (id == null && !storeArchive)
         'history': [
           for (final turn in history.take(3)) {'question': turn.question, 'answer': turn.answer},
         ],
     };
     try {
       final turn = await _request(
-        _chatPath(id),
+        threadId == null ? _chatPath(id) : '$_chatThreadsPath/$threadId',
         (response) async {
           if (id == null && response.statusCode == HttpStatus.unprocessableEntity) {
             final error = await _json(response, 4096);
@@ -1073,11 +1461,23 @@ class PairedLibrary {
             }
             throw RecordingChatFailure.unavailable;
           }
-          if (response.statusCode == HttpStatus.conflict || await _blockedOffline(response)) {
+          if (threadId != null && response.statusCode == HttpStatus.notFound) throw RecordingChatFailure.threadMissing;
+          if (response.statusCode == HttpStatus.conflict) {
+            if (threadId != null) {
+              final data = await _json(response, 4096);
+              if (data is Map && data['detail'] == 'archive_chat_turn_limit') throw RecordingChatFailure.turnLimit;
+            }
+            throw RecordingChatFailure.changed;
+          }
+          if (await _blockedOffline(response)) {
             throw RecordingChatFailure.changed;
           }
           if (response.statusCode != HttpStatus.ok) throw RecordingChatFailure.unavailable;
-          final turn = RecordingChatTurn.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>, id);
+          final data = await _json(response, 128 << 10) as Map<String, dynamic>;
+          if (storeArchive && (data['sequence'] is! int || (data['sequence'] as int) < 1)) {
+            throw RecordingChatFailure.changed;
+          }
+          final turn = RecordingChatTurn.fromJson(data, id);
           if (turn.id != turnId || turn.question != question) throw LibraryFailure.malformed;
           return turn;
         },
@@ -1150,6 +1550,80 @@ class PairedLibrary {
     return result;
   }
 
+  Future<WavLevel> readRecordingLevel(String id) async {
+    if (!audioPlayback) throw LibraryFailure.unavailable;
+    _conversation(id);
+    return _request('/v1/local/conversations/$id/audio', (response) async {
+      if (response.headers.contentType?.mimeType != 'audio/wav') throw LibraryFailure.malformed;
+      const limit = gainHeaderLimit + gainSampleBytes;
+      final prefix = BytesBuilder(copy: false);
+      await for (final chunk in response.timeout(_deadline)) {
+        final left = limit - prefix.length;
+        if (chunk.length >= left) {
+          prefix.add(chunk.sublist(0, left));
+          break;
+        }
+        prefix.add(chunk);
+      }
+      if (_closed) throw LibraryFailure.key;
+      return WavLevel.measure(prefix.takeBytes());
+    });
+  }
+
+  Future<void> readPlayback(String id, {String? range, required Future<void> Function(PlaybackRead) read}) {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!audioPlayback) throw LibraryFailure.unavailable;
+    _conversation(id);
+    return _request(
+      '/v1/local/conversations/$id/audio',
+      (response) async {
+        final status = response.statusCode;
+        final header = response.headers.value(HttpHeaders.contentRangeHeader);
+        final length = response.contentLength;
+        int? total;
+        switch (status) {
+          case HttpStatus.ok:
+            if (response.headers.value(HttpHeaders.acceptRangesHeader) == 'bytes') total = length;
+          case HttpStatus.partialContent:
+            final match = RegExp(r'^bytes ([0-9]+)-([0-9]+)/([0-9]+)$').firstMatch(header ?? '');
+            final first = int.tryParse(match?.group(1) ?? '');
+            final last = int.tryParse(match?.group(2) ?? '');
+            total = int.tryParse(match?.group(3) ?? '');
+            if (range == null ||
+                first == null ||
+                last == null ||
+                total == null ||
+                last >= total ||
+                last < first ||
+                last - first + 1 != length) {
+              throw LibraryFailure.malformed;
+            }
+          case HttpStatus.requestedRangeNotSatisfiable:
+            if (range == null || !RegExp(r'^bytes \*/[0-9]+$').hasMatch(header ?? '')) throw LibraryFailure.malformed;
+            return read((
+              status: status,
+              length: 0,
+              totalLength: null,
+              contentRange: header,
+              bytes: const Stream.empty(),
+            ));
+          default:
+            throw LibraryFailure.unavailable;
+        }
+        if (length <= 0 || response.headers.contentType?.mimeType != 'audio/wav') throw LibraryFailure.malformed;
+        await read((
+          status: status,
+          length: length,
+          totalLength: total,
+          contentRange: header,
+          bytes: response.timeout(_deadline),
+        ));
+      },
+      readHttpErrors: true,
+      headers: {if (range != null) HttpHeaders.rangeHeader: range},
+    );
+  }
+
   Future<void> downloadAudio(String id, File target) async {
     if (!audioPlayback) throw LibraryFailure.unavailable;
     _conversation(id);
@@ -1165,4 +1639,42 @@ class PairedLibrary {
       }
     });
   }
+
+  Future<void> saveOfflineRecording(String id) => offlineRecordings.save(
+    id,
+    load: () => detail(id),
+    canPublish: () => isSignedIn && audioPlayback,
+    download: (file, remaining) async {
+      var size = 0;
+      await readPlayback(
+        id,
+        read: (audio) async {
+          if (audio.status != HttpStatus.ok || audio.length < 12) throw OfflineRecordingFailure.unavailable;
+          if (audio.length > remaining) throw OfflineRecordingFailure.limit;
+          final writer = await file.open(mode: FileMode.write);
+          try {
+            await for (final chunk in audio.bytes) {
+              size += chunk.length;
+              if (size > audio.length) throw OfflineRecordingFailure.unavailable;
+              await writer.writeFrom(chunk);
+            }
+            if (size != audio.length) throw OfflineRecordingFailure.unavailable;
+            await writer.flush();
+          } finally {
+            await writer.close();
+          }
+          final reader = await file.open();
+          try {
+            final header = ascii.decode(await reader.read(12), allowInvalid: true);
+            if (!(header.startsWith('RIFF') || header.startsWith('RF64')) || !header.endsWith('WAVE')) {
+              throw OfflineRecordingFailure.unavailable;
+            }
+          } finally {
+            await reader.close();
+          }
+        },
+      );
+      return size;
+    },
+  );
 }

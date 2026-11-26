@@ -53,6 +53,7 @@ def test_lost_ack_retry_after_restart_publishes_one_identical_wav(tmp_path: Path
     metadata = json.loads((captures[0] / 'metadata.json').read_text())
     assert metadata['frames_received'] == 2
     assert metadata['started_at'] == '2026-10-27T08:00:00Z'
+    assert metadata['ended_at'] == '2026-10-27T08:00:00.020000+00:00'
     assert metadata['delivery']['recording_id'] == parse_part(body)[0]['recording_id']
     assert list((tmp_path / 'local-audio-staging').iterdir()) == []
 
@@ -151,6 +152,7 @@ def test_opus_preroll_warms_one_decoder_but_does_not_duplicate_audio_duration_or
         assert audio.readframes(640) == struct.pack('<h', 14) * 320 + struct.pack('<h', 18) * 320
     metadata = json.loads((tmp_path / 'listen-captures' / saved['id'] / 'metadata.json').read_text())
     assert metadata['duration_seconds'] == 0.04
+    assert metadata['ended_at'] == '2026-10-27T08:00:00.040000+00:00'
     assert metadata['frames_received'] == 2
     assert metadata['encoded_bytes'] == 4
     assert metadata['delivery']['preroll_frames'] == 4
@@ -269,16 +271,21 @@ def test_group_29_seconds_does_not_finish_30_does_and_next_voice_starts_new_card
     voice, quiet = b'\x01\0' * 16000, b'\0\0' * 16000
     def send(i, offset, pcm):
         return accept_part(group_message(recording, i, offset*16000, pcm), tmp_path)
-    send(0, 0, voice + quiet * 29)
+    first = voice + quiet * 29
+    assert 'conversation_boundary_sample' not in send(0, 0, first)
     assert not list((tmp_path / 'listen-captures').glob('*/audio.wav'))
-    send(1, 30, quiet + quiet * 3 + voice + quiet * 30 + quiet * 2)
+    receipt = send(1, 30, quiet + quiet * 3 + voice + quiet * 30 + quiet * 2)
+    assert receipt['stored'] and receipt['conversation_boundary_sample'] == 65 * 16000
     paths = list((tmp_path / 'listen-captures').glob('*/metadata.json'))
     assert len(paths) == 2
     boundaries = [json.loads(path.read_text())['conversation_group'] for path in paths]
     ranges = sorted((g['start_sample'], g['speech_end_sample'], g['end_sample']) for g in boundaries)
     assert ranges == [(0, 16000, 31 * 16000), (34 * 16000 - 3200, 35 * 16000, 65 * 16000)]
-    accept_part(group_message(recording, 2, 0, finish=True), tmp_path)
-    assert len(list((tmp_path / 'listen-captures').glob('*/audio.wav'))) == 2
+    assert send(0, 0, first)['conversation_boundary_sample'] == 65 * 16000
+    send(2, 67, voice)
+    finish = accept_part(group_message(recording, 3, 0, finish=True), tmp_path)
+    assert finish['conversation_boundary_sample'] == 65 * 16000  # Stop is not a silence cut.
+    assert len(list((tmp_path / 'listen-captures').glob('*/audio.wav'))) == 3
 
 
 

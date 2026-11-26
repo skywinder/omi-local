@@ -1,0 +1,1 @@
+const nextAppName = 'Omi Next';

@@ -51,9 +51,16 @@ def test_word_speaker_change_splits_sentence_without_losing_text():
             {'word': 'API', 'start': 1, 'end': 1.8, 'speaker': 'SPEAKER_01'},
             {'word': 'работает.', 'start': 2, 'end': 3, 'speaker': 'SPEAKER_01'},
         ]}]}
+    data['structured'] = {'title': 'API', 'overview': 'Fallback', 'sections': [
+        {'heading': 'Decision', 'body_markdown': 'API works.', 'source_refs': [1, 91]},
+        {'heading': 'Unknown', 'body_markdown': 'Unsupported.', 'source_refs': [91]},
+    ]}
     conversation = build_conversation(data, manifest())
     assert [s.text for s in conversation.transcript_segments] == ['Да.', 'API работает.']
     assert [s.speaker_id for s in conversation.transcript_segments] == [0, 1]
+    section, = conversation.structured.sections
+    assert section.source_segment_ids == [line.id for line in conversation.transcript_segments]
+    assert conversation.structured.overview == '## Decision\n\nAPI works.'
     del data['segments'][0]['words'][1]['start']
     with pytest.raises(ValueError):
         build_conversation(data, manifest())
@@ -261,6 +268,16 @@ def test_pipeline_stage_outcomes_are_projected_with_fixed_fields_only():
     assert 'must-not-escape' not in str(conversation.external_data)
 
 
+def test_summary_stage_preserves_only_published_model_and_template():
+    data, result = manifest(), raw()
+    result['processing'] = {'summary': {'status': 'ready', 'model': 'Actual model',
+        'template_name': 'Saved template', 'prompt': 'private', 'api_key': 'private'}}
+    stages = build_conversation(result, data).external_data['local_transcript']['stages']
+    assert stages == {'summary': {'status': 'ready', 'model': 'Actual model', 'template_name': 'Saved template'}}
+    result['processing']['summary']['status'] = 'failed'
+    assert build_conversation(result, data).external_data['local_transcript']['stages'] == {'summary': {'status': 'failed'}}
+
+
 def test_legacy_results_without_processing_carry_no_stage_block():
     conversation = build_conversation(raw(), manifest())
     assert 'stages' not in conversation.external_data['local_transcript']
@@ -353,15 +370,17 @@ def test_pending_projection_obeys_filters_and_merged_page_offsets():
     assert merge_local_recording_page(completed, pending, offset=1, limit=1) == completed
 
 
-def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path):
+def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_transcript(tmp_path, monkeypatch):
     import json
+    from database import local_summary
     from utils.local_transcript import grouped_import_document, hydrate_grouped_transcript
 
     data = manifest()
     data.update(conversation_group={'start_sample': 0, 'end_sample': 192000},
                 duration_seconds=12000)
-    folder = tmp_path / data['result_key']
-    folder.mkdir()
+    root = tmp_path / 'services/local-transcripts'
+    folder = root / data['result_key']
+    folder.mkdir(parents=True)
     transcript = {'segments': [{'text': 'Синтетическая реплика ' * 15 + str(i), 'start': i, 'end': i + 1}
                                 for i in range(1500)]}
     raw_path = folder / 'audio.json'
@@ -374,12 +393,18 @@ def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_tran
     assert card['external_data']['local_transcript']['segment_preview'] is True
     card['starred'] = True
     card['structured']['overview'] = 'Updated summary'
-    full = hydrate_grouped_transcript(card, tmp_path)
+    full = hydrate_grouped_transcript(card, root, 'fixture-owner')
     assert full['starred'] and full['structured']['overview'] == 'Updated summary'
     assert not full['external_data']['local_transcript']['segment_preview']
     assert [s['text'] for s in full['transcript_segments']] == [s['text'] for s in transcript['segments']]
     assert full['transcript_segments'][-1]['id'] == conversation.transcript_segments[-1].id
+    monkeypatch.setenv('OMI_HARNESS_STATE_ROOT', str(tmp_path))
+    source = local_summary.source(card, 'fixture-owner', background=True)
+    assert len(source.transcript) > 120_000
+    assert source.segment_ids[-1] == (conversation.transcript_segments[-1].id,)
     raw_path.write_text('{"segments": []}')
     with pytest.raises(ValueError, match='changed'):
-        hydrate_grouped_transcript(card, tmp_path)
+        hydrate_grouped_transcript(card, root, 'fixture-owner')
+    with pytest.raises(local_summary.SummaryUnavailable):
+        local_summary.source(card, 'fixture-owner', background=True)
     assert len(grouped_import_document(conversation, manifest(), raw_path)['transcript_segments']) == 1500

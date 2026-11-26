@@ -76,7 +76,7 @@ void main() {
     await tester.pump();
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('server-connect'))).onPressed, isNotNull);
     await tester.pumpAndSettle();
-    expect(find.text('Omi Local Next'), findsOneWidget);
+    expect(find.text('Omi Next'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, '100.64.0.1');
     await tester.enterText(find.byType(TextField).last, 'short');
     await tester.tap(find.text('Connect'));

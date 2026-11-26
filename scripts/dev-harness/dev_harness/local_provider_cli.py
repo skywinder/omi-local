@@ -49,7 +49,10 @@ def select(state, name, stage=None):
 
 
 def editable(profile):
-    return {key: value for key, value in profile.items() if key in PROFILE_FIELDS}
+    result = {key: value for key, value in profile.items() if key in PROFILE_FIELDS}
+    if result['stage'] == 'summary' and 'model' not in result['settings']:
+        result['settings'] = {**result['settings'], 'model_source': 'provider'}
+    return result
 
 
 def read_profiles(filename, stdin):

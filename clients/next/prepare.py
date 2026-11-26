@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+from build_info import prepare_build_info
 from live_labels import prepare_live_labels
 from presentation import apply_presentation
 
@@ -59,6 +60,7 @@ def main():
         extract(args.repository.resolve(), build, 'app/ios')
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
     shutil.copytree(HERE / 'overlay', app, dirs_exist_ok=True)
+    prepare_build_info(ROOT, app)
     prepare_live_labels(ROOT, app)
     for relative in (
         'lib/services/capture/local_audio_journal.dart',

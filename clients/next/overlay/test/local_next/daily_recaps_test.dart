@@ -4,6 +4,7 @@ import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/daily_summary.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/daily_recap.dart';
+import 'package:omi/local_next/daily_recap_schedule_page.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_chat.dart';
@@ -23,6 +24,7 @@ class _DailyLibrary extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async => (rows: <ServerConversation>[], consumed: 0, partial: false, more: false);
 
@@ -72,7 +74,68 @@ class _DailyLibrary extends PairedLibrary {
   }
 }
 
+class _ScheduleLibrary extends _DailyLibrary {
+  _ScheduleLibrary() {
+    dailyRecapScheduleAvailable = true;
+  }
+  final writes = <Map<String, dynamic>>[];
+  Map<String, dynamic> schedule = {
+    'enabled': false,
+    'revision': 'initial',
+    'timezone': 'Europe/Berlin',
+    'hour': 9,
+    'minute': 0,
+    'status': 'disabled',
+    'provider': {'binding': 'bound', 'model': 'Approved model', 'host': 'model.example'},
+  };
+
+  @override
+  Future<DailyRecapSchedule> dailyRecapSchedule() async => DailyRecapSchedule.fromJson(schedule);
+
+  @override
+  Future<DailyRecapSchedule> saveDailyRecapSchedule(Map<String, dynamic> body) async {
+    writes.add(body);
+    if (writes.length == 1) throw DailyRecapFailure.unavailable;
+    schedule = {...schedule, ...body, 'revision': 'saved', 'status': body['enabled'] == true ? 'waiting' : 'disabled'};
+    return DailyRecapSchedule.fromJson(schedule);
+  }
+}
+
 void main() {
+  testWidgets('schedule is opt-in, shows the processing host and retries unchanged consent', (tester) async {
+    final library = _ScheduleLibrary();
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DailyRecapSchedulePage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(library.writes, isEmpty);
+    expect(find.textContaining('Approved model'), findsOneWidget);
+    expect(find.text('Automatic recaps are off.'), findsOneWidget);
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.ensureVisible(find.text('Save'));
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(library.writes.single['enabled'], true);
+    expect(library.writes.single['provider_binding'], 'bound');
+    expect(library.writes.single['timezone'], 'Europe/Berlin');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(library.writes.last['request_id'], library.writes.first['request_id']);
+    expect(find.text('Waiting for the next scheduled day.'), findsOneWidget);
+    await tester.ensureVisible(find.byType(SwitchListTile));
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.ensureVisible(find.text('Save'));
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(library.writes.last['enabled'], false);
+    expect(library.writes.last['revision'], 'saved');
+    expect(find.text('Automatic recaps are off.'), findsOneWidget);
+  });
+
   testWidgets('daily recap waits for model consent, retries the same request, and opens a cited recording', (
     tester,
   ) async {

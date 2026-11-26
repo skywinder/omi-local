@@ -350,3 +350,56 @@ print('local_status_auth_passed')
                             text=True, capture_output=True, timeout=45)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == 'local_status_auth_passed'
+
+
+def test_scoped_archive_key_cannot_write_or_capture_and_revokes_without_phone_rotation(pairing, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    from routers import local_archive
+    from utils.local_transport_auth import require_paired_owner
+    from fastapi import Depends
+    read_key = 'omilocal_archive_' + 'R' * 43
+    data = json.loads(pairing.read_text())
+    data['archive_read_key_sha256'] = hashlib.sha256(read_key.encode()).hexdigest()
+    pairing.write_text(json.dumps(data))
+    version = [datetime(2026, 11, 27, tzinfo=timezone.utc)]
+    identifier = '00000000-0000-4000-8000-000000000001'
+    text = 'Synthetic context. ' * 100 + 'Budget 24000.'
+    def recording(uid, source):
+        assert uid == 'synthetic-owner' and source == identifier
+        return version[0], {'structured': {'title': 'Synthetic'}, 'transcript_segments': [
+            {'id': 'line', 'text': text, 'start': 12, 'end': 80}]}
+    monkeypatch.setattr(local_archive.archive, 'recording', recording)
+    app = FastAPI()
+    app.include_router(local_archive.router)
+    writes = []
+    @app.post('/v1/local/goals')
+    def mutation(uid=Depends(require_paired_owner)):
+        writes.append(uid)
+        return {'saved': True}
+    app.add_middleware(OfflineRoutePolicyMiddleware)
+    app.add_middleware(LocalTransportAuthMiddleware)
+    c = TestClient(app)
+    headers = {'Authorization': 'Bearer ' + read_key}
+    body = {'id': identifier}
+    first = c.post('/v1/local/archive/read', headers=headers, json=body)
+    assert first.status_code == 200, first.text
+    page = first.json()
+    assert page['citations'][0]['text'] == text[:1200]
+    assert page['citations'][0]['start_seconds'] == 12
+    assert first.headers['cache-control'] == 'no-store'
+    assert c.post('/v1/local/archive/read', headers=headers, json={**body, 'start_character': 1200}).status_code == 422
+    second = c.post('/v1/local/archive/read', headers=headers, json={**body, **page['next']}).json()
+    assert page['citations'][0]['text'] + second['citations'][0]['text'] == text
+    assert second['next'] is None
+    version[0] += timedelta(seconds=1)
+    assert c.post('/v1/local/archive/read', headers=headers, json={**body, **page['next']}).status_code == 409
+    for path in ['/v1/local/goals', '/v1/local/conversations/chat', '/v1/local/archive/read/extra']:
+        assert c.post(path, headers=headers, json={}).status_code == 401
+    assert writes == []
+    with pytest.raises(LocalTransportAuthError): verify_local_key(read_key)
+    assert c.post('/v1/local/goals', headers={'Authorization': 'Bearer ' + KEY}).status_code == 200
+    assert writes == ['synthetic-owner']
+    data.pop('archive_read_key_sha256')
+    pairing.write_text(json.dumps(data))
+    assert c.post('/v1/local/archive/read', headers=headers, json=body).status_code == 401
+    assert c.post('/v1/local/archive/read', headers={'Authorization': 'Bearer ' + KEY}, json=body).status_code == 200

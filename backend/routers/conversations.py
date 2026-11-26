@@ -1,8 +1,7 @@
 import asyncio
 import hashlib
-import os
-from pathlib import Path
 import re
+import uuid
 from unicodedata import normalize
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, BackgroundTasks
@@ -304,14 +303,15 @@ def _paired_detail(row: dict, uid: str) -> dict:
     local = (row.get('external_data') or {}).get('local_transcript') or {}
     if local.get('segment_storage') != 'result-file':
         return row
-    from utils.local_transcript import hydrate_grouped_transcript
+    from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
     from utils.local_transport_auth import load_pairing, local_tunnel_enabled
 
     if not local_tunnel_enabled() or load_pairing()['owner_uid'] != uid or row.get('is_locked'):
         raise HTTPException(404, 'Local recording unavailable')
+    if local.get('segment_preview') is False and len(row.get('transcript_segments') or []) == local.get('segment_count'):
+        return row
     try:
-        root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
-        return hydrate_grouped_transcript(row, root)
+        return hydrate_grouped_transcript(row, local_transcript_root(), uid)
     except (ValueError, OSError, KeyError, TypeError):
         raise HTTPException(503, 'Full local transcript unavailable') from None
 
@@ -365,6 +365,12 @@ class LocalCategoryEdit(BaseModel):
     value: CategoryEnum
 
 
+class LocalArchiveEdit(BaseModel):
+    field: Literal['archived']
+    expected: bool = Field(strict=True)
+    value: bool = Field(strict=True)
+
+
 class LocalSpeakerAssignment(BaseModel):
     person_id: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
     is_user: bool = Field(strict=True)
@@ -385,7 +391,7 @@ class LocalSpeakerEdit(BaseModel):
 
 
 LocalRecordingEdit = Annotated[
-    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit | LocalCategoryEdit | LocalSpeakerEdit,
+    LocalTitleEdit | LocalStarEdit | LocalArchiveEdit | LocalSegmentEdit | LocalFolderEdit | LocalCategoryEdit | LocalSpeakerEdit,
     Field(discriminator='field'),
 ]
 
@@ -413,6 +419,10 @@ def patch_local_recording(
     )
     if status == 'not_found':
         raise HTTPException(404, 'local_recording_unavailable')
+    if status == 'transcript_unavailable':
+        raise HTTPException(503, 'local_recording_transcript_unavailable')
+    if status == 'transcript_edit_limit':
+        raise HTTPException(413, 'local_recording_transcript_edit_limit')
     if status != 'ok':
         raise HTTPException(409, 'local_recording_edit_conflict')
     response.headers['Cache-Control'] = 'no-store'
@@ -452,6 +462,23 @@ def search_local_archive(
     return {'items': hits, 'next_cursor': next_cursor}
 
 
+@router.post('/v1/local/conversations/semantic-search', response_model=LocalArchiveSearchPage, tags=['local'])
+def search_local_archive_by_meaning(
+    search: LocalArchiveSearchRequest, response: Response, uid: str = Depends(require_paired_owner),
+):
+    from utils.conversations import local_semantic_search
+
+    query = search.query.strip()
+    if not query or search.after is not None:
+        raise HTTPException(400, 'Invalid semantic archive search')
+    try:
+        hits = local_semantic_search.rank(uid, query)
+        rows = conversations_db.read_local_search_sources(uid, list(dict.fromkeys(hit['id'] for hit in hits)))
+        items = local_semantic_search.resolve(hits, rows, lambda row: _paired_detail(row, uid))
+    except local_semantic_search.SemanticUnavailable:
+        raise HTTPException(503, 'local_semantic_unavailable', headers={'Cache-Control': 'no-store'}) from None
+    response.headers['Cache-Control'] = 'no-store'
+    return {'items': items, 'next_cursor': None}
 class ConversationStatusResponse(BaseModel):
     status: str
 
@@ -797,11 +824,14 @@ def get_conversations(
     folder_id: Optional[str] = Query(None, description="Filter by folder ID"),
     starred: Optional[bool] = Query(None, description="Filter by starred status"),
     list_fields_only: bool = False,
+    archived_only: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if start_date is not None and end_date is not None and _ensure_aware(start_date) > _ensure_aware(end_date):
         raise HTTPException(status_code=400, detail="start_date must be earlier than or equal to end_date")
     if not is_offline_runtime():
+        if archived_only:
+            raise HTTPException(400, 'Archived recordings are available only on a paired server')
         logger.info(f'get_conversations {uid} {limit} {offset} {statuses} {sources} {folder_id} {starred}')
     # force convos statuses to processing, completed on the empty filter
     if len(statuses) == 0:
@@ -838,7 +868,7 @@ def get_conversations(
 
         conversations, has_more = read_local_archive_page(
             conversations_db.get_conversations_without_photos, uid, limit, offset, budget=budget,
-            list_fields_only=list_fields_only, **filters,
+            list_fields_only=list_fields_only, archived_only=archived_only, **filters,
         )
         if response is not None:
             response.headers['X-Omi-Conversation-Page-Size'] = str(len(conversations))
@@ -905,6 +935,8 @@ def get_conversation_by_id(
     conversation_id: str,
     source: Optional[str] = Query(None, description="Optional provenance constraint for a detail read"),
     include_discarded: bool = Query(True),
+    resolve_local_recording: bool = False,
+    include_recording_results: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if not is_offline_runtime():
@@ -912,9 +944,13 @@ def get_conversation_by_id(
     conversation = None
     origins = {}
     if is_offline_runtime():
-        from utils.local_recording_rows import attach_saved_origin, get_local_recording
+        from utils.local_recording_rows import RecordingResolution, attach_recording_parent, attach_saved_origin, get_local_recording
 
-        conversation = get_local_recording(uid, conversation_id, origins)
+        resolution = (RecordingResolution(conversation_id, include_recording_results)
+                      if resolve_local_recording or include_recording_results else None)
+        conversation = get_local_recording(uid, conversation_id, origins, resolution=resolution)
+        if resolve_local_recording and (conversation is None or resolution.group is not None):
+            conversation = _resolved_recording(resolution, uid, origins, source, include_discarded) or conversation
     if conversation is None:
         conversation = _get_valid_conversation_by_id(uid, conversation_id)
     if source is not None:
@@ -926,7 +962,8 @@ def get_conversation_by_id(
             raise HTTPException(status_code=404, detail="Conversation not found")
     # Local transcript reads never dispatch cloud enrichment or first-open work.
     if is_offline_runtime():
-        return _paired_detail(attach_saved_origin(conversation, origins), uid)
+        row = attach_saved_origin(conversation, origins)
+        return _paired_detail(attach_recording_parent(row, resolution), uid)
     # Lazy processing: a desktop conversation stored raw (deferred) for a freemium/Neo user is
     # enriched on first open. Other conversations are returned unchanged.
     if conversation.get('deferred'):
@@ -934,6 +971,85 @@ def get_conversation_by_id(
     else:
         _dispatch_first_open_work(uid, conversation)
     return conversation
+
+
+def _resolved_recording(resolution, uid, origins, source, include_discarded):
+    from utils.local_recording_rows import attach_saved_origin
+
+    keys = resolution.result_keys
+    if not resolution.include_results and len(keys) != 1:
+        return None
+    expected = {str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key)): key for key in sorted(keys)}
+    single = resolution.group is None and len(expected) == 1
+    if single:
+        try:
+            rows = [_get_valid_conversation_by_id(uid, next(iter(expected)))]
+        except HTTPException as exc:
+            if exc.status_code in (402, 404):
+                return None
+            raise
+    elif expected:
+        rows = conversations_db.get_conversations_by_id_without_photos(
+            uid, list(expected), include_discarded=include_discarded,
+            field_paths=['id', 'created_at', 'started_at', 'finished_at', 'status', 'source', 'starred', 'folder_id',
+                         'is_locked', 'discarded', 'deleted', 'local_chat_deleting', 'structured', 'user_title',
+                         'user_category', 'data_protection_level', 'external_data.local_transcript.result_key',
+                         'external_data.local_transcript.profile.model'],
+        )
+    else:
+        rows = []
+    published = []
+    for row in rows:
+        key = expected.get(row.get('id'))
+        local = (row.get('external_data') or {}).get('local_transcript') or {}
+        if (key is not None and row.get('status') == 'completed' and not row.get('deleted')
+                and not row.get('is_locked') and not row.get('local_chat_deleting')
+                and local.get('result_key') == key and (source is None or row.get('source') == source)
+                and (include_discarded or not row.get('discarded'))):
+            published.append(attach_saved_origin(row, origins))
+    if single:
+        return published[0] if published else None
+    if not resolution.include_results:
+        return None
+
+    group = resolution.group
+    children = resolution.children
+    if group is None:
+        if not published or resolution.saved is None:
+            return None
+        first = published[0]
+        group = {
+            'id': resolution.id, 'status': 'processing', 'created_at': first['created_at'],
+            'started_at': first.get('started_at'), 'finished_at': first.get('finished_at'),
+            'source': resolution.saved.get('source'), 'structured': {'title': 'Local recording'},
+            'external_data': {'local_recording': {'duration_seconds': resolution.saved.get('duration_seconds')}},
+        }
+    local = group['external_data']['local_recording']
+    if local.get('status') not in ('waiting_for_parts', 'receiving'):
+        active = any(row['external_data']['local_recording']['status'] in ('saved', 'pending', 'processing') for row in children)
+        local['status'] = 'processing' if active else 'published' if published or children else 'no_speech'
+    choices = sorted(published + children, key=lambda row: (str(row.get('started_at') or row['created_at']), row['id']))
+    local['results'] = [_recording_choice(row) for row in choices]
+    return group
+
+
+def _recording_choice(row):
+    fields = ('id', 'created_at', 'started_at', 'finished_at', 'status', 'source', 'starred', 'folder_id')
+    choice = {key: row[key] for key in fields if key in row}
+    structure = row.get('structured') or {}
+    choice['structured'] = {key: structure[key] for key in ('title', 'emoji', 'category') if key in structure}
+    external = row.get('external_data') or {}
+    if 'local_recording' in external:
+        choice['external_data'] = {'local_recording': external['local_recording']}
+    else:
+        local = external.get('local_transcript') or {}
+        profile = local.get('profile') or {}
+        model = profile.get('model') if isinstance(profile, dict) else None
+        choice['external_data'] = {'local_transcript': {
+            'origin': local.get('origin'),
+            **({'model': model} if isinstance(model, str) and 0 < len(model) <= 120 else {}),
+        }}
+    return choice
 
 
 @router.patch(

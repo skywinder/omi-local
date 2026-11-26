@@ -1,8 +1,9 @@
 # Omi Local Next
 
 Omi Local Next is the primary development client for the paired Omi Local server.
-Its iOS application identifier is `org.omilocal.next`. Pair it with the server's
-app key in its own Keychain. The existing app owns its pending phone recordings.
+The iOS and Android launchers show **Omi Next** with a teal N icon. The application
+identifier is `org.omilocal.next`. Pair it with the server's app key in its own
+Keychain. The existing app owns its pending phone recordings.
 
 The build starts from the complete Flutter app tree at the Git revision in
 [upstream.json](upstream.json). The self-hosted Flutter entry point is
@@ -127,28 +128,82 @@ requires separate verification.
 
 ## Mobile settings and diagnostics
 
+In **Conversations → More options → About Omi Next**, check the installed app
+version, build number and Local Git commit. Version and build number come from
+the pinned Flutter package, so use the commit to distinguish Local builds of the
+same package version. Builds from edited Next sources are marked. CV1 firmware
+is shown when the connected wearable reports it.
+
 Open the gear in **Conversations** for recording boundaries, the local upload
 queue, saved servers, processing, Live speaker settings and Omi CV1 diagnostics.
 Audio uploads include the phone platform and model when available so the web
 library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
-In Conversations, the Omi Bluetooth control sits beside CV1 recording.
+In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
+The Live Transcript card shows the active input and elapsed time.
+The Live Transcript screen shows the active silence threshold below the text.
+While a conversation is recording it shows the threshold in use. After a
+full Stop, including a stop triggered by silence, Live returns to Conversations.
+With **Keep listening after silence** enabled, Live stays open for the next
+conversation. The gear menu's **Phone upload queue** shows the audio stored on the phone, including the open part and sealed parts awaiting a durable server receipt. Delivery problems also appear beside the recording buttons.
+Archive, favorites, categories, filters and folders share one toolbar. Color and icons distinguish the phone microphone, CV1, active recording, connection states, and selected filters in both themes. Larger text can be reached by scrolling the toolbar horizontally.
 The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.
 
 Device Diagnostics reads charge and signal measurements from the wearable.
-The recording screen shows the connected CV1's battery percentage after its
-first measurement.
+The archive and Live titles show the CV1 battery icon and percentage. Each
+new link requests an initial battery reading even when capture resumes immediately.
+Until that link reports a value the header shows a dash.
 The signal chart refreshes every three seconds while visible, including during
-capture. Battery notifications update both the status and history on supported
+capture. During CV1 capture, Transfer speed shows incoming Bluetooth audio in
+kbit/s using the raw notification bytes and elapsed sampling time. Battery notifications update both the status and history on supported
 firmware. The day and week charts and connection journal retain observations
 on this phone for seven days. RSSI samples in the graph cover the last ten
 minutes. Connection events can be copied with timestamps, reason codes, last
 measurements and link duration. The journal does not contain Bluetooth
 identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
-and a confirmed Bluetooth write. Configure double tap in the same screen.
+and a confirmed Bluetooth write. Device Diagnostics uses the upstream Omi gain
+labels for the firmware's 0–8 levels. Tap the **CV1** battery button and then
+**Microphone and gain** to go straight to diagnostics. The editor uses the Omi
+presets Quiet (2/8), Normal (4/8), and High (the firmware default, 6/8). Tap
+**Save** to apply the selected level. Diagnostics refreshes from the device
+after the write. Measured signal uses dBFS.
+Use two short CV1 archive recordings of the
+same phrase to compare gain settings, or open **Test CV1 microphone** for a
+direct measurement. Make a short sound near the CV1 to wake the microphone.
+The phone skips the first second of audio and measures two seconds of room noise.
+When ready, start the three-second countdown, then speak or play a phrase
+for five seconds at your normal distance. Only the background and speech
+windows enter the results.
+The moving meter shows the latest audio, and the result shows how much CV1
+audio arrived during each window and how far speech rose above the room level.
+If CV1 sent room audio but no audio during the phrase, wake it and retry. If the
+test measures a quiet phrase with enough room audio or a peak close to clipping,
+it offers a one-step change and a retest. Compare up to two levels at equal
+distance and volume. To check whether a quiet speaker starts the stream after silence, use
+**Test quiet playback**. Stay quiet for the 12-second countdown and play the
+phrase at the cue. Tap **Repeat after waking CV1**, make a short sound next to
+the pendant, and wait for Next to confirm that audio arrived and start the
+two-second countdown. Then play the same phrase at the same volume and distance.
+If no audio arrives, the test offers another wake attempt. The two results show
+received duration, signal and peak. The comparison checks whether audio was
+arriving in the last second before each cue.
+Use the main microphone test to measure speech above room noise and adjust
+gain one step at a time. Two complete microphone measurements show the change
+in speech level, room level, and the difference between them. If a higher
+setting improves that difference by less than 2 dB, the comparison suggests
+keeping the lower setting. Use **Return to
+previous gain** to restore the earlier tested setting. During a normal CV1
+recording, the capture status shows when the first audio has not arrived or
+when the stream has gone quiet again. Both tests run in memory on the phone
+without creating recordings or running speech recognition. Stop any active
+recording before testing. For an archived comparison the phone reads at most the first ten
+seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital
+RMS, peak and the number of full-scale samples. The gain shown for the pendant is
+its current setting. Archive recordings do not carry a historical gain measurement.
+Configure double tap in the same screen.
 The default preserves the existing behavior of saving the current audio part.
 
 ## Saved servers
@@ -206,6 +261,11 @@ Polling ends when the screen closes and resumes when foreground access returns.
 
 ## Summary templates
 
+The recording's Summary tab shows the published template and model, with a
+button to choose the next template/model. Older results without provenance say
+that it was not recorded. This read is optional on older paired servers; it
+never replaces the visible summary with the current provider defaults.
+
 Open **Processing → Summary Template** to add or edit a named prompt. Enable
 **Use for new recordings** to make it the default when the server snapshots the
 applied summary provider for future jobs. If another client saved in the
@@ -213,10 +273,32 @@ meantime, refresh before editing the shared catalog again. The editor works
 with Omi Local servers that implement the same summary settings route.
 
 In an open recording use **Regenerate Recap** to select a prepared model,
-template and an optional prompt edit. Next sends the saved transcript after
-you confirm the destination. The current recap stays available until the
+template and an optional prompt edit. The server uses the saved transcript
+after you confirm the destination. The current recap stays available until the
 replacement is published. A concurrent transcript or recap edit requires a
-refresh. Very large or preview-only transcripts are outside this request.
+refresh. On servers that support background summary jobs, the same queue
+handles requests from Next and the web library. You can close and reopen the
+summary screen while the server works. The queue can load verified full
+transcripts when the archive initially displays a preview.
+During processing, Next shows the current server phase and how many transcript
+chunks have finished. The counter keeps its last saved value after a worker
+restart. The final combine and save phases have their own status. Model access,
+availability and response errors include instructions for retrying.
+
+## Reviewed memory
+
+On compatible servers, open **Memory** from the archive to search confirmed facts
+or review proposals. From a recording, **Memory → Propose facts from recording**
+shows the configured model and host before sending transcript excerpts. Compare
+each proposed statement with its quotation, then **Confirm fact**, **Edit and
+confirm**, or **Reject**. The source action opens the cited segment. Extraction
+may cover only part of a long recording and does not confirm anything itself.
+
+Changed or unavailable sources are marked for review and excluded from fact
+search. The old quotation is hidden; open the recording and extract again after
+corrections. The last 20 wording changes can be inspected. **Delete** removes the
+fact, stored quote and correction history while retaining the recording. Changes
+are saved on the paired server; no hosted memory/graph service is enabled.
 
 ## Daily recaps
 
@@ -227,7 +309,22 @@ and the summary links highlights and decisions back to their recordings.
 Next marks incomplete coverage. A new local generation replaces the same
 day's local recap. Existing recaps stay in the same archive.
 
+On compatible servers, the clock action opens **Automatic daily recaps**. Choose
+an IANA timezone and next-day time, review the model/host, enable and Save. The
+server must remain running; the phone may be closed. Schedules start with today
+and catch up after server downtime, while keeping existing recaps. Re-enabling
+or changing timezone starts with today again. The page shows the saved model,
+last outcome and next day. Refresh and save to approve a changed model or retry
+sooner. Disabling prevents an active attempt from publishing. This is server-side
+processing, not an iOS background task or an external calendar integration.
+
+
 ## Goals
+
+Compatible paired servers expose goal actions to pause, resume, mark achieved or
+abandon. Ending a goal asks for confirmation and keeps its history and linked
+tasks. A conflicting edit reloads the goal; retrying an uncertain write reuses
+the same request. Older servers keep goal reading and manual progress available.
 
 Open **Goals** from the archive to create a goal or review progress. A target
 and unit are optional. **Log progress** saves a note, with an optional new
@@ -243,10 +340,35 @@ titles and summaries on the paired server. Tap a transcript match to open the
 line. When WAV playback is available, Play starts at that line's timestamp.
 Use **Show more** to continue from the last scanned page.
 
+The player reads byte ranges from the paired WAV endpoint, so it can start at
+a late timestamp as soon as the necessary audio arrives. The paired client
+holds the server key and refuses redirects. The native player uses a temporary
+address on the phone's loopback interface. Sharing an online recording downloads
+the complete WAV to a temporary directory for the share sheet.
+
 `POST /v1/local/conversations/search` reads the current owner's Firestore records
 in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
 uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. The test server serves this route. Search duration for a rare term grows with the archive size.
+
+You can correct a line or assign its speaker in a completed file-backed
+recording. The server saves changes with the archived conversation and applies
+them to the full transcript for playback, search and summary generation. The
+imported audio and transcript file keep their original checksums.
+
+## Offline recordings
+
+In a finished recording, open **More options → Download for offline**. In the
+archive, open **More options → Offline recordings** to read the saved summary
+or transcript and play or export the WAV. Copies are snapshots of the downloaded
+conversation. Remove a copy from **Offline recordings** and download it again
+to retrieve newer edits.
+
+The 1 GiB limit is shared across the phone's saved servers, and the offline list
+belongs to the active pairing. Downloads appear after both the detail and the
+complete audio have been saved. Removing a copy frees phone storage. The server
+retains its original. Downloads use private application storage excluded from
+phone backups and are separate from pending recordings in the outbox.
 
 ## Chat about a recording
 
@@ -267,16 +389,33 @@ endpoint and an applied summary provider.
 ## Chat across the archive
 
 Open **Search conversations** and tap **Ask about the archive**. The server
-scans saved transcripts belonging to this pairing, selects excerpts that
-match the question's words, and checks source versions before and after
-inference. The model can receive excerpts, recording titles and dates and
-recent turns after confirmation. Tap a citation to open the matching
-recording. Follow-up context lasts while the chat page is open.
+combines word matches with results from its local semantic index and checks
+the source versions before and after inference. The keyword scan also covers
+recordings that are new or have changed since the last index refresh. The
+model can receive excerpts, recording titles and dates and
+recent turns after confirmation. Tap a citation to open the matching recording.
+On compatible servers the confirmation also explains that the question, answer
+and citations are stored in the paired owner's encrypted archive history. This
+history is shared across phones using that pairing. Refresh to see the latest
+turn from another phone or load earlier turns. An answer is hidden while one of
+its source recordings is unavailable. Older servers keep follow-up context
+for the current screen session.
 
-The screen reports when the scan reaches its time limit. Search by meaning,
-a persistent index and archive chat history are separate parity items.
+Tap the name of the current conversation to open **Archive conversations**.
+**Shared history** keeps the original chat available. **New conversation**
+starts a named history with its own context. Phones using the same pairing see
+the same saved conversations after refresh. To remove a named conversation,
+use its delete button and confirm. The original archive recordings remain
+available. The server supports up to 40 named conversations and 250 replies
+per named conversation. The screen reports when only part of the archive was
+checked.
 
 ## Edit a saved recording
+
+In the recordings list, long-press a completed, editable conversation to add or remove a favorite,
+archive it, or restore it from the Archive view. **Recording filters** remembers the minimum
+duration in seconds (0 disables it), **Hide recordings without audio**, and **Hide recordings
+marked “No speech”** on this phone for the paired server. Filters only change what is shown.
 
 In a finished recording, use the menu to rename it, add it to favorites or
 correct a transcript line. The archive's **Starred** filter uses the server's
@@ -288,6 +427,13 @@ the saved conversation. When another edit wins, Next keeps the draft on
 screen. Re-importing the same local processing result preserves the edits.
 A different processing result is a separate recording and retains its own
 transcript. Edits require an updated paired server.
+
+In a finished conversation, choose **Archive recording** to move it off the
+main list. Tap **Archive** above the list to browse archived conversations.
+**Restore from archive** moves it back. The archive supports the same folder,
+favorite, and category filters. It shares the flag with the web library and
+keeps the recording and transcript available. The control appears when the
+paired server advertises `local_recording_archive_version=1`.
 
 ## Organize recordings into folders
 
@@ -301,7 +447,13 @@ On servers that advertise `local_recording_categories_version=1`, open a complet
 choose **Change category**. The saved category applies wherever the recording
 appears in Next, and later server processing preserves the owner's choice.
 New local summaries can assign a category and subject emoji using the selected
-summary model. Existing older recordings can keep their original metadata.
+summary model. To categorize older recordings, open the archive menu, choose
+**Select recordings**, select up to eight completed recordings, and tap
+**Assign categories**. The same action is available on a completed recording
+whose category is Other. Confirm the model before sending saved overviews or
+short transcript excerpts. The result shows how many categories were assigned
+and which recordings were skipped. Manual categories, existing named categories,
+summaries and subject emojis are preserved.
 
 Tap **Folders** in the archive to create or rename a folder or filter the
 archive. A folder filter can be combined with **Starred**. In a finished
@@ -321,6 +473,14 @@ to the matching speaker group within this recording. Names use the paired
 server's existing people collection. Assignments preserve segment text and
 timestamps. Automatic recognition and voice samples are tracked separately.
 
+## Notes with transcript sources
+
+New summaries and regenerated summaries can include section headings with
+supporting transcript excerpts. Tap a section's sources control and choose
+an excerpt to jump to that moment. Next displays the same notes whether
+the server composed them with its default template or a selected template.
+Existing overviews stay available in the archive until regenerated.
+
 ## Tasks
 
 Open **Tasks** in the archive to create, edit, complete or reopen a task.
@@ -331,8 +491,15 @@ before saving. A linked item can open its recording at that line.
 excerpts from the selected recording. Review the cited line and choose **Add
 Task** for each item you want to keep. Next marks incomplete transcript coverage.
 If the cited text changed, generate suggestions again before adding the task.
-Tasks use the paired server's canonical task store. The local edits keep
-notification and external task-sync behavior outside this workflow.
+Tasks use the paired server's canonical task store. Tap a task's alarm
+icon to choose a day at 09:00 in the phone's current time zone or an exact time.
+Enable **Task reminders on this phone** on each device that should notify you.
+Notifications are scheduled on the phone after it syncs with the paired server.
+Changes made on another device take effect when this phone next syncs in the
+foreground. Android may defer notifications for a calendar day. An exact-time
+reminder uses a precise alarm when the phone allows it. Completing a task cancels
+its pending notification on sync.
+Legacy deadlines require an explicit reminder choice before the phone schedules them.
 
 ## Recording from the phone microphone
 
@@ -370,10 +537,11 @@ device** clears this selection.
 
 ## Live transcript
 
-While recording, the strip above the archive filters shows the current
-recognition status and the latest line when available. Tap it to open the
-same full Live transcript. The Live button keeps the last session accessible
-after recording stops.
+While recording, the card above the archive filters shows the current input,
+elapsed time, recognition status, and the latest line or a short input notice.
+CV1 mute and **Finish & listen** are available on this card and in the full
+Live transcript. Tap the card header to open Live. The last session remains
+accessible after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
 Omi transcript list and shows where live processing runs. Translation can use
@@ -393,30 +561,38 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. **Conversation
-boundaries** is available in capture settings and Live settings. It selects
-one recording per part, one conversation until Stop, or separation after a
-chosen silent interval. The grouped options appear on a compatible paired
-server. A saved change applies to the next recording. Conversation publication follows the server's durable sample clock.
-Live drafts still represent the capture session.
+current stream shows its separately acknowledged limit. **Stop after silence**
+in capture settings and Live settings selects one recording per part, one
+conversation until Stop, or a timed silence interval. A timed interval stops
+capture after detected speech followed by silence. Enable **Keep listening
+after silence** to finish the conversation and continue monitoring. The choices
+appear on a compatible paired server and apply to the next recording.
+A connected CV1 that stops sending audio can also finish on the phone's
+timer. For incoming audio, automatic Stop depends on the paired server's
+silence detector. Live timestamps include gaps in the input. The server uses the
+durable audio samples to publish and trim saved conversations.
 
 ## Processing profiles
 
 Open the processing controls from the paired library. Next shows the server's
 effective profile and the prepared choices for each supported stage. Live STT,
 final transcription and diarization are selected separately. The summary
-and translation cards show the configurations already published on the server.
+and translation cards show the configurations published on the server. On an
+updated server these cards also support editing profiles. Translation can use a
+dedicated profile or inherit the applied summary profile.
 
 Select a prepared profile and confirm while capture is idle. Confirmation
 uses the registry revision read by the screen and waits for the effective
 profile returned by the server. After a conflict or an uncertain result,
 refresh before confirming again. Next can create, edit and test drafts for
-external Live STT, OpenAI-compatible final STT and Mycelia diarization, and list
-available models for final STT. The connection test reads provider metadata.
+external Live STT, OpenAI-compatible final STT, Mycelia diarization, summary and
+translation. It can list models for final STT, summary and translation. The
+connection test reads provider metadata. A summary saved in Next uses the model
+specified in the draft once applied. Existing server-managed automatic profiles
+continue to follow the provider until an explicit profile is applied.
 Saving a draft leaves the effective profile in place. A saved credential can
 be replaced or removed without displaying its value. Editable inactive drafts
-can be deleted after confirmation. Native model paths and summary and
-translation drafts remain server-managed.
+can be deleted after confirmation. Native model paths are edited on the server.
 
 ## Updating the original
 
@@ -445,6 +621,13 @@ Keep pairing, audio delivery, Live, and archive reads on the user's own server.
 For backend updates, compare the shared archive and processing contracts in
 [Backend compatibility](../../docs/BACKEND_PARITY.md). The original and paired
 deployments have separate authentication and audio processing boundaries.
+
+The archive header and Live share the result of an authenticated profile check on
+the selected server. The app rechecks on foreground entry and every 30 seconds
+in the foreground. The gear in the archive header opens capture settings.
+Live labels the current or last transcript for this phone separately from the
+server connection. Search either translation language by name or language code.
+The device picker and capture controls show battery level when CV1 reports it.
 
 ## Migration ledger
 
@@ -742,8 +925,10 @@ The Next suite passed 70 tests. A wire smoke used bodies from the actual
 Flutter journal against the paired API, including finish before audio,
 reverse-order parts and replay. The real voice detector, transcription queue
 with a fixture recognizer, Firestore import and range playback all passed.
-The current Live transcript still covers the capture session. Resetting its
-display at a saved conversation boundary and physical acceptance remain open.
+Live uses the last silence cut confirmed by an authenticated receipt. It
+shows text from the next conversation and links to the saved session results.
+Capture, its timer and the live connection continue through the cut. Earlier
+servers continue to show the full session in Live.
 
 The separate `Profile-dev` package from `7c64a8d` passed signature,
 provisioning and entitlement verification. Its executable SHA-256 begins
@@ -840,11 +1025,11 @@ Phone-microphone speech and repeated-start reliability still need a separate che
 | Area | Status and next verification |
 | --- | --- |
 | Base and installation identity | Upstream Flutter is pinned to November 26 revision `782a793`. The Runner uses an independent identifier, name and Keychain service. Native target selection explicitly lists the plugins used by this client. |
-| Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default test server preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. The automatic refresh after delivery still needs device verification. |
+| Pairing and library | Named servers, verified switching and opt-in launch presets. The iPhone used the default test server preset and showed authenticated diagnostics. The archive and detail use the upstream API, with original day headers and state tiles. A receipt triggers an immediate refresh. While the first page is visible, the 30-second server check also refreshes it to pick up late publication and edits from other clients. Loading older pages preserves the cursor. |
 | Detail and playback | The paired WAV endpoint checks ownership and integrity. Next uses the original transcript viewport, Markdown renderer, section sources and search control. Older servers continue to serve the archive without the playback endpoint. A note citation opens a unique original transcript segment and can seek when audio is available. |
 | Phone capture | Shared Local journal and receipt protocol. Interruptions, airplane mode, background endurance, reinstall recovery and physical microphone acceptance require device evidence. |
 | CV1 | Next now connects a selected wearable, accepts button/audio notifications and journals complete Opus packets. Dart fences events by connection and audio subscription; switching inputs waits for the previous source's seal. Mute preserves the recording identity, seals prior audio and clears Opus context. The wire has no end marker, so the pending unconfirmed packet is discarded on Stop or loss. Physical notification delivery and background/relaunch endurance require device evidence. |
-| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Opt-in silence-based grouping runs on the paired server. Live boundary display and editing summary/translation profiles remain open. |
+| Processing | Live transcript and one-way/two-way translation use the paired server. Next selects prepared Live/final STT and diarization profiles, manages adapter drafts and edits the saved Live speaker limit on supported servers. Opt-in silence-based grouping runs on the paired server. Live advances on confirmed silence cuts. Editing summary/translation profiles remains open. |
 | Upstream product screens | Paired search, chat, folders, manual speaker labels, tasks, manually generated daily recaps, and manual goal progress are available in Next. Task suggestions cite a transcript line and require individual acceptance. These features need physical verification with an updated server. Scheduled recaps, goal suggestions and lifecycle, semantic retrieval, persistent archive chat history, automatic speaker recognition, memory and integrations remain open. Episodes, Review and Dream retain separate availability checks. |
 | Local work since the October baseline | Local donor `8ce6f0a` includes the durable capture integration. The local `sky-dev` onboarding and processing commit `a3de2ab` was merged into Next. The existing offline permissions flow, CV1 reconnect guards, pending archive and opt-in summary settings cover its functional changes. Track the later recording and summary repair branches separately. Confirm the installed build separately. |
 | Update conflicts | The standard upstream startup initializes account and cloud services. The native product includes additional extensions and shared groups. Extend the Next composition as individual dependencies become necessary. |

@@ -30,9 +30,31 @@ def test_full_snapshots_replace_retract_and_isolate_sessions():
     assert second['segments'][0]['speaker'] is None
     assert second['segments'][0]['speaker_id'] == -1
     assert second['segments'][0]['is_draft'] is True
-    assert segment.update({'lines': [], 'buffer_transcription': ''}, 8)['segments'] == []
+    removed = segment.update({'lines': [], 'buffer_transcription': ''}, 8)
+    assert removed['segments'] == [] and segment.text == ''
+    assert removed['withdrawn'] == {'text': second['segments'][0]['text'], 'end': 8}
     assert segment.update({'lines': [], 'buffer_transcription': ''}, 9) is None
+    assert segment.withdrawn == removed['withdrawn']
+    restored = segment.update({'lines': [{'text': 'уточнение', 'start': 0, 'end': 9}], 'buffer_transcription': ''}, 10)
+    assert 'withdrawn' not in restored and segment.withdrawn is None
+    segment.update({'lines': [], 'buffer_transcription': ''}, 11)
+    segment.begin_conversation(11)
+    assert segment.withdrawn is None
     assert segment.id != PreviewSegment().id
+
+
+def test_confirmed_turn_survives_mixed_drafts_and_receives_their_final_words():
+    segment = PreviewSegment()
+    segment.configure({'diarization': True})
+    first = {'text': 'Первая фраза.', 'speaker': 0, 'start': 0, 'end': 2}
+    waiting = {'text': 'Снова', 'speaker': 0, 'start': 4, 'end': 5, 'is_draft': True}
+    provisional = {'lines': [first, waiting, {'text': 'слышно'}], 'buffer_transcription': 'слова'}
+    fixed, draft = segment.update(provisional, 6)['segments']
+    assert fixed['text'] == first['text'] and fixed['speaker'] == 'SPEAKER_00'
+    assert not fixed['is_draft'] and draft['is_draft'] and draft['text'] == 'Снова слышно слова'
+    joined = {**first, 'text': 'Первая фраза. Снова слышны слова.', 'end': 6}
+    final, = segment.update({'lines': [joined], 'buffer_transcription': ''}, 7)['segments']
+    assert final['id'] == fixed['id'] and final['text'] == joined['text'] and not final['is_draft']
 
 
 def test_authoritative_timed_speakers_keep_corrections_removals_and_real_translations():
@@ -60,6 +82,18 @@ def test_authoritative_timed_speakers_keep_corrections_removals_and_real_transla
     assert corrected['segments'][0]['speaker'] == 'SPEAKER_05'
     assert not corrected['segments'][0]['is_draft']
     assert segment.update({'lines': [{**line, 'speaker': 5}], 'buffer_transcription': ''}, 6) is None
+
+
+def test_translation_revision_is_forwarded_even_when_speech_is_unchanged():
+    segment = PreviewSegment()
+    snapshot = {'lines': [{'text': 'Original.', 'start': 0, 'end': 1}], 'buffer_transcription': ''}
+    first = segment.update({**snapshot, 'translation_revision': 1}, 2)
+    second = segment.update({**snapshot, 'translation_revision': 3}, 2)
+    assert first['translation_revision'] == 1 and second['translation_revision'] == 3
+    assert first['segments'] == second['segments'] and second['revision'] == first['revision'] + 1
+    assert segment.update({**snapshot, 'translation_revision': 3}, 2) is None
+    unversioned = segment.update({**snapshot, 'translation_revision': True}, 2)
+    assert 'translation_revision' not in unversioned
 
 
 @pytest.mark.parametrize('capability', [None, False, 'true'])
@@ -233,16 +267,16 @@ async def test_translation_language_reaches_only_the_relay_before_audio(monkeypa
     preview.feed(pcm)
     for _ in range(20):
         await asyncio.sleep(0)
-    preview.set_translation('DE', other_language)
-    preview.set_translation('not-a-code')
+    preview.set_translation('DE', other_language, 2)
+    preview.set_translation('not-a-code', revision=3)
     await preview.finish()
     frames = [json.loads(item) for item in socket.sent if isinstance(item, str)]
     if relay_enabled:
         pair = {'other_language': other_language} if other_language else {}
         assert json.loads(socket.sent[0]) == {'type': 'translation', 'language': 'en', **pair}
         assert frames == [{'type': 'translation', 'language': 'en', **pair},
-                          {'type': 'translation', 'language': 'de', **pair},
-                          {'type': 'translation', 'language': ''}]
+                          {'type': 'translation', 'language': 'de', **pair, 'revision': 2},
+                          {'type': 'translation', 'language': '', 'revision': 3}]
     else:
         assert frames == []
     assert [item for item in socket.sent if isinstance(item, bytes)] == [pcm, b'']
@@ -252,7 +286,7 @@ async def test_translation_language_reaches_only_the_relay_before_audio(monkeypa
 @pytest.mark.anyio
 async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypatch):
     monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
-    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured'})
+    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured', 'revision': 7})
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
     send = AsyncMock()
     preview = LocalLivePreview('ws://127.0.0.1:20004/asr', send, translation_language='en')
@@ -260,7 +294,8 @@ async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypa
     for _ in range(20):
         await asyncio.sleep(0)
     statuses = [call.args[0] for call in send.call_args_list if call.args[0].get('type') == 'service_status']
-    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation'} in statuses
+    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation',
+            'revision': 7} in statuses
     socket.incoming.put_nowait(json.dumps({'type': 'translation_status', 'status': 'weird value'}))
     for _ in range(10):
         await asyncio.sleep(0)
@@ -683,6 +718,16 @@ async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypat
         assert 'sessions' not in status and 'text' not in status['live_transcript']
         owners[0].local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, .02)
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]['text'] == 'исправлено'
+        segment = owners[0].local_preview.segment
+        segment.update({'lines': [{'start': 0, 'end': .01, 'text': 'а' * 100_000}],
+                        'buffer_transcription': 'новая речь'}, .02)
+        window = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        fixed, draft = window['segments']
+        assert window['text_truncated'] and len(window['text']) == 100_000
+        assert fixed['start'] is None and not fixed['is_draft']
+        assert draft['text'] == 'новая речь' and draft['is_draft']
+        assert fixed['text'] + ' ' + draft['text'] == window['text']
+        assert len(segment.segments[0]['text']) == 100_000
         owners[0].state.shutdown_event.set()
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
     finally:
@@ -747,6 +792,7 @@ async def test_outbox_owned_library_draft_uses_preview_without_server_wav(monkey
         current.local_preview.segment.update({'lines': [], 'buffer_transcription': ''}, 1.25)
         retracted = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
         assert retracted['text'] == '' and retracted['segments'] == [] and retracted['revision'] == 3
+        assert retracted['withdrawn']['text'] == 'исправлено'
         current.state.shutdown_event.set()
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
     finally:
@@ -799,3 +845,18 @@ async def test_idle_diarization_health_never_claims_inference(monkeypatch, extra
         assert data['diarization'] == {'state': expected, 'labeled_segments': 0}
     finally:
         await client.aclose()
+
+
+def test_opted_in_silence_reset_discards_stale_provider_updates_until_speech_resumes():
+    segment = PreviewSegment()
+    previous = {'text': 'old phrase', 'start': 0, 'end': 1}
+    previous_snapshot = {'lines': [previous], 'buffer_transcription': 'old draft'}
+    segment.update(previous_snapshot, 2)
+    reset = segment.begin_conversation(17)
+    assert not reset['segments'] and reset['preview_id'] == segment.id and reset['revision'] == 2
+    assert segment.update(previous_snapshot, 19) is None
+    segment.resume_after_silence(20)
+    new = {'text': 'second phrase', 'start': 20.25, 'end': 21}
+    result = segment.update({'lines': [previous, new], 'buffer_transcription': 'old draft fresh'}, 21.5)
+    assert [(s['text'], s['start'], s['end']) for s in result['segments']] == [
+        ('second phrase', .25, 1), ('fresh', 1, 1.5)]

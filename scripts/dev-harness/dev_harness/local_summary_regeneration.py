@@ -37,7 +37,7 @@ def options(registry):
     }
 
 
-def regenerate(registry, body):
+def prepare(registry, body):
     catalog, profiles, _ = registry.summary_choices()
     profile = next((p for p in profiles if _provider(p)['binding'] == body.get('provider_binding')), None)
     template = next((t for t in catalog['templates'] if t['id'] == body.get('template_id')), None)
@@ -47,16 +47,20 @@ def regenerate(registry, body):
         raise SettingsError('Summary template changed.', status=409)
     template = {**template, 'prompt': body.get('prompt')}
     validate_summary_templates([template], template['id'])
+    return {**profile, 'template': template}
+
+
+def regenerate(registry, body):
+    profile = prepare(registry, body)
     transcript = body.get('transcript')
     if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 120_000:
         raise SettingsError('Invalid transcript for summary.')
     try:
-        provider = _provider(profile)
         with TemporaryDirectory(prefix='summary-', dir=registry.root) as temp:
             summary = local_pipeline.summarize_text(
-                {**profile, 'template': template}, registry.key(profile), transcript,
-                Path(temp), atomic_json, deadline=monotonic() + 205,
+                profile, registry.key(profile), transcript,
+                Path(temp), atomic_json, deadline=monotonic() + 205, sourced=body.get('numbered_sources') is True, include_model=True,
             )
     except (OSError, ValueError):
         raise SettingsError('Summary inference failed.', status=503) from None
-    return {**summary, 'model': provider['model'], 'template_name': template['name']}
+    return {**summary, 'template_name': profile['template']['name']}

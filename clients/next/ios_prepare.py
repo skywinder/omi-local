@@ -12,7 +12,8 @@ from cv1_protocol import cv1_feature_masks, cv1_uuids
 
 HERE = Path(__file__).resolve().parent
 BUNDLE = 'org.omilocal.next'
-NAME = 'Omi Local Next'
+NAME = 'Omi Next'
+ICON = 'NextAppIcon'
 CONFIGS = {'Debug-dev', 'Profile-dev', 'Release-dev'}
 
 
@@ -93,7 +94,7 @@ def prepare_project(project_file):
                     'PRODUCT_BUNDLE_IDENTIFIER': BUNDLE, 'APP_BUNDLE_IDENTIFIER': BUNDLE,
                     'BUNDLE_DISPLAY_NAME': NAME, 'BUNDLE_NAME': NAME, 'INFOPLIST_KEY_CFBundleDisplayName': NAME,
                     'INFOPLIST_FILE': 'Runner/Info.plist', 'CODE_SIGN_STYLE': 'Automatic',
-                    'ASSETCATALOG_COMPILER_APPICON_NAME': 'devAppIcon',
+                    'ASSETCATALOG_COMPILER_APPICON_NAME': ICON,
                     'DEVELOPMENT_TEAM': '$(OMI_APPLE_TEAM_ID)',
                     'SWIFT_OBJC_BRIDGING_HEADER': '', 'CODE_SIGN_ENTITLEMENTS': '',
                     'FLUTTER_TARGET': 'lib/main_local_next.dart',
@@ -118,7 +119,7 @@ def prepare_info(runner):
         'NSMicrophoneUsageDescription': 'Record audio to your paired Omi Local server.',
         'NSBluetoothAlwaysUsageDescription': 'Connect to your selected Omi wearable and receive audio and button events.',
         'UIBackgroundModes': ['audio', 'bluetooth-central'],
-        'NSLocalNetworkUsageDescription': 'Omi Local Next connects to your paired recording server.',
+        'NSLocalNetworkUsageDescription': f'{NAME} connects to your paired recording server.',
         'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True, 'NSExceptionDomains': {
             '100.64.0.0/10': {'NSExceptionAllowsInsecureHTTPLoads': True},
         }},
@@ -151,6 +152,8 @@ def prepare(app):
     runner = ios / 'Runner'
     prepare_project(ios / 'Runner.xcodeproj' / 'project.pbxproj')
     prepare_info(runner)
+    shutil.copytree(HERE / 'ios' / f'{ICON}.appiconset',
+                    runner / 'Assets.xcassets' / f'{ICON}.appiconset', dirs_exist_ok=True)
     shutil.copyfile(HERE / 'ios' / 'AppDelegate.swift', runner / 'AppDelegate.swift')
     (runner / 'NextCV1.swift').write_text((HERE / 'ios/NextCV1.swift').read_text() + '\n' +
                                          (HERE / 'ios/CV1Protocol.swift').read_text() + '\n' + swift_cv1_uuids(app))

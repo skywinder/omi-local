@@ -258,7 +258,7 @@ void main() {
     journal.dispose();
   });
 
-  test('paired preview receives the phone frame after journal flush and Stop delivers the exact part', () async {
+  test('the paired silence signal stops the phone mic and delivers the exact persisted audio', () async {
     final scratch = await Directory.systemTemp.createTemp();
     addTearDown(() => scratch.delete(recursive: true));
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -275,9 +275,14 @@ void main() {
       expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
       switch (request.uri.path) {
         case '/v1/users/profile':
-          response.write(jsonEncode({'uid': 'alice', 'local_audio_delivery_version': 2}));
+          response.write(
+            jsonEncode({'uid': 'alice', 'local_audio_delivery_version': 2, 'local_conversation_group_version': 1}),
+          );
         case '/v4/listen':
           expect(request.headers.value('x-omi-local-audio-outbox'), '1');
+          expect(request.headers.value('x-omi-local-group-silence'), '60');
+          final group = request.headers.value('x-omi-local-recording-group');
+          expect(group, isNotNull);
           expect(request.uri.queryParameters['source'], 'phone');
           expect(request.uri.queryParameters['codec'], 'pcm16');
           final socket = await WebSocketTransformer.upgrade(request);
@@ -285,14 +290,22 @@ void main() {
             if (frame is List<int> && !received.isCompleted) {
               final part = scratch.listSync().whereType<File>().single.readAsBytesSync();
               received.complete((sent: frame, stored: part.sublist(part.length - frame.length)));
+              socket.add(
+                jsonEncode({
+                  'type': 'service_status',
+                  'provider': 'local_audio_group',
+                  'status': 'flush_part',
+                  'reason': group,
+                }),
+              );
             }
           }, onDone: closed.complete);
           return;
         case '/v1/local/audio/parts':
           final body = Uint8List.fromList(await request.expand((bytes) => bytes).toList());
-          uploaded.complete(body);
           final end = 12 + ByteData.sublistView(body).getUint32(8);
           final header = jsonDecode(utf8.decode(body.sublist(12, end))) as Map;
+          if (body.length > end) uploaded.complete(body);
           response.write(jsonEncode({'stored': true, 'id': header['id'], 'sha256': sha256.convert(body).toString()}));
         default:
           response.statusCode = HttpStatus.notFound;
@@ -300,10 +313,10 @@ void main() {
       await response.close();
     });
 
-    final journal = LocalAudioJournal(directory: scratch, upload: library.uploadPart);
+    final journal = LocalAudioJournal(directory: scratch, upload: library.uploadPart, groupSilence: () => 60);
     await journal.initialize();
-    final preview = NextLivePreview(library.audioOwnerId, (owner, source, codec) async {
-      final socket = await library.connectPreview(owner, source, codec);
+    final preview = NextLivePreview(library.audioOwnerId, (owner, source, codec, {silence}) async {
+      final socket = await library.connectPreview(owner, source, codec, silence: silence);
       ready.complete();
       return socket;
     });
@@ -318,8 +331,10 @@ void main() {
       final observed = await received.future.timeout(const Duration(seconds: 5));
       expect(observed.sent, frame);
       expect(observed.stored, frame);
-      await capture.stop();
+      await mic.stopped.future.timeout(const Duration(seconds: 5));
       await closed.future.timeout(const Duration(seconds: 5));
+      await capture.stop();
+      expect(capture.active, isFalse);
       await journal.drain();
       final part = await uploaded.future.timeout(const Duration(seconds: 5));
       expect(part.sublist(part.length - frame.length), frame);

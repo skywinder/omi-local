@@ -121,11 +121,10 @@ void main() {
 
   testWidgets('offline header reports recording on the phone and keeps its server name when expanded', (tester) async {
     final session = await paired();
-    final outbox = LocalAudioOutbox(directory: Directory('/synthetic-outbox-status'), upload: (_, __) async => {});
+    final outbox = _FailedOutbox();
     final recording = outbox.begin(source: 'phone', codec: 'pcm16', address: session.address, key: session.accessKey!);
     outbox.pendingParts = 2;
     outbox.pendingBytes = 2048;
-    outbox.deliveryFailed = true;
     LocalAudioOutbox.shared = outbox;
     try {
       await showCard(tester, session, () async => throw LocalRuntimeStatusUnavailable(), expanded: false);
@@ -544,4 +543,10 @@ void main() {
     expect(value(tester, 'transcript'), 'Off');
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+class _FailedOutbox extends LocalAudioOutbox {
+  _FailedOutbox() : super(directory: Directory('/synthetic-outbox-status'), upload: (_, __) async => {});
+  @override
+  bool get deliveryFailed => true;
 }

@@ -6,11 +6,18 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'settings_labels.dart';
 
-enum RecordingEditFailure implements Exception { conflict, unavailable, folderTooLarge }
+enum RecordingEditFailure implements Exception {
+  conflict,
+  unavailable,
+  folderTooLarge,
+  transcriptUnavailable,
+  transcriptEditLimit,
+}
 
 class RecordingEdit {
   const RecordingEdit.title(String this.expected, String this.value) : field = 'title', segmentId = null;
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
+  const RecordingEdit.archived(bool this.expected, bool this.value) : field = 'archived', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
   const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
   const RecordingEdit.category(String this.expected, String this.value) : field = 'category', segmentId = null;
@@ -18,6 +25,9 @@ class RecordingEdit {
     : field = 'description',
       segmentId = null;
   const RecordingEdit.taskCompleted(bool this.expected, bool this.value) : field = 'completed', segmentId = null;
+  const RecordingEdit.taskDue(Map<String, dynamic>? this.expected, Map<String, dynamic>? this.value)
+    : field = 'due',
+      segmentId = null;
   const RecordingEdit.speaker(Map<String, Object?> this.expected, Map<String, Object?> this.value)
     : field = 'speaker',
       segmentId = null;
@@ -40,6 +50,8 @@ class RecordingEdit {
 String recordingEditError(BuildContext context, Object error) => switch (error) {
   RecordingEditFailure.conflict => pairedSettingsLabel(context, 'recordingEditConflict'),
   RecordingEditFailure.folderTooLarge => pairedSettingsLabel(context, 'localFolderTooLarge'),
+  RecordingEditFailure.transcriptUnavailable => pairedSettingsLabel(context, 'recordingEditTranscriptUnavailable'),
+  RecordingEditFailure.transcriptEditLimit => pairedSettingsLabel(context, 'recordingEditTranscriptLimit'),
   _ => pairedSettingsLabel(context, 'recordingEditUnavailable'),
 };
 

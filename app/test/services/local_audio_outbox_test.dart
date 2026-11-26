@@ -4,8 +4,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/services/capture/local_audio_outbox.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/capture/local_opus_preroll.dart';
@@ -379,7 +381,15 @@ void main() {
   });
 
   test('a mismatched receipt cannot delete unacknowledged audio', () async {
-    final wrong = LocalAudioOutbox(directory: directory, upload: (_, __) async => {'stored': true});
+    var connected = false;
+    var valid = false;
+    final wrong = LocalAudioOutbox(
+      directory: directory,
+      upload: (body, _) async {
+        if (!connected) throw const SocketException('fixture');
+        return valid ? receipt(body) : {'stored': true};
+      },
+    );
     await wrong.initialize();
     final recording = wrong.begin(
       source: 'phone',
@@ -392,7 +402,72 @@ void main() {
     await wrong.drain();
     expect(directory.listSync().whereType<File>(), hasLength(1));
     expect(wrong.deliveryRevision, 0);
+    expect(wrong.deliveryIssues, {LocalDeliveryIssue.connection});
+    connected = true;
+    await wrong.drain();
+    expect(wrong.deliveryIssues, {LocalDeliveryIssue.receipt});
+    expect(wrong.pendingParts, 1);
+    valid = true;
+    await wrong.drain();
+    expect(wrong.deliveryIssues, isEmpty);
+    expect(wrong.deliveryRevision, 1);
+    expect(directory.listSync(), isEmpty);
     wrong.dispose();
+  });
+
+  test('an unreadable queue retries even when no part could be counted', () {
+    final missing = Directory('${directory.path}/later');
+    fakeAsync((time) {
+      final journal = LocalAudioJournal(directory: missing, upload: (_, _) async => {});
+      journal.retry();
+      time.flushMicrotasks();
+      expect(journal.deliveryIssues, {LocalDeliveryIssue.queueStorage});
+      missing.createSync();
+      time.elapse(const Duration(seconds: 15));
+      expect(journal.deliveryIssues, isEmpty);
+      journal.dispose();
+    });
+  });
+
+  test('only a matching grouped delivery receipt can advance the Live boundary', () async {
+    final boundaries = <(String, int)>[];
+    var valid = false;
+    var grouping = true;
+    final grouped = LocalAudioJournal(
+      directory: directory,
+      groupSilence: () => grouping ? 15 : null,
+      upload: (body, _) async => {
+        ...receipt(body),
+        if (!valid) 'sha256': 'unconfirmed',
+        'conversation_boundary_sample': 240000,
+      },
+      onConversationBoundary: (id, sample) => boundaries.add((id, sample)),
+    );
+    addTearDown(grouped.dispose);
+    await grouped.initialize();
+    LocalAudioRecording begin() => grouped.beginForServer(
+      source: 'phone',
+      codec: 'pcm16',
+      serverId: LocalAudioJournal.serverIdentity('https://synthetic.example/', 'synthetic-key'),
+    );
+    final recording = begin();
+    await recording.add([1, 0]);
+    await recording.checkpoint();
+    await grouped.drain();
+    expect(boundaries, isEmpty);
+    expect(directory.listSync().whereType<File>().where((file) => file.path.endsWith('.ready')), hasLength(1));
+    valid = true;
+    await grouped.drain();
+    expect(boundaries, [(recording.recordingId, 240000)]);
+    await recording.stop();
+    await grouped.drain();
+    final before = boundaries.length;
+    grouping = false;
+    final legacy = begin();
+    await legacy.add([1, 0]);
+    await legacy.stop();
+    await grouped.drain();
+    expect(boundaries, hasLength(before));
   });
 
   test('restart trims only an incomplete final packet and preserves every complete packet', () async {

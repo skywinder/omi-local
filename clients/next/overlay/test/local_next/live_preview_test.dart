@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/live_preview.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 
 class _Server {
   late HttpServer http;
@@ -12,6 +14,7 @@ class _Server {
   final received = StreamController<dynamic>.broadcast();
   final sockets = <WebSocket>[];
   final requests = <Uri>[];
+  final silenceHeaders = <(String?, String?, String?)>[];
 
   Future<void> open() async {
     http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -20,6 +23,11 @@ class _Server {
       expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer fixture');
       expect(request.headers.value('X-Omi-Local-Audio-Outbox'), '1');
       expect(request.headers.value('X-App-Platform'), 'ios');
+      silenceHeaders.add((
+        request.headers.value('X-Omi-Local-Recording-Group'),
+        request.headers.value('X-Omi-Local-Group-Silence'),
+        request.headers.value('X-Omi-Local-Group-Stop'),
+      ));
       final ws = await WebSocketTransformer.upgrade(request, compression: CompressionOptions.compressionOff);
       sockets.add(ws);
       ws.listen(received.add);
@@ -37,7 +45,7 @@ class _Server {
 
   Uri get origin => Uri(scheme: 'http', host: '127.0.0.1', port: http.port);
 
-  Future<WebSocket> dial(String owner, String source, String codec) async {
+  Future<WebSocket> dial(String owner, String source, String codec, {PreviewSilence? silence}) async {
     expect(owner, 'paired');
     final client = HttpClient()..findProxy = (_) => 'DIRECT';
     try {
@@ -48,6 +56,7 @@ class _Server {
         source,
         codec,
         audioOrigin: const {'X-App-Platform': 'ios'},
+        silence: silence,
       );
     } finally {
       client.close();
@@ -88,6 +97,65 @@ Map<String, dynamic> _row(String id, String text, {String? translation}) => {
 };
 
 void main() {
+  test('live timestamps include missing capture time but durable cuts still use sample positions', () async {
+    final server = _Server();
+    await server.open();
+    final preview = NextLivePreview('paired', server.dial);
+    addTearDown(preview.dispose);
+    final connection = server.connected.stream.first;
+    preview.begin('recording', 'omi', 'opus');
+    final peer = await connection;
+    peer.add(jsonEncode({'type': 'service_status', 'provider': 'local_live_preview', 'status': 'ready'}));
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    final packet = Uint8List.fromList([0xf8, 0xff, 0xfe]);
+    preview.addPersisted('recording', 'omi', 'opus', packet, startSeconds: 0, elapsedSeconds: 0.1);
+    preview.addPersisted('recording', 'omi', 'opus', packet, startSeconds: 30, elapsedSeconds: 120);
+    peer.add(
+      _snapshot('draft', 1, [
+        {..._row('first', 'Before gap'), 'start': 29, 'end': 30},
+        {..._row('second', 'After gap'), 'start': 30, 'end': 31},
+      ]),
+    );
+    await _until(preview, () => preview.lines.length == 2);
+    expect(preview.lines.map((line) => (line.start, line.end)), [(29, 30), (120, 121)]);
+    preview.confirmConversationBoundary('recording', 30 * 16000);
+    expect(preview.lines.single.text, 'After gap');
+  });
+
+  test('a matching silence signal still arrives when live recognition is disabled', () async {
+    final server = _Server();
+    await server.open();
+    final preview = NextLivePreview('paired', server.dial);
+    addTearDown(preview.dispose);
+    const recording = '00000000-0000-4000-8000-000000000001';
+    final silence = Completer<void>();
+    final connection = server.connected.stream.first;
+    preview.begin(recording, 'phone', 'pcm16', silenceSeconds: 60, onSilence: silence.complete);
+    final peer = await connection;
+    expect(server.silenceHeaders.single, (recording, '60', '1'));
+    peer.add(
+      jsonEncode({
+        'type': 'service_status',
+        'provider': 'local_live_preview',
+        'status': 'stt_failed',
+        'reason': 'disabled',
+      }),
+    );
+    await _until(preview, () => preview.phase == NextPreviewPhase.unavailable);
+    final audio = server.received.stream.first;
+    preview.addPersisted(recording, 'phone', 'pcm16', Uint8List(2), startSeconds: 0);
+    expect(await audio, [0, 0]);
+    void sendBoundary(String group) => peer.add(
+      jsonEncode({'type': 'service_status', 'provider': 'local_audio_group', 'status': 'flush_part', 'reason': group}),
+    );
+    sendBoundary('different-recording');
+    peer.add(_snapshot('draft', 1, []));
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    expect(silence.isCompleted, isFalse);
+    sendBoundary(recording);
+    await silence.future.timeout(const Duration(seconds: 4));
+  });
+
   test('paired preview handshake, persisted audio and versioned corrections/translation use the real wire', () async {
     final server = _Server();
     await server.open();
@@ -136,11 +204,31 @@ void main() {
     expect(preview.lines.single.translations, {'de': 'erste'});
     peer.add(_snapshot('trial', 3, [_row('a', 'corrected', translation: 'neu')], control: 1));
     await _until(preview, () => preview.lines.single.translations['de'] == 'neu');
+    peer.add(
+      _snapshot('trial', 4, [
+        {
+          ..._row('a', 'direction changed'),
+          'translations': [
+            {'lang': 'ru', 'text': 'перевод'},
+          ],
+        },
+      ], control: 1),
+    );
+    await _until(preview, () => preview.lines.single.text == 'direction changed');
+    expect(preview.lines.single.translations, {'ru': 'перевод'});
+    peer.add(
+      _snapshot('trial', 5, [
+        {..._row('a', 'first half'), 'end': 0.5},
+        {..._row('b', 'second half'), 'start': 0.5},
+      ], control: 1),
+    );
+    await _until(preview, () => preview.lines.length == 2);
+    expect(preview.lines.every((line) => line.translations.isEmpty), isTrue);
     final off = server.received.stream.first;
     preview.setTranslation('');
-    expect(preview.lines.single.translations, isEmpty);
+    expect(preview.lines.every((line) => line.translations.isEmpty), isTrue);
     expect(jsonDecode(await off as String), {'type': 'translation', 'language': '', 'revision': 2});
-    peer.add(_snapshot('trial', 4, []));
+    peer.add(_snapshot('trial', 6, []));
     await _until(preview, () => preview.lines.isEmpty);
     preview.end('rec');
     expect(preview.phase, NextPreviewPhase.idle);
@@ -177,6 +265,26 @@ void main() {
       expect(preview.lines.map((line) => line.text), ['before', 'after']);
       expect(preview.lines.map((line) => line.id).toSet(), hasLength(2));
       expect(preview.lines.last.start, 9);
+      preview.confirmConversationBoundary('different recording', 8 * 16000);
+      expect(preview.savedGroupId, isNull);
+      preview.confirmConversationBoundary('first', 8 * 16000);
+      preview.confirmConversationBoundary('first', 7 * 16000); // Older upload, acknowledged late.
+      expect(preview.savedGroupId, 'first');
+      expect(preview.boundarySeconds, 8);
+      expect(preview.phase, NextPreviewPhase.listening);
+      expect(preview.lines.map((line) => line.text), ['after']);
+      replacement.add(
+        _snapshot('suffix', 2, [
+          _row('early', 'Old text in a newer snapshot'),
+          {..._row('x', 'Revised next conversation'), 'start': 1.0, 'end': 2.0},
+        ]),
+      );
+      await _until(preview, () => preview.lines.last.text == 'Revised next conversation');
+      expect(preview.lines.last.start, 10);
+      preview.confirmConversationBoundary('first', 10 * 16000);
+      expect(preview.lines.map((line) => line.text), ['Revised next conversation']);
+      replacement.add(_snapshot('suffix', 3, [_row('early', 'Still stored on the server')]));
+      await _until(preview, () => preview.lines.isEmpty);
       replacement.add(
         jsonEncode({
           'type': 'service_status',
@@ -194,6 +302,7 @@ void main() {
       preview.begin('second', 'phone', 'pcm16');
       final third = await fresh;
       expect(preview.lines, isEmpty);
+      expect(preview.savedGroupId, isNull);
       third.add(_snapshot('other', 1, [_row('z', 'fresh')]));
       await _until(preview, () => preview.lines.length == 1);
       third.add(_snapshot('other', 2, []));
@@ -201,6 +310,77 @@ void main() {
       expect(server.requests, hasLength(3));
     },
   );
+
+  test('a prolonged outage checkpoints offline audio once and resumes the same active recording', () async {
+    final server = _Server();
+    await server.open();
+    final directory = await Directory.systemTemp.createTemp('next-reconnect-');
+    addTearDown(() => directory.delete(recursive: true));
+    final delivered = <Uint8List>[];
+    final journal = LocalAudioJournal(
+      directory: directory,
+      upload: (body, owner) async {
+        expect(owner, 'paired');
+        final size = ByteData.sublistView(body, 8, 12).getUint32(0);
+        final header = jsonDecode(utf8.decode(body.sublist(12, 12 + size)));
+        delivered.add(body);
+        return {'id': header['id'], 'stored': true, 'sha256': sha256.convert(body).toString()};
+      },
+    );
+    addTearDown(journal.dispose);
+    await journal.initialize();
+    final recording = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: 'paired');
+    final restored = Completer<void>();
+    final attempted = Completer<void>();
+    final recoveries = <Future<void>>[];
+    var attempts = 0;
+    final preview = NextLivePreview(
+      'paired',
+      (owner, source, codec, {silence}) async {
+        attempts++;
+        if (attempts > 1 && attempts <= 6) throw const SocketException('offline');
+        if (attempts == 7) {
+          attempted.complete();
+          await restored.future;
+        }
+        return server.dial(owner, source, codec, silence: silence);
+      },
+      retryDelay: const Duration(milliseconds: 1),
+      onReconnect: () => recoveries.add(journal.recoverConnection()),
+    );
+    addTearDown(preview.dispose);
+    final first = server.connected.stream.first;
+    preview.begin(recording.recordingId, 'phone', 'pcm16');
+    final ready = jsonEncode({'type': 'service_status', 'provider': 'local_live_preview', 'status': 'ready'});
+    final accepted = jsonEncode({'type': 'service_status', 'provider': 'offline_capture', 'status': 'ready'});
+    final firstPeer = await first;
+    firstPeer.add(ready);
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    expect(recoveries, isEmpty);
+    await firstPeer.close(WebSocketStatus.goingAway);
+    await attempted.future.timeout(const Duration(seconds: 4));
+    expect(preview.reason, 'reconnecting');
+    await recording.add([1, 2, 3, 4]);
+    expect(delivered, isEmpty);
+    final next = server.connected.stream.first;
+    restored.complete();
+    final peer = await next;
+    peer.add(accepted);
+    peer.add(accepted);
+    peer.add(ready);
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    await recoveries.single;
+    await journal.drain();
+    expect(journal.activeRecordings, 1);
+    expect(journal.deliveryRevision, 1);
+    expect(delivered.single.sublist(delivered.single.length - 4), [1, 2, 3, 4]);
+    await recording.add([5, 6]);
+    await recording.stop();
+    await journal.drain();
+    expect(journal.deliveryRevision, 2);
+    expect(delivered.last.sublist(delivered.last.length - 2), [5, 6]);
+    preview.end(recording.recordingId);
+  });
 
   test('rejects same-origin redirects and forged upgrade responses before sending any audio', () async {
     final http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

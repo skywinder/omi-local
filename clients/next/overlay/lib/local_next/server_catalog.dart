@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -5,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import 'paired_library.dart';
 import 'archive_cache.dart';
+import 'offline_recordings.dart';
 
 typedef _Fields = ({String name, String address, String key});
 typedef NextOpenPair = PairedLibrary Function(String address, String key);
@@ -216,11 +218,21 @@ class NextServerCatalog {
     return previous != null && (entry.address != previous.address || entry._fields.key != previous.key);
   }
 
-  static Future<void> _checkReplacedOwner(NextSavedServer entry, NextBeforeReplace? beforeReplace) async {
+  static Future<String?> _checkReplacedOwner(NextSavedServer entry, NextBeforeReplace? beforeReplace) async {
     final previous = entry._original;
-    if (previous != null && _replaces(entry)) {
-      await _checkRelease(PairedLibrary(previous.address, previous.key).audioOwnerId, beforeReplace);
+    if (previous == null || !_replaces(entry)) return null;
+    final owner = PairedLibrary(previous.address, previous.key).audioOwnerId;
+    await _checkRelease(owner, beforeReplace);
+    return owner;
+  }
+
+  static Future<void> _clearUnusedDownloads(_Catalog catalog, String? owner) async {
+    if (owner == null ||
+        catalog.servers.values.any((other) => PairedLibrary(other.address, other.key).audioOwnerId == owner)) {
+      return;
     }
+    await NextArchiveCache(owner).write([]);
+    unawaited(NextOfflineRecordings(owner).clear());
   }
 
   static Future<void> _checkRelease(String owner, NextBeforeReplace? beforeReplace) async {
@@ -241,9 +253,10 @@ class NextServerCatalog {
     final catalog = await _load();
     final entry = _prepare(catalog, id, name, address, key);
     if (entry.id == catalog.activeId && _replaces(entry)) throw LibraryFailure.unavailable;
-    await _checkReplacedOwner(entry, beforeReplace);
+    final replaced = await _checkReplacedOwner(entry, beforeReplace);
     catalog.servers[entry.id] = entry._fields;
     await _write(catalog);
+    await _clearUnusedDownloads(catalog, replaced);
     return _entry(catalog, entry.id, entry._fields);
   });
 
@@ -254,7 +267,7 @@ class NextServerCatalog {
           throw LibraryFailure.unavailable;
         }
         if (!verified.isSignedIn || verified.audioOwnerId != entry.ownerId) throw LibraryFailure.key;
-        await _checkReplacedOwner(entry, beforeReplace);
+        final replaced = await _checkReplacedOwner(entry, beforeReplace);
         if (!verified.isSignedIn) throw LibraryFailure.key;
         catalog.servers[entry.id] = entry._fields;
         catalog.activeId = entry.id;
@@ -263,6 +276,7 @@ class NextServerCatalog {
         catalog.delivery = verified.audioDelivery;
         catalog.groups = verified.conversationGroups;
         await _write(catalog);
+        await _clearUnusedDownloads(catalog, replaced);
       });
 
   Future<void> deactivate(String ownerId) => _serial(() async {
@@ -286,9 +300,7 @@ class NextServerCatalog {
     if (catalog.startupDefaultId == id) catalog.startupDefaultId = null;
     if (_presetId.hasMatch(id)) catalog.seenPresets.add(id);
     await _write(catalog);
-    if (!catalog.servers.values.any((other) => PairedLibrary(other.address, other.key).audioOwnerId == owner)) {
-      await NextArchiveCache(owner).write([]);
-    }
+    await _clearUnusedDownloads(catalog, owner);
   });
 
   Future<void> importPresets(String encoded) async {

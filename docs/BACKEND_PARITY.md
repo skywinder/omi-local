@@ -45,6 +45,329 @@ skips both stored transcript fields. Next opens the full detail by ID.
 The existing Local app still receives the full list. Older paired servers
 accept the extra query parameter and serve their existing response.
 
+## Structured recording notes
+
+The summary provider receives numbered transcript lines. Each generated
+section can cite those numbers. During import or regeneration the paired
+backend resolves them to the real transcript segments. Mixed-speaker lines
+can map to several canonical segments. The stored `structured.sections` and
+its Markdown projection use Omi's existing Conversation fields.
+
+Regeneration checks the transcript, segment identities, prior notes and
+request ID before publication. Provider responses with only an overview
+remain readable. Source links use the local archive. Decisions and next
+steps appear in the summary, ready for review before any task is created.
+
+Servers advertising `local_summary_jobs_version: 1` expose the same durable
+queue in the library and paired app. The `summary-jobs` route accepts an
+idempotent request and returns status by request ID. Keep provider consent
+bound to the exact selected snapshot and template. The library saves unfinished
+work privately and reuses completed chunks or a saved candidate after restart.
+The worker can load verified file-backed transcripts and accepts up to two
+million formatted characters. It rechecks the source at publication. The old
+`regenerate-summary` endpoint retains its synchronous response for older apps.
+Queued replies expose the worker phase and the number of completed source
+chunks when known. This is a chunk count. Combining and publication are
+separate phases. Resuming after a restart keeps the last saved count visible.
+Failures expose bounded diagnostic codes without provider response bodies.
+
+Earlier test server web releases kept a published summary in
+`local-transcripts/<result>/summary-job.json`. The web library reads its title,
+overview and model attribution for imported recordings, including while a later
+attempt is pending. It leaves that history on disk. New requests from the web
+and Next both use the shared `summary-jobs` queue. Before replacing an older
+deployment, verify that its historical jobs have finished. On November 26 the
+installed legacy worker still called the importer with `--summary-update`.
+The shared queue publishes through `scripts.local_summary_worker`. the test server now runs
+the shared image `6ecd352` after a private restore rehearsal and a successful
+production archive comparison (see [Docker verification](DOCKER.md)). The legacy import also writes `summary-initial.json` beside
+the full transcript. A local Firestore emulator rehearsal imported a synthetic
+1,500-segment recording with the legacy importer, published its legacy result,
+then used the shared importer and summary worker against the same state.
+Replaying the import and publication preserved the document and a title edited
+through the paired API. Chrome could seek to the last segment at 24:59.
+
+For imported recordings the web list requests current titles from the paired
+note-state route. Opening one card also requests its overview and published
+model. The optional `X-Omiloc-Card` header accepts `titles` for a batch and
+`detail` for one recording. Requests without it retain the metadata-only
+response. Earlier backends ignore the header and the library uses the file card.
+
+Opening an imported recording reads the complete transcript from the paired
+conversation detail API and resolves assigned names through the paired people
+directory. The local web player therefore follows the same segment edits and
+timestamps as Next. Only the open transcript is cached. Changes to the paired
+key, the Firestore document revision or the source files invalidate it. An
+older backend without a document revision is read on each detail request.
+A temporary note-state outage labels the on-disk text as the original. An
+authorization rejection or an unverified transcript hides the turns. The
+local WAV remains playable independently.
+
+## Paired task reminders
+
+The paired profile advertises `local_task_reminders_version: 1`. The existing task
+mutation compares the prior typed deadline inside its transaction. A day keeps an
+ISO local date and IANA zone. An exact time keeps an absolute instant and its
+zone. The mutation derives the next notification time and mirrors a timed
+deadline into the legacy `due_at` field. Legacy deadlines stay readable without
+automatically opting any phone into notifications.
+
+The owner-scoped `GET /v1/local/action-items/reminders/schedule` route uses a
+single Firestore time index, returns up to 48 future reminders, and includes up
+to 48 recently due reminders for Android alarms that may still be pending.
+Phones only schedule new future alarms. Notification permission, opt-in and
+delivery are native to each paired phone. Local uses no hosted notification service.
+A failed schedule read leaves the last confirmed device schedule intact.
+
+## Paired archive management
+
+The web library reads favorites, archiving and category metadata from paired
+Conversations after a recording has been imported. Browser requests use opaque
+recording tokens. The harness resolves them to import keys and sends the paired
+key to the backend on loopback. The backend checks the owner, recording
+provenance and availability inside the write transaction. A category edit
+compares the previously shown category. The backend keeps a manual category
+when later processing updates the summary. Next and the browser use the same
+`archived` flag. Next confirms the previous value through the existing paired
+edit route. The archive list reads `archived_only=true`, a canonical query that
+excludes provisional recordings. Regular list requests keep their existing
+page shape. Missing archive flags on older recordings mean unarchived.
+When note metadata is temporarily unavailable, audio and transcripts remain
+available in the web library.
+
+Next reads `local_folders_version`, `local_speaker_labels_version`, and
+`local_task_suggestions_version` from the authenticated paired profile. When
+updating an existing deployment, verify those flags together with the live
+routes. A router present in Git can still be absent from a running deployment.
+
+Folders use the existing Firestore collection. Moves and ordering compare the
+expected state, and deleting a folder clears its recording assignments while
+preserving the recordings. Manual speaker names belong to the paired owner.
+Their assignments compare the prior label on stable transcript segment IDs.
+Task suggestions use the configured summary model after consent and include a
+transcript citation. Only accepting a suggestion creates a task.
+
+On November 26 the test server enabled all three capabilities. An isolated owner
+verified folder moves, stale-write rejection, deletion that preserved the
+recording, manual speaker assignment and suggestions from the selected model
+with transcript timestamps. Requests without a paired key were rejected.
+
+## Read-only archive MCP
+
+`local_archive_read_version: 1` advertises a bounded canonical archive surface:
+`GET /v1/local/archive/recordings` and `POST /v1/local/archive/read`. The separate
+`omilocal_archive_…` credential permits only those routes plus the two existing
+keyword/semantic search POST routes. Both transport middleware and paired-owner
+dependency enforce method/path scope; legacy full keys retain their behavior.
+The server stores only the read-key hash beside the existing pairing hash.
+
+Reads return revision-bound segment quotes with timestamps and character offsets.
+Long transcripts and long individual segments have bounded continuation; changed
+sources reject continuation rather than silently joining different versions.
+The optional stdio SDK adapter has four fixed read tools and one resource template.
+See [installation, grant and revoke](../tools/archive-mcp/README.md).
+
+The real SDK stdio session and backend scope/pagination tests passed with synthetic
+fixtures. No live credential, assistant connection or deployment is established
+by those checks. Task/calendar integrations remain deferred.
+
+## Reviewed local memory
+
+`local_memories_version=1` enables **Memory** in the Next archive and recording
+menus. The recording action obtains the selected model/host, asks for consent,
+and sends only bounded transcript excerpts to the owned loopback library.
+The model proposes up to 12 statements with exact supporting quotations. The
+backend rejects invented quotes and source numbers; this proves provenance,
+not the truth of a model's interpretation. The owner confirms, corrects or rejects
+each proposal. No extraction or background task can confirm a fact automatically.
+
+The hosted admission, graph and memory-control services remain disabled. The
+paired feature has one owner-scoped `local_memories` authority and content-free
+`local_memory_requests` receipts. It reuses Omi's typed `MemoryEvidence` contract,
+including source ID/version, content digest and quote reference, without enabling
+a second memory writer. This is an explicit local review lifecycle, not a writer
+into the hosted canonical-memory control plane. Any future convergence with that
+plane needs an explicit migration, not dual writes.
+
+Fact text, original wording, quote and the last 20 corrections are encrypted as
+one payload. Confirmation/edit compares the fact revision and transactionally
+fences the checked recording version. Every list/search rechecks the cited
+segment against the canonical, fully hydrated transcript. Edited, missing,
+locked or unreadable sources make facts ineligible; the UI hides the old quote
+and marks the entry for review. Search uses only confirmed current text, never
+old wording. There is no separate memory vector projection that can serve stale
+facts. Lists are paginated; extraction marks incomplete source coverage. A user
+can extract again after correcting a source and review the new proposals.
+
+Deleting a fact clears its payload and source pointer, retaining a content-free
+tombstone and receipt so retries cannot resurrect it. The recording is retained.
+Recording deletion invalidates linked facts on read; it does not implicitly erase
+a separately confirmed memory. Delete the memory to remove that stored content.
+
+Routes: GET/POST `/v1/local/conversations/{id}/memories` for provider/extraction;
+GET `/v1/local/memories` for state/source/query/cursor-filtered pages;
+POST `/v1/local/memories/{id}` for revision-checked accept/edit/reject/delete.
+All require the paired owner and return `Cache-Control: no-store`. Older clients
+and servers keep the memory actions hidden through capability detection.
+
+Validation uses synthetic encrypted storage, real transaction functions and the
+FastAPI path for extraction → review → search, plus provider binding and exact
+quotation rejection. Tests cover owner separation, concurrent source changes,
+correction/deletion invalidation, retry and pagination. Live model interpretation,
+deployment and physical iPhone acceptance remain separate gates.
+
+## Daily recaps and manual goal progress
+
+The paired profile advertises `local_daily_recaps_version` and
+`local_goals_version`. A day recap uses the calendar bounds chosen on the
+phone, including shorter and longer days at daylight saving transitions.
+The preview lists eligible sources and the selected summary model. After
+consent the server uses the applied model through the private library relay,
+resolves citations to the saved conversations, and checks the archive revision
+before publishing. An identical retry returns the saved overview.
+
+`local_daily_recap_schedule_version=1` adds owner-authenticated GET/POST
+`/v1/local/daily-recaps/schedule`. Schedules default to off. Enabling records an
+IANA timezone, next-day hour/minute and the confirmed provider binding. Initial
+enablement, re-enablement and timezone changes start with the current local day;
+there is no implicit historical backfill. The offline backend processes at most
+one due day per minute and catches up from the persisted cursor after downtime.
+A missing DST clock hour runs at the first later tick; repeated hours cannot
+advance the same day twice. Failures retry from five minutes up to six hours.
+
+The canonical publication transaction checks the archive revision, schedule
+revision and ten-minute worker lease. Existing recaps are retained, including
+manual results. Disabling or reconfiguring prevents an older attempt from
+publishing; backend shutdown also fences publication. A process killed during
+work leaves a recoverable lease. Empty completed days advance the cursor;
+unreadable evidence and provider failures retain it for retry. Recordings that
+complete after a day was processed require manual regeneration. The screen shows
+the last result and day, next day, approved model and host. Changing the provider
+requires saving again to confirm its new binding. Manual generation stays available.
+
+Validation: synthetic authenticated API → scheduler → canonical publication,
+23/25-hour day bounds, conflict/retry, lease expiry and cancellation tests; Next
+opt-in/save/retry/disable widget flow. No live schedule or physical iPhone
+acceptance was performed for this addition.
+
+Goals reuse the original Firestore collection and read route. A paired owner
+can add a goal and append a manual progress event with an optional metric and
+recording link. Replays return the same event. A conflicting revision or an
+unavailable source is rejected before changing the goal.
+
+The separate `local_goal_lifecycle_version` capability enables
+`POST /v1/local/goals/{goal_id}/lifecycle`. The paired client sends the last
+goal revision and a stable request ID. It can pause an active goal, resume
+a paused goal, or end it as achieved or abandoned. The canonical transaction
+retains progress history and links to tasks and workstreams. Existing clients
+continue to use `local_goals_version` for reading and logging progress.
+
+The test server enabled both capabilities on November 26. An isolated owner verified
+generation through the applied model, listing the saved recap, creating a
+goal, and checking a replayed progress event with a recording reference.
+In Next, open **Daily Recaps** or **Goals** from the archive menu. Open
+**Log progress** from a completed conversation to attach it to a goal entry.
+
+## Retrieval evidence evaluation
+
+The offline gate includes `test_local_retrieval_quality.py`: four fixed EN/RU
+questions in short old recordings and the middle/end of long segments, plus
+corrected-transcript and hybrid evidence cases. Before the repair, 9 of 14 cases
+failed: keyword ranking saw matching words after character 1200 but supplied
+only the prefix; merging then dropped a distinct semantic window from that
+same segment. Chat now chooses an overlapping, contiguous query-relevant window
+and deduplicates identical evidence rather than all text with one segment ID.
+Segment IDs/timestamps and original text remain citable; existing byte/character
+budgets remain enforced. Existing semantic tests exclude deleted and stale
+revision pointers and keep neighboring context out of attributed evidence.
+
+The repaired cases pass, alongside the authenticated archive API checks. A local
+five-run microbenchmark over 20 synthetic old recordings (1,024,840 characters)
+measured 39.6 ms median / 42.3 ms maximum for evidence selection and merging.
+This excludes database scans, embeddings, model inference and network latency.
+These results do not establish answer quality on the owner's real archive.
+Representative live questions, semantic ranking quality, end-to-end latency and
+long-archive scan coverage remain acceptance work; no private transcript is
+included in the test corpus.
+
+## Semantic archive search
+
+Semantic search cards and chat now use the same ranked transcript window.
+For a long segment, the card shows the selected window rather than always its
+first characters. Short replies still cite only their own text when neighboring
+context contributed to ranking. Segment IDs and seek timestamps are unchanged;
+index passage positions and embedding inputs are unchanged, so this display
+correction does not require rebuilding the semantic index.
+
+Next offers **Words** and **Meaning** in the archive search screen. The paired
+`POST /v1/local/conversations/semantic-search` route uses an optional CPU worker
+over a private Unix socket. The worker uses the pinned
+[multilingual E5 ONNX model](https://huggingface.co/intfloat/multilingual-e5-small/tree/614241f622f53c4eeff9890bdc4f31cfecc418b3/onnx).
+It verifies the model and tokenizer hashes from `local_semantic_model.py` at
+startup, reads them from disk and performs inference without an internet
+connection. A missing worker or index returns 503 for Meaning. Word search
+continues through its existing separate route.
+
+The index stores source IDs, Firestore revisions, passage positions and vectors.
+Firestore and checksummed transcript files remain authoritative. The paired
+API reads ranked candidates from the current archive revision, skips stale or
+removed sources, and returns transcript evidence with the original segment IDs
+and times. A partial scan cannot publish because the local exporter must send a
+complete inventory marker for the same owner.
+
+For an isolated rollout, use Python 3.11 or later with `onnxruntime==1.24.4` and
+`tokenizers==0.22.2` in a separate environment. Place `model.onnx` and
+`tokenizer.json` from the pinned revision in a local model directory. Use the
+live backend's paired configuration with a loopback Firestore emulator to run
+`backend/scripts/export_local_semantic_sources.py --owner-digest`. Stream the
+same command without the option straight to `python -m dev_harness.local_semantic
+--model MODEL_DIR --index INDEX --owner DIGEST build` from `scripts/dev-harness`.
+Run the exporter only through a trusted local pipe. It emits private transcript
+text for the running indexer. Repeating a full scan reuses vectors for unchanged
+records and removes sources that disappeared. Put the index on private storage.
+
+Start the worker with the same model, index and owner arguments plus
+`--socket ABSOLUTE_SOCKET_PATH serve`. The backend defaults to
+`$OMI_HARNESS_STATE_ROOT/services/semantic-search/queries.sock`. A deployment can
+override that path with `OMI_LOCAL_SEMANTIC_SOCKET`. Grant the paired backend
+access to that private socket. The worker can run in a network-disabled process.
+The [optional Docker overlay](DOCKER.md#semantic-archive-search) starts an independent
+refresh loop in the paired runtime. It streams a complete inventory to the worker
+on startup and every five minutes. Queries use a separate socket and keep reading
+the last complete index while an update runs. A new or edited recording appears in
+Meaning after its next successful scan. Deletions are excluded by the canonical read
+as soon as the conversation becomes unavailable. Firestore assigns new revisions
+after importing an emulator snapshot. The worker rebinds existing vectors to those
+revisions when the indexed text and passage positions have the same digest.
+
+Archive chat uses this same socket for up to six semantic excerpts and alternates
+them with keyword matches under the existing context budget. It sends only text
+from the verified, cited segment. Summary passages and neighboring lines can help
+the index rank a source. They cannot be cited as that segment. New or revised
+transcripts remain searchable by words while the index catches up. A missing or
+stale semantic index leaves the existing bounded keyword scan available.
+
+An updated client requests `stored=true` when reading archive chat and explicitly
+opts into saving a turn. Legacy requests keep their session-only response. The
+paired owner has one shared archive chat history with a paged read. Turns are
+encrypted in the local Firestore emulator. Append compares the reported head and
+the direct source revisions in the same transaction. A repeated request returns
+the stored result. The server checks source availability again before presenting
+an old answer or using it as model context.
+
+Named conversations use separate routes under
+`/v1/local/conversations/chat/threads`. Each one has an encrypted title, its
+own history and head, and an owner-scoped transcript lookup. Existing clients
+can still read and append to the shared history from the original route.
+Deletion clears a named conversation's messages and title in a transaction.
+It keeps the empty ID as a fence against replaying creation or publishing an
+in-flight reply. There can be up to 40 active named conversations, each with
+up to 250 replies, so a complete thread fits in a single deletion transaction.
+The test server acceptance used two paired clients and an isolated owner to check
+independent follow-ups, access from another owner, and deletion during inference.
+Deletion applies to the live database. Existing backup snapshots retain their
+own lifecycle.
+
 ## Paired server acceptance, November 25
 
 The test server now serves page metadata, projected cards and authenticated WAV ranges.
@@ -68,13 +391,47 @@ confirmed the new category. Repeating the same update preserved the revision,
 a stale edit returned 409, an invalid category returned 422, and an unsigned
 request returned 401. The probe removed only its own fixture.
 
+Paired category backfill has a separate capability and accepts up to eight
+owner-selected completed recording IDs. The loopback provider gets numbered,
+bounded excerpts after the client confirms the model. The backend validates a
+complete result before writing and compares each recording's Firestore revision.
+It updates only its category when no explicit manual or known category exists.
+An unclear result leaves the previous label available for manual editing.
+
 The Local storage contract from `625034a` now covers large grouped recordings
-in Next's backend. The detail and metadata-edit responses expand the stored
-preview from the checksummed transcript. Segment and speaker changes against a
-file-backed preview return a conflict. A fixture with 1,500 segments verified
-complete expansion and rejection of a changed file. Each test server release keeps
-its previous Compose file list for rollback, including the original provider
-and capture adjustments.
+in Next's backend. The detail and edit responses expand the preview from the
+checksummed transcript. Segment text and speaker changes compare against the
+complete transcript inside the recording transaction. Firestore stores the
+bounded encrypted edits and a current first-line preview. Detail, search, summary
+generation, chat and task suggestions read the same edited segments. Chat uses
+only checked files for evidence and keeps its deadline when scanning the archive.
+Returning a segment to its original text or speaker removes its override.
+Older test server images need the paired chat router, its offline allowlist and
+the loopback library's chat provider module in the same release. Verify that
+the library imports the provider before restarting the app. Each test server release
+keeps its previous Compose file list for rollback, including the original
+provider and capture adjustments.
+
+Next can opt in to resolving a saved-recording detail with
+`GET /v1/conversations/{id}?resolve_local_recording=true`. For the paired owner,
+the route returns the completed conversation when the capture has one successful
+import receipt and the stored result matches it. Clients use the returned ID
+for playback and edits. The plain detail route keeps exact-ID lookup. If a group
+is waiting for parts or a capture has multiple imported results, Next requests
+`include_recording_results=true` on the same route. The response keeps the
+temporary card ID and includes a compact list of results. Group children follow
+the stored recording ID and sample-boundary identity. Each published result is
+checked against its import receipt and the owner's current Conversation record.
+The list omits transcript bodies. Full playback and edits open the selected
+result by its own ID. Older clients retain the exact lookup and single-result
+resolution behavior.
+
+An exact detail read with `include_recording_results=true` still returns the
+requested conversation. When its import receipt proves the relationship, the
+response adds `local_transcript.recording_results_id`. For grouped audio, the
+link points to the group's results and also checks the original sample boundary.
+For multiple passes over one ungrouped capture, it points to that capture's
+results. Next uses the same opt-in detail route to open the list.
 
 The paired archive search on the test server returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired
@@ -85,11 +442,12 @@ Each search page expands at most one file and resumes after the last scanned doc
 
 ## Next slices
 
-1. The signed package was installed and launched alongside Omi Local. Check category selection,
-   filtering, playback, phone microphone capture and CV1 delivery to the same archive.
-2. Verify folder operations on the deployed owner collection and exercise them
-   from Next. Bring the offline capability flags and task routes across with
-   their owner checks. Continue measuring archive search on the iPhone.
+The [repository plan](REPOSITORY_PLAN.md) owns the current implementation order.
+Folders, paired task routes, archive search, recaps and manual goal progress
+already have implementations and acceptance evidence above. Their remaining
+iPhone checks are not new backend features. Next backend work should extend
+the existing summary provenance, recap generation and retrieval contracts before
+introducing source-linked memory or external integrations.
 
 Run `make test-offline` for the archive adapter and the offline HTTP surface.
 Run `make test-transport-unit` for transport/auth and offline route coverage.

@@ -2,6 +2,7 @@ package org.omilocal.next
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
@@ -13,7 +14,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -22,11 +26,17 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import java.util.UUID
 
 /** A single CV1 connection, with one pending Android GATT operation at a time. */
 @SuppressLint("MissingPermission")
-internal class NextCV1(private val context: Context, messenger: BinaryMessenger) : EventChannel.StreamHandler {
+internal class NextCV1(
+    private val context: Context,
+    messenger: BinaryMessenger,
+    private val setArchiveAwake: (Boolean) -> Unit,
+) : EventChannel.StreamHandler {
     private val handler = Handler(Looper.getMainLooper())
     private val commands = MethodChannel(messenger, "org.omilocal.next/cv1")
     private val events = EventChannel(messenger, "org.omilocal.next/cv1.events")
@@ -50,6 +60,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var desiredAudio: Int? = null
     private var confirmedAudio: Int? = null
     private var lastAudio = 0
+    private var diagnosticsRequested = false
+    private var storageNotifications = false
+    private var clearReply: MethodChannel.Result? = null
+    private class ArchiveRead(val reply: MethodChannel.Result, val start: Long, val count: Int) {
+        val bytes = ByteArrayOutputStream(count * 444)
+        var began = false
+    }
+    private var archive: ArchiveRead? = null
     private var rssiPending = false
     private val operations = ArrayDeque<Job>()
     private var active: Job? = null
@@ -61,7 +79,22 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val complete: (ByteArray?) -> Unit,
     )
 
+    private var rediscoverTarget = false
+    private var waitingForRadio = false
+    private val radioState = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED || target == null) return
+            when (runCatching { adapter?.state }.getOrNull()) {
+                BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> waitForRadio()
+                BluetoothAdapter.STATE_ON -> if (waitingForRadio) connect()
+            }
+        }
+    }
+
     init {
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(radioState, filter, Context.RECEIVER_EXPORTED)
+        else context.registerReceiver(radioState, filter)
         commands.setMethodCallHandler(::command)
         events.setStreamHandler(this)
     }
@@ -70,8 +103,12 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         sink = events
         val saved = selection.getString("selected", null)
         if (phase == "idle" && saved != null && BluetoothAdapter.checkBluetoothAddress(saved)) {
+            // Restoring a saved pendant bypasses scan and the manual connect command.
+            // Allocate a live generation before publishing any measurements or audio.
+            clearLink()
             target = saved
             readyOnce = true
+            rediscoverTarget = true
             connect()
         } else {
             publish(phase)
@@ -84,6 +121,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     }
 
     fun dispose() {
+        setArchiveAwake(false)
+        context.unregisterReceiver(radioState)
         commands.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null
@@ -116,13 +155,22 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 }
                 "setAudio" -> setAudio(call, result)
                 "sampleDiagnostics" -> {
-                    if (phase == "ready" && desiredAudio == null && confirmedAudio == null && active == null && operations.isEmpty()) sample()
+                    if (phase == "ready" && clearReply == null && archive == null && desiredAudio == null && confirmedAudio == null) {
+                        diagnosticsRequested = true
+                        advance()
+                    }
                     result.success(null)
                 }
                 "sampleSignal" -> {
                     sampleSignal()
                     result.success(null)
                 }
+                "setArchiveAwake" -> {
+                    setArchiveAwake(call.argument<Boolean>("enabled") == true)
+                    result.success(null)
+                }
+                "readOldest" -> readOldest(call, result)
+                "clearStorage" -> clearStorage(call, result)
                 "writeSetting" -> writeSetting(call, result)
                 else -> result.notImplemented()
             }
@@ -179,7 +227,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val pending = listOfNotNull(active) + operations
         active = null
         operations.clear()
+        finishArchive(false)
+        finishClear(false)
         stats.clear()
+        diagnosticsRequested = false
+        storageNotifications = false
         codec = null
         discovering = false
         features = null
@@ -192,6 +244,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
 
     private fun disconnect(reason: String? = null) {
         target = null
+        rediscoverTarget = false
+        waitingForRadio = false
         readyOnce = false
         retryDelay = 1000
         clearLink()
@@ -204,15 +258,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
             publish("failed", reason, code)
             return
         }
+        rediscoverTarget = true
         publish("reconnecting", reason, code)
         val delay = retryDelay
         retryDelay = minOf(retryDelay * 2, 30000)
         after(delay) { connect() }
     }
 
-    private fun startScan() {
+    private fun startScan(savedAddress: String? = null) {
         val scanner = adapter?.bluetoothLeScanner
         if (scanner == null) {
+            if (savedAddress != null) return connect()
             publish("unavailable", "radio")
             return
         }
@@ -221,6 +277,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 handler.post {
                     if (scan !== this) return@post
                     val address = result.device.address
+                    if (savedAddress != null) {
+                        if (address == savedAddress && target == savedAddress) {
+                            stopScan()
+                            cancelTimer()
+                            connect(result.device)
+                        }
+                        return@post
+                    }
                     val name = result.scanRecord?.deviceName ?: "Omi CV1"
                     if (devices.put(address, name) == null) {
                         sink?.success(mapOf("type" to "device", "id" to address, "name" to name))
@@ -233,31 +297,54 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     if (scan === this) {
                         stopScan()
                         cancelTimer()
-                        publish("failed", "connect", errorCode)
+                        if (savedAddress != null) connect() else publish("failed", "connect", errorCode)
                     }
                 }
             }
         }
         scan = callback
-        publish("scanning")
-        val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(Cv1Uuid.audioService)).build())
-        scanner.startScan(filters, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
-        after(12000) {
+        publish(if (savedAddress == null) "scanning" else "reconnecting")
+        val filter = ScanFilter.Builder().apply {
+            if (savedAddress == null) setServiceUuid(ParcelUuid(Cv1Uuid.audioService)) else setDeviceAddress(savedAddress)
+        }.build()
+        try {
+            scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
+        } catch (error: SecurityException) {
             stopScan()
-            publish("idle")
+            if (savedAddress == null) throw error
+            return connect()
+        }
+        after(if (savedAddress == null) 12000 else 6000) {
+            stopScan()
+            if (savedAddress != null) connect() else publish("idle")
         }
     }
 
-    private fun connect() {
+    private fun waitForRadio() {
+        if (waitingForRadio) return
+        waitingForRadio = true
+        rediscoverTarget = readyOnce
+        clearLink()
+        publish("unavailable", "radio")
+    }
+
+    private fun connect(discovered: BluetoothDevice? = null) {
         val address = target ?: return
-        publish(if (readyOnce) "reconnecting" else "connecting")
         try {
-            gatt = adapter?.getRemoteDevice(address)?.connectGatt(context, false, callbacks, android.bluetooth.BluetoothDevice.TRANSPORT_LE)
+            if (adapter?.isEnabled != true) return waitForRadio()
+            waitingForRadio = false
+            if (rediscoverTarget && discovered == null) {
+                rediscoverTarget = false
+                return startScan(address)
+            }
+            publish(if (readyOnce) "reconnecting" else "connecting")
+            val device = discovered ?: adapter?.getRemoteDevice(address)
+            gatt = device?.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE)
         } catch (_: SecurityException) {
             publish("unavailable", "permission")
             return
         }
-        if (gatt == null) return lost(false, "connect")
+        if (gatt == null) return lost(readyOnce, "connect")
         after(15000) { lost(true, "timeout") }
     }
 
@@ -272,10 +359,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private fun advance() {
         val connection = gatt ?: return
         if (active != null) return
-        val next = operations.removeFirstOrNull() ?: return
+        val next = operations.removeFirstOrNull()
+        if (next == null) {
+            if (diagnosticsRequested) {
+                diagnosticsRequested = false
+                if (phase == "ready" && desiredAudio == null && confirmedAudio == null) sample()
+            }
+            return
+        }
         active = next
         if (runCatching { next.start(connection) }.getOrDefault(false)) {
-            val optional = phase == "ready" && (next.kind == "read" || next.uuid == Cv1Uuid.battery)
+            val optional = phase == "ready" && (next.kind == "read" || next.uuid == Cv1Uuid.battery || next.uuid == Cv1Uuid.storageCommand)
             after(if (optional) 2000 else 5000) {
                 if (optional) finish(connection, next.kind, next.uuid, null)
                 else lost(true, "timeout")
@@ -350,6 +444,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                             battery.getDescriptor(cccd) != null) {
                             notify(battery, true) {}
                         }
+                        if (battery != null && battery.properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) {
+                            read(battery) batteryRead@{ bytes ->
+                                if (gatt !== connection) return@batteryRead
+                                val level = bytes?.firstOrNull()?.toInt()?.and(255)?.takeIf { it <= 100 } ?: return@batteryRead
+                                stats["battery"] = level
+                                telemetry("battery")
+                            }
+                        }
                     }
                 }
             }
@@ -357,6 +459,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     }
 
     private fun setAudio(call: MethodCall, result: MethodChannel.Result) {
+        if (archive != null) return result.error("storage_busy", null, null)
         val token = call.argument<Int>("subscription")
         val enabled = call.argument<Boolean>("enabled")
         if (token == null || enabled == null || token <= 0 || call.argument<Int>("generation") != generation) {
@@ -402,6 +505,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         }
         val fields = listOf(
             Triple(Cv1Uuid.batteryService, Cv1Uuid.battery, "battery"),
+            Triple(Cv1Uuid.storageService, Cv1Uuid.storageStatus, "storageStatus"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.firmware, "firmware"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.hardware, "hardware"),
             Triple(Cv1Uuid.deviceInfo, Cv1Uuid.model, "model"),
@@ -424,21 +528,119 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 val value = when (name) {
                     "battery", "led", "gain" -> bytes?.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 }
                     "charging" -> bytes?.firstOrNull()?.let { it.toInt() == 1 }
+                    "storageStatus" -> bytes?.takeIf { it.size == 16 }
                     else -> bytes?.takeIf { it.size <= 64 }?.toString(Charsets.UTF_8)?.trim('\u0000', ' ')?.takeIf { it.isNotEmpty() }
                 }
-                if (value != null) stats[name] = value else stats.remove(name)
+                if (value != null) stats[name] = value
+                else if (name == "battery") return@Job
+                else stats.remove(name)
                 if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 && name in setOf("led", "gain")) {
                     stats["${name}Writable"] = true
+                }
+                if (name == "storageStatus") {
+                    stats.remove("storageInfo")
+                    if (value != null) sampleStorageInfo()
                 }
                 telemetry(if (name == "battery") name else null)
             })
         }
     }
 
+    private fun readOldest(call: MethodCall, reply: MethodChannel.Result) {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
+        val info = stats["storageInfo"] as? ByteArray
+        if (phase != "ready" || call.argument<Int>("generation") != generation ||
+            call.argument<String>("deviceId") != target || archive != null || clearReply != null ||
+            !storageNotifications || char == null || info?.size != 31 || active != null || operations.isNotEmpty() ||
+            desiredAudio != null || confirmedAudio != null || codec !in setOf(20, 21)) {
+            return reply.error("storage_busy", null, null)
+        }
+        if (context.filesDir.usableSpace < 65536) return reply.error("phone_full", null, null)
+        val header = ByteBuffer.wrap(info)
+        val start = header.getLong(1)
+        val expected = call.argument<Number>("expectedStart")?.toLong()
+        if (expected != start) return reply.error("cursor_changed", null, null)
+        val end = header.getLong(9)
+        if (start < 0 || end <= start || end - start > header.getInt(17).toLong() ||
+            header.getShort(29).toInt() != 444) return reply.error("storage_busy", null, null)
+        val limit = call.argument<Int>("maxRecords") ?: 0
+        if (limit !in 1..32) return reply.error("storage_busy", null, null)
+        val count = minOf(limit.toLong(), end - start).toInt()
+        val pending = ArchiveRead(reply, start, count)
+        archive = pending
+        stats.remove("storageInfo")
+        telemetry()
+        val command = ByteBuffer.allocate(13).put(0x11).putLong(start).putInt(count).array()
+        writeIdle(char, command) { if (it == null && archive === pending) finishArchive(false) }
+        handler.postDelayed({ if (archive === pending) finishArchive(false) }, 15000)
+    }
+
+    private fun archiveNotification(value: ByteArray) {
+        val read = archive ?: return
+        val frame = ByteBuffer.wrap(value)
+        when (value.firstOrNull()?.toInt()) {
+            5 -> if (value.size == 13 && !read.began && frame.getLong(1) == read.start &&
+                frame.getInt(9) == read.count) read.began = true else finishArchive(false)
+            3 -> if (read.began && value.size > 1 && read.bytes.size() + value.size - 1 <= read.count * 444)
+                read.bytes.write(value, 1, value.size - 1) else finishArchive(false)
+            4 -> finishArchive(read.began && value.size == 10 && value[1].toInt() == 0 &&
+                frame.getLong(2) == read.start + read.count && read.bytes.size() == read.count * 444)
+            1 -> if (value.size != 2 || value[1].toInt() != 0) finishArchive(false)
+        }
+    }
+
+    private fun finishArchive(complete: Boolean) {
+        val read = archive ?: return
+        archive = null
+        val received = read.bytes.toByteArray()
+        val usable = received.size - received.size % 444
+        read.reply.success(mapOf("complete" to complete, "start" to read.start,
+            "bytes" to received.copyOf(usable)))
+    }
+
+    private fun finishClear(acknowledged: Boolean) {
+        val reply = clearReply ?: return
+        clearReply = null
+        reply.success(acknowledged)
+    }
+
+    private fun clearStorage(call: MethodCall, reply: MethodChannel.Result) {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
+        val info = stats["storageInfo"] as? ByteArray
+        if (phase != "ready" || call.argument<Int>("generation") != generation ||
+            call.argument<String>("deviceId") != target || clearReply != null || archive != null || !storageNotifications ||
+            char == null || info == null || info[29].toInt() != 1 || info[30].toInt().and(255) != 188 ||
+            desiredAudio != null || confirmedAudio != null || active != null || operations.isNotEmpty()) {
+            reply.error("storage_busy", null, null)
+            return
+        }
+        clearReply = reply
+        writeIdle(char, byteArrayOf(0x13)) { if (it == null && clearReply === reply) finishClear(false) }
+        handler.postDelayed({ if (clearReply === reply) finishClear(false) }, 20000)
+    }
+
+    // INFO returns ring metadata. It does not start an SD download or advance its cursor.
+    private fun sampleStorageInfo() {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand) ?: return
+        val required = BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY
+        if ((char.properties and required) != required || desiredAudio != null || confirmedAudio != null) return
+        val epoch = generation
+        if (storageNotifications) {
+            writeIdle(char, byteArrayOf(0x10)) {}
+        } else {
+            notify(char, true) { ack ->
+                if (ack != null && epoch == generation) {
+                    storageNotifications = true
+                    writeIdle(char, byteArrayOf(0x10)) {}
+                }
+            }
+        }
+    }
+
     // The controller RSSI read is separate from the ATT characteristic queue.
     // A failed or unanswered observation never restarts the audio connection.
     private fun sampleSignal() {
-        if (phase != "ready" || rssiPending || active != null || operations.isNotEmpty()) return
+        if (archive != null || phase != "ready" || rssiPending || active != null || operations.isNotEmpty()) return
         rssiPending = runCatching { gatt?.readRemoteRssi() == true }.getOrDefault(false)
     }
 
@@ -457,7 +659,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
             char == null || char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE == 0) {
             return result.error("setting_unavailable", null, null)
         }
-        val payload = byteArrayOf(value.toByte())
+        writeIdle(char, byteArrayOf(value.toByte())) {
+            if (it == null) result.error("setting_write", null, null)
+            else {
+                stats[field] = value
+                telemetry()
+                result.success(null)
+            }
+        }
+    }
+
+    private fun writeIdle(char: BluetoothGattCharacteristic, payload: ByteArray, complete: (ByteArray?) -> Unit) {
         enqueue(Job(char.uuid, "write", { connection ->
             if (desiredAudio != null || confirmedAudio != null) false
             else if (Build.VERSION.SDK_INT >= 33) {
@@ -470,14 +682,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 @Suppress("DEPRECATION")
                 connection.writeCharacteristic(char)
             }
-        }) {
-            if (it == null) result.error("setting_write", null, null)
-            else {
-                stats[field] = value
-                telemetry()
-                result.success(null)
-            }
-        })
+        }, complete))
     }
 
     private val callbacks = object : BluetoothGattCallback() {
@@ -549,6 +754,19 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     val level = value.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 } ?: return@post
                     stats["battery"] = level
                     telemetry("battery")
+                } else if (char.uuid == Cv1Uuid.storageCommand) {
+                    if (archive != null) {
+                        archiveNotification(value)
+                        return@post
+                    }
+                    if (value.size == 2 && value[0].toInt() == 1 && clearReply != null) {
+                        finishClear(value[1].toInt() == 0)
+                        return@post
+                    }
+                    if ((value.size == 31 || value.size == 41) && value[0].toInt() == 2) {
+                        stats["storageInfo"] = value.copyOf()
+                        telemetry()
+                    }
                 } else if (char.uuid == Cv1Uuid.button && value.size >= 4) {
                     val code = (0..3).fold(0) { a, i -> a or ((value[i].toInt() and 0xff) shl (8*i)) }
                     if (code >= 0) sink?.success(mapOf("type" to "button", "generation" to generation, "code" to code))

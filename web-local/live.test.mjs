@@ -17,7 +17,7 @@ test('disconnect, stop, and decoding errors do not masquerade as receiving audio
   assert.equal(audioActivity({backend: 'ready', capture: {state: 'decode_error'}}, received(10), 10, 0).tone, 'error');
 });
 
-function monitor(t) {
+function monitor(t, options) {
   class Element {
     children = [];
     dataset = {};
@@ -41,14 +41,14 @@ function monitor(t) {
   t.mock.method(globalThis, 'fetch', (url, options) => new Promise((resolve, reject) => {
     assert.equal(url, '/api/runtime');
     assert.equal(options.cache, 'no-store');
-    requests.push({signal: options.signal, reject, reply: (text, diarization) => resolve({ok: true, json: async () => ({
+    requests.push({signal: options.signal, reject, reply: (text, diarization, sessions, stages) => resolve({ok: true, json: async () => ({
       backend: 'ready', capture: {state: 'received', frames_received: requests.length},
-      sessions: [{source: 'omi', preview_id: 'synthetic-draft', text}],
+      sessions: sessions ?? [{source: 'omi', preview_id: 'synthetic-draft', text}],
       live_transcript: {state: 'streaming', updates: requests.length}, final_stt: {state: 'ready'}, events: [],
-      observed_at: '2026-09-10T12:00:00Z', diarization,
+      observed_at: '2026-09-10T12:00:00Z', diarization, stages,
     })})});
   }));
-  mountLiveMonitor(root);
+  mountLiveMonitor(root, options);
   return {root, document, timers, requests,
     event: name => listeners.get(name)?.({persisted: true}),
     tick: () => {
@@ -151,6 +151,68 @@ test('live source distinguishes two internal microphones and an attached CV1', a
 test('recording failure identifies the failed stage even with a saved transcript', async () => {
   const {processingFailure} = await import('./recording-processing.mjs');
   const record = {status: 'failed', attempts: 3, processing: {stt: {status: 'ready'}, summary: {status: 'failed', error_code: 'invalid_json'}}};
-  assert.match(processingFailure(record), /Суммаризация.*JSON.*3/);
-  assert.match(processingFailure({...record, processing: {}}), /Этап сбоя не сохранён/);
+  assert.match(processingFailure(record), /Summarization.*JSON.*3/);
+  assert.match(processingFailure({...record, processing: {}}), /failed stage was not recorded/);
+});
+
+
+test('a draft moves into the existing speaker bubble when the turn grows', async t => {
+  const ui = monitor(t);
+  const first = {speaker: 'SPEAKER_00', start: 1, text: 'Начало.'};
+  const session = {source: 'phone', preview_id: 'example', revision: 1,
+    segments: [first, {is_draft: true, text: 'Продолжение'}]};
+  ui.requests[0].reply('', {}, [session]);
+  await settle();
+  assert.match(ui.root.textContent, /Начало\.ЧерновикПродолжение/);
+  ui.tick();
+  ui.requests[1].reply('', {}, [{...session, revision: 2, segments: [first], withdrawn: {text: 'Продолжение', end: 2}}]);
+  await settle();
+  assert.match(ui.root.textContent, /Начало\.Предыдущий текст · не подтвержденоПродолжение/);
+  ui.tick();
+  ui.requests[2].reply('', {}, [{...session, revision: 3, segments: [{...first, text: 'Начало. Продолжение.'}]}]);
+  await settle();
+  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Начало\. Продолжение\./);
+  assert.equal(ui.root.textContent.split('Продолжение').length, 2);
+});
+
+test('parallel inputs keep independent activity and update speaker turns without duplicating drafts', async t => {
+  const ui = monitor(t);
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const phone = {source: 'phone', preview_id: 'phone', origin: {phone_platform: 'ios'},
+    frames_received: 5, segments: [{speaker: 'SPEAKER_00', start: 1, text: 'Один'},
+      {speaker: 'SPEAKER_00', start: 2, text: 'два'}, {is_draft: true, text: 'три'}]};
+  const cv1 = {source: 'omi', preview_id: 'cv1', frames_received: 4, text: 'Другой поток'};
+  const poll = async (first, second) => {
+    ui.requests.at(-1).reply('', {}, [first, second]);
+    await settle();
+  };
+  await poll(phone, cv1);
+  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Один дваЧерновиктри/);
+  assert.match(ui.root.textContent, /Проверяем потокДругой поток/);
+  now += 6000; ui.tick();
+  await poll({...phone, frames_received: 6, segments: [{speaker: 'SPEAKER_01', start: 3, text: 'Три'}]}, cv1);
+  assert.match(ui.root.textContent, /Получаем звукГоворящий 2 · 0:03Три/);
+  assert.match(ui.root.textContent, /Кадры не поступают ≥ 5 сДругой поток/);
+  assert.match(ui.root.textContent, /Требуют внимания: 1 из 2/);
+  assert.doesNotMatch(ui.root.textContent, /Один два|Черновиктри/);
+});
+
+
+test('sidebar and service badges share monitor observations and discard expired evidence', async t => {
+  const observations = [];
+  const ui = monitor(t, {onSources: (labels, activity) => observations.push({labels, activity})});
+  const stages = {stale: false, summary: {status: 'ready', name: 'Demo'}};
+  ui.requests[0].reply('Синтетическая речь', {}, [{source: 'omi'}], stages);
+  await settle();
+  assert.deepEqual(observations[0].labels, ['Omi CV1']);
+  assert.match(ui.root.textContent, /Модель итогов · доступна/);
+  ui.tick(); ui.requests[1].reply('', {}, [], {...stages, stale: true});
+  await settle();
+  assert.match(ui.root.textContent, /Модель итогов · проверка устарела/);
+  assert.deepEqual(observations[1].labels, []);
+  ui.tick(); ui.requests[2].reject(Error('offline'));
+  await settle();
+  assert.match(ui.root.textContent, /Модель итогов · нет данных/);
+  assert.deepEqual(observations[2].labels, []);
 });

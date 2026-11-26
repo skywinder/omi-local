@@ -64,7 +64,9 @@ def test_route_acknowledges_exact_saved_audio_and_lost_ack_retry(tmp_path: Path,
     assert api.post('/v1/local/audio/parts', content=body, headers=headers).json() == response.json()
     conflict = api.post('/v1/local/audio/parts', content=body[:-1] + b'\x01', headers=headers)
     assert conflict.status_code == 409
-    assert len(list((tmp_path / 'state/services/storage/listen-captures').iterdir())) == 1
+    capture, = (tmp_path / 'state/services/storage/listen-captures').iterdir()
+    metadata = json.loads((capture / 'metadata.json').read_text())
+    assert metadata['ended_at'] == '2026-10-27T08:00:00.010000+00:00'
 
 
 def test_route_rejects_declared_and_chunked_body_limits(tmp_path: Path, monkeypatch):

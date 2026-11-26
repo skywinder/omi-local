@@ -6,6 +6,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'package:uuid/uuid.dart';
 
 import 'daily_recap.dart';
+import 'daily_recap_schedule_page.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
 import 'settings_labels.dart';
@@ -145,7 +146,17 @@ class _DailyRecapsState extends State<DailyRecapsPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l.dailyRecaps),
-        actions: [IconButton(tooltip: l.refresh, onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh))],
+        actions: [
+          if (widget.library.dailyRecapScheduleAvailable)
+            IconButton(
+              tooltip: pairedSettingsLabel(context, 'recapScheduleTitle'),
+              icon: const Icon(Icons.schedule),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => DailyRecapSchedulePage(library: widget.library))),
+            ),
+          IconButton(tooltip: l.refresh, onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh)),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(OmiSpacing.md),

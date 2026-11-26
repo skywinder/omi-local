@@ -14,7 +14,14 @@ Cold-start checks validate owned Argmax files before starting services; the sele
 HTTP model is checked after its owned listener starts, never as a prerequisite to it.
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
 Paired archive search uses the same verified file-backed transcript as detail.
+Optional archive MCP uses a separately prefixed read key, never the phone key.
+Preserve its exact method/path allowlist in `utils/local_transport_auth.py` and
+revision-checked quote pagination in `routers/local_archive.py`. No generic proxy
+or write access belongs in this scope. See [MCP setup](../tools/archive-mcp/README.md).
 After a file-backed result, the page cursor resumes at the next unscanned document.
+Meaning search ranks revision-bound pointers over the private Unix socket and
+rechecks each canonical row before returning snippets. The optional model runs
+outside FastAPI. See [Semantic archive search](../docs/BACKEND_PARITY.md#semantic-archive-search).
 Pairing profile-check diagnostics log only the HTTP response status; never extend
 them with headers, URLs/query parameters, owner identifiers, or response bodies.
 Listen diagnostics likewise log only fixed connection events, close codes and
@@ -38,6 +45,8 @@ Updated paired clients send bounded immutable parts to `/v1/local/audio/parts`.
 Grouped delivery acquires the per-recording lock, checks adjacent sample positions
 and advances only through the ordered durable prefix. Preserve immutable receipts
 and allow legacy parts to use the existing independent capture path.
+Grouped receipts may report the last durably published silence cut in samples.
+Keep it monotonic per recording and separate from the final Stop boundary.
 Authenticate before consuming bodies. Publish the complete WAV and metadata
 outside watcher staging, sync them, and return a receipt for that exact ID/hash.
 Retries must not overwrite or duplicate audio. The explicit outbox header makes
@@ -52,6 +61,10 @@ paths, provider credentials, or add processing placeholders to Firestore.
 The paired archive adapter emits upstream page-size and continuation headers.
 Keep truncated reads distinct from end of list. See [Backend compatibility](../docs/BACKEND_PARITY.md)
 for the shared route and local adapter boundaries.
+The web library's note-state route requires paired-owner authentication on a
+loopback peer and listener. Resolve imported result keys to that owner's
+Conversations and verify provenance again inside any write transaction.
+Archiving updates only `archived`; `discarded` remains a processing state.
 Finished-WAV STT uses a separate local engine via `local-mac.sh transcribe`: the
 WhisperKit CLI runs with local Core ML files under a network-denying sandbox;
 WhisperX/Parakeet retain their separate Python environments for explicit profiles.
@@ -67,12 +80,33 @@ subcollection. The loopback library owns inference and checks the confirmed
 summary provider binding. The backend validates cited excerpts against the
 submitted context. Trusted-host deletion marks the source unavailable to
 in-flight chat before enumerating the recording's child collections.
+Recording chat, archive chat and task suggestions use checked full transcripts,
+including manual corrections. An unreadable file is ineligible as evidence.
+Archive chat can continue across other recordings within its scan deadline.
+Archive chat combines keyword and local semantic results under one evidence
+budget. Resolve semantic pointers against the paired owner's current revision.
+Only the cited segment may supply text to the model. Summary windows and
+neighboring context can affect ranking without becoming transcript citations.
+For long segments, choose a bounded, contiguous excerpt around query terms;
+never rank the complete segment and then send only its prefix. Hybrid merging
+retains distinct evidence windows from one segment and removes exact duplicates.
+The fixed EN/RU evidence questions run in `test_local_retrieval_quality.py`.
+Clients opt in to the stored archive chat contract. Its encrypted history is
+scoped to the paired server owner. The append transaction checks the current
+head and source revisions. Hide answers whose sources, including those supplied
+through prior turns, are no longer available to that owner.
 Paired recording edits accept JSON on the local edit route. They compare the
 prior field or transcript digest in the write transaction, preserve segment
 identity and use the existing transcript storage encoder. Large grouped imports store
-a checksummed result-file reference. Hydrate that file for detail and metadata edit
-responses. Segment and speaker writes must reject a stored preview. The trusted-host
+a checksummed result-file reference. Validate and hydrate the complete file before
+checking or editing a segment. Store bounded encrypted edits in the conversation
+transaction and apply them during hydration. Keep the first preview consistent
+and preserve the file checksum, segment IDs and timestamps. The trusted-host
 importer preserves edits on replay through create-if-absent.
+Older recordings can be categorized in owner-confirmed batches. Use the saved
+overview or bounded excerpts from the checked transcript. Only send numbered
+excerpts to the selected model. A category publication checks the document
+revision and updates only the category. Respect manual values, including Other.
 Paired folder management shares the Omi folder collection. A recording move
 checks the destination within the recording mutation transaction and marks the
 assignment as user-owned, including when the user removes the folder.
@@ -88,18 +122,51 @@ the create transaction. A task suggestion uses bounded transcript excerpts with
 the confirmed summary provider and does not write a task. Accepting a suggestion
 compares its source text digest and uses the original recording revision in the
 create transaction. The paired task path has no hosted task side effects.
+Paired reminders compare the prior typed deadline in that transaction. Keep
+date precision and IANA timezone intact, and update the schedule index with
+task completion. Legacy deadlines are unscheduled until the owner opts in for
+the task. Serve reminder schedules only to the paired owner.
 Paired summary template settings use the harness's shared provider revision.
 The backend only forwards the catalog to the configured loopback library.
 Paired summary regeneration sends the canonical transcript to that same
 loopback service. Publication compares transcript and summary revisions in
 one transaction, preserving user titles and unrelated recording data.
+Resolve numbered summary sources to canonical segment IDs within that
+publication. Keep Omi's Markdown projection aligned with the stored sections.
+Background summary jobs from the paired app and web library share the
+library's private on-disk queue. The trusted-host summary worker reads and
+publishes through the paired database under the admitted owner scope. Recover
+chunk checkpoints after restart and verify file-backed transcript checksums and
+the original summary revision before publication. Only the library process
+contacts the selected model. Preserve the synchronous endpoint for older apps.
+Summary options expose only the saved result's model and template name as
+`published`. Never substitute defaults or the latest attempted job. New automatic
+and regenerated summaries persist the model actually resolved by the provider.
+Generated next steps stay in notes until the owner creates a task.
+Paired reviewed memory has one local authority in `database/local_memories.py`.
+Keep hosted memory admission/graph routes disabled. Reuse `MemoryEvidence` for
+exact source identity, version, digest and quotation. Extraction may only create
+encrypted proposals; a paired owner must accept each fact. Confirm/edit checks
+both the fact revision and the current recording inside the transaction. Search
+excludes unaccepted or changed/unavailable-source facts and never searches old
+wording. Delete scrubs the encrypted fact, quote and bounded correction history;
+content-free receipts prevent uncertain retries from recreating it. The UI must
+show partial extraction and changed sources. See `docs/BACKEND_PARITY.md`.
 Paired daily recaps use the canonical daily summary collection. Start/end
 are the phone's local calendar midnights converted to UTC. The archive
 snapshot is checked again before publication, including additions to that day.
+Automatic recaps are opt-in via the paired schedule endpoint. The offline backend
+owns the persistent day cursor and transaction lease; only the loopback library
+calls the approved model. Publication fences the schedule revision, lease and
+shutdown flag, and never replaces an existing recap. Disabled schedules make no
+inference calls. The worker catches up one completed day per minute, backs off
+failures, and bounds its shutdown wait so inference cannot hold up exit. See `docs/BACKEND_PARITY.md`.
 Paired goals use the canonical goal and progress-event collections. An event
 checks the goal revision and any linked recording inside the same transaction
 that writes progress and its daily history. Paired routes skip hosted goal
-wakeups.
+wakeups. Goal lifecycle changes compare the paired revision, retain links and
+history, and replay the original request after uncertain delivery. The paired
+lifecycle regression runs in `make test-offline` through `test_workstream_core.py`.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

@@ -15,7 +15,7 @@ explicitly selected servers.
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client for new development. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for the integrated version. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 
@@ -132,6 +132,9 @@ omiloc
 
 The [audio library](http://127.0.0.1:20001/) is accessible only on your Mac. Select
 a recording to play it, or click a transcript segment to seek to that moment.
+In an open transcript, type in **Найти фразу в записи** to highlight a phrase.
+Use the arrows or Enter / Shift+Enter to browse matching turns. Playback stays
+at its current position until you click a turn.
 New recordings and completed transcripts appear automatically.
 
 The **Now** section, currently labeled **Сейчас**, shows live text, the audio
@@ -341,8 +344,7 @@ speech fixture retain their original text.
 
 Read [AGENTS.md](AGENTS.md) and the relevant component guide before changing code.
 Use the standalone repository's commands, add regression tests for bug fixes,
-and describe your verification in the pull request. Remove secrets and personal
-recording content from reports.
+and describe your verification in the pull request. For reproducible problems, see the [project repository](https://github.com/skywinder/omi-local); remove secrets and personal recording content from reports.
 
 ## License and acknowledgements
 

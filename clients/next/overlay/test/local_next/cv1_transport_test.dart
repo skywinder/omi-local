@@ -36,6 +36,38 @@ class _Radio implements Cv1Transport {
   Future<void> close() => stream.close();
 }
 
+class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1DiagnosticsTransport, Cv1ArchiveTransport {
+  final read = Completer<Cv1ArchiveBatch>();
+  Cv1ArchiveBatch Function(int start)? onRead;
+  final reads = <Cv1StorageTarget>[];
+  final wakeChanges = <bool>[];
+
+  @override
+  Future<void> setArchiveAwake(bool enabled) async => wakeChanges.add(enabled);
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) {
+    reads.add(target);
+    return onRead == null ? read.future : Future.value(onRead!(expectedStart));
+  }
+
+  final clears = <Cv1StorageTarget>[];
+  var reply = Completer<bool>();
+  void Function()? sample;
+  @override
+  Future<bool> clearStorage(Cv1StorageTarget target) {
+    clears.add(target);
+    return reply.future;
+  }
+
+  @override
+  Future<void> sampleDiagnostics() async => sample?.call();
+  @override
+  Future<void> sampleSignal() async {}
+  @override
+  Future<void> writeSetting(int generation, String field, int value) async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -74,6 +106,64 @@ void main() {
     expect(Cv1TransportEvent.fromMessage({'type': 'audio', 'generation': 4, 'bytes': bytes}), isNull);
     final rejected = Cv1TransportEvent.fromMessage({'type': 'state', 'phase': 'ready', 'generation': 5, 'codec': 1});
     expect((rejected! as Cv1TransportState).phase, Cv1LinkPhase.failed);
+  });
+
+  test('CV1 storage distinguishes unread ring bytes, an empty card and an unavailable measurement', () {
+    Cv1StorageStatus? storage(List<int> words) {
+      final wire = ByteData(words.length * 4);
+      for (var i = 0; i < words.length; i++) {
+        wire.setUint32(i * 4, words[i], Endian.little);
+      }
+      return Cv1Diagnostics.fromWire({'storageStatus': wire.buffer.asUint8List()}).storage;
+    }
+
+    expect(storage([4440, 10, 888, 1]), (unreadBytes: 4440, freeBytes: 888, clockValid: true));
+    expect(storage([0, 0, 4440, 0]), (unreadBytes: 0, freeBytes: 4440, clockValid: false));
+    expect(storage([444, 1, 0, 1]), (unreadBytes: 444, freeBytes: 0, clockValid: true));
+    expect(storage([444, 1, 0, 2]), isNull);
+    expect(storage([0, 0, 0, 0]), isNull);
+    expect(storage([4440, 3]), isNull);
+    expect(storage([4440, 3, 888, 1]), isNull);
+  });
+
+  test('ring inventory requires a complete advertised custody contract and a valid sequence range', () {
+    Uint8List info(int length, {int caps = 13, int version = 1, int ringId = 1, int write = 12}) {
+      final bytes = ByteData(length);
+      bytes.setUint8(0, 2);
+      bytes.setUint64(1, 10);
+      bytes.setUint64(9, write);
+      bytes.setUint32(17, 4);
+      bytes.setUint64(21, 7);
+      bytes.setUint16(29, 444);
+      if (length == 41) {
+        bytes.setUint8(31, caps);
+        bytes.setUint8(32, version);
+        bytes.setUint64(33, ringId);
+      }
+      return bytes.buffer.asUint8List();
+    }
+
+    Cv1StorageInfo? decode(Uint8List bytes) => Cv1Diagnostics.fromWire({'storageInfo': bytes}).storageInfo;
+    expect(decode(info(31)), (
+      oldest: 10,
+      unreadPackets: 2,
+      overwrittenPackets: 7,
+      protocol: Cv1StorageProtocol.legacy,
+    ));
+    expect(decode(info(41)), (
+      oldest: 10,
+      unreadPackets: 2,
+      overwrittenPackets: 7,
+      protocol: Cv1StorageProtocol.receiverAcknowledgement,
+    ));
+    for (final bytes in [info(41, caps: 5), info(41, version: 2), info(41, ringId: 0)]) {
+      expect(decode(bytes)?.protocol, Cv1StorageProtocol.unconfirmed);
+    }
+    for (final bytes in [info(33), info(31, write: 9), info(41, write: 15), info(31)..[0] = 3]) {
+      expect(decode(bytes), isNull);
+    }
+    expect((unreadBytes: 99 * 444, freeBytes: 444, clockValid: true).almostFull, isTrue);
+    expect((unreadBytes: 98 * 444, freeBytes: 2 * 444, clockValid: true).almostFull, isFalse);
   });
 
   test('CV1 diagnostics reject invalid measurements and retire with the link generation', () async {
@@ -120,6 +210,175 @@ void main() {
     }
   });
 
+  test('iOS admits one manual legacy read on the confirmed link and retains a partial reply', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final folder = await Directory.systemTemp.createTemp('next-ios-archive-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _StorageRadio();
+    final link = Cv1Connection(radio, capture);
+    void report(Cv1StorageProtocol protocol) {
+      radio.stream.add(
+        Cv1DiagnosticsEvent(
+          1,
+          Cv1Diagnostics(
+            storage: (unreadBytes: 888, freeBytes: 4440, clockValid: true),
+            storageInfo: (oldest: 17, unreadPackets: 2, overwrittenPackets: 0, protocol: protocol),
+          ),
+        ),
+      );
+    }
+
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: 'selected'));
+      report(Cv1StorageProtocol.receiverAcknowledgement);
+      expect(link.importTarget, isNull);
+      report(Cv1StorageProtocol.legacy);
+      final target = link.importTarget!;
+      Cv1ArchiveBatch? received;
+      Future<void> run() => link.readArchive(
+        target,
+        windows: 1,
+        shouldStop: () => false,
+        persist: (batch) async {
+          received = batch;
+        },
+      );
+      final operation = run();
+      expect(link.importTarget, isNull);
+      expect(await link.clearStorage(target), Cv1ClearResult.unavailable);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
+      // The old link can still return records already received into its own transfer.
+      radio.read.complete((bytes: Uint8List(444), start: 17, complete: false));
+      await operation;
+      final result = received!;
+      expect(result.bytes.length, 444);
+      expect(result.complete, isFalse);
+      await expectLater(run(), throwsA(isA<PlatformException>()));
+      expect(radio.reads, [target]);
+    } finally {
+      await link.close();
+      link.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
+  test('series flushes the in-flight window on stop and rejects a moved cursor before another read', () async {
+    final folder = await Directory.systemTemp.createTemp('next-archive-series-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _StorageRadio();
+    final link = Cv1Connection(radio, capture);
+    var cursor = 11;
+    void report() => radio.stream.add(
+      Cv1DiagnosticsEvent(
+        1,
+        Cv1Diagnostics(
+          storage: (unreadBytes: 128 * 444, freeBytes: 444, clockValid: true),
+          storageInfo: (oldest: cursor, unreadPackets: 128, overwrittenPackets: 0, protocol: Cv1StorageProtocol.legacy),
+        ),
+      ),
+    );
+    final starts = <int>[];
+    radio.onRead = (start) {
+      starts.add(start);
+      return (start: start, complete: true, bytes: Uint8List(32 * 444));
+    };
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: 'fixture'));
+      report();
+      radio.sample = report;
+      var stop = false;
+      final target = link.importTarget!;
+      await link.readArchive(
+        target,
+        windows: 32,
+        shouldStop: () => stop,
+        persist: (batch) async {
+          cursor = batch.start + 32;
+          stop = starts.length >= 2;
+        },
+      );
+      expect(starts, [11, 43]);
+      await expectLater(
+        link.readArchive(
+          target,
+          windows: 32,
+          shouldStop: () => false,
+          persist: (batch) async {
+            cursor = batch.start + 33;
+          },
+        ),
+        throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'cursor_changed')),
+      );
+      expect(starts, [11, 43, 75]);
+    } finally {
+      await link.close();
+      link.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
+  test('clearing requires the confirmed link, one firmware acknowledgement and a fresh empty inventory', () async {
+    final folder = await Directory.systemTemp.createTemp('next-clear-fixture-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _StorageRadio();
+    final link = Cv1Connection(radio, capture);
+    void report(int generation, int bytes) => radio.stream.add(
+      Cv1DiagnosticsEvent(
+        generation,
+        Cv1Diagnostics(
+          storage: (unreadBytes: bytes, freeBytes: 4440 - bytes, clockValid: true),
+          storageInfo: (
+            oldest: 17,
+            unreadPackets: bytes ~/ 444,
+            overwrittenPackets: 0,
+            protocol: Cv1StorageProtocol.legacy,
+          ),
+        ),
+      ),
+    );
+    void ready(int generation, String id) {
+      radio.stream.add(Cv1TransportState(Cv1LinkPhase.ready, generation, codec: 20, deviceId: id));
+      report(generation, 444);
+    }
+
+    try {
+      ready(1, 'first');
+      final old = link.storageTarget!;
+      ready(2, 'second');
+      expect(await link.clearStorage(old), Cv1ClearResult.unavailable);
+      expect(radio.clears, isEmpty);
+      final current = link.storageTarget!;
+      final pending = link.clearStorage(current);
+      expect(await link.clearStorage(current), Cv1ClearResult.unavailable);
+      radio.reply.complete(false);
+      expect(await pending, Cv1ClearResult.unconfirmed);
+      expect(radio.clears, [current]);
+      radio.reply = Completer<bool>();
+      radio.sample = () => report(2, 0);
+      final clearing = link.clearStorage(current);
+      radio.reply.complete(true);
+      expect(await clearing, Cv1ClearResult.empty);
+      expect(link.storageTarget, isNull);
+    } finally {
+      await link.close();
+      link.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
   test('CV1 history retains real charge and link events across launches without retaining signal samples', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -156,6 +415,40 @@ void main() {
     final expired = Cv1History(preferences: prefs, now: () => now);
     expect(expired.battery, isEmpty);
     expect(expired.events, isEmpty);
+  });
+
+  test('a selected CV1 resumes the active recording with a fresh subscription after the radio restarts', () async {
+    final folder = await Directory.systemTemp.createTemp('next-radio-restore-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => throw StateError('offline'));
+    await journal.initialize();
+    final capture = NextCv1Capture(journal, 'fixture', canStart: () => true);
+    final radio = _Radio()..enabling.complete();
+    final link = Cv1Connection(radio, capture);
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 21, deviceId: 'selected'));
+      capture.start();
+      await Future<void>.delayed(Duration.zero);
+      final first = radio.commands.single.$2;
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.unavailable, 2, reason: Cv1LinkReason.radio));
+      expect(link.linkedDeviceId, isNull);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 21, deviceId: 'selected'));
+      expect(link.phase, Cv1LinkPhase.unavailable);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 3, codec: 21, deviceId: 'selected'));
+      await Future<void>.delayed(Duration.zero);
+      expect(link.linkedDeviceId, 'selected');
+      expect(capture.wantsAudio, isTrue);
+      expect(radio.commands.last.$1, 3);
+      expect(radio.commands.last.$2, isNot(first));
+      expect(radio.commands.last.$3, isTrue);
+    } finally {
+      await link.close();
+      await capture.close();
+      link.dispose();
+      capture.dispose();
+      await journal.drain();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
   });
 
   test('Stop and Start while enabling supersede the subscription, even on the same link', () async {

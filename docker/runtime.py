@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import subprocess
 import sys
 import time
 import threading
@@ -119,6 +120,21 @@ def supervisor_running(pid, proc_root=Path('/proc')):
         return False
 
 
+def semantic_refresh(cfg, *, once=False):
+    if not once and os.environ.get('OMI_SEMANTIC_AUTO_REFRESH') != '1':
+        return
+    from dev_harness.local_semantic_refresh import refresh, refresh_forever
+
+    socket = cfg.layout.services_dir / 'semantic-search' / 'inventory.sock'
+    options = {'env': config.child_env_for(cfg), 'cwd': ROOT / 'backend'}
+    if once:
+        print(json.dumps(refresh(socket, **options)))
+    else:
+        # Search is optional. A stalled refresh must stay outside capture readiness and shutdown.
+        threading.Thread(target=refresh_forever, args=(socket,), kwargs=options, daemon=True,
+                         name='semantic-refresh').start()
+
+
 def stop_owned(cfg):
     # Reap only our recorded supervisors. Otherwise Linux keeps exited children
     # as zombies and the harness mistakes them for services still shutting down.
@@ -182,6 +198,7 @@ def main():
                 raise RuntimeError('Backend startup failed; inspect private harness logs')
             local_mac.require_auth_boundary(cfg.backend_url)
             local_library.start(cfg)
+            semantic_refresh(cfg)
             # STT can load slowly on CPU. Start the web UI first and retry readiness.
             print('Library: http://127.0.0.1:21001', flush=True)
             deadline = time.monotonic() + 600
@@ -217,6 +234,12 @@ if __name__ == '__main__':
             pair()
         elif sys.argv[1:] == ['health']:
             health()
+        elif sys.argv[1:] == ['semantic-refresh']:
+            semantic_refresh(config.load_config(ROOT, create_layout=False), once=True)
+        elif sys.argv[1:] == ['semantic-owner']:
+            cfg = config.load_config(ROOT, create_layout=False)
+            subprocess.run([sys.executable, '-m', 'scripts.export_local_semantic_sources', '--owner-digest'],
+                           cwd=ROOT / 'backend', env=config.child_env_for(cfg), check=True)
         elif len(sys.argv) == 3 and sys.argv[1] == 'inference':
             from dev_harness.runtime_probe import docker_inference
             docker_inference(ROOT, sys.argv[2])

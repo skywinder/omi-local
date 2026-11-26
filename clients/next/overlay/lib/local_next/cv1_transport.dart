@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:omi/services/devices/ring_protocol.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'cv1_capture.dart';
@@ -54,6 +55,16 @@ sealed class Cv1TransportEvent {
   }
 }
 
+typedef Cv1StorageStatus = ({int unreadBytes, int freeBytes, bool clockValid});
+
+enum Cv1StorageProtocol { legacy, receiverAcknowledgement, unconfirmed }
+
+typedef Cv1StorageInfo = ({int oldest, int unreadPackets, int overwrittenPackets, Cv1StorageProtocol protocol});
+
+extension Cv1StorageCapacity on Cv1StorageStatus {
+  bool get almostFull => freeBytes * 100 <= unreadBytes + freeBytes;
+}
+
 class Cv1Diagnostics {
   const Cv1Diagnostics({
     this.name,
@@ -62,6 +73,8 @@ class Cv1Diagnostics {
     this.model,
     this.manufacturer,
     this.battery,
+    this.storage,
+    this.storageInfo,
     this.rssi,
     this.led,
     this.gain,
@@ -72,8 +85,51 @@ class Cv1Diagnostics {
 
   final String? name, firmware, hardware, model, manufacturer;
   final int? battery, rssi, led, gain;
+  final Cv1StorageStatus? storage;
+  final Cv1StorageInfo? storageInfo;
   final bool? charging;
   final bool ledWritable, gainWritable;
+
+  // The CV1 SD ring reports four LE words. Earlier file-list firmware uses
+  // different units. An uninitialized card has no usable capacity.
+  static Cv1StorageStatus? _storageStatus(Object? raw) {
+    if (raw is! Uint8List || raw.length != 16) return null;
+    final data = ByteData.sublistView(raw);
+    final used = data.getUint32(0, Endian.little);
+    final packets = data.getUint32(4, Endian.little);
+    final free = data.getUint32(8, Endian.little);
+    final clockValid = data.getUint32(12, Endian.little);
+    const packetBytes = RingProtocol.recordSize;
+    if (used != packets * packetBytes || free % packetBytes != 0 || used + free == 0 || clockValid > 1) return null;
+    return (unreadBytes: used, freeBytes: free, clockValid: clockValid == 1);
+  }
+
+  // INFO is big-endian, unlike the status characteristic. The 31-byte legacy
+  // reply has no custody contract. A partial extension cannot establish one.
+  static Cv1StorageInfo? _storageInfo(Object? raw) {
+    if (raw is! Uint8List || (raw.length != 31 && raw.length != 41)) return null;
+    final info = RingProtocol.parseInfoNotification(raw);
+    if (info == null ||
+        info.packetSize != RingProtocol.recordSize ||
+        info.readSeq < 0 ||
+        info.writeSeq < info.readSeq ||
+        info.capacityPackets == 0 ||
+        info.unreadPackets > info.capacityPackets ||
+        info.droppedPackets < 0) {
+      return null;
+    }
+    var protocol = Cv1StorageProtocol.legacy;
+    if (info.infoBytes == 41) {
+      final supported = info.capAppAckReclaim && info.capAdvanceIdempotent && info.capRingId;
+      protocol = supported ? Cv1StorageProtocol.receiverAcknowledgement : Cv1StorageProtocol.unconfirmed;
+    }
+    return (
+      oldest: info.readSeq,
+      unreadPackets: info.unreadPackets,
+      overwrittenPackets: info.droppedPackets,
+      protocol: protocol,
+    );
+  }
 
   factory Cv1Diagnostics.fromWire(Map values) {
     int? number(String key, int min, int max) {
@@ -93,6 +149,8 @@ class Cv1Diagnostics {
       model: text('model'),
       manufacturer: text('manufacturer'),
       battery: number('battery', 0, 100),
+      storage: _storageStatus(values['storageStatus']),
+      storageInfo: _storageInfo(values['storageInfo']),
       rssi: number('rssi', -127, -1),
       led: number('led', 0, 100),
       gain: number('gain', 0, 100),
@@ -153,6 +211,21 @@ abstract interface class Cv1Transport {
   Future<void> close();
 }
 
+typedef Cv1StorageTarget = ({int generation, String deviceId});
+
+enum Cv1ClearResult { empty, unavailable, unconfirmed }
+
+typedef Cv1ArchiveBatch = ({Uint8List bytes, int start, bool complete});
+
+abstract interface class Cv1ArchiveTransport {
+  Future<void> setArchiveAwake(bool enabled);
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords);
+}
+
+abstract interface class Cv1StorageTransport {
+  Future<bool> clearStorage(Cv1StorageTarget target);
+}
+
 abstract interface class Cv1DiagnosticsTransport {
   Future<void> sampleDiagnostics();
   Future<void> sampleSignal();
@@ -161,7 +234,7 @@ abstract interface class Cv1DiagnosticsTransport {
 
 class Cv1PermissionDenied implements Exception {}
 
-class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport {
+class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1StorageTransport, Cv1ArchiveTransport {
   static const _methods = MethodChannel('org.omilocal.next/cv1');
   static const _events = EventChannel('org.omilocal.next/cv1.events');
 
@@ -190,6 +263,31 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport {
 
   @override
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
+
+  @override
+  Future<void> setArchiveAwake(bool enabled) => _methods.invokeMethod<void>('setArchiveAwake', {'enabled': enabled});
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) async {
+    final reply = await _methods.invokeMapMethod<String, dynamic>('readOldest', {
+      'expectedStart': expectedStart,
+      'maxRecords': maxRecords,
+      'generation': target.generation,
+      'deviceId': target.deviceId,
+    });
+    if (reply?['bytes'] is! Uint8List || reply?['start'] is! int || reply?['complete'] is! bool) {
+      throw const FormatException('Invalid CV1 transfer reply');
+    }
+    return (bytes: reply!['bytes'] as Uint8List, start: reply['start'] as int, complete: reply['complete'] as bool);
+  }
+
+  @override
+  Future<bool> clearStorage(Cv1StorageTarget target) async =>
+      await _methods.invokeMethod<bool>('clearStorage', {
+        'generation': target.generation,
+        'deviceId': target.deviceId,
+      }) ==
+      true;
 
   @override
   Future<void> writeSetting(int generation, String field, int value) =>
@@ -251,6 +349,9 @@ class Cv1Connection extends ChangeNotifier {
   bool operationFailed = false;
   bool permissionDenied = false;
   bool audioFailed = false;
+  Cv1TransportState? linkState;
+  String? _firstPairAttempt;
+  Timer? _pairRetry;
   int? codec;
   Cv1Diagnostics? diagnostics;
   DateTime? connectedAt;
@@ -275,22 +376,58 @@ class Cv1Connection extends ChangeNotifier {
   int? _nativeSubscription;
   int _subscriptionSerial = 0;
   bool _wantsAudio = false;
+  int _audioBytesReceived = 0;
+
+  /// Raw audio notification bytes for the current subscription, including the CV1 header.
+  ({int subscription, int bytes})? get audioTraffic =>
+      !_wantsAudio || calibrating ? null : (subscription: _subscriptionSerial, bytes: _audioBytesReceived);
+
+  ValueChanged<Uint8List>? _calibration;
+  bool get calibrating => _calibration != null;
 
   List<Cv1DeviceFound> get devices => List.unmodifiable(_devices.values);
 
-  Future<void> scan() => _command(() {
+  bool beginCalibration(ValueChanged<Uint8List> accept) {
+    if (_closing ||
+        importingStorage ||
+        clearingStorage ||
+        phase != Cv1LinkPhase.ready ||
+        _capture.active ||
+        _capture.sealing ||
+        calibrating) {
+      return false;
+    }
+    _calibration = accept;
+    _demandChanged();
+    notifyListeners();
+    return true;
+  }
+
+  void endCalibration(ValueChanged<Uint8List> accept) {
+    if (_closing || !identical(accept, _calibration)) return;
+    _calibration = null;
+    _demandChanged();
+    notifyListeners();
+  }
+
+  Future<void> scan() => _command(() async {
+    if (importingStorage) return;
+    _cancelPairRetry();
     _devices.clear();
-    return _transport.scan();
+    await _transport.scan();
   });
 
-  Future<void> connect(String id) => _command(() {
+  Future<void> connect(String id) => _command(() async {
+    if (importingStorage) return;
+    _cancelPairRetry();
+    _firstPairAttempt = id;
     if (_selected != id) {
       _selected = id;
       _wasConnected = false;
       reconnections = 0;
       _lostAt = null;
     }
-    return _transport.connect(id);
+    await _transport.connect(id);
   });
 
   Future<void> sampleDiagnostics() async {
@@ -303,9 +440,235 @@ class Cv1Connection extends ChangeNotifier {
     }
   }
 
+  bool clearingStorage = false;
+  bool importingStorage = false;
+
+  Cv1StorageTarget? get importTarget =>
+      _transport is Cv1ArchiveTransport &&
+          !clearingStorage &&
+          !importingStorage &&
+          diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy
+      ? storageTarget
+      : null;
+
+  /// The full import owns the selected reader across Bluetooth generations.
+  /// The initial end and the last position saved on the phone bound every read.
+  Future<void> readArchive(
+    Cv1StorageTarget target, {
+    required int? windows,
+    required bool Function() shouldStop,
+    required Future<void> Function(Cv1ArchiveBatch) persist,
+    void Function()? beforeRead,
+    Future<void> Function()? onReconnectWait,
+    void Function(int missingRecords)? onReconnect,
+  }) async {
+    final transport = _transport;
+    if (transport is! Cv1ArchiveTransport ||
+        target != importTarget ||
+        (windows != null && (windows < 1 || windows > 32))) {
+      throw PlatformException(code: 'storage_busy');
+    }
+    final reader = transport as Cv1ArchiveTransport;
+    final originalCodec = codec;
+    var activeTarget = target;
+    var next = diagnostics!.storageInfo!.oldest;
+    final availableThrough = next + diagnostics!.storageInfo!.unreadPackets;
+    int? previousStart;
+    var completeWindows = 0;
+    importingStorage = true;
+    notifyListeners();
+    try {
+      if (windows == null) await reader.setArchiveAwake(true);
+      while ((windows == null || completeWindows < windows) && next < availableThrough && !shouldStop()) {
+        Cv1ArchiveBatch? batch;
+        try {
+          batch = await _readArchiveWindow(
+            reader,
+            activeTarget,
+            next,
+            availableThrough,
+            previousStart,
+            shouldStop,
+            beforeRead,
+          );
+          if (batch == null) return;
+        } on PlatformException catch (error) {
+          if (windows != null || error.code != 'link_changed') rethrow;
+        }
+        if (batch != null) {
+          await persist(batch);
+          final end = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
+          if (end > next) next = end;
+          if (batch.complete && batch.bytes.isNotEmpty) {
+            previousStart = batch.start;
+            completeWindows++;
+            if (next < availableThrough && (windows == null || completeWindows < windows) && !shouldStop()) {
+              await sampleDiagnostics();
+            }
+            continue;
+          }
+          if (windows != null) return;
+        }
+        if (shouldStop()) return;
+        // A short native reply can arrive just before the link-loss event. Flush
+        // its complete records before waiting for a new generation.
+        if (next >= availableThrough) return;
+        await onReconnectWait?.call();
+        final resumed = await _waitForArchiveLink(activeTarget, originalCodec, shouldStop);
+        if (resumed == null) return;
+        final info = diagnostics!.storageInfo!;
+        if (info.oldest + info.unreadPackets < availableThrough || info.oldest < next - 32) {
+          throw PlatformException(code: 'cursor_changed');
+        }
+        final resumeAt = info.oldest.clamp(next, availableThrough);
+        onReconnect?.call(resumeAt - next);
+        next = resumeAt;
+        activeTarget = resumed;
+        previousStart = null;
+      }
+    } finally {
+      try {
+        if (windows == null) await reader.setArchiveAwake(false);
+      } finally {
+        importingStorage = false;
+        if (!_closing) {
+          notifyListeners();
+          unawaited(sampleDiagnostics());
+        }
+      }
+    }
+  }
+
+  Future<Cv1ArchiveBatch?> _readArchiveWindow(
+    Cv1ArchiveTransport reader,
+    Cv1StorageTarget target,
+    int next,
+    int end,
+    int? previousStart,
+    bool Function() shouldStop,
+    void Function()? beforeRead,
+  ) async {
+    final wait = Stopwatch()..start();
+    var refreshAt = 1000;
+    while (!shouldStop()) {
+      if (_closing ||
+          phase != Cv1LinkPhase.ready ||
+          _generation != target.generation ||
+          linkedDeviceId != target.deviceId) {
+        throw PlatformException(code: 'link_changed');
+      }
+      final info = diagnostics?.storageInfo;
+      if (info != null && (info.oldest > next || info.protocol != Cv1StorageProtocol.legacy)) {
+        throw PlatformException(code: 'cursor_changed');
+      }
+      // Legacy DONE can arrive before the last BLE transmit callbacks advance
+      // the cursor. Read only from the confirmed oldest sequence.
+      if (info != null && (previousStart == null || info.oldest > previousStart)) {
+        beforeRead?.call();
+        try {
+          return await reader.readOldest(target, info.oldest, (end - info.oldest).clamp(1, 32));
+        } on PlatformException catch (error) {
+          // Only storage_busy guarantees the native side never issued READ.
+          if (error.code != 'storage_busy') rethrow;
+        }
+      }
+      if (wait.elapsed >= const Duration(seconds: 6)) throw PlatformException(code: 'storage_busy');
+      if (wait.elapsedMilliseconds >= refreshAt) {
+        refreshAt += 1000;
+        await sampleDiagnostics();
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return null;
+  }
+
+  Future<Cv1StorageTarget?> _waitForArchiveLink(
+    Cv1StorageTarget previous,
+    int? originalCodec,
+    bool Function() shouldStop,
+  ) async {
+    final wait = Stopwatch()..start();
+    var refreshAt = 0;
+    while (!_closing && !shouldStop()) {
+      if (phase == Cv1LinkPhase.ready && _generation != previous.generation) {
+        if (linkedDeviceId != previous.deviceId || codec != originalCodec) {
+          throw PlatformException(code: 'cursor_changed');
+        }
+        if (diagnostics?.storageInfo case final info?) {
+          if (info.protocol != Cv1StorageProtocol.legacy) throw PlatformException(code: 'cursor_changed');
+          return (generation: _generation, deviceId: previous.deviceId);
+        }
+        if (wait.elapsedMilliseconds >= refreshAt) {
+          refreshAt = wait.elapsedMilliseconds + 1000;
+          await sampleDiagnostics();
+        }
+      } else if (phase == Cv1LinkPhase.ready && wait.elapsed >= const Duration(seconds: 2)) {
+        // An invalid reply on a healthy link should not loop as if it were a disconnect.
+        throw PlatformException(code: 'link_changed');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    return null;
+  }
+
+  Cv1StorageTarget? get storageTarget {
+    final id = linkedDeviceId;
+    if (_closing ||
+        phase != Cv1LinkPhase.ready ||
+        id == null ||
+        calibrating ||
+        _capture.active ||
+        _capture.sealing ||
+        diagnostics?.storageInfo == null ||
+        diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.unconfirmed ||
+        (diagnostics?.storage?.unreadBytes ?? 0) == 0) {
+      return null;
+    }
+    return (generation: _generation, deviceId: id);
+  }
+
+  Future<Cv1ClearResult> clearStorage(Cv1StorageTarget target) async {
+    final transport = _transport;
+    if (importingStorage || clearingStorage || storageTarget != target || transport is! Cv1StorageTransport) {
+      return Cv1ClearResult.unavailable;
+    }
+    clearingStorage = true;
+    notifyListeners();
+    final empty = Completer<bool>();
+    void observe() {
+      if (empty.isCompleted) return;
+      if (_closing || target.generation != _generation || linkedDeviceId != target.deviceId) {
+        empty.complete(false);
+      } else if (diagnostics?.storage?.unreadBytes == 0 && diagnostics?.storageInfo?.unreadPackets == 0) {
+        empty.complete(true);
+      }
+    }
+
+    try {
+      final acknowledged = await (transport as Cv1StorageTransport).clearStorage(target);
+      if (_closing || target.generation != _generation || linkedDeviceId != target.deviceId) {
+        return Cv1ClearResult.unconfirmed;
+      }
+      addListener(observe);
+      await sampleDiagnostics();
+      if (acknowledged && await empty.future.timeout(const Duration(seconds: 6), onTimeout: () => false)) {
+        return Cv1ClearResult.empty;
+      }
+      return Cv1ClearResult.unconfirmed;
+    } on PlatformException catch (error) {
+      return error.code == 'storage_busy' ? Cv1ClearResult.unavailable : Cv1ClearResult.unconfirmed;
+    } catch (_) {
+      return Cv1ClearResult.unconfirmed;
+    } finally {
+      removeListener(observe);
+      clearingStorage = false;
+      if (!_closing) notifyListeners();
+    }
+  }
+
   Future<bool> writeSetting(String field, int value) async {
     final transport = _transport;
-    if (_closing || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return false;
+    if (_closing || calibrating || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return false;
     final generation = _generation;
     try {
       await (transport as Cv1DiagnosticsTransport).writeSetting(generation, field, value);
@@ -343,7 +706,17 @@ class Cv1Connection extends ChangeNotifier {
     if (next == Cv1LinkPhase.ready || reason == Cv1LinkReason.manual) _lostAt = null;
   }
 
-  Future<void> disconnect() => _command(_transport.disconnect);
+  void _cancelPairRetry() {
+    _firstPairAttempt = null;
+    _pairRetry?.cancel();
+    _pairRetry = null;
+  }
+
+  Future<void> disconnect() {
+    if (importingStorage) return Future.value();
+    _cancelPairRetry();
+    return _command(_transport.disconnect);
+  }
 
   Future<void> _command(Future<void> Function() command) async {
     if (_closing) return;
@@ -375,7 +748,23 @@ class Cv1Connection extends ChangeNotifier {
         notifyListeners();
       case Cv1TransportState():
         if (event.generation < _generation) return;
+        linkState = event;
+        final pairingTarget = _firstPairAttempt;
+        if (event.phase == Cv1LinkPhase.failed && event.reason == Cv1LinkReason.timeout && pairingTarget != null) {
+          _firstPairAttempt = null;
+          _pairRetry = Timer(const Duration(seconds: 2), () {
+            if (!_closing && phase == Cv1LinkPhase.failed && _generation == event.generation) {
+              unawaited(_command(() => _transport.connect(pairingTarget)));
+            }
+          });
+        } else if (event.phase == Cv1LinkPhase.ready ||
+            event.phase == Cv1LinkPhase.reconnecting ||
+            event.phase == Cv1LinkPhase.unavailable ||
+            event.phase == Cv1LinkPhase.failed) {
+          _cancelPairRetry();
+        }
         final wasReady = phase == Cv1LinkPhase.ready && event.generation == _generation;
+        if (!wasReady || event.phase != Cv1LinkPhase.ready || codec != event.codec) _calibration = null;
         if (phase != event.phase || event.reason != null || (phase == Cv1LinkPhase.ready && !wasReady)) {
           _recordEvent(event.phase, reason: event.reason, code: event.code);
         }
@@ -433,10 +822,16 @@ class Cv1Connection extends ChangeNotifier {
         if (phase == Cv1LinkPhase.ready &&
             event.generation == _generation &&
             event.subscription == _desiredSubscription) {
-          _capture.handle(Cv1Audio(event.generation, event.bytes));
+          final calibration = _calibration;
+          if (calibration != null) {
+            calibration(event.bytes);
+          } else {
+            _audioBytesReceived += event.bytes.length;
+            _capture.handle(Cv1Audio(event.generation, event.bytes));
+          }
         }
       case Cv1RawButton():
-        if (phase == Cv1LinkPhase.ready && event.generation == _generation) {
+        if (phase == Cv1LinkPhase.ready && !calibrating && event.generation == _generation) {
           _capture.handle(Cv1Button(event.generation, event.code));
         }
     }
@@ -446,10 +841,14 @@ class Cv1Connection extends ChangeNotifier {
 
   void _demandChanged() {
     if (_closing) return;
-    final wants = phase == Cv1LinkPhase.ready && _capture.wantsAudio;
+    final wants = phase == Cv1LinkPhase.ready && (_capture.wantsAudio || calibrating);
     if (wants != _wantsAudio) {
       _wantsAudio = wants;
-      if (wants) _subscriptionSerial++;
+      if (wants) {
+        _subscriptionSerial++;
+        _audioBytesReceived = 0;
+        audioFailed = false;
+      }
     }
     if (!_updatingAudio && phase == Cv1LinkPhase.ready && _nativeSubscription != _desiredSubscription) {
       unawaited(_updateAudio());
@@ -488,6 +887,8 @@ class Cv1Connection extends ChangeNotifier {
 
   Future<void> _shutdown() async {
     _closing = true;
+    _calibration = null;
+    _cancelPairRetry();
     _capture.removeListener(_demandChanged);
     try {
       await _subscription.cancel();

@@ -48,6 +48,7 @@ OMI_DOCKER_DEVICE=cuda
 OMI_DOCKER_STT=builtin
 OMI_DOCKER_GPU_ID=0
 OMI_DOCKER_TRANSPORT=tailscale
+OMI_SUMMARY_MODEL_DEFAULT=profile
 STT_MODEL=Systran/faster-whisper-small
 # bootstrap writes the actual immutable model revision here.
 STT_THREADS=4
@@ -57,8 +58,12 @@ Supported fields are `OMI_DOCKER_STT` (`builtin` or `external`),
 `OMI_DOCKER_DEVICE` (`cpu` or `cuda`),
 `OMI_DOCKER_GPU_ID` (numeric index or `GPU-...` UUID),
 `OMI_DOCKER_TRANSPORT` (`local`, `tailscale`, or `ngrok`), `STT_MODEL`,
-`STT_REVISION`, and `STT_THREADS`. Use the CLI bootstrap flags to create or
-change it; do not edit it while services are running. For built-in STT, the model
+`STT_REVISION`, `STT_THREADS`, and `OMI_SUMMARY_MODEL_DEFAULT` (`profile` or
+`provider`). Use the CLI bootstrap flags to create it and edit the summary
+default while the services are stopped. Use `provider` when rebuilding an
+instance that already followed the loaded text model for unmarked summary
+profiles. Model selections saved explicitly in Next continue to use their
+chosen model. For built-in STT, the model
 revision written by bootstrap is an immutable snapshot revision, so startup does not silently
 resolve a moving `main` branch.
 
@@ -353,6 +358,45 @@ while the shared Faster-Whisper model runs one inference call at a time.
 A connection above the limit receives WebSocket close code `4409`. A slot is
 released after the session and its outstanding inference have finished.
 
+## Semantic archive search
+
+Add `compose.semantic.yaml` to the Compose files used for the paired server.
+The `semantic` service runs on CPU with no network and uses dedicated model and
+index volumes. The backend sees only the index volume with two private sockets.
+Recording and ordinary word search have independent startup and health checks.
+
+Prepare the overlay after the paired app is running this revision. The commands
+below use the default Compose project and a directory containing the verified
+`model.onnx` and `tokenizer.json` from [the pinned model](BACKEND_PARITY.md#semantic-archive-search).
+
+```sh
+semantic=(docker compose -f compose.yaml -f compose.semantic.yaml)
+"${semantic[@]}" build semantic
+docker run --rm --network none --user 0 --entrypoint sh \
+  -v omiloc-docker_semantic_model:/model -v "$PWD/semantic-model:/input:ro" \
+  omiloc-docker-semantic -ec '
+    install -d -m 700 -o 10001 -g 10001 /model
+    install -m 600 -o 10001 -g 10001 /input/model.onnx /input/tokenizer.json /model
+  '
+"${semantic[@]}" exec -T app python docker/runtime.py semantic-owner | \
+  docker run --rm -i --network none --user 0 --entrypoint sh \
+    -v omiloc-docker_semantic_index:/index omiloc-docker-semantic -ec '
+      install -d -m 700 -o 10001 -g 10001 /index
+      umask 077
+      cat > /index/owner.next
+      grep -Eq "^[0-9a-f]{64}$" /index/owner.next
+      chown 10001:10001 /index/owner.next
+      mv /index/owner.next /index/owner.digest
+    '
+"${semantic[@]}" up -d --no-deps semantic app
+```
+
+Use the full Compose file list for future starts. The app streams an inventory
+at startup and every five minutes. For an immediate scan, run
+`docker compose -f compose.yaml -f compose.semantic.yaml exec -T app python docker/runtime.py semantic-refresh`.
+The first scan encodes the archive. Later scans reuse vectors for unchanged
+records. If a scan stops before completion, the previous index remains usable.
+
 ## Development and updates
 
 `./omiloc --runtime docker dev` runs in an open Terminal:
@@ -502,6 +546,10 @@ This preserves ownership checks and Firebase's correct export-on-exit behavior.
 `stt`, `ingress`, and the optional `tunnel` share Nginx's network namespace,
 which survives app and STT reloads. The internal backend, Firebase, Redis, and STT
 listen on 127.0.0.1. Nginx normally publishes two ports on host 127.0.0.1.
+If the ingress container itself is stopped and started, its new network namespace
+can leave the running app unreachable (HTTP 502). Gracefully restart the app
+after ingress, and restart any other services sharing that namespace. Verify a
+paired archive read and delivery of queued audio through the public entry point.
 The Tailscale override adds only the backend ingress on the verified host VPN IPv4;
 the unauthenticated library stays loopback-only and ingress rejects local preview.
 The backend's outbound policy is unchanged; remote providers are accessed through
@@ -529,6 +577,17 @@ Tailscale/GPU/dev configuration and checks all published ports. It runs in the e
 `transport-unit` CI job. Backend versions come from `pylock.runtime.toml`;
 ARM64 uses native wheels of the same versions, so x86_64 artifact hashes are not
 presented as an ARM64 lock.
+
+On November 26, 2026, commit `9a6da7e` built for both `linux/arm64` and
+`linux/amd64` in Docker Desktop on an Apple Silicon Mac. Each isolated
+container imported a synthetic recording, accepted edits through the paired
+API, exported Firestore at shutdown, and read back the corrected transcript,
+speaker and title in the web library after restart. The emulated x86-64
+container also served the transcript search field before and after restart.
+Both runs used private container storage with automatic STT disabled.
+On the test host the x86-64 image then restored a fresh Firestore/Auth export alongside a private copy of 603 WAVs and 604 transcript manifests. Before and after graceful restart, four sampled paired transcripts, summaries and WAV headers matched the working service. Web detail and WAV range reads passed. In a separate container with only the provider configuration, synthetic speech passed STT, diarization, summary and import. The working container stayed up throughout this rehearsal.
+
+The test host subsequently switched the production app to `omiloc:next-parity-6ecd352-amd64`. The image replaces 74 source bind mounts. The app and semantic-index volumes remained attached. The app volume was independently copied after graceful shutdown. Four sampled transcripts, summaries and authenticated WAV ranges matched after the switch. The iPhone/CV1 stream resumed. For future Compose operations, use the complete file list on the running app's `com.docker.compose.project.config_files` label, including the final image override. The pre-switch file list and backup-volume reference are stored privately alongside that override.
 
 Recorded verification on September 11, 2026, on this Mac using Linux ARM64 in
 Docker Desktop: CPU image builds, timestamped synthetic-speech STT, and the path

@@ -47,6 +47,7 @@ class NextCv1Capture extends ChangeNotifier {
     this.doubleTapAction,
     this.resumeSettings,
     this.preview,
+    this.keepListeningAfterSilence,
   });
 
   final LocalAudioJournal journal;
@@ -57,6 +58,7 @@ class NextCv1Capture extends ChangeNotifier {
   final Cv1DoubleTapAction Function()? doubleTapAction;
   final Cv1ResumeSettings? resumeSettings;
   final NextLivePreview? preview;
+  final bool Function()? keepListeningAfterSilence;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
   DateTime? startedAt;
@@ -80,8 +82,59 @@ class NextCv1Capture extends ChangeNotifier {
   bool get codecSupported => _codec != null;
   bool get active => _intent != Cv1CaptureIntent.stopped;
   bool get wantsAudio => _intent == Cv1CaptureIntent.recording && codecSupported;
-  bool _hasPersistedAudio = false;
-  bool get hasPersistedAudio => _hasPersistedAudio;
+  static const _audioGap = Duration(seconds: 5);
+  DateTime? _lastPersistedAt;
+  Timer? _audioDeadline;
+  Timer? _silenceDeadline;
+  DateTime? _lastAcceptedAt;
+  bool _stopAfterSilence = false;
+  bool get hasPersistedAudio => _lastPersistedAt != null;
+  bool get audioPaused => wantsAudio && hasPersistedAudio && _audioDeadline == null;
+
+  void _clearAudioStatus() {
+    _audioDeadline?.cancel();
+    _audioDeadline = null;
+    _lastPersistedAt = null;
+    _clearSilenceDeadline();
+  }
+
+  void _clearSilenceDeadline() {
+    _silenceDeadline?.cancel();
+    _silenceDeadline = null;
+    _lastAcceptedAt = null;
+  }
+
+  void rearmSilenceDeadline() {
+    _silenceDeadline?.cancel();
+    _silenceDeadline = null;
+    final seconds = _recording?.silenceSeconds ?? 0;
+    final last = _lastAcceptedAt;
+    if (!wantsAudio || seconds == 0 || last == null) return;
+    final remaining = last.add(Duration(seconds: seconds)).difference(journal.clock());
+    if (remaining > Duration.zero) {
+      _silenceDeadline = Timer(remaining, rearmSilenceDeadline);
+    } else {
+      unawaited(_stopAfterSilence ? stop() : finishConversation());
+    }
+  }
+
+  void _markAudioReceived() {
+    _lastPersistedAt = journal.clock();
+    if (_audioDeadline != null) return;
+    _audioDeadline = Timer(_audioGap, _checkAudioFlow);
+    notifyListeners();
+  }
+
+  void _checkAudioFlow() {
+    final remaining = _lastPersistedAt!.add(_audioGap).difference(journal.clock());
+    if (remaining > Duration.zero) {
+      _audioDeadline = Timer(remaining, _checkAudioFlow);
+      return;
+    }
+    _audioDeadline = null;
+    notifyListeners();
+  }
+
   int? _lastButtonCode;
   int? get lastButtonCode => _lastButtonCode;
   bool _closed = false;
@@ -124,6 +177,7 @@ class NextCv1Capture extends ChangeNotifier {
   }
 
   bool get canFinish => active && _recording != null;
+  int? get silenceSeconds => _recording?.silenceSeconds;
 
   /// Seal the current conversation while the same CV1 notification subscription
   /// keeps delivering frames. A new journal starts on the next complete packet.
@@ -142,6 +196,9 @@ class NextCv1Capture extends ChangeNotifier {
     if (_intent == Cv1CaptureIntent.recording) startedAt ??= journal.clock();
     if (_intent == Cv1CaptureIntent.muted) {
       _frames.discardPending();
+      _audioDeadline?.cancel();
+      _audioDeadline = null;
+      _clearSilenceDeadline();
       _cutPreview();
       _checkpoint(resetOpusContext: true);
     }
@@ -184,7 +241,7 @@ class NextCv1Capture extends ChangeNotifier {
         active &&
         (codecCode == null || current.codec == _codecFor(codecCode))) {
       _frames.discardPending();
-      _hasPersistedAudio = false;
+      _clearAudioStatus();
       _cutPreview();
       _checkpoint(resetOpusContext: true);
     } else {
@@ -200,6 +257,13 @@ class NextCv1Capture extends ChangeNotifier {
   }
 
   void _accept(Uint8List raw) {
+    if (_silenceDeadline != null) {
+      final seconds = _recording!.silenceSeconds!;
+      if (journal.clock().difference(_lastAcceptedAt!) >= Duration(seconds: seconds)) {
+        rearmSilenceDeadline();
+        if (!wantsAudio) return;
+      }
+    }
     final previousDrops = _frames.discardedCandidates;
     final frame = _frames.add(raw);
     if (previousDrops != _frames.discardedCandidates) {
@@ -212,8 +276,15 @@ class NextCv1Capture extends ChangeNotifier {
     if (_recording == null) {
       _segment++;
       startedAt ??= journal.clock();
+      _stopAfterSilence = keepListeningAfterSilence?.call() != true;
     }
     final current = _recording ??= journal.beginForServer(source: 'omi', codec: _codec!, serverId: owner);
+    final acceptedAt = journal.clock();
+    final elapsed = acceptedAt.difference(startedAt!).inMicroseconds / Duration.microsecondsPerSecond;
+    if ((current.silenceSeconds ?? 0) > 0) {
+      _lastAcceptedAt = acceptedAt;
+      if (_silenceDeadline == null) rearmSilenceDeadline();
+    }
     final attempt = _attempt;
     final segment = _segment;
     final previewEpoch = _previewEpoch;
@@ -224,20 +295,28 @@ class NextCv1Capture extends ChangeNotifier {
             afterPersisted: () {
               if (_closed || current != _recording) return;
               if (preview case final live? when previewEpoch == _previewEpoch) {
-                live.begin(current.recordingId, current.source, current.codec);
                 final duration = LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000;
+                live.begin(
+                  current.recordingId,
+                  current.source,
+                  current.codec,
+                  silenceSeconds: current.silenceSeconds,
+                  onSilence: _stopAfterSilence && (current.silenceSeconds ?? 0) > 0
+                      ? () {
+                          if (current == _recording && wantsAudio && previewEpoch == _previewEpoch) unawaited(stop());
+                        }
+                      : null,
+                );
                 live.addPersisted(
                   current.recordingId,
                   current.source,
                   current.codec,
                   frame,
-                  startSeconds: current.audioSeconds - duration,
+                  startSeconds: (current.audioSeconds - duration).clamp(0.0, double.infinity),
+                  elapsedSeconds: elapsed - duration,
                 );
               }
-              if (!_hasPersistedAudio) {
-                _hasPersistedAudio = true;
-                notifyListeners();
-              }
+              if (wantsAudio && previewEpoch == _previewEpoch) _markAudioReceived();
             },
           )
           .catchError((Object _) => _writeFailed(current, attempt, segment)),
@@ -263,7 +342,7 @@ class NextCv1Capture extends ChangeNotifier {
 
   void _endSegment({bool reportSealFailure = false}) {
     _frames.discardPending();
-    _hasPersistedAudio = false;
+    _clearAudioStatus();
     _cutPreview();
     final current = _recording;
     _recording = null;

@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,7 +38,8 @@ def library(tmp_path):
     return Library(tmp_path)
 
 
-def request(library, path, *, headers=None, method='GET', delete=None, runtime=None, assets=None, http_handler=None):
+def request(library, path, *, headers=None, method='GET', delete=None, runtime=None, assets=None, http_handler=None,
+            payload=''):
     """Exercise the real HTTP handler with in-memory transport; no live server."""
     raw = f'{method} {path} HTTP/1.0\r\n'
     raw += ''.join(f'{k}: {v}\r\n' for k, v in {'Host': '127.0.0.1:20001', **(headers or {})}.items())
@@ -46,10 +48,13 @@ def request(library, path, *, headers=None, method='GET', delete=None, runtime=N
         output = io.BytesIO()
 
         def makefile(self, *_args):
-            return io.BytesIO((raw + '\r\n').encode())
+            return io.BytesIO((raw + '\r\n' + payload).encode())
 
         def sendall(self, data):
             self.output.write(data)
+
+        def settimeout(self, _seconds):
+            pass
 
     sock = Socket()
     assets = assets or Path(__file__).resolve().parents[3] / 'web-local'
@@ -58,6 +63,57 @@ def request(library, path, *, headers=None, method='GET', delete=None, runtime=N
     head, body = sock.output.getvalue().split(b'\r\n\r\n', 1)
     lines = head.decode().split('\r\n')
     return int(lines[0].split()[1]), dict(line.split(': ', 1) for line in lines[1:]), body
+
+
+def test_web_summary_uses_the_imported_recording_and_same_origin(library):
+    import uuid
+
+    key = 'a' * 64
+    old = library.transcripts / 'result'
+    folder = old.rename(library.transcripts / key)
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    seen = []
+
+    def web(identity, body):
+        seen.append((identity, body))
+        return {'job': None} if body is None else {'state': 'queued'}
+
+    assets = Path(__file__).resolve().parents[3] / 'web-local'
+    route = handler(library, assets, summary_jobs=SimpleNamespace(web=web))
+    row, = library.scan()
+    assert row['summary_editable'] and 'summary_recording' not in row
+    path = f"/api/recordings/{row['id']}/summary"
+    assert request(library, path, http_handler=route)[0] == 200
+    origin = {'Origin': 'http://127.0.0.1:20001', 'Content-Type': 'application/json', 'Content-Length': '2'}
+    assert request(library, path, http_handler=route, method='POST', headers=origin, payload='{}')[0] == 403
+    assert request(library, path, http_handler=route, method='POST', payload='{}',
+                   headers={**origin, 'X-Omiloc-Request': 'summary'})[0] == 200
+    expected = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + key))
+    assert seen == [(expected, None), (expected, {})]
+
+
+def test_imported_web_card_keeps_last_legacy_publication_during_another_attempt(library):
+    folder = (library.transcripts / 'result').rename(library.transcripts / ('a' * 64))
+    audio = folder / 'audio.json'
+    source = json.loads(audio.read_text())
+    source['structured'] = {'title': 'Original', 'overview': 'First run'}
+    audio.write_text(json.dumps(source))
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    history = folder / 'summary-job.json'
+    saved = {'title': 'Published', 'overview': 'Corrected overview'}
+    history.write_text(json.dumps({'state': 'processing', 'candidate': {'structured': {'title': 'Unpublished'}},
+                                   'published': {'structured': {**saved, 'extra': 'private-field'},
+                                                 'provenance': {'model': 'fixture', 'prompt': 'private-field'}}}))
+    row, = json.loads(request(library, '/api/recordings')[2])['recordings']
+    assert row['summary'] == saved
+    detail = json.loads(request(library, '/api/recordings/' + row['id'])[2])
+    assert detail['summary'] == saved
+    assert detail['processing']['summary'] == {'status': 'ready', 'model': 'fixture'}
+    assert 'private-field' not in str(detail) and detail['segments']
+    for damaged in ['{', '{"state":"processing","candidate":{"structured":{"title":"Draft","overview":"Draft"}}}']:
+        history.write_text(damaged)
+        row, = library.scan()
+        assert row['status'] == 'ready' and row['summary'] == source['structured']
 
 
 def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
@@ -78,6 +134,73 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert request(library, path + '/audio', method='HEAD')[2] == b''
     assert request(library, path + '/audio', headers={'Range': 'bytes=999999-'})[0] == 416
     assert before == {p: p.read_bytes() for p in before}
+
+
+def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(library):
+    from dev_harness.local_library_notes import NoteConflict
+
+    key = 'e' * 64
+    folder = (library.transcripts / 'result').rename(library.transcripts / key)
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    metadata = {'category': 'work', 'emoji': '💼', 'archived': False, 'starred': True}
+    calls = []
+    available = True
+
+    def exchange(keys, *, change=None, detail=False):
+        calls.append((keys, change))
+        if available == 'forbidden':
+            httpx.Response(403, request=httpx.Request('POST', 'http://localhost')).raise_for_status()
+        if not available:
+            raise OSError('Unavailable')
+        if 'category' in (change or {}):
+            raise NoteConflict()
+        metadata.update(change or {})
+        card = {'title': 'Renamed on phone'}
+        if detail:
+            card.update(overview='Fresh published overview', model='Current model')
+        return {key: {**metadata, **({'card': card} if change is None else {})}}
+
+    assets = Path(__file__).resolve().parents[3] / 'web-local'
+    transcript = SimpleNamespace(read=lambda *_args: ([{'start': 1, 'end': 2, 'text': 'Edited on phone',
+                                                          'speaker_name': 'Fixture'}], False))
+    route = handler(library, assets, notes=SimpleNamespace(exchange=exchange, transcript=transcript))
+    rows = request(library, '/api/recordings', http_handler=route)
+    assert key.encode() not in rows[2]
+    row, = json.loads(rows[2])['recordings']
+    assert row['note'] == metadata and row['summary']['title'] == 'Renamed on phone'
+    detail = f"/api/recordings/{row['id']}"
+    shown = json.loads(request(library, detail, http_handler=route)[2])
+    assert shown['transcript_source'] == 'paired' and shown['segments'][0]['speaker_name'] == 'Fixture'
+    assert shown['preview'] == 'Edited on phone'
+    assert shown['summary_current'] and shown['summary'] == {'title': 'Renamed on phone', 'overview': 'Fresh published overview'}
+    assert shown['processing']['summary'] == {'status': 'ready', 'model': 'Current model'}
+    payload = '{"archived":true}'
+    headers = {'Origin': 'http://127.0.0.1:20001', 'Content-Type': 'application/json', 'Content-Length': str(len(payload))}
+    assert request(library, detail + '/notes', method='PATCH', headers=headers, payload=payload, http_handler=route)[0] == 403
+    headers['X-Omiloc-Request'] = 'notes'
+    changed = request(library, detail + '/notes', method='PATCH', headers=headers, payload=payload, http_handler=route)
+    assert json.loads(changed[2])['note']['archived'] is True
+    assert calls[-1] == ([key], {'archived': True})
+    payload = '{"category":{"expected":"education","value":"work"}}'
+    assert request(library, detail + '/notes', method='PATCH', headers={**headers, 'Content-Length': str(len(payload))},
+                   payload=payload, http_handler=route)[0] == 409
+    available = False
+    status, _, body = request(library, detail, http_handler=route)
+    assert status == 200 and json.loads(body)['notes_unavailable']
+    assert json.loads(body)['transcript_source'] == 'original'
+    assert request(library, detail + '/audio', http_handler=route)[0] == 200
+
+    available = True
+    def unreadable(*_args):
+        raise ValueError('Source digest mismatch')
+
+    transcript.read = unreadable
+    damaged = json.loads(request(library, detail, http_handler=route)[2])
+    assert damaged['transcript_source'] == 'unavailable' and not damaged['segments'] and not damaged['preview']
+    assert request(library, detail + '/audio', headers={'Range': 'bytes=0-43'}, http_handler=route)[0] == 206
+    available = 'forbidden'
+    denied = json.loads(request(library, detail, http_handler=route)[2])
+    assert denied['notes_unavailable'] and denied['transcript_source'] == 'unavailable' and not denied['segments']
 
 
 @pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [
@@ -428,7 +551,8 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
         return httpx.Response(200, json={'backend': 'ready', 'capture': {'state': 'received', 'frames_received': 1},
             'live_transcript': {'state': 'streaming', 'updates': 1},
             'diarization': {'state': 'labeled', 'labeled_segments': 2},
-            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик'}]})
+            'sessions': [{'preview_id': 'ephemeral-draft', 'source': 'phone', 'text': 'Синтетический черновик',
+                          'segments': [{'text': 'Синтетический черновик'}]}]})
     factory = httpx.Client
     def client(**kwargs):
         assert kwargs['trust_env'] is False and kwargs['follow_redirects'] is False
@@ -443,7 +567,8 @@ def test_runtime_read_is_same_origin_and_does_not_return_credentials(library, mo
     assert data['diarization'] == {'state': 'labeled', 'labeled_segments': 2}
     assert b'synthetic-private-key' not in body
     assert 'Синтетический черновик' not in json.dumps(data['events'], ensure_ascii=False)
-    assert 'text' not in runtime.previous['sessions'][0]
+    assert data['sessions'][0]['segments'][0]['text'] == 'Синтетический черновик'
+    assert runtime.previous['sessions'] == [{'preview_id': 'ephemeral-draft', 'source': 'phone'}]
     for headers in [{'Host': 'attacker.example'}, {'Origin': 'https://attacker.example'},
                     {'X-Forwarded-For': '127.0.0.1'}, {'Sec-Fetch-Site': 'cross-site'}]:
         assert request(library, '/api/runtime', headers=headers, runtime=runtime)[0] == 403

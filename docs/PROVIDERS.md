@@ -11,12 +11,21 @@ The Local Mac address selects the Omi server that stores recordings; processing
 profiles select the engines that server calls. Switching an Omi server also
 changes the processing profiles shown on the phone.
 
+Open **Settings → Summary templates** and select a row to reveal its prompt.
+The template marked **Default** applies to new recordings. The **Summarization** category also links to the
+template editor. Its **Automatic summaries** control applies to new processing
+jobs. To resume with the only saved provider, choose **Enable automatic
+summaries**. When several providers are saved, choose **Enable** on the row you
+want to use. To regenerate one recording, open it and select
+**Regenerate summary**.
+
 ## Choose local or remote processing
 
 | Where | What to do |
 |---|---|
 | iPhone | Select a profile under Live, finished transcription, or finished diarization, then **Confirm**. **Add** creates a server profile; **Edit** changes its URL, model and optional API key. |
-| Web library | Select a stage and **Use** a saved card. **Add** supports both prepared native engines and server connections. |
+| Next on an updated server | **Processing** also supports summary and translation. **Save** stores a draft and **Apply** switches the active profile. |
+| Web library | Open **Settings → Providers**, scroll to a processing category and choose **Use provider** in its list. The active row shows the latest reported availability when the server has a matching check. **Edit** opens the form below that provider, and **Test connection** checks reachability from Omi. |
 | Config / terminal | Export, edit and save profile JSON, then run `providers use`; commands below. |
 
 Local means **on the Omi server**, not on the iPhone. An API endpoint can be on
@@ -165,6 +174,23 @@ and return an empty answer; set **Model reasoning → Off** on the card, which a
 `chat_template_kwargs: {"enable_thinking": false}` to the request. Leave the
 default for servers that reject unknown fields.
 
+Next can read the configured endpoint's model catalogue or accept a model name
+entered manually. Saving and applying a summary profile in Next records an
+explicit model selection for that profile. In the web library, leave **Model**
+empty to follow the provider. A JSON profile can set `model_source` to `provider`
+for the same behavior. The harness checks that provider's own `/models`
+catalogue with the saved key, prefers a loaded text model, and uses the same
+provider for inference. The translation fallback inherits the summary mode.
+Archive chat and manually regenerated recaps use a recent model observation
+for the applied revision so the model shown before confirmation is the one
+used for the request.
+
+The default for an unmarked profile with a saved model is `profile`.
+Set `OMI_SUMMARY_MODEL_DEFAULT=provider` to retain automatic behavior on an
+existing host. Use `.env.docker` with the Docker launcher.
+This setting preserves the registry on disk. A profile created with an explicit
+mode keeps that mode when the host default changes.
+
 In Next, open **Processing → Summary Template** to add or edit a named prompt
 and select the default. The paired server uses the same revisioned catalog as
 the newer Omi Local client. The default is saved with each new processing job
@@ -184,9 +210,10 @@ characters. Preview-only transcripts need the full-recording path.
 
 Translation uses the connected server's active **Summarization** model by default,
 with the same endpoint, key and reasoning setting. Saved drafts and STT models
-are never selected automatically. To choose another model, open that server's web
-library → **Settings → Translation → Add → Save → Use**. Choose **Use summarization
-model** (currently **Использовать модель суммаризации**) to return to automatic selection.
+are never selected automatically. To choose another model, open **Processing →
+Translation** in Next, add or select a profile and apply it. The web library has
+the same controls under **Settings → Translation**. Choose **Use the summary
+model** and apply to restore inheritance.
 The app's translation toggle turns requests on or off. If neither stage has an
 active text model, configure either one with an OpenAI-compatible base URL ending
 in `/v1`, model and optional API key. New selections apply to new recording sessions.
@@ -196,12 +223,16 @@ live preview only. The relay on the connected server sends each batch of committ
 as one `chat/completions` request asking for a JSON array in the same order, and
 attaches the result to the lines as `translations: [{"lang": "<code>", "text": ...}]`.
 Translations are cached per line text and selected language pair for the session, so corrections that keep
-a line's text cost nothing; a rewritten line is translated again. The last,
-still-growing line is translated once it ends a sentence or stays unchanged for
+a line's text cost nothing. A timed correction keeps its previous translation
+visible until the replacement arrives when it still maps to the same line. Next uses the translations in the current versioned snapshot as the complete set for each line. Splitting a line clears its previous translation; a language change within a two-way conversation replaces the previous direction.
+The last, still-growing line is translated once it ends a sentence or stays unchanged for
 two seconds. A failed batch is not retried within the session.
 Turning translation on or changing its language also translates the current
-visible transcript, without waiting for more speech. Repeated unchanged snapshots
-do not postpone the two-second settling timer.
+visible transcript, without waiting for more speech. Each Next language change
+has its own revision. A response from an earlier revision cannot replace the
+translation or status for the current language, even when switching back to
+the same pair. Older clients can still send unversioned controls. Repeated
+unchanged snapshots do not postpone the two-second settling timer.
 
 The language settings and the on/off switch live in the app (Settings → Local Mac →
 Live translation, and the language chip on the live transcript screen). Enable
@@ -214,11 +245,25 @@ The relay validates the returned source and destination codes before displaying 
 Existing settings keep one-way translation. Two-way translation requires both the
 updated app and backend/relay. Saved language changes travel over the already open
 listen socket, so switching modes never restarts a recording.
+The relay can wait through quiet periods with no CV1 audio. The listen socket's
+session limits and explicit end-of-input still govern when the stream ends.
 Without either active text model, the app shows that the provider is missing; without
 the switch the card is never contacted. Transcript text is untrusted input to the
 model: the prompt tells it to translate, not to follow instructions in the lines.
 
 ## Live STT
+
+The web library’s **Сейчас** tab shows the phone and audio input for each stream.
+Its timer measures audio received by the server. Five seconds without new frames
+flags that input even if another device keeps sending audio. Speaker turns show
+the time of their first segment. Drafts have a dashed marker. During capture,
+the archive sidebar links back to these inputs. The service badges distinguish a
+fresh readiness report from an expired or missing observation.
+
+Open **Настройки живого распознавания** to change the audio buffer, speaker limit
+or draft visibility. Changes save when the control is committed. The status
+shows whether active streams have acknowledged the change. If another client
+saved first, reload the values before editing again.
 
 The live server must accept little-endian PCM16, mono, 16 kHz, and the complete
 WhisperLiveKit protocol: initial `config/useAudioWorklet`,
@@ -242,3 +287,13 @@ using loopback and does not receive external server keys. The first Live
 activation attaches the relay by restarting only the stack-owned backend while
 idle. Later switches and disabling Live require neither a backend restart nor a
 new iPhone build. Existing local live diarization is preserved through the same relay.
+
+## Published summary provenance
+
+The web recording card provides model and template choices for its next summary,
+with an expandable instruction editor. Generate submits to the same durable
+summary queue as Next. The saved result keeps its own model and template labels
+while a replacement is queued or fails. Missing historical labels are shown as
+not recorded; current defaults are never used to infer them. When the provider
+selects its loaded model automatically, new results record that resolved model.
+The paired summary-options API exposes the same optional `published` metadata.

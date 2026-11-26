@@ -50,17 +50,37 @@ def load_pairing() -> dict[str, str]:
         raise LocalTransportAuthError("Local pairing is unavailable") from error
 
 
-def verify_local_key(token: str) -> str:
+def archive_read_allowed(method, path) -> bool:
+    return (method, path) in {
+        ('GET', '/v1/local/archive/recordings'),
+        ('POST', '/v1/local/archive/read'),
+        ('POST', '/v1/local/conversations/search'),
+        ('POST', '/v1/local/conversations/semantic-search'),
+    }
+
+
+def _verify_key(token: str, *, archive_read=False) -> str:
     pairing = load_pairing()
-    if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+    full_format = isinstance(token, str) and re.fullmatch(r'[A-Za-z0-9_-]{43}', token)
+    read_format = archive_read and isinstance(token, str) and re.fullmatch(r'omilocal_archive_[A-Za-z0-9_-]{43}', token)
+    if not full_format and not read_format:
         raise LocalTransportAuthError("Invalid local access key")
     digest = hashlib.sha256(token.encode("ascii")).hexdigest()
-    if not hmac.compare_digest(digest, pairing["key_sha256"]):
+    full_access = full_format and hmac.compare_digest(digest, pairing['key_sha256'])
+    read_digest = pairing.get('archive_read_key_sha256', '')
+    read_access = (read_format and isinstance(read_digest, str) and re.fullmatch(r'[0-9a-f]{64}', read_digest)
+                   and hmac.compare_digest(digest, read_digest))
+    if not full_access and not read_access:
         raise LocalTransportAuthError("Invalid local access key")
     return pairing["owner_uid"]
 
 
-def verify_local_authorization(headers: list[tuple[bytes, bytes]]) -> str:
+def verify_local_key(token: str) -> str:
+    # Existing token-only callers (including WebSocket capture) keep full-key semantics.
+    return _verify_key(token)
+
+
+def verify_local_authorization(headers: list[tuple[bytes, bytes]], *, method=None, path=None) -> str:
     values = [value for name, value in headers if name.lower() == b"authorization"]
     if len(values) != 1:
         raise LocalTransportAuthError("Invalid local authorization")
@@ -70,14 +90,14 @@ def verify_local_authorization(headers: list[tuple[bytes, bytes]]) -> str:
             raise ValueError("Invalid scheme")
     except (UnicodeError, ValueError) as error:
         raise LocalTransportAuthError("Invalid local authorization") from error
-    return verify_local_key(token)
+    return _verify_key(token, archive_read=archive_read_allowed(method, path))
 
 
 def require_paired_owner(request: Request) -> str:
     if not is_offline_runtime() or not local_tunnel_enabled():
         raise HTTPException(status_code=404, detail='Paired archive is unavailable')
     try:
-        return verify_local_authorization(request.scope['headers'])
+        return verify_local_authorization(request.scope['headers'], method=request.method, path=request.url.path)
     except LocalTransportAuthError:
         raise HTTPException(status_code=401, detail='local_auth_required') from None
 
@@ -144,7 +164,9 @@ class LocalTransportAuthMiddleware:
 
     async def _authenticate(self, scope, receive, send):
         try:
-            scope["omi.local_uid"] = verify_local_authorization(scope.get("headers", []))
+            scope["omi.local_uid"] = verify_local_authorization(
+                scope.get("headers", []), method=scope.get("method"), path=scope.get("path"),
+            )
         except LocalTransportAuthError:
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": 1008, "reason": "local_auth_required"})

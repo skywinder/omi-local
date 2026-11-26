@@ -9,6 +9,12 @@ validation completes. Those packets enter the journal after validation,
 before opening live preview. Termination during this initial validation can lose
 the RAM-only startup buffer; it is not a durable recording yet.
 
+Omi Local Next shows delivery failures in the audio counter and in the mobile
+settings. Open the counter to see the pending part count, the detected reason
+and the retry action. The journal keeps a part after a connection failure or
+a mismatched receipt. Reopening the queue after a storage access failure uses
+the same 15-second retry interval, including when no parts could be counted.
+
 The phone seals an immutable part after at most five minutes of audio or when
 you stop recording. Parts preserve their recording identity, source, start time
 and order. PCM duration comes from sample count; Opus duration comes from its
@@ -35,6 +41,50 @@ playback samples, or inflate recording duration. It counts toward storage and
 request limits; the phone retains at most 32 context packets. PCM has no context.
 
 ## What the status means
+
+In Next, open the gear on the conversations screen. **CV1 → phone** shows
+unread bytes in a compact row. Tap it to view a snapshot with free space, clock
+state, overwrite counter and transfer capabilities. The clock flag describes that sample;
+it cannot establish when previously buffered audio was recorded. Both mobile
+platforms read the storage status characteristic while the CV1 is idle.
+An absent, uninitialized or incompatible response leaves the amount unknown.
+For a recognized ring, Next also requests INFO (0x10) on the idle link. Its
+counter reports unread 444-byte packets already overwritten in this ring's
+history. The count does not establish how many conversations were lost. At 1%
+free or less the settings screen warns about further overwrite. The 31-byte
+reply identifies the legacy transfer contract. For a complete v1 reply Next
+recognizes the advertised receiver-acknowledged mode only with a nonzero ring
+identity, receiver acknowledgement and idempotent advance. Capability discovery
+does not negotiate that mode or read audio.
+Use the refresh icon to request a new measurement. **Clear CV1 storage**
+is available for an idle, recognized ring with unread audio. The confirmation
+names the pendant and its measured unread size. The command is bound to that
+Bluetooth connection. Next sends it once and reports success only after the
+firmware acknowledges it and fresh status and INFO both report an empty ring.
+After an interruption, refresh before deciding whether to try again. The
+command clears unread audio on the CV1. Phone parts and server recordings
+remain available independently.
+
+**Phone → server** counts the journal of this app installation, including
+its open part. The original Local app and Next each have their own journal.
+
+CV1 firmware 3.0.21 returns four little-endian words for unread bytes, unread
+444-byte packets, free bytes and RTC validity. Reading that status leaves audio
+on the pendant. Its audio download protocol advances the ring cursor after BLE
+transmission completes, before a phone can acknowledge a durable journal write.
+On iOS and Android, **Import oldest CV1 audio** offers one fragment, a series
+of up to 32 fragments, or **Sync entire CV1**. Full sync queues each series and
+continues to the initial archive boundary. After loss of Bluetooth it queues
+the complete records already received, then waits for the same CV1 to reconnect.
+Repeated sequences are verified against the last saved record hashes before the
+next audio is queued. Each Bluetooth request carries up to 32 legacy records.
+Stop finishes the current fragment or cancels the wait before ending the run. Repeated records at a window boundary
+are compared by sequence and content before being removed from the incoming stream. The phone retains the complete records, separates intervals at
+clock discontinuities and queues them with their original timestamps. If processing
+fails, the raw fragment stays bound to that server and can be retried offline.
+An interruption during the Bluetooth transfer can lose audio on legacy firmware.
+Firmware tags 3.0.23 and 3.0.24 implement ring identity and explicit cursor acknowledgement. Next still needs the matching phone journal and resumable transfer.
+See the [CV1 3.0.23 transfer commands](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.23/omi/firmware/omi/src/lib/core/storage.c) and the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
 
 The Local Mac card includes the number and size of parts retained on the phone.
 Its header names the authenticated saved server (for example, `Demo server`), not the
@@ -125,6 +175,9 @@ outside the library watch tree, then atomically publishes and syncs the complete
 directory before acknowledging. A repeated identical part returns the same
 receipt. Reusing its identity with different bytes returns conflict and cannot
 overwrite the original. Interrupted staging never appears as a completed WAV.
+For new parts the saved end time is the capture start plus the decoded sample
+duration. An upload after an outage therefore retains the original recording
+time. Opus decoder context from a preceding part contributes no extra duration.
 
 The server accepts version-three grouped parts through the same endpoint.
 Grouped clients supply a recording ID, consecutive indexes, sample positions,
@@ -133,14 +186,38 @@ only along a continuous sample range. With a configured silence threshold it
 publishes a conversation after the corresponding silent interval and retains
 onset context for the next conversation. With splitting disabled it retains all
 captured samples through finish, including silence. Matching receipts remain
-available after original staged parts are retired. Next offers **Conversation
-boundaries** with grouped delivery on a compatible paired server. The setting
+available after original staged parts are retired. Next offers **Stop after silence**
+with grouped delivery on a compatible paired server. The setting
 applies to the next capture and is remembered for that pairing. The journal
 retains version-two delivery in the one-recording-per-part mode.
 
 With silence-based grouping, Next seals a part after at most 15 seconds of
 captured audio. The paired server can publish a closed conversation while
-the phone continues capturing. The finish marker becomes ready after Stop,
+the phone continues capturing. After a silence cut is durably published,
+the grouped delivery receipt includes its recording-relative
+`conversation_boundary_sample` at 16 kHz. Next applies it only after checking
+the exact part ID and hash and only to the matching recording. The Live view
+keeps text after that point while continuously listening and opens the group's archive alias
+(`UUIDv5(recording_id, "waiting-for-parts")`). Capture,
+and the timer continue on the original clock. Live timecodes include packet
+gaps, with receipt matching and filtering still using the audio sample clock.
+Reconnects and delayed transcript snapshots respect the confirmed cut.
+Older receipts keep the continuous Live view.
+
+Paired preview sockets that send both `X-Omi-Local-Recording-Group`
+and `X-Omi-Local-Group-Silence` receive per-session speech activity and a
+`flush_part` hint on a speech-to-silence transition. The hint can seal a
+phone part early. It is independent of the durable receipt. On those sockets
+Live starts the next preview at the resumed speech. Next also sends
+`X-Omi-Local-Group-Stop: 1` for timed Stop so current servers retain the
+last transcript. The matching live hint stops the owning input and runs the
+normal local seal and upload path even when Live STT is disabled. With
+**Keep listening after silence**, Next uses the grouped receipt to advance
+Live instead. A connected CV1 that has sent audio can finish locally when it
+stops sending complete packets for the configured interval. Muting and BLE
+disconnects suspend that timer.
+
+The finish marker becomes ready after Stop,
 or on restart after recoverable parts have been sealed. A malformed group
 part keeps its finish marker pending for recovery. A same-codec CV1 reconnect
 keeps the group and resets Opus decoder context.

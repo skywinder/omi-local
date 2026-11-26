@@ -20,7 +20,7 @@ Future<void> _enter(WidgetTester tester, String key, String value) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _open(WidgetTester tester, NextProcessingClient client) async {
+Future<void> _open(WidgetTester tester, NextProcessingClient client, {bool isRecording = true}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(800, 1120);
   addTearDown(tester.view.resetPhysicalSize);
@@ -29,13 +29,105 @@ Future<void> _open(WidgetTester tester, NextProcessingClient client) async {
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: LocalNextProcessingPage(client: client, serverLabel: 'paired.example', isRecording: () => true),
+      home: LocalNextProcessingPage(client: client, serverLabel: 'paired.example', isRecording: () => isRecording),
     ),
   );
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets('edits the summary draft, selects a translator, and confirms return to the summary model', (
+    tester,
+  ) async {
+    var revision = 5;
+    var savedSummary = <String, dynamic>{
+      'id': 'summarizer',
+      'name': 'Summarizer',
+      'stage': 'summary',
+      'kind': 'openai-compatible',
+      'configuration_revision': 3,
+      'can_edit': true,
+      'has_key': true,
+      'settings': {'base_url': 'https://models.example/v1', 'model': 'previous-model'},
+    };
+    final translator = <String, dynamic>{
+      ...savedSummary,
+      'id': 'translator',
+      'name': 'Translator',
+      'stage': 'translation',
+      'configuration_revision': 4,
+    };
+    final activeSummary = savedSummary;
+    Map<String, dynamic>? selectedTranslation;
+    final changes = <Map<String, dynamic>>[];
+    Map<String, dynamic> snapshot() => {
+      'revision': revision,
+      'text_model_profiles_version': 1,
+      'profiles': [savedSummary, translator],
+      'effective': {
+        'summary': activeSummary,
+        'translation': selectedTranslation ?? {...activeSummary, 'stage': 'translation', 'inherited_from': 'summary'},
+      },
+    };
+    final client = NextProcessingClient(
+      read: () async => snapshot(),
+      activatePrepared: (body) async {
+        changes.add(body);
+        expect(body['stage'], 'translation');
+        selectedTranslation = body['id'] == null ? null : translator;
+        revision++;
+        return snapshot();
+      },
+      draftRequest: (operation, body, _) async {
+        if (operation == NextDraftOperation.models) {
+          return {
+            'state': 'ready',
+            'models': ['next-model'],
+          };
+        }
+        expect(operation, NextDraftOperation.save);
+        changes.add(body);
+        expect(body['api_key'], isNull);
+        expect(body['profile']['settings']['reasoning'], 'off');
+        savedSummary = {
+          ...Map<String, dynamic>.from(body['profile'] as Map),
+          'configuration_revision': ++revision,
+          'can_edit': true,
+          'has_key': true,
+        };
+        return snapshot();
+      },
+    );
+    await _open(tester, client, isRecording: false);
+    expect(find.text('Use the summary model'), findsOneWidget);
+    expect(_control('next-translation-confirm'), findsNothing);
+    await _tap(tester, 'next-summary-edit');
+    expect(_control('next-draft-language'), findsNothing);
+    await _tap(tester, 'next-draft-models');
+    await tester.tap(find.text('next-model'));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'next-draft-reasoning');
+    await _tap(tester, 'next-draft-save');
+    expect(changes.single['profile']['settings']['model'], 'next-model');
+    expect(changes.single['profile']['settings']['model_source'], 'profile');
+    expect(_control('next-summary-confirm'), findsOneWidget);
+    expect(_control('next-translation-confirm'), findsNothing);
+
+    await _tap(tester, 'next-translation-6');
+    await tester.tap(find.text('Translator').last);
+    await tester.pumpAndSettle();
+    await _tap(tester, 'next-translation-confirm');
+    expect(changes.last, {'revision': 6, 'stage': 'translation', 'id': 'translator'});
+    expect(find.text('Active · Translator'), findsOneWidget);
+    await _tap(tester, 'next-translation-7');
+    await tester.tap(find.text('Use the summary model').last);
+    await tester.pumpAndSettle();
+    await _tap(tester, 'next-translation-confirm');
+    expect(changes.last, {'revision': 7, 'stage': 'translation', 'id': null});
+    expect(find.text('Active · Summarizer'), findsNWidgets(2));
+    expect(_control('next-translation-confirm'), findsNothing);
+  });
+
   testWidgets('models, explicit metadata check and draft save leave the published STT snapshot intact', (tester) async {
     final active = <String, dynamic>{
       'id': 'stt1',

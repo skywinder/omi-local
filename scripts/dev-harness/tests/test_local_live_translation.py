@@ -333,7 +333,71 @@ def test_inflight_answer_cannot_replace_new_pair_and_cache_includes_both_languag
         translator.set_language('es', 'ru')
         await settle(translator)
         assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'ru', 'text': 'ru:Hola.'}]
-        assert calls == ['ru', 'en']
+        # The first result completed after its controls were retired. Returning
+        # to that pair requests a fresh result instead of accepting it later.
+        assert calls == ['ru', 'en', 'ru']
+        await translator.close()
+    run(scenario())
+
+
+def test_switching_back_to_same_language_rejects_inflight_result_from_prior_revision():
+    async def scenario():
+        import threading
+
+        sink = Sink()
+        started = asyncio.Event()
+        release = threading.Event()
+        loop = asyncio.get_running_loop()
+        calls = []
+
+        def request(_settings, _key, language, texts):
+            calls.append((language, texts))
+            if len(calls) == 1:
+                loop.call_soon_threadsafe(started.set)
+                assert release.wait(5)
+                return ['Expired result.']
+            return ['Current result.']
+
+        translator = make_translator(profile(), 'k', send=sink, request=request)
+        translator.set_language('en', revision=1)
+        translator.annotate(snapshot('One.'))
+        try:
+            await asyncio.wait_for(started.wait(), 5)
+            translator.set_language('de', revision=2)
+            translator.set_language('en', revision=3)
+        finally:
+            release.set()
+        await settle(translator)
+        assert calls == [('en', ['One.']), ('en', ['One.'])]
+        assert all('Expired result.' not in str(message) for message in sink.messages)
+        assert {'type': 'translation_status', 'status': 'ready', 'revision': 3} in sink.messages
+        assert sink.messages[-1]['translation_revision'] == 3
+        assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'en', 'text': 'Current result.'}]
+        await translator.close()
+    run(scenario())
+
+
+def test_keeps_visible_translation_during_unambiguous_timed_correction():
+    async def scenario():
+        sink = Sink()
+        translator = make_translator(profile(), 'k', send=sink, request=Backend())
+        translator.set_language('en', revision=1)
+        old = snapshot('Before.')
+        translator.annotate(old)
+        await settle(translator)
+        translated = sink.messages[-1]['lines']
+        new = {'lines': [{'text': 'Corrected.', 'start': '0:00:00.05', 'end': '0:00:01.05'},
+                         {'text': 'Draft.', 'start': 1.1, 'end': 2, 'is_draft': True}],
+               'buffer_transcription': ''}
+        pending = translator.annotate(new)
+        assert pending['lines'][0]['translations'] == translated[0]['translations']
+        assert 'translations' not in pending['lines'][1]
+        await settle(translator)
+        assert sink.messages[-1]['lines'][0]['translations'] == [{'lang': 'en', 'text': 'en:Corrected.'}]
+        split = [{'text': 'Part one.', 'start': 0, 'end': .5}, {'text': 'Part two.', 'start': .5, 'end': 1}]
+        assert translation.retained_translations(translated, split) == {}
+        assert translation.retained_translations(translated, [{'start': 1, 'end': 2}]) == {}
+        assert translation.retained_translations(split, [{'start': 0, 'end': 1}]) == {}
         await translator.close()
     run(scenario())
 

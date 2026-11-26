@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 from unicodedata import category as unicode_category
@@ -27,7 +28,7 @@ def _time(value: object, duration: float) -> float:
 
 
 def normalize_segments(raw: dict, duration: float, conversation_id: str,
-                       provider: str = 'whisperx-local') -> list[TranscriptSegment]:
+                       provider: str = 'whisperx-local', *, summary_sources=None) -> list[TranscriptSegment]:
     """Preserve sentence boundaries/case; split only actual word-speaker changes.
 
     Untimed words remain in the original sentence. A mixed-speaker sentence
@@ -38,6 +39,7 @@ def normalize_segments(raw: dict, duration: float, conversation_id: str,
         raise ValueError('No transcript segments; no conversation was created')
     result = []
     for segment in segments:
+        first_part = len(result)
         if not isinstance(segment, dict) or not isinstance(segment.get('text'), str) or not segment['text'].strip():
             raise ValueError('Invalid transcript text')
         parts = [segment]
@@ -74,6 +76,8 @@ def normalize_segments(raw: dict, duration: float, conversation_id: str,
                 is_user=False, speaker_identity_status='unknown',
                 speaker_id_scope=conversation_id, stt_provider=provider,
             ))
+        if summary_sources is not None:
+            summary_sources.append(tuple(part.id for part in result[first_part:]))
     return result
 
 
@@ -95,6 +99,11 @@ def stage_outcomes(raw: dict) -> dict | None:
         provider = entry.get('provider_name')
         if isinstance(provider, str) and provider.strip() and provider.isprintable():
             row['provider'] = provider[:100]
+        if stage == 'summary' and status == 'ready':
+            for key, limit in (('model', 300), ('template_name', 100)):
+                value = entry.get(key)
+                if isinstance(value, str) and 0 < len(value) <= limit and value.isprintable():
+                    row[key] = value
         if stage == 'diarization':
             speakers = (raw.get('diarization') or {}).get('speakers') if isinstance(raw.get('diarization'), dict) else None
             if type(speakers) is int and 0 <= speakers <= 10_000:
@@ -120,6 +129,38 @@ def summary_labels(summary: dict, *, user_category: str | None = None) -> dict:
     return labels
 
 
+def summary_note_fields(summary, sources):
+    """Resolve provider-local source numbers to canonical transcript segment IDs."""
+    fields = {'overview': summary['overview'].strip(), 'sections': []}
+    rows = summary.get('sections')
+    if not isinstance(rows, list):
+        return fields
+    sections = []
+    # Section prose must not cause remote images or links to load in a paired client.
+    literal_markup = str.maketrans({'\\': '\\\\', '[': '\\[', '<': '\\<'})
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        heading, body, refs = (row.get(key) for key in ('heading', 'body_markdown', 'source_refs'))
+        if not isinstance(heading, str) or not isinstance(body, str) or not isinstance(refs, list):
+            continue
+        heading, body = ' '.join(heading.split()).translate(literal_markup), body.strip().translate(literal_markup)
+        if not 0 < len(heading) <= 96 or not 0 < len(body) <= 625:
+            continue
+        ids = list(dict.fromkeys(
+            identifier for ref in refs[:8] if type(ref) is int and 0 < ref <= len(sources)
+            for identifier in sources[ref - 1]
+        ))[:8]
+        if ids:
+            sections.append({'heading': heading, 'body_markdown': body, 'source_segment_ids': ids})
+    fields['sections'] = sections
+    if sections:
+        # Match Omi's first-party Markdown projection so both older readers and
+        # the section-and-source view render the same current recap.
+        fields['overview'] = '\n\n'.join(f"## {row['heading']}\n\n{row['body_markdown']}" for row in sections)
+    return fields
+
+
 def build_conversation(raw: dict, manifest: dict) -> Conversation:
     digest = manifest['audio_sha256']
     if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
@@ -138,7 +179,8 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 'whisperkit': 'whisperkit-local', 'openai-compatible': 'openai-compatible-local'}[manifest['profile']['engine']]
     if manifest['profile'].get('pipeline') and manifest['profile']['engine'] == 'openai-compatible':
         provider = 'openai-compatible'
-    segments = normalize_segments(raw, duration, conversation_id, provider)
+    summary_sources = [] if isinstance(raw.get('structured'), dict) and 'sections' in raw['structured'] else None
+    segments = normalize_segments(raw, duration, conversation_id, provider, summary_sources=summary_sources)
     structured = {'title': 'Локальная запись', 'overview': ''}
     if 'structured' in raw:
         summary = raw['structured']
@@ -146,7 +188,7 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 or not isinstance(summary.get('overview'), str) or not summary['title'].strip()
                 or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
             raise ValueError('Invalid local recording summary')
-        structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
+        structured = {'title': summary['title'].strip(), **summary_note_fields(summary, summary_sources or [])}
         structured.update(summary_labels(summary))
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,
@@ -163,6 +205,47 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
 
 # Reserve Firestore document space for summary metadata and subsequent user edits.
 GROUPED_INLINE_TRANSCRIPT_BYTES = 512 * 1024
+GROUPED_TRANSCRIPT_EDIT_BYTES = 192 * 1024
+
+
+class TranscriptEditLimit(ValueError):
+    pass
+
+
+def local_transcript_root() -> Path:
+    return Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
+
+
+def read_grouped_transcript_edits(document: dict, uid: str) -> dict:
+    if 'local_transcript_edits' not in document:
+        return {}
+    from utils import encryption
+
+    payload = document['local_transcript_edits']
+    if not isinstance(payload, str) or len(payload) > 4 * ((GROUPED_TRANSCRIPT_EDIT_BYTES + 30) // 3):
+        raise ValueError('Invalid transcript edits')
+    edits = json.loads(encryption.decrypt(payload, uid))
+    if not isinstance(edits, dict):
+        raise ValueError('Invalid transcript edits')
+    for patch in edits.values():
+        if not isinstance(patch, dict) or not patch or patch.keys() - {'text', 'person_id', 'is_user'}:
+            raise ValueError('Invalid transcript edit')
+        if 'text' in patch and (not isinstance(patch['text'], str) or not patch['text'].strip()):
+            raise ValueError('Invalid edited text')
+        if 'is_user' in patch or 'person_id' in patch:
+            if (type(patch.get('is_user')) is not bool or 'person_id' not in patch
+                    or (patch['person_id'] is not None and (patch['is_user'] or not isinstance(patch['person_id'], str)))):
+                raise ValueError('Invalid edited speaker')
+    return edits
+
+
+def encode_grouped_transcript_edits(edits: dict, uid: str) -> str:
+    from utils import encryption
+
+    payload = json.dumps(edits, ensure_ascii=False, separators=(',', ':'))
+    if len(payload.encode('utf-8')) > GROUPED_TRANSCRIPT_EDIT_BYTES:
+        raise TranscriptEditLimit('Recording exceeds its stored transcript edit budget')
+    return encryption.encrypt(payload, uid)
 
 
 def grouped_import_document(conversation: Conversation, manifest: dict, raw_path: Path) -> dict:
@@ -184,7 +267,7 @@ def grouped_import_document(conversation: Conversation, manifest: dict, raw_path
     return document
 
 
-def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
+def hydrate_grouped_transcript(document: dict, root: Path, uid: str, *, original_segments: dict | None = None) -> dict:
     """Resolve only a validated imported local result under the paired owner's service directory."""
     local = (document.get('external_data') or {}).get('local_transcript') or {}
     if local.get('segment_storage') != 'result-file':
@@ -212,5 +295,20 @@ def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
     full = build_conversation(raw, manifest)
     if len(full.transcript_segments) != local.get('segment_count'):
         raise ValueError('Incomplete transcript')
-    return {**document, 'transcript_segments': [s.model_dump() for s in full.transcript_segments],
-            'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}
+    edits = read_grouped_transcript_edits(document, uid)
+    segments = []
+    for segment in full.transcript_segments:
+        entry = segment.model_dump()
+        if original_segments is not None and segment.id in original_segments:
+            original_segments[segment.id] = entry.copy()
+        if patch := edits.pop(segment.id, None):
+            entry.update(patch)
+            if 'is_user' in patch:
+                entry['speaker_identity_status'] = 'user' if patch['is_user'] else 'unknown'
+        segments.append(entry)
+    if edits:
+        raise ValueError('Edited segment missing from transcript')
+    result = {**document, 'transcript_segments': segments,
+              'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}
+    result.pop('local_transcript_edits', None)
+    return result

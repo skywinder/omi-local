@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/local_next/live_view.dart';
@@ -82,11 +83,139 @@ class _TuningPair extends PairedLibrary {
   }
 }
 
+class _SavedGroupPair extends _TuningPair {
+  String? opened;
+
+  @override
+  Future<ServerConversation> refreshSavedRecording(String id) async {
+    opened = id;
+    return ServerConversation.fromJson({
+      'id': id,
+      'created_at': '2026-11-26T06:00:00Z',
+      'status': 'completed',
+      'structured': {'title': 'Saved session fixture'},
+    });
+  }
+}
+
 void main() {
-  testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
+  testWidgets('paired server stays connected on the idle Live screen', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final library = _TuningPair();
+    final preview = NextLivePreview('fixture', (owner, source, codec, {silence}) => throw StateError('no recording'));
+    final capture = ValueNotifier(false);
+    addTearDown(library.close);
+    addTearDown(preview.dispose);
+    addTearDown(capture.dispose);
+    library.connection.value = NextServerConnection.connected;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: capture,
+            isRecording: () => false,
+            onStop: () async {},
+            serverLabel: 'Test Server',
+            library: library,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('Test Server · Connected'), findsOneWidget);
+    expect(find.text('No active recording'), findsOneWidget);
+    expect(find.text('Off'), findsNothing);
+    library.connection.value = NextServerConnection.unreachable;
+    await tester.pump();
+    expect(find.text('Test Server · Unreachable'), findsOneWidget);
+    expect(find.text('No active recording'), findsOneWidget);
+  });
+
+  testWidgets('a saved conversation clears only older Live text and leaves Stop available', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
+    final capture = ValueNotifier(true);
+    final library = _SavedGroupPair();
+    addTearDown(preview.dispose);
+    addTearDown(capture.dispose);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: capture,
+            isRecording: () => capture.value,
+            onStop: () async => capture.value = false,
+            serverLabel: 'fixture.local',
+            library: library,
+          ),
+        ),
+      ),
+    );
+    const recording = '00000000-0000-4000-8000-000000000017';
+    preview.begin(recording, 'phone', 'pcm16');
+    await tester.pump();
+    socket.snapshot(1, 'Saved conversation text', draft: true);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved conversation text', findRichText: true), findsOneWidget);
+    preview.confirmConversationBoundary(recording, 10 * 16000);
+    await tester.pumpAndSettle();
+    expect(find.text('Saved conversation text', findRichText: true), findsNothing);
+    expect(find.text('Unfinished sentence', findRichText: true), findsOneWidget);
+    final drafts = find.byKey(const ValueKey('next-live-drafts'));
+    expect(find.descendant(of: drafts, matching: find.text('Unfinished sentence')), findsOneWidget);
+    socket.send({
+      'type': 'local_transcript_snapshot',
+      'preview_id': 'preview-fixture',
+      'revision': 2,
+      'segments': [
+        {'id': 'line', 'text': 'Saved conversation text. Unfinished sentence.', 'start': 1, 'end': 12},
+      ],
+    });
+    await tester.pumpAndSettle();
+    expect(drafts, findsNothing);
+    expect(find.text('Saved conversation text. Unfinished sentence.', findRichText: true), findsOneWidget);
+    socket.send({
+      'type': 'local_transcript_snapshot',
+      'preview_id': 'preview-fixture',
+      'revision': 3,
+      'segments': [],
+      'withdrawn': {'text': 'Unfinished sentence', 'end': 12},
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Previous wording · unconfirmed'), findsOneWidget);
+    expect(find.text('Unfinished sentence'), findsOneWidget);
+    expect(tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).segments, isEmpty);
+    socket.snapshot(4, 'Old text');
+    await tester.pumpAndSettle();
+    expect(find.text('Previous wording · unconfirmed'), findsNothing);
+    expect(find.text('Conversation audio saved'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+    expect(capture.value, isTrue);
+    await tester.tap(find.text('Conversation audio saved'));
+    await tester.pumpAndSettle();
+    expect(library.opened, 'ad07c88e-e147-5d43-a41e-48099e2aa947');
+    expect(capture.value, isTrue);
+  });
+
+  testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 650);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final socket = _Socket();
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     final library = _TuningPair();
     addTearDown(preview.dispose);
@@ -97,11 +226,16 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.5)),
+          child: child!,
+        ),
         home: Scaffold(
           body: LocalNextLiveButton(
             preview: preview,
             capture: recording,
             isRecording: () => recording.value,
+            recordingTime: (_) => const Text('CV1 · 02:00', maxLines: 1, overflow: TextOverflow.ellipsis),
             serverLabel: 'fixture.local',
             library: library,
             onStop: () async {
@@ -122,6 +256,9 @@ void main() {
     await tester.pump();
     const warning = 'All live transcription slots are in use. Audio is still recording.';
     expect(find.text(warning), findsOneWidget);
+    final card = find.byKey(const ValueKey('next-live-strip'));
+    expect(tester.getRect(card).contains(tester.getCenter(find.text('CV1 · 02:00'))), isTrue);
+    expect(tester.getRect(card).bottom, greaterThanOrEqualTo(tester.getRect(find.text(warning)).bottom));
     expect(recording.value, isTrue);
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
@@ -135,7 +272,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
     final library = _TuningPair();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     addTearDown(preview.dispose);
     addTearDown(recording.dispose);
@@ -220,7 +357,7 @@ void main() {
       'next.live.translation.fixture-owner': <String>['ru', ''],
     });
     final socket = _Socket();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     final muted = ValueNotifier(false);
     var stops = 0;
@@ -278,11 +415,19 @@ void main() {
     expect(find.text('Первый перевод', findRichText: true), findsNothing);
     expect(find.textContaining('No translation model is configured'), findsOneWidget);
 
-    void longSnapshot(int revision, int count) => socket.send({
+    void longSnapshot(int revision, int count, {String? tail}) => socket.send({
       'type': 'local_transcript_snapshot',
       'preview_id': 'preview-fixture',
       'revision': revision,
-      'segments': List.generate(count, (i) => {'id': 'line-$i', 'text': 'Sentence $i', 'start': i, 'end': i + 1}),
+      'segments': List.generate(
+        count,
+        (i) => {
+          'id': 'line-$i',
+          'text': i == count - 1 && tail != null ? tail : 'Sentence $i',
+          'start': i,
+          'end': i + 1,
+        },
+      ),
     });
     longSnapshot(4, 45);
     await tester.pumpAndSettle();
@@ -303,6 +448,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.position.extentAfter, lessThan(2));
 
+    final beforeCorrection = tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).contentVersion;
+    final extended = List.filled(30, 'Same turn continues.').join(' ');
+    longSnapshot(6, 46, tail: extended);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).contentVersion,
+      greaterThan(beforeCorrection),
+    );
+    expect(find.text(extended, findRichText: true), findsOneWidget);
+    expect(controller.position.extentAfter, lessThan(2));
+    longSnapshot(7, 46);
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(stops, 0);
@@ -316,14 +473,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(stops, 1);
     expect(find.text('Stop'), findsNothing);
+    expect(find.text('fixture.local'), findsNothing);
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('fixture.local'), findsOneWidget);
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('next-live-target')));
     await tester.pumpAndSettle();
-    final menu = find.byType(Scrollable).last;
-    final off = find.descendant(of: menu, matching: find.text('Off'));
-    await tester.scrollUntilVisible(off, -240, scrollable: menu);
-    await tester.tap(off);
+    await tester.enterText(find.byType(TextField), 'рус');
+    await tester.pump();
+    expect(find.text('Русский (Russian)'), findsOneWidget);
+    expect(find.text('English'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'no-such-language');
+    await tester.pump();
+    expect(find.text('No results found'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'fr');
+    await tester.pump();
+    await tester.tap(find.text('Français (French)'));
+    await tester.pumpAndSettle();
+    expect(preview.targetLanguage, 'fr');
+    await tester.tap(find.byKey(const ValueKey('next-live-other')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'eng');
+    await tester.pump();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(preview.otherLanguage, 'en');
+    await tester.tap(find.byKey(const ValueKey('next-live-target')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Off'));
     await tester.pumpAndSettle();
     expect(preview.targetLanguage, isEmpty);
     expect((await SharedPreferences.getInstance()).getStringList('next.live.translation.fixture-owner'), ['', '']);

@@ -8,6 +8,8 @@ import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/folder.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
+import 'package:omi/local_next/accents.dart';
+import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_edit.dart';
 
@@ -23,6 +25,7 @@ class _EditableLibrary extends PairedLibrary {
   String transcript = 'Original words';
   String category = 'other';
   bool starred = false;
+  bool archived = false;
   bool conflict = false;
   String? currentFolder;
   Folder? savedFolder;
@@ -45,6 +48,7 @@ class _EditableLibrary extends PairedLibrary {
       },
     },
     'starred': starred,
+    'archived': archived,
     'folder_id': currentFolder,
     'transcript_segments': [
       {'id': 'actual-line', 'text': transcript, 'start': 4.25, 'end': 6.0, 'is_user': true},
@@ -56,10 +60,12 @@ class _EditableLibrary extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async {
     filters.add(starredOnly);
-    final rows = (!starredOnly || starred) && (folderId == null || currentFolder == folderId)
+    final rows =
+        (!archivedOnly || archived) && (!starredOnly || starred) && (folderId == null || currentFolder == folderId)
         ? [await detail(_id)]
         : <ServerConversation>[];
     return (rows: rows, consumed: rows.length, partial: false, more: false);
@@ -77,6 +83,8 @@ class _EditableLibrary extends PairedLibrary {
         transcript = edit.value as String;
       case 'starred':
         starred = edit.value as bool;
+      case 'archived':
+        archived = edit.value as bool;
       case 'folder':
         currentFolder = edit.value as String?;
       case 'category':
@@ -163,6 +171,142 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testWidgets('selected favorite has distinct shape and legible accent in ${brightness.name}', (tester) async {
+      final previous = OmiColors.active;
+      addTearDown(() => OmiColors.active = previous);
+      OmiColors.active = OmiColors.forBrightness(brightness);
+      final library = _EditableLibrary();
+      addTearDown(library.close);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: brightness),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          home: LocalNextLibraryPage(library: library),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final button = find.byKey(const ValueKey('archive-starred'));
+      expect(find.descendant(of: button, matching: find.byIcon(Icons.star_outline)), findsOneWidget);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: button, matching: find.byIcon(Icons.star)), findsOneWidget);
+      final context = tester.element(button);
+      final selected = tester.widget<Text>(find.descendant(of: button, matching: find.text('Starred')));
+      expect(selected.style!.color, NextAccent.amber.of(context));
+      for (final accent in NextAccent.values) {
+        final ink = accent.of(context).computeLuminance();
+        final surface = Color.alphaBlend(accent.tint(context), OmiColors.surface1).computeLuminance();
+        expect(
+          ink > surface ? (ink + .05) / (surface + .05) : (surface + .05) / (ink + .05),
+          greaterThanOrEqualTo(4.5),
+          reason: accent.name,
+        );
+      }
+    });
+  }
+
+  testWidgets('all five library controls fit one accessible row on a narrow phone', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 720);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final library = _EditableLibrary()
+      ..recordingArchive = true
+      ..foldersAvailable = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final rects = [
+      for (final key in ['archived', 'starred', 'category', 'visibility', 'folder'])
+        tester.getRect(find.byKey(ValueKey('archive-$key'))),
+    ];
+    for (final rect in rects) {
+      expect(rect.top, rects.first.top);
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.right, lessThanOrEqualTo(320));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long press edits favorites, handles stale edits, archives and restores from the list', (tester) async {
+    final library = _EditableLibrary()..recordingArchive = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = find.text('Original title');
+    Future<void> action(String label) async {
+      await tester.longPress(title);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    await action('Add to favorites');
+    expect(library.starred, isTrue);
+    await action('Remove from favorites');
+    expect(library.starred, isFalse);
+    library.conflict = true;
+    await action('Archive recording');
+    expect(title, findsOneWidget);
+    expect(library.archived, isFalse);
+    library.conflict = false;
+    await action('Archive recording');
+    expect(title, findsNothing);
+    await tester.tap(find.byKey(const ValueKey('archive-archived')));
+    await tester.pumpAndSettle();
+    await action('Restore from archive');
+    expect(title, findsNothing);
+    expect(library.requests.last, {'field': 'archived', 'expected': true, 'value': false});
+  });
+
+  testWidgets('archiving and restoring a paired conversation moves it between the two lists', (tester) async {
+    final library = _EditableLibrary()..recordingArchive = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = find.text('Original title');
+    final archive = find.byKey(const ValueKey('archive-archived'));
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    library.conflict = true;
+    await _menu(tester, 'Archive recording');
+    expect(library.archived, isFalse);
+    library.conflict = false;
+    await _menu(tester, 'Archive recording');
+    expect(library.archived, isTrue);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+    await tester.tap(archive);
+    await tester.pumpAndSettle();
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    await _menu(tester, 'Restore from archive');
+    expect(library.requests.last, {'field': 'archived', 'expected': true, 'value': false});
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('No archived recordings'), findsOneWidget);
+    await tester.tap(archive);
+    await tester.pumpAndSettle();
+    expect(title, findsOneWidget);
+  });
+
   testWidgets('a read-only transcript shows the recorded diarization result and copies the complete text', (
     tester,
   ) async {
@@ -271,7 +415,7 @@ void main() {
     expect(library.currentFolder, 'project-folder', reason: 'Sent edits: ${library.requests}');
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(ActionChip));
+    await tester.tap(find.byKey(const ValueKey('archive-folder')));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
@@ -335,7 +479,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Revised title'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilterChip, 'Starred'));
+    await tester.tap(find.byKey(const ValueKey('archive-starred')));
     await tester.pumpAndSettle();
     expect(library.filters, [false, true]);
     expect(find.text('Revised title'), findsOneWidget);

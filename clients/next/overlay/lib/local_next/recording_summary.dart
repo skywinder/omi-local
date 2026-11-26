@@ -4,6 +4,25 @@ enum RecordingSummaryFailure implements Exception { conflict, tooLarge, noTransc
 
 typedef SummaryProvider = ({String name, RecordingChatProvider endpoint});
 typedef SummaryTemplate = ({String id, String name, String prompt, String digest});
+typedef SummaryProvenance = ({String? model, String? templateName});
+typedef SummaryProgress = ({String phase, int? completed, int? total});
+typedef SummaryJob = ({String requestId, String state, String? error, SummaryProgress? progress});
+
+SummaryJob decodeSummaryJob(Map<String, dynamic> row) {
+  final progress = row['progress'];
+  return (
+    requestId: row['request_id'] as String,
+    state: row['state'] as String,
+    error: row['error'] as String?,
+    progress: progress is Map<String, dynamic>
+        ? (
+            phase: progress['phase'] as String,
+            completed: progress['completed'] as int?,
+            total: progress['total'] as int?,
+          )
+        : null,
+  );
+}
 
 class RecordingSummaryOptions {
   const RecordingSummaryOptions({
@@ -12,6 +31,8 @@ class RecordingSummaryOptions {
     required this.templates,
     required this.defaultBinding,
     required this.defaultTemplate,
+    this.job,
+    this.published,
   });
 
   factory RecordingSummaryOptions.fromJson(Map<String, dynamic> json) => RecordingSummaryOptions(
@@ -30,6 +51,10 @@ class RecordingSummaryOptions {
     }).toList(),
     defaultBinding: json['default_provider_binding'] as String?,
     defaultTemplate: json['default_template_id'] as String,
+    published: json['published'] is Map<String, dynamic>
+        ? (model: json['published']['model'] as String?, templateName: json['published']['template_name'] as String?)
+        : null,
+    job: json['job'] == null ? null : decodeSummaryJob(json['job'] as Map<String, dynamic>),
   );
 
   final String sourceRevision;
@@ -37,6 +62,8 @@ class RecordingSummaryOptions {
   final List<SummaryTemplate> templates;
   final String? defaultBinding;
   final String defaultTemplate;
+  final SummaryJob? job;
+  final SummaryProvenance? published;
 }
 
 typedef SummaryRegeneration = ({

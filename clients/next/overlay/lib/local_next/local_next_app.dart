@@ -7,18 +7,27 @@ import 'package:omi/ui/omi_theme.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'about_page.dart';
+import 'accents.dart';
+import 'app_identity.dart';
 import 'archive.dart';
+import 'category_backfill.dart';
+import 'server_connection_indicator.dart';
 import 'conversation_categories.dart';
 import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
+import 'local_memories_page.dart';
 import 'local_tasks_page.dart';
 import 'recording_edit.dart';
 import 'archive_search_page.dart';
 import 'capture_panel.dart';
 import 'cv1_capture.dart';
+import 'device_diagnostics_page.dart';
 import 'home_shortcuts.dart';
+import 'offline_recordings_page.dart';
 import 'task_editor.dart';
+import 'task_reminder_sync.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
 import 'server_catalog.dart';
@@ -33,7 +42,7 @@ class LocalNextApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Omi Local Next',
+    title: nextAppName,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     theme: _nextTheme(Brightness.light),
@@ -51,7 +60,17 @@ ThemeData _nextTheme(Brightness brightness) {
   final theme = buildOmiTheme(brightness: brightness);
   final disabled = Color.alphaBlend(palette.textPrimary.withValues(alpha: .58), palette.surface0);
   final outline = Color.alphaBlend(palette.textPrimary.withValues(alpha: .56), palette.surface0);
+  const buttonPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 8);
+  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
+  final accent = NextAccent.teal.ink(brightness);
+  final onAccent = brightness == Brightness.dark ? Colors.black : Colors.white;
   return theme.copyWith(
+    colorScheme: theme.colorScheme.copyWith(
+      primary: accent,
+      onPrimary: onAccent,
+      primaryContainer: Color.alphaBlend(accent.withValues(alpha: .13), palette.surface1),
+      onPrimaryContainer: accent,
+    ),
     disabledColor: disabled,
     textTheme: theme.textTheme.copyWith(
       bodySmall: theme.textTheme.bodySmall?.copyWith(color: palette.textTertiary),
@@ -59,10 +78,19 @@ ThemeData _nextTheme(Brightness brightness) {
     ),
     iconTheme: IconThemeData(color: palette.textPrimary),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: palette.textPrimary, disabledForegroundColor: disabled),
+      style: TextButton.styleFrom(
+        padding: buttonPadding,
+        shape: buttonShape,
+        foregroundColor: palette.textPrimary,
+        disabledForegroundColor: disabled,
+      ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
+        shape: buttonShape,
+        padding: buttonPadding,
+        minimumSize: const Size(48, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
         foregroundColor: palette.textPrimary,
         disabledForegroundColor: disabled,
         side: BorderSide(color: outline),
@@ -70,8 +98,12 @@ ThemeData _nextTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: palette.accent,
-        foregroundColor: palette.onAccent,
+        shape: buttonShape,
+        padding: buttonPadding,
+        minimumSize: const Size(48, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        backgroundColor: accent,
+        foregroundColor: onAccent,
         disabledBackgroundColor: palette.surface3,
         disabledForegroundColor: palette.textTertiary,
       ),
@@ -83,12 +115,14 @@ ThemeData _nextTheme(Brightness brightness) {
     tabBarTheme: TabBarThemeData(
       labelColor: palette.textPrimary,
       unselectedLabelColor: palette.textTertiary,
-      indicatorColor: palette.accent,
+      indicatorColor: accent,
     ),
   );
 }
 
-enum _ArchiveAction { refresh, tasks, recaps, goals, select }
+enum _ArchiveAction { refresh, offline, tasks, recaps, goals, memories, select, about }
+
+enum _ArchiveSelectionActivity { move, classify }
 
 class _Pairing extends StatefulWidget {
   const _Pairing({this.session, this.shortcuts});
@@ -100,12 +134,15 @@ class _Pairing extends StatefulWidget {
 
 class _PairingState extends State<_Pairing> {
   late final NextServerSession session;
+  final _reminders = TaskReminderSync();
   PairedLibrary? _shown;
 
   @override
   void initState() {
     super.initState();
     session = widget.session ?? NextServerSession(NextServerCatalog());
+    _shown = session.active;
+    _reminders.bind(_shown);
     session.addListener(_changed);
     session.initialize();
   }
@@ -113,6 +150,7 @@ class _PairingState extends State<_Pairing> {
   void _changed() {
     if (_shown != session.active) {
       _shown = session.active;
+      _reminders.bind(_shown);
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
     setState(() {});
@@ -121,6 +159,7 @@ class _PairingState extends State<_Pairing> {
   @override
   void dispose() {
     session.removeListener(_changed);
+    _reminders.dispose();
     session.dispose();
     super.dispose();
   }
@@ -134,6 +173,7 @@ class _PairingState extends State<_Pairing> {
       key: ObjectKey(active),
       shortcuts: widget.shortcuts,
       library: active,
+      reminders: _reminders,
       serverName: named?.name ?? active.origin.authority,
       pairingBusy: session.busy,
       openServers: () => Navigator.of(
@@ -151,47 +191,98 @@ class LocalNextLibraryPage extends StatefulWidget {
     this.serverName,
     this.pairingBusy = false,
     this.shortcuts,
+    this.reminders,
   });
   final VoidCallback? openServers;
   final String? serverName;
   final bool pairingBusy;
   final NextHomeShortcuts? shortcuts;
+  final TaskReminderSync? reminders;
   final PairedLibrary library;
   @override
   State<LocalNextLibraryPage> createState() => _LibraryPageState();
 }
 
-class _LibraryPageState extends State<LocalNextLibraryPage> {
+class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingObserver {
+  var _panel = GlobalKey<NextCapturePanelState>();
+  Timer? _heartbeat;
+  void _watchServer() {
+    _heartbeat?.cancel();
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state != null && state != AppLifecycleState.resumed) return;
+    final paired = widget.library;
+    Future<void> check({required bool periodic}) async {
+      try {
+        await paired.verify();
+      } catch (_) {
+        return; // The profile check publishes its own connection status.
+      }
+      if (!mounted || paired != widget.library) return;
+      if (widget.reminders case final reminders?) {
+        final title = pairedSettingsLabel(context, 'localReminderTitle');
+        unawaited(reminders.sync(paired, title));
+      }
+      if (_canRefreshRecordings()) await _archive.refreshAfterServerCheck(periodic: periodic);
+    }
+
+    unawaited(check(periodic: false));
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(check(periodic: true)));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _watchServer();
+
   late PairedArchiveProvider _archive;
   Map<String, String?>? _selection;
-  bool _moving = false;
+  _ArchiveSelectionActivity? _selectionActivity;
+  bool get _selectionBusy => _selectionActivity != null;
 
   Future<void> _moveSelected() async {
     final library = widget.library;
     final archive = _archive;
     final selected = _selection;
-    if (_moving || selected == null || selected.isEmpty) return;
-    setState(() => _moving = true);
+    if (_selectionBusy || selected == null || selected.isEmpty) return;
+    setState(() => _selectionActivity = _ArchiveSelectionActivity.move);
     try {
       final destination = await pickLocalFolder(context, library, moving: true);
       if (!mounted || widget.library != library || destination == null) return;
       await library.bulkMoveFolders(selected, destination.folder?.id);
       if (!mounted || widget.library != library) return;
       setState(() => _selection = null);
-      archive.refreshAfterFolderChange();
+      archive.refreshAfterArchiveEdit();
     } catch (error) {
       if (mounted && widget.library == library) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
       }
     } finally {
-      if (mounted && widget.library == library) setState(() => _moving = false);
+      if (mounted && widget.library == library) setState(() => _selectionActivity = null);
+    }
+  }
+
+  Future<void> _classifySelected() async {
+    final library = widget.library;
+    final selected = _selection;
+    if (_selectionBusy || selected == null || selected.isEmpty || selected.length > 8) return;
+    setState(() => _selectionActivity = _ArchiveSelectionActivity.classify);
+    try {
+      final submitted = await runCategoryBackfill(context, library, selected.keys.toList());
+      if (mounted && widget.library == library && submitted) {
+        setState(() => _selection = null);
+        _archive.refreshAfterArchiveEdit();
+      }
+    } finally {
+      if (mounted && widget.library == library) setState(() => _selectionActivity = null);
     }
   }
 
   void _select(String id) {
     final selection = _selection;
     final row = _archive.rowById(id);
-    if (_moving || selection == null || row == null || row.status != ConversationStatus.completed || row.isLocked) {
+    if (_selectionBusy ||
+        selection == null ||
+        row == null ||
+        row.status != ConversationStatus.completed ||
+        row.isLocked) {
       return;
     }
     setState(() {
@@ -206,6 +297,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.shortcuts?.addListener(_queueShortcuts);
     _attach();
   }
@@ -215,7 +307,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
 
   void _bindInputs(NextCaptureInputs next) {
     _inputs?.cv1.removeListener(_queueShortcuts);
-    _inputs = next;
+    setState(() => _inputs = next);
     next.cv1.addListener(_queueShortcuts);
     _queueShortcuts();
   }
@@ -246,7 +338,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     actions.publish(library.audioOwnerId, labels);
     switch (actions.take(library.audioOwnerId, labels.keys.toSet())) {
       case NextHomeAction.device:
-        unawaited(showNextDevices(context, inputs!));
+        unawaited(showNextDevices(context, inputs!, library: library));
       case NextHomeAction.task:
         unawaited(createLocalTask(context, library));
       case NextHomeAction.mute || NextHomeAction.unmute:
@@ -260,6 +352,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     _archive = PairedArchiveProvider(widget.library, canRefreshRecordings: _canRefreshRecordings)
       ..addListener(_changed);
     _archive.refresh();
+    _watchServer();
   }
 
   bool _canRefreshRecordings() {
@@ -276,8 +369,11 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
   void didUpdateWidget(LocalNextLibraryPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.library != widget.library) {
+      _inputs?.cv1.removeListener(_queueShortcuts);
+      _inputs = null;
+      _panel = GlobalKey<NextCapturePanelState>();
       _selection = null;
-      _moving = false;
+      _selectionActivity = null;
       _archive.dispose();
       _attach();
     }
@@ -285,6 +381,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _heartbeat?.cancel();
     widget.shortcuts?.removeListener(_queueShortcuts);
     _inputs?.cv1.removeListener(_queueShortcuts);
     widget.shortcuts?.publish('', {});
@@ -304,6 +402,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
+        toolbarHeight: kToolbarHeight + (MediaQuery.textScalerOf(context).scale(24) - 24).clamp(0.0, 40.0),
         title: InkWell(
           key: const ValueKey('archive-servers'),
           onTap: widget.pairingBusy ? null : widget.openServers,
@@ -313,18 +412,19 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l.conversations, maxLines: 1, overflow: TextOverflow.ellipsis),
+                Cv1HeaderTitle(
+                  title: l.conversations,
+                  link: _inputs?.connection,
+                  openDevices: _inputs == null
+                      ? null
+                      : () => unawaited(showNextDevices(context, _inputs!, library: library)),
+                ),
                 if (widget.openServers != null)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(
-                          serverName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: OmiColors.textTertiary),
-                        ),
+                        child: NextServerIndicator(library: library, name: serverName),
                       ),
                       const Icon(Icons.expand_more, size: 16),
                     ],
@@ -334,6 +434,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
           ),
         ),
         actions: [
+          if (library.audioDelivery)
+            IconButton(
+              key: const ValueKey('next-mobile-settings'),
+              tooltip: pairedSettingsLabel(context, 'nextMobileSettings'),
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: _inputs == null ? null : () => _panel.currentState?.openSettings(),
+            ),
           IconButton(
             tooltip: l.searchConversations,
             icon: const Icon(Icons.search),
@@ -345,26 +452,39 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
               switch (action) {
                 case _ArchiveAction.refresh:
                   archive.refresh();
+                case _ArchiveAction.offline:
+                  open(OfflineRecordingsPage(library: library));
                 case _ArchiveAction.tasks:
-                  open(LocalTasksPage(library: library));
+                  open(LocalTasksPage(library: library, reminders: widget.reminders));
                 case _ArchiveAction.recaps:
                   open(DailyRecapsPage(library: library));
+                case _ArchiveAction.memories:
+                  open(LocalMemoriesPage(library: library));
                 case _ArchiveAction.goals:
                   open(LocalGoalsPage(library: library));
                 case _ArchiveAction.select:
                   setState(() => _selection = {});
+                case _ArchiveAction.about:
+                  open(NextAboutPage(cv1: _inputs?.connection));
               }
             },
             itemBuilder: (context) => [
               PopupMenuItem(value: _ArchiveAction.refresh, enabled: !archive.busy, child: Text(l.refresh)),
+              PopupMenuItem(
+                value: _ArchiveAction.offline,
+                child: Text(pairedSettingsLabel(context, 'nextOfflineRecordings')),
+              ),
               if (library.tasksAvailable) PopupMenuItem(value: _ArchiveAction.tasks, child: Text(l.tasks)),
               if (library.dailyRecapsAvailable) PopupMenuItem(value: _ArchiveAction.recaps, child: Text(l.dailyRecaps)),
+              if (library.memoriesAvailable)
+                PopupMenuItem(value: _ArchiveAction.memories, child: Text(pairedSettingsLabel(context, 'memoryTitle'))),
               if (library.goalsAvailable) PopupMenuItem(value: _ArchiveAction.goals, child: Text(l.goals)),
-              if (library.folderManagementAvailable && selection == null)
+              if ((library.folderManagementAvailable || library.categoryBackfill) && selection == null)
                 PopupMenuItem(
                   value: _ArchiveAction.select,
                   child: Text(pairedSettingsLabel(context, 'localFolderSelect')),
                 ),
+              PopupMenuItem(value: _ArchiveAction.about, child: Text(pairedSettingsLabel(context, 'nextAbout'))),
             ],
           ),
         ],
@@ -373,80 +493,114 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
         children: [
           if (library.audioDelivery)
             LocalNextCapturePanel(
-              key: ValueKey(library.audioOwnerId),
+              key: _panel,
               library: library,
               serverName: serverName,
               onDelivered: _archive.refreshAfterRecording,
-              onInputsReady: widget.shortcuts == null ? null : _bindInputs,
+              onInputsReady: _bindInputs,
               openServers: widget.openServers,
             ),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+          if (selection != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Wrap(
-                spacing: OmiSpacing.sm,
-                children: selection != null
-                    ? [
-                        ActionChip(
-                          label: Text(l.cancel),
-                          onPressed: _moving ? null : () => setState(() => _selection = null),
-                        ),
-                        ActionChip(
-                          label: Text('${l.moveToFolder} · ${selection.length}/100'),
-                          onPressed: selection.isEmpty || _moving ? null : _moveSelected,
-                        ),
-                      ]
-                    : [
-                        FilterChip(
-                          label: Text(l.starred),
-                          selected: archive.starredOnly,
-                          onSelected: archive.busy ? null : archive.filterStarred,
-                        ),
-                        FilterChip(
-                          key: const ValueKey('archive-category'),
-                          label: Text(
-                            archive.category == null
-                                ? l.categories
-                                : conversationCategoryLabel(context, archive.category!),
-                          ),
-                          selected: archive.category != null,
-                          onSelected: archive.busy
-                              ? null
-                              : (_) async {
-                                  final category = await pickConversationCategory(
-                                    context,
-                                    current: archive.category,
-                                    filter: true,
-                                  );
-                                  if (mounted && identical(archive, _archive) && category != null) {
-                                    await archive.filterCategory(
-                                      category == allConversationCategories ? null : category,
-                                    );
-                                  }
-                                },
-                        ),
-                        if (library.foldersAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.folder_outlined),
-                            label: Text(archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders')),
-                            onPressed: archive.busy
-                                ? null
-                                : () async {
-                                    final choice = await pickLocalFolder(
-                                      context,
-                                      library,
-                                      moving: false,
-                                      onRename: archive.renameFolder,
-                                      onDelete: (id) => archive.refreshAfterFolderChange(deletedId: id),
-                                    );
-                                    if (choice != null) await archive.filterFolder(choice.folder);
-                                  },
-                          ),
-                      ],
+                spacing: 6,
+                children: [
+                  ActionChip(
+                    label: Text(l.cancel),
+                    onPressed: _selectionBusy ? null : () => setState(() => _selection = null),
+                  ),
+                  if (library.folderManagementAvailable)
+                    ActionChip(
+                      label: Text('${l.moveToFolder} · ${selection.length}/100'),
+                      onPressed: selection.isEmpty || _selectionBusy ? null : _moveSelected,
+                    ),
+                  if (library.categoryBackfill)
+                    ActionChip(
+                      label: Text('${pairedSettingsLabel(context, 'categoryBackfillAction')} · ${selection.length}/8'),
+                      onPressed: selection.isEmpty || selection.length > 8 || _selectionBusy ? null : _classifySelected,
+                    ),
+                ],
               ),
+            )
+          else
+            _LibraryToolbar(
+              children: [
+                if (library.recordingArchive)
+                  _LibraryControl(
+                    key: const ValueKey('archive-archived'),
+                    icon: Icons.archive_outlined,
+                    activeIcon: Icons.archive,
+                    accent: NextAccent.slate,
+                    label: pairedSettingsLabel(context, 'recordingArchive'),
+                    selected: archive.archivedOnly,
+                    onPressed: archive.busy ? null : () => archive.filterArchived(!archive.archivedOnly),
+                  ),
+                _LibraryControl(
+                  key: const ValueKey('archive-starred'),
+                  icon: Icons.star_outline,
+                  activeIcon: Icons.star,
+                  accent: NextAccent.amber,
+                  label: l.starred,
+                  selected: archive.starredOnly,
+                  onPressed: archive.busy ? null : () => archive.filterStarred(!archive.starredOnly),
+                ),
+                _LibraryControl(
+                  key: const ValueKey('archive-category'),
+                  icon: Icons.category_outlined,
+                  activeIcon: Icons.category,
+                  accent: NextAccent.coral,
+                  label: archive.category == null
+                      ? l.categories
+                      : conversationCategoryLabel(context, archive.category!),
+                  selected: archive.category != null,
+                  onPressed: archive.busy
+                      ? null
+                      : () async {
+                          final category = await pickConversationCategory(
+                            context,
+                            current: archive.category,
+                            filter: true,
+                          );
+                          if (mounted && identical(archive, _archive) && category != null) {
+                            await archive.filterCategory(category == allConversationCategories ? null : category);
+                          }
+                        },
+                ),
+                _LibraryControl(
+                  key: const ValueKey('archive-visibility'),
+                  icon: Icons.tune,
+                  activeIcon: Icons.tune,
+                  accent: NextAccent.teal,
+                  label: l.filters,
+                  selected: archive.visibility.active,
+                  onPressed: () => archive.changeVisibility(context),
+                ),
+                if (library.foldersAvailable)
+                  _LibraryControl(
+                    key: const ValueKey('archive-folder'),
+                    icon: Icons.folder_outlined,
+                    activeIcon: Icons.folder,
+                    accent: NextAccent.blue,
+                    selected: archive.folder != null,
+                    label: archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders'),
+                    onPressed: archive.busy
+                        ? null
+                        : () async {
+                            final choice = await pickLocalFolder(
+                              context,
+                              library,
+                              moving: false,
+                              onRename: archive.renameFolder,
+                              onDelete: (id) => archive.refreshAfterArchiveEdit(deletedFolderId: id),
+                            );
+                            if (choice != null) await archive.filterFolder(choice.folder);
+                          },
+                  ),
+              ],
             ),
-          ),
+          if (_selectionActivity == _ArchiveSelectionActivity.classify && selection != null)
+            const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: PairedArchiveFeed(
               archive: _archive,
@@ -456,12 +610,114 @@ class _LibraryPageState extends State<LocalNextLibraryPage> {
                   ? _select
                   : (id) => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => RecordingPage(library: library, id: id, onEdited: archive.applyEdit),
+                        builder: (_) => RecordingPage(
+                          library: library,
+                          id: id,
+                          fromSavedRecording: switch (archive.rowById(id)) {
+                            final row? => canFollowSavedRecording(row),
+                            null => false,
+                          },
+                          onEdited: archive.applyEdit,
+                          onPublished: archive.replacePending,
+                        ),
                       ),
                     ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LibraryToolbar extends StatelessWidget {
+  const _LibraryToolbar({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: Material(
+      color: OmiColors.surface1,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final baseWidth = MediaQuery.textScalerOf(context).scale(12) * 4.7;
+          final width = (box.maxWidth / children.length).clamp(baseWidth, double.infinity);
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [for (final control in children) SizedBox(width: width, child: control)],
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _LibraryControl extends StatelessWidget {
+  const _LibraryControl({
+    super.key,
+    required this.icon,
+    required this.activeIcon,
+    required this.accent,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+  final IconData icon, activeIcon;
+  final NextAccent accent;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onPressed == null
+        ? Theme.of(context).disabledColor
+        : selected
+        ? accent.of(context)
+        : OmiColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: Material(
+          color: selected ? accent.tint(context) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(selected ? activeIcon : icon, size: 18, color: onPressed == null ? color : accent.of(context)),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

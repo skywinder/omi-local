@@ -336,15 +336,23 @@ def get_user_profile_endpoint(uid: str = Depends(auth.get_current_user_uid)):
         profile['local_conversation_group_version'] = 1
         profile['local_audio_playback_version'] = 1
         profile['local_recording_edits_version'] = 1
+        profile['local_recording_archive_version'] = 1
         profile['local_recording_categories_version'] = 1
+        profile['local_category_backfill_version'] = 1
         profile['local_processing_retry_version'] = 1
         profile['local_folders_version'] = 2
         profile['local_speaker_labels_version'] = 1
         profile['local_tasks_version'] = 1
+        profile['local_task_reminders_version'] = 1
         profile['local_task_suggestions_version'] = 1
         profile['local_summary_regeneration_version'] = 1
+        profile['local_summary_jobs_version'] = 1
         profile['local_daily_recaps_version'] = 1
+        profile['local_daily_recap_schedule_version'] = 1
+        profile['local_archive_read_version'] = 1
+        profile['local_memories_version'] = 1
         profile['local_goals_version'] = 1
+        profile['local_goal_lifecycle_version'] = 1
     return profile
 
 

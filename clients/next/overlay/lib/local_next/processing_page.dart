@@ -77,7 +77,7 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
         _selected.clear();
         for (final stage in NextProcessingStage.values) {
           final active = settings.active(stage);
-          if (active != null) _selected[stage] = active.id;
+          if (active != null && active.inheritedFrom == null) _selected[stage] = active.id;
         }
       });
     } catch (error) {
@@ -102,7 +102,9 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
 
   Future<void> _edit(NextProcessingSettings state, NextProcessingStage stage, [NextProcessingProfile? profile]) async {
     final client = widget.client;
-    if (_busy || state != _settings || !stage.canCreateDraft || (profile != null && !profile.canEdit)) return;
+    if (_busy || state != _settings || !state.allowsProfileControl(stage) || (profile != null && !profile.canEdit)) {
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => NextProcessingEditor(
@@ -143,17 +145,21 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
   Widget _stage(BuildContext context, NextProcessingSettings state, NextProcessingStage stage) {
     final l = context.l10n;
     final effective = state.active(stage);
+    final explicitId = effective?.inheritedFrom == null ? effective?.id : null;
     final options = state.choices(stage);
     final selected = options.where((p) => p.id == _selected[stage]).firstOrNull;
     final pending =
         effective != null &&
         selected != null &&
-        effective.id == selected.id &&
+        explicitId == selected.id &&
         effective.configurationRevision != null &&
         selected.configurationRevision != null &&
         effective.configurationRevision != selected.configurationRevision;
-    final changed = effective?.id != _selected[stage] || pending;
+    final changed = explicitId != _selected[stage] || pending;
     final enabled = !_busy && !widget.isRecording() && state.canActivate(stage, _selected[stage]);
+    final clearLabel = stage == NextProcessingStage.translation
+        ? pairedSettingsLabel(context, 'processingUseSummaryModel')
+        : l.off;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -165,15 +171,15 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
             Text('${l.active} · ${effective?.name ?? l.off}', key: ValueKey('next-${stage.name}-active')),
             if (effective != null) Text(effective.kind, style: Theme.of(context).textTheme.bodySmall),
             if (effective?.inheritedFrom == NextProcessingStage.summary) Text('${l.defaultLabel} · ${l.summary}'),
-            if (stage.canActivate) ...[
+            if (state.allowsProfileControl(stage)) ...[
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 key: ValueKey('next-${stage.name}-${state.revision}'),
-                initialValue: selected?.id ?? (stage.canDisable && _selected[stage] == null ? '' : null),
+                initialValue: selected?.id ?? (stage.canClearSelection && _selected[stage] == null ? '' : null),
                 isExpanded: true,
                 decoration: InputDecoration(labelText: l.provider),
                 items: [
-                  if (stage.canDisable) DropdownMenuItem(value: '', child: Text(l.off)),
+                  if (stage.canClearSelection) DropdownMenuItem(value: '', child: Text(clearLabel)),
                   for (final option in options)
                     DropdownMenuItem(
                       value: option.id,
@@ -202,13 +208,12 @@ class _ProcessingPageState extends State<LocalNextProcessingPage> {
                       onPressed: enabled ? () => _activate(stage) : null,
                       child: Text(pairedSettingsLabel(context, 'processingApply')),
                     ),
-                  if (stage.canCreateDraft)
-                    TextButton.icon(
-                      key: ValueKey('next-${stage.name}-add'),
-                      onPressed: _busy ? null : () => _edit(state, stage),
-                      icon: const Icon(Icons.add),
-                      label: Text(l.add),
-                    ),
+                  TextButton.icon(
+                    key: ValueKey('next-${stage.name}-add'),
+                    onPressed: _busy ? null : () => _edit(state, stage),
+                    icon: const Icon(Icons.add),
+                    label: Text(l.add),
+                  ),
                   if (selected != null && selected.canEdit)
                     TextButton(
                       key: ValueKey('next-${stage.name}-edit'),

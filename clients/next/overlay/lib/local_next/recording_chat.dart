@@ -1,6 +1,16 @@
 import 'package:omi/models/chat_evidence_reference.dart';
 
-enum RecordingChatFailure implements Exception { changed, unavailable, noMatches, scanLimited }
+enum RecordingChatFailure implements Exception {
+  changed,
+  unavailable,
+  noMatches,
+  scanLimited,
+  threadMissing,
+  threadLimit,
+  turnLimit,
+}
+
+typedef ArchiveChatThread = ({String id, String title});
 
 class RecordingChatProvider {
   const RecordingChatProvider({required this.binding, required this.host, required this.model});
@@ -24,6 +34,7 @@ class RecordingChatTurn {
     required this.references,
     required this.contextLimited,
     this.scanLimited = false,
+    this.sourcesUnavailable = false,
   });
 
   factory RecordingChatTurn.fromJson(Map<String, dynamic> json, String? recordingId) => RecordingChatTurn(
@@ -43,6 +54,7 @@ class RecordingChatTurn {
         .toList(),
     contextLimited: json['context_limited'] as bool,
     scanLimited: json['scan_limited'] == true,
+    sourcesUnavailable: json['sources_unavailable'] == true,
   );
 
   final String id;
@@ -51,6 +63,7 @@ class RecordingChatTurn {
   final List<ChatEvidenceReference> references;
   final bool contextLimited;
   final bool scanLimited;
+  final bool sourcesUnavailable;
 }
 
 class RecordingChatPageData {
@@ -59,6 +72,8 @@ class RecordingChatPageData {
     required this.nextBefore,
     required this.provider,
     required this.hasTranscript,
+    this.storedHistory = false,
+    this.archiveThreads = false,
   });
 
   factory RecordingChatPageData.fromJson(Map<String, dynamic> json, String? recordingId) => RecordingChatPageData(
@@ -71,10 +86,14 @@ class RecordingChatPageData {
         ? null
         : RecordingChatProvider.fromJson(json['provider'] as Map<String, dynamic>),
     hasTranscript: json['has_transcript'] as bool,
+    storedHistory: json['stored_history'] == true,
+    archiveThreads: json['archive_threads'] == true,
   );
 
   final List<RecordingChatTurn> turns;
   final int? nextBefore;
   final RecordingChatProvider? provider;
   final bool hasTranscript;
+  final bool storedHistory;
+  final bool archiveThreads;
 }

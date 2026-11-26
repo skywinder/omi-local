@@ -10,7 +10,7 @@ import re
 import struct
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -18,6 +18,8 @@ from utils import local_conversation_groups as groups
 from utils.offline_audio_capture import (
     CAPTURE_DIRECTORY,
     METADATA_NAME,
+    OUTPUT_SAMPLE_RATE,
+    OUTPUT_SAMPLE_WIDTH_BYTES,
     RECORDING_ORIGIN_HEADER,
     OfflineAudioCapture,
     create_offline_audio_capture,
@@ -225,7 +227,9 @@ def _accept_grouped(header, frames, digest, root, decoder_factory, check_capacit
             if finish_path.exists() and index >= groups.read_json(finish_path)['index']:
                 raise DeliveryConflict('Part beyond conversation finish')
             _store_audio(header, frames, digest, root, parts / str(index), decoder_factory, check_capacity, origin)
-        groups.advance_group(root, group, config)
+        boundary = groups.advance_group(root, group, config)
+        if boundary is not None:
+            receipt['conversation_boundary_sample'] = boundary
         return receipt
 
 
@@ -250,6 +254,11 @@ def _store_audio(header, frames, digest, root, target, decoder_factory, check_ca
         decode = lambda frame: decoder.decode(frame, frame_size=1920)
     preroll = validate_preroll(header, frames)
     pcm = decode_fresh_audio(frames, preroll, decode, limit=MAX_PCM_BYTES)
+    started = datetime.fromisoformat(header['started_at'].replace('Z', '+00:00'))
+    try:
+        ended = started + timedelta(seconds=(len(pcm) // OUTPUT_SAMPLE_WIDTH_BYTES) / OUTPUT_SAMPLE_RATE)
+    except OverflowError as error:
+        raise ValueError('Audio part end time is outside the supported range') from error
     if grouped:
         _check_neighbors(capture_root, header['index'], header['first_sample'], len(pcm) // 2)
     staging_root = root / 'local-audio-staging'
@@ -263,7 +272,7 @@ def _store_audio(header, frames, digest, root, target, decoder_factory, check_ca
         capture.started_at = header['started_at']
         capture.record_decoded_frame(encoded_bytes=sum(map(len, frames[preroll:])), pcm=pcm)
         capture.frames_received = len(frames) - preroll
-        metadata = capture.finalize()
+        metadata = capture.finalize(ended_at=ended.isoformat())
         metadata['delivery'] = {key: header[key] for key in ('id', 'recording_id', 'index')}
         metadata['delivery']['sha256'] = digest
         metadata['delivery']['preroll_frames'] = preroll

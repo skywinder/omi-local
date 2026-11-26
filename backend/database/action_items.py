@@ -17,6 +17,7 @@ from database.firestore_index_registry import (
     ACTION_ITEMS_CREATED_RANGE_QUERY,
 )
 from ._client import db, get_firestore_client, run_transactional
+from models.task_due import TaskDue
 from utils.other.list_budget import ListReadBudget, ListReadBudgetExhausted
 
 logger = logging.getLogger(__name__)
@@ -513,8 +514,12 @@ def _patch_local_task(transaction, uid, task_id, field, expected, value):
     row = _prepare_action_item_for_read({**raw, 'id': task_id})
     if row.get('status') not in {'active', 'completed'}:
         return 'conflict', None
-    current = row.get(field)
-    if current == value:
+    if field == 'due':
+        due = TaskDue.from_task(row)
+        current = due.model_dump(mode='python', exclude_none=True) if due else None
+    else:
+        current = row.get(field)
+    if current == value and (field != 'due' or row.get('due') is not None or value is None):
         return 'ok', row
     current_check = hashlib.sha256(current.encode()).hexdigest() if isinstance(current, str) else current
     if current_check != expected:
@@ -524,12 +529,27 @@ def _patch_local_task(transaction, uid, task_id, field, expected, value):
     if field == 'completed':
         patch['status'] = 'completed' if value else 'active'
         patch['completed_at'] = now if value else None
+        if row.get('due'):
+            patch['task_reminder_at'] = None if value else TaskDue.model_validate(row['due']).reminder_at()
+    if field == 'due':
+        patch['due_at'] = value.get('instant') if value else None
+        patch['task_reminder_at'] = (
+            TaskDue.model_validate(value).reminder_at() if value and not row.get('completed') else None
+        )
     transaction.update(ref, _prepare_action_item_for_write(patch, partial=True))
     return 'ok', {**row, **patch}
 
 
 def patch_local_task(uid, task_id, field, expected, value):
     return run_transactional(db, _patch_local_task, uid, task_id, field, expected, value)
+
+
+def local_task_reminder_rows(uid, since):
+    """Read explicit reminder tasks only, skipping undated and legacy deadline rows."""
+    collection = db.collection('users').document(uid).collection(action_items_collection)
+    return collection.where(filter=FieldFilter('task_reminder_at', '>=', since)).select([
+        'description', 'due', 'status', 'completed', 'is_locked', 'deleted',
+    ]).limit(2001).stream(retry=None, timeout=8)
 
 
 # Hard safety caps for list reads. Unbounded streams + in-process sort caused prod GET
@@ -549,6 +569,7 @@ _ACTION_ITEMS_LIST_SELECT_FIELDS = (
     'goal_id',
     'workstream_id',
     'owner',
+    'due',
     'due_at',
     'due_confidence',
     'source',

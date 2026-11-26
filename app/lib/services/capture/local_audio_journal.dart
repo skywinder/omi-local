@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' as typed;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,8 @@ import 'package:omi/services/capture/local_opus_preroll.dart';
 
 typedef LocalPartUploader = Future<Map<String, dynamic>> Function(Uint8List body, String serverId);
 
+enum LocalDeliveryIssue implements Exception { connection, tls, pairing, server, receipt, localFile, queueStorage }
+
 /// Audio accepted from Flutter is flushed locally before it enters live preview.
 /// Immutable parts survive network failure and are removed only on a matching
 /// durable server receipt. The cloud WAL and its send-time flags are unrelated.
@@ -20,6 +23,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     required this.upload,
     this.openJournal,
     this.groupSilence,
+    this.onConversationBoundary,
     DateTime Function()? clock,
     this.partDuration = const Duration(minutes: 5),
     this.maxStorageBytes = 512 * 1024 * 1024,
@@ -36,6 +40,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   final LocalPartUploader upload;
   final Future<RandomAccessFile> Function(File file)? openJournal;
   final int? Function()? groupSilence;
+  final void Function(String recordingId, int sample)? onConversationBoundary;
   final DateTime Function() clock;
   final Duration partDuration;
   final int maxStorageBytes;
@@ -50,7 +55,9 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   int pendingBytes = 0;
   int _deliveryRevision = 0;
   int get deliveryRevision => _deliveryRevision;
-  bool deliveryFailed = false;
+  Set<LocalDeliveryIssue> _deliveryIssues = const {};
+  Set<LocalDeliveryIssue> get deliveryIssues => _deliveryIssues;
+  bool get deliveryFailed => deliveryIssues.isNotEmpty;
   bool _recoveryFailed = false;
   String? captureIssue;
   int get activeRecordings => _recordings.length;
@@ -78,7 +85,6 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           await _recover(entity);
         } catch (_) {
           // Keep malformed originals for recovery; never replace or delete them.
-          deliveryFailed = true;
           _recoveryFailed = true;
           final fields = entity.uri.pathSegments.last.split('.');
           if (fields.length == 3 && _groupUuid.hasMatch(fields.first)) incompleteGroups.add(fields.first);
@@ -91,10 +97,10 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
       try {
         await _promoteFinish(marker, id);
       } catch (_) {
-        deliveryFailed = true;
         _recoveryFailed = true;
       }
     }
+    if (_recoveryFailed) _deliveryIssues = const {LocalDeliveryIssue.localFile};
     await _countPending();
   }
 
@@ -240,6 +246,60 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     return recording;
   }
 
+  /// Publish a recovered interval through the same receipt-checked queue as live audio.
+  /// The importer supplies a deterministic identity so interrupted publication can be replayed.
+  Future<void> queueRecoveredOpus({
+    required String id,
+    required String serverId,
+    required String codec,
+    required DateTime startedAt,
+    required List<List<int>> packets,
+  }) => _serial(() async {
+    if (!_groupUuid.hasMatch(id) ||
+        !{'opus', 'opus_fs320'}.contains(codec) ||
+        packets.isEmpty ||
+        packets.length > maxPartPackets) {
+      throw const FormatException('Invalid recovered audio part');
+    }
+    final header = utf8.encode(
+      jsonEncode({
+        'version': 2,
+        'id': id,
+        'recording_id': id,
+        'index': 0,
+        'source': 'omi',
+        'codec': codec,
+        'started_at': startedAt.toUtc().toIso8601String(),
+        'server_id': serverId,
+        'preroll_frames': 0,
+      }),
+    );
+    final body = typed.BytesBuilder()
+      ..add(magic)
+      ..add(_length(header.length))
+      ..add(header);
+    for (final packet in packets) {
+      if (packet.isEmpty || packet.length > maxFrameBytes || body.length + packet.length + 4 > maxPartBytes) {
+        throw const FormatException('Invalid recovered audio packet');
+      }
+      LocalAudioRecording.packetMicroseconds(codec, packet);
+      body
+        ..add(_length(packet.length))
+        ..add(packet);
+    }
+    final ready = File('${directory.path}/$id.ready');
+    final bytes = body.takeBytes();
+    if (await ready.exists()) {
+      if (!listEquals(bytes, await ready.readAsBytes())) throw const FormatException('Recovered part conflict');
+      return;
+    }
+    if (pendingBytes + bytes.length > maxStorageBytes) throw LocalDeliveryIssue.queueStorage;
+    final temp = File('${directory.path}/$id.importing');
+    await temp.writeAsBytes(bytes, flush: true);
+    await temp.rename(ready.path);
+    await _countPending();
+  });
+
   void reportCaptureIssue(String? issue) {
     captureIssue = issue;
     if (!_disposed) notifyListeners();
@@ -313,7 +373,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _drain() async {
     _retry?.cancel();
-    deliveryFailed = _recoveryFailed;
+    final issues = <LocalDeliveryIssue>{if (_recoveryFailed) LocalDeliveryIssue.localFile};
     try {
       final files = directory.listSync().whereType<File>().where((file) => file.path.endsWith('.ready')).toList()
         ..sort((a, b) => a.path.compareTo(b.path));
@@ -322,24 +382,54 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           final body = await file.readAsBytes();
           if (body.length > maxPartBytes) throw const FormatException('Oversized local audio part');
           final header = _header(body).header;
-          final receipt = await upload(body, header['server_id'] as String);
+          final Map<String, dynamic> receipt;
+          try {
+            receipt = await upload(body, header['server_id'] as String);
+          } on LocalDeliveryIssue {
+            rethrow;
+          } on TlsException {
+            throw LocalDeliveryIssue.tls;
+          } on SocketException {
+            throw LocalDeliveryIssue.connection;
+          } on TimeoutException {
+            throw LocalDeliveryIssue.connection;
+          } on FormatException {
+            throw LocalDeliveryIssue.receipt;
+          } catch (_) {
+            throw LocalDeliveryIssue.server;
+          }
           if (receipt['stored'] != true ||
               receipt['id'] != header['id'] ||
               receipt['sha256'] != sha256.convert(body).toString()) {
-            throw const FormatException('Mismatched durable audio receipt');
+            throw LocalDeliveryIssue.receipt;
           }
           await file.delete(); // Only this exact immutable body has been acknowledged.
           _deliveryRevision++;
+          final boundary = receipt['conversation_boundary_sample'];
+          if (header['version'] == 3 && header['silence_seconds'] != 0 && boundary is int && boundary > 0) {
+            onConversationBoundary?.call(header['recording_id'] as String, boundary);
+          }
+        } on LocalDeliveryIssue catch (issue) {
+          // Continue delivering the other immutable parts even if one is blocked.
+          issues.add(issue);
+        } on FileSystemException {
+          issues.add(LocalDeliveryIssue.queueStorage);
         } catch (_) {
-          // A part for another server must not starve this server's deliveries.
-          deliveryFailed = true;
+          issues.add(LocalDeliveryIssue.localFile);
         }
       }
-    } catch (_) {
-      deliveryFailed = true;
-    } finally {
+    } on FileSystemException {
+      issues.add(LocalDeliveryIssue.queueStorage);
+    }
+    try {
       await _serial(_countPending);
-      if (pendingParts > 0 && !_disposed) _retry = Timer(const Duration(seconds: 15), retry);
+    } on FileSystemException {
+      issues.add(LocalDeliveryIssue.queueStorage);
+    } finally {
+      _deliveryIssues = Set.unmodifiable(issues);
+      if (!_disposed && (pendingParts > 0 || issues.contains(LocalDeliveryIssue.queueStorage))) {
+        _retry = Timer(const Duration(seconds: 15), retry);
+      }
     }
   }
 

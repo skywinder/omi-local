@@ -20,6 +20,7 @@ scripts/dev-harness/tests/test_local_live_tuning.py
 scripts/dev-harness/tests/test_local_providers.py
 scripts/dev-harness/tests/test_local_setup.py
 scripts/dev-harness/tests/test_local_stt.py
+scripts/dev-harness/tests/test_local_summary_jobs.py
 scripts/dev-harness/tests/test_local_stt_watch.py
 scripts/dev-harness/tests/test_local_transcription.py
 scripts/dev-harness/tests/test_local_transport.py
@@ -31,3 +32,5 @@ scripts/dev-harness/tests/test_tailscale_backend.py
 scripts/dev-harness/tests/test_transcription_lock.py
 scripts/dev-harness/tests/test_upstream_audit.py
 scripts/dev-harness/tests/test_next_ios_identity.py
+scripts/dev-harness/tests/test_local_semantic_index.py
+scripts/dev-harness/tests/test_archive_mcp.py

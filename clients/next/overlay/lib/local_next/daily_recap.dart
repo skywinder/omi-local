@@ -57,3 +57,19 @@ class DailyRecapPreview {
   final int sourceCount;
   final bool limited;
 }
+
+class DailyRecapSchedule {
+  DailyRecapSchedule.fromJson(this.wire);
+
+  final Map<String, dynamic> wire;
+  bool get enabled => wire['enabled'] == true;
+  String get revision => wire['revision'] as String;
+  String get timezone => wire['timezone'] as String;
+  int get hour => wire['hour'] as int;
+  int get minute => wire['minute'] as int;
+  String get status => wire['status'] as String;
+  String? get nextDay => wire['next_day'] as String?;
+  String? get lastDay => wire['last_day'] as String?;
+  RecordingChatProvider? get provider =>
+      wire['provider'] == null ? null : RecordingChatProvider.fromJson(wire['provider'] as Map<String, dynamic>);
+}

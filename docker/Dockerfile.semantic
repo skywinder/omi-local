@@ -1,0 +1,11 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11.15-slim-trixie
+RUN pip install --no-cache-dir onnxruntime==1.24.4 tokenizers==0.22.2
+WORKDIR /opt/semantic
+COPY scripts/dev-harness/dev_harness/local_semantic.py \
+     scripts/dev-harness/dev_harness/local_semantic_index.py \
+     scripts/dev-harness/dev_harness/local_semantic_model.py dev_harness/
+RUN mkdir -p /index /model && chown 10001:10001 /index /model && chmod 700 /index /model
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
+USER 10001:10001
+CMD ["python", "-m", "dev_harness.local_semantic", "--model", "/model", "--index", "/index/archive.sqlite", "--owner-file", "/index/owner.digest", "--socket", "/index/queries.sock", "--refresh-socket", "/index/inventory.sock", "serve"]

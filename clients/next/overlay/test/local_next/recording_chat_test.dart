@@ -5,6 +5,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/archive_search_page.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_chat.dart';
+import 'package:omi/local_next/recording_chat_page.dart';
 import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/models/chat_evidence_reference.dart';
 import 'package:omi/widgets/transcript.dart';
@@ -38,12 +39,13 @@ class _ChatLibrary extends PairedLibrary {
   }
 
   @override
-  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before}) async => RecordingChatPageData(
-    turns: turns,
-    nextBefore: null,
-    provider: const RecordingChatProvider(binding: 'selected', host: 'model.example', model: 'test-model'),
-    hasTranscript: true,
-  );
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before, String? threadId}) async =>
+      RecordingChatPageData(
+        turns: turns,
+        nextBefore: null,
+        provider: const RecordingChatProvider(binding: 'selected', host: 'model.example', model: 'test-model'),
+        hasTranscript: true,
+      );
 
   @override
   Future<RecordingChatTurn> askRecordingChat({
@@ -53,6 +55,8 @@ class _ChatLibrary extends PairedLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
+    String? threadId,
   }) async {
     expect(id, _id);
     expect(binding, 'selected');
@@ -80,7 +84,50 @@ class _ChatLibrary extends PairedLibrary {
 }
 
 class _ArchiveChatLibrary extends _ChatLibrary {
+  _ArchiveChatLibrary({this.stored = false, this.supportsThreads = false});
+  final bool stored;
+  final bool supportsThreads;
   final priorQuestions = <List<String>>[];
+  final previousIds = <String?>[];
+  final cursors = <int?>[];
+  final threadIds = <String?>[];
+  final namedThreads = <ArchiveChatThread>[];
+  final namedTurns = <String, List<RecordingChatTurn>>{};
+  RecordingChatTurn? older;
+
+  @override
+  Future<List<ArchiveChatThread>> readArchiveChatThreads() async => List.of(namedThreads);
+
+  @override
+  Future<ArchiveChatThread> createArchiveChatThread(String id, String title) async {
+    final row = (id: id, title: title);
+    namedThreads.add(row);
+    namedTurns[id] = [];
+    return row;
+  }
+
+  @override
+  Future<void> deleteArchiveChatThread(String id) async {
+    namedThreads.removeWhere((row) => row.id == id);
+    namedTurns.remove(id);
+  }
+
+  @override
+  Future<RecordingChatPageData?> readRecordingChat(String? id, {int? before, String? threadId}) async {
+    cursors.add(before);
+    return RecordingChatPageData(
+      turns: threadId != null
+          ? namedTurns[threadId] ?? (throw RecordingChatFailure.threadMissing)
+          : before == null
+          ? turns
+          : [older!],
+      nextBefore: before == null && older != null ? 4 : null,
+      provider: const RecordingChatProvider(binding: 'selected', host: 'model.example', model: 'test-model'),
+      hasTranscript: true,
+      storedHistory: stored,
+      archiveThreads: supportsThreads,
+    );
+  }
 
   @override
   Future<RecordingChatTurn> askRecordingChat({
@@ -90,11 +137,16 @@ class _ArchiveChatLibrary extends _ChatLibrary {
     required String binding,
     required String question,
     List<RecordingChatTurn> history = const [],
+    bool storeArchive = false,
+    String? threadId,
   }) async {
     expect(id, isNull);
     expect(binding, 'selected');
+    expect(storeArchive, stored);
+    threadIds.add(threadId);
+    previousIds.add(previous);
     priorQuestions.add(history.map((turn) => turn.question).toList());
-    return RecordingChatTurn(
+    final turn = RecordingChatTurn(
       id: turnId,
       question: question,
       answer: 'Two meetings discussed the plan.',
@@ -122,6 +174,8 @@ class _ArchiveChatLibrary extends _ChatLibrary {
         ),
       ],
     );
+    if (stored) (threadId == null ? turns : namedTurns[threadId]!).insert(0, turn);
+    return turn;
   }
 }
 
@@ -193,5 +247,122 @@ void main() {
       <String>[],
       ['Compare the meetings'],
     ]);
+  });
+
+  testWidgets('saved archive history reloads, pages, and sends only its head to the paired server', (tester) async {
+    final library = _ArchiveChatLibrary(stored: true);
+    addTearDown(library.close);
+    library.turns.add(
+      const RecordingChatTurn(
+        id: 'first',
+        question: 'A saved question',
+        answer: 'An answer from the server',
+        references: [],
+        contextLimited: false,
+      ),
+    );
+    library.older = const RecordingChatTurn(
+      id: 'older',
+      question: 'An older question',
+      answer: '',
+      references: [],
+      contextLimited: false,
+      sourcesUnavailable: true,
+    );
+    Widget screen() => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: RecordingChatPage.archive(library: library, onOpenSource: (_, __) {}),
+    );
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(find.text('An answer from the server'), findsOneWidget);
+    final labels = AppLocalizations.of(tester.element(find.byType(RecordingChatPage)));
+    await tester.tap(find.text(labels.showMore));
+    await tester.pumpAndSettle();
+    expect(library.cursors, [null, 4]);
+    expect(find.text('An original recording is unavailable. This answer is hidden.'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'A follow-up question');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.textContaining('saved in the shared history'), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)));
+    await tester.pumpAndSettle();
+    expect(library.previousIds, ['first']);
+    expect(library.priorQuestions, [<String>[]]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(find.text('A follow-up question'), findsOneWidget);
+  });
+
+  testWidgets('named conversations keep independent drafts and can be removed without changing shared history', (
+    tester,
+  ) async {
+    final library = _ArchiveChatLibrary(stored: true, supportsThreads: true);
+    addTearDown(library.close);
+    library.turns.add(
+      const RecordingChatTurn(
+        id: 'shared',
+        question: 'Earlier shared question',
+        answer: 'Shared reply',
+        references: [],
+        contextLimited: false,
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingChatPage.archive(library: library, onOpenSource: (_, __) {}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Earlier shared question'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Unsent shared draft');
+    final threads = find.byKey(const ValueKey('archive-chat-threads'));
+    await tester.tap(threads);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('New conversation'));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)), 'Release questions');
+    await tester.pumpAndSettle();
+    final createButton = find.descendant(of: dialog, matching: find.byType(FilledButton));
+    expect(tester.widget<FilledButton>(createButton).onPressed, isNotNull);
+    await tester.tap(createButton);
+    await tester.pumpAndSettle();
+    expect(library.namedThreads.single.title, 'Release questions');
+    expect(find.text('Unsent shared draft'), findsNothing);
+    expect(find.text('Earlier shared question'), findsNothing);
+    final created = library.namedThreads.single;
+    await tester.enterText(find.byType(TextField), 'Question for this conversation');
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.textContaining('saved in this conversation'), findsOneWidget);
+    await tester.tap(find.descendant(of: dialog, matching: find.byType(FilledButton)));
+    await tester.pumpAndSettle();
+    expect(library.threadIds, [created.id]);
+    expect(library.previousIds, [null]);
+    expect(library.turns.single.id, 'shared');
+
+    await tester.tap(threads);
+    await tester.pumpAndSettle();
+    final delete = find.byTooltip('Delete · Release questions');
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(library.namedThreads, [created]);
+    await tester.tap(find.descendant(of: dialog, matching: find.byType(TextButton)));
+    await tester.pumpAndSettle();
+    expect(library.namedThreads, [created]);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: dialog, matching: find.byType(FilledButton)));
+    await tester.pumpAndSettle();
+    expect(library.namedThreads, isEmpty);
+    expect(find.text('Earlier shared question'), findsOneWidget);
+    expect(find.text('Question for this conversation'), findsNothing);
   });
 }

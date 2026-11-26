@@ -4,12 +4,18 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
 import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'cv1_gain_calibration_card.dart';
 import 'cv1_transport.dart';
+import 'gain_samples.dart';
+import 'paired_library.dart';
 import 'settings_labels.dart';
+
+const _cv1FactoryGain = 6;
 
 String cv1PhaseLabel(BuildContext context, Cv1LinkPhase phase) {
   final l = context.l10n;
@@ -25,37 +31,76 @@ String cv1PhaseLabel(BuildContext context, Cv1LinkPhase phase) {
 }
 
 class NextDeviceDiagnosticsPage extends StatefulWidget {
-  const NextDeviceDiagnosticsPage({super.key, required this.link, required this.capture, required this.captureBusy});
+  const NextDeviceDiagnosticsPage({
+    super.key,
+    required this.link,
+    required this.capture,
+    required this.captureBusy,
+    this.library,
+  });
 
   final Cv1Connection link;
   final Listenable capture;
   final bool Function() captureBusy;
+  final PairedLibrary? library;
 
   @override
   State<NextDeviceDiagnosticsPage> createState() => _DeviceDiagnosticsState();
 }
 
-class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
+class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> with WidgetsBindingObserver {
   Timer? _poll;
   bool _writing = false;
   bool _week = false;
   bool _issuesOnly = false;
   int _eventLimit = 12;
   DateTime? _fullRefresh;
+  bool _routeCurrent = false;
+  ({int subscription, int bytes, DateTime at})? _lastTraffic;
+  ({int subscription, double kbps})? _receiveRate;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = ModalRoute.isCurrentOf(context) == true;
+    if (_routeCurrent == current) return;
+    _routeCurrent = current;
+    _lastTraffic = null;
+    _receiveRate = null;
+    if (current) WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastTraffic = null;
+    _receiveRate = null;
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  void _sampleAudioTraffic(DateTime now) {
+    final traffic = widget.link.audioTraffic;
+    final previous = _lastTraffic;
+    _lastTraffic = traffic == null ? null : (subscription: traffic.subscription, bytes: traffic.bytes, at: now);
+    _receiveRate = null;
+    if (traffic == null || previous == null || previous.subscription != traffic.subscription) return;
+    final elapsedMs = now.difference(previous.at).inMicroseconds / 1000;
+    if (elapsedMs > 0) {
+      _receiveRate = (subscription: traffic.subscription, kbps: (traffic.bytes - previous.bytes) * 8 / elapsedMs);
+    }
   }
 
   void _refresh({bool force = false}) {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (mounted &&
-        ModalRoute.isCurrentOf(context) == true &&
-        (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
+    if (mounted && _routeCurrent && (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
       final now = widget.link.history.now();
+      if (!force) _sampleAudioTraffic(now);
       unawaited(widget.link.sampleSignal());
       if (widget.link.phase == Cv1LinkPhase.ready &&
           !widget.captureBusy() &&
@@ -70,6 +115,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
   @override
   void dispose() {
     _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -86,15 +132,53 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('${draft.round()}'),
+              if (field == 'gain')
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove),
+                      tooltip: pairedSettingsLabel(context, 'gainDown'),
+                      onPressed: draft > 0 ? () => setDraft(() => draft--) : null,
+                    ),
+                    Flexible(child: Text('${draft.round()} / 8')),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: pairedSettingsLabel(context, 'gainUp'),
+                      onPressed: draft < max ? () => setDraft(() => draft++) : null,
+                    ),
+                  ],
+                )
+              else
+                Text('${draft.round()}'),
+              if (field == 'gain') Text(micGainLevelLabel(context, draft.round())),
               Slider(
                 min: 0,
                 max: max.toDouble(),
                 divisions: max,
                 value: draft,
-                label: '${draft.round()}',
+                label: field == 'gain' ? micGainLevelLabel(context, draft.round()) : '${draft.round()}',
                 onChanged: (value) => setDraft(() => draft = value),
               ),
+              if (field == 'gain')
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  children: [
+                    for (final (name, value) in [
+                      (l.quiet, 2),
+                      (l.normal, 4),
+                      ('${l.high} · ${pairedSettingsLabel(context, 'gainFactory')}', _cv1FactoryGain),
+                    ])
+                      ChoiceChip(
+                        label: Text('$name · $value/8'),
+                        selected: draft == value,
+                        onSelected: (selected) {
+                          if (selected) setDraft(() => draft = value.toDouble());
+                        },
+                      ),
+                  ],
+                ),
             ],
           ),
           actions: [
@@ -111,10 +195,16 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
         widget.captureBusy()) {
       return;
     }
+    await _writeSetting(field, selected);
+  }
+
+  Future<void> _writeSetting(String field, int value) async {
+    if (_writing || widget.captureBusy()) return;
     setState(() => _writing = true);
-    final saved = await link.writeSetting(field, selected);
+    final saved = await widget.link.writeSetting(field, value);
     if (!mounted) return;
     setState(() => _writing = false);
+    _refresh(force: true);
     if (!saved) {
       ScaffoldMessenger.of(
         context,
@@ -133,6 +223,8 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
         final ready = link.phase == Cv1LinkPhase.ready;
         final now = link.history.now();
         final battery = data?.battery;
+        final traffic = link.audioTraffic;
+        final receiveRate = _receiveRate;
         final signalAt = link.signalMeasuredAt;
         final signal = signalAt != null && now.difference(signalAt) < const Duration(seconds: 12) ? data?.rssi : null;
         final oldest = now.subtract(Cv1History.retention);
@@ -166,9 +258,9 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(ready ? Icons.bluetooth_connected : Icons.bluetooth),
+                    leading: cv1DeviceIcon(link),
                     title: Text(data?.name ?? 'Omi CV1'),
-                    subtitle: Text(cv1PhaseLabel(context, link.phase)),
+                    subtitle: Text(cv1DeviceStatus(context, link)),
                   ),
                   if (!ready)
                     Text(pairedSettingsLabel(context, 'nextDeviceUnavailable'))
@@ -197,6 +289,14 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                                 ].join(' · '),
                           color: signal == null ? null : _signalColor(signal),
                         ),
+                        if (traffic != null)
+                          _Reading(
+                            title: l.syncDetailsTransferSpeed,
+                            value: receiveRate != null && receiveRate.subscription == traffic.subscription
+                                ? l.dataRateKbps(receiveRate.kbps.toStringAsFixed(1))
+                                : '—',
+                            detail: l.bluetooth,
+                          ),
                         if (link.connectedAt case final at?)
                           _Reading(title: l.connectionUptime, value: _duration(now.difference(at)), detail: ''),
                       ],
@@ -204,6 +304,35 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                   ],
                 ],
               ),
+              if (data?.gain case final int gain when ready && data?.gainWritable == true && gain >= 0 && gain <= 8)
+                _Card(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.mic_outlined),
+                      title: Text(l.micGain),
+                      subtitle: Text('$gain / 8'),
+                      trailing: const Icon(Icons.tune),
+                      onTap: widget.captureBusy() || _writing ? null : () => _edit('gain', l.micGain, gain, 8),
+                    ),
+                    Text(micGainLevelLabel(context, gain)),
+                    if (widget.captureBusy() && !link.calibrating)
+                      Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
+                    Cv1GainCalibrationCard(
+                      key: ValueKey(link.linkState?.generation),
+                      link: link,
+                      gain: gain,
+                      busy: () => _writing || widget.captureBusy(),
+                      changeGain: (value) => _writeSetting('gain', value),
+                    ),
+                    if (widget.library case final library? when library.audioPlayback)
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Text(pairedSettingsLabel(context, 'gainArchive')),
+                        children: [GainSamples(key: ObjectKey(library), library: library)],
+                      ),
+                  ],
+                ),
               _History(
                 title: l.signalStrength,
                 samples: link.rssiHistory,
@@ -295,6 +424,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
     return _Card(
       children: [
         ExpansionTile(
+          key: const PageStorageKey('cv1-device-info'),
           tilePadding: EdgeInsets.zero,
           title: Text(l.deviceInfoSection),
           children: [
@@ -312,12 +442,6 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 title: Text(l.ledBrightness),
                 trailing: Text('${data!.led}%'),
                 onTap: canEdit ? () => _edit('led', l.ledBrightness, data.led!, 100) : null,
-              ),
-            if (data?.gainWritable == true && data?.gain != null)
-              ListTile(
-                title: Text(l.micGain),
-                trailing: Text('${data!.gain}'),
-                onTap: canEdit ? () => _edit('gain', l.micGain, data.gain!, 8) : null,
               ),
             if (widget.captureBusy() && (data?.ledWritable == true || data?.gainWritable == true))
               ListTile(title: Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy'))),
@@ -398,18 +522,7 @@ class _EventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
-    final reason = switch (event.reason) {
-      Cv1LinkReason.manual => l.manualDisconnect,
-      Cv1LinkReason.radio => l.bluetoothNeeded,
-      Cv1LinkReason.permission => pairedSettingsLabel(context, 'nextCv1ScanPermission'),
-      Cv1LinkReason.timeout => l.connectionTimeout,
-      Cv1LinkReason.incompatible => pairedSettingsLabel(context, 'nextLinkIncompatible'),
-      Cv1LinkReason.dropped => pairedSettingsLabel(context, 'nextLinkLost'),
-      Cv1LinkReason.remote => l.remoteDeviceTerminated,
-      Cv1LinkReason.connect => l.connectionFailed,
-      Cv1LinkReason.audio => pairedSettingsLabel(context, 'nextLinkAudioFailure'),
-      null => cv1PhaseLabel(context, event.phase),
-    };
+    final reason = _reasonLabel(context, event.phase, event.reason);
     final details = [
       DateFormat.MMMd(Localizations.localeOf(context).toLanguageTag()).format(event.at),
       _time(context, event.at),
@@ -587,4 +700,95 @@ class _History extends StatelessWidget {
       duration: Duration.zero,
     );
   }
+}
+
+String _reasonLabel(BuildContext context, Cv1LinkPhase phase, Cv1LinkReason? reason) {
+  final l = context.l10n;
+  return switch (reason) {
+    Cv1LinkReason.manual => l.manualDisconnect,
+    Cv1LinkReason.radio => l.bluetoothNeeded,
+    Cv1LinkReason.permission => pairedSettingsLabel(context, 'nextCv1ScanPermission'),
+    Cv1LinkReason.timeout => l.connectionTimeout,
+    Cv1LinkReason.incompatible => pairedSettingsLabel(context, 'nextLinkIncompatible'),
+    Cv1LinkReason.dropped => pairedSettingsLabel(context, 'nextLinkLost'),
+    Cv1LinkReason.remote => l.remoteDeviceTerminated,
+    Cv1LinkReason.connect => l.connectionFailed,
+    Cv1LinkReason.audio => pairedSettingsLabel(context, 'nextLinkAudioFailure'),
+    null => cv1PhaseLabel(context, phase),
+  };
+}
+
+class Cv1HeaderTitle extends StatelessWidget {
+  const Cv1HeaderTitle({super.key, required this.title, required this.link, this.openDevices});
+  final String title;
+  final Cv1Connection? link;
+  final VoidCallback? openDevices;
+
+  @override
+  Widget build(BuildContext context) {
+    final heading = Text(title, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final connection = link;
+    if (connection == null) return heading;
+    return ListenableBuilder(
+      listenable: connection,
+      builder: (context, _) {
+        if (connection.phase != Cv1LinkPhase.ready) return heading;
+        final value = connection.diagnostics?.battery;
+        final label = value == null ? '—' : '$value%';
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: heading),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'CV1 · ${context.l10n.battery} · $label',
+              child: InkWell(
+                onTap: openDevices,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      value == null ? const Icon(Icons.battery_unknown, size: 18) : cv1DeviceIcon(connection),
+                      const SizedBox(width: 2),
+                      Text(label, style: Theme.of(context).textTheme.labelMedium),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+String cv1DeviceStatus(BuildContext context, Cv1Connection link) {
+  final state = link.linkState;
+  if (state != null && state.phase == Cv1LinkPhase.failed) {
+    final label = _reasonLabel(context, state.phase, state.reason);
+    final code = state.code;
+    return code == null || code == 0 ? label : '$label · BLE $code';
+  }
+  final battery = link.diagnostics?.battery;
+  return link.phase == Cv1LinkPhase.ready && battery != null ? '$battery%' : cv1PhaseLabel(context, link.phase);
+}
+
+Widget cv1DeviceIcon(Cv1Connection link) {
+  final battery = link.diagnostics?.battery;
+  if (link.phase != Cv1LinkPhase.ready || battery == null) {
+    return Icon(link.phase == Cv1LinkPhase.ready ? Icons.bluetooth_connected : Icons.bluetooth, size: 18);
+  }
+  return Icon(
+    switch (battery) {
+      <= 15 => Icons.battery_alert,
+      <= 35 => Icons.battery_2_bar,
+      <= 65 => Icons.battery_4_bar,
+      <= 85 => Icons.battery_5_bar,
+      _ => Icons.battery_full,
+    },
+    color: _batteryColor(battery),
+    size: 19,
+  );
 }

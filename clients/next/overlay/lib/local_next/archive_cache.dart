@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class NextArchiveCache {
   NextArchiveCache(String owner) : _key = 'next.archive.v1.$owner';
   final String _key;
+  final audioFileIds = <String>{};
 
   Future<void> write(Iterable<ServerConversation> rows) async {
     final cards = <Map<String, dynamic>>[];
@@ -21,6 +22,7 @@ class NextArchiveCache {
         'source': row.source?.name,
         'status': row.status.name,
         'starred': row.starred,
+        if (row.hasAudio()) 'has_audio_file': true,
         'structured': {
           'title': row.structured.title,
           'emoji': row.structured.emoji,
@@ -30,8 +32,9 @@ class NextArchiveCache {
         if (local != null)
           'external_data': {
             (external?.localRecording != null ? 'local_recording' : 'local_transcript'): {
-              for (final key in ['origin', 'status', 'duration_seconds', 'failure'])
+              for (final key in ['origin', 'status', 'duration_seconds', 'failure', 'group'])
                 if (local.containsKey(key)) key: local[key],
+              if (local['results'] != null) 'results': [],
             },
           },
       });
@@ -50,12 +53,19 @@ class NextArchiveCache {
   }
 
   Future<List<ServerConversation>> read() async {
+    audioFileIds.clear();
     try {
       final raw = (await SharedPreferences.getInstance()).getString(_key);
       if (raw == null || raw.length > 256 * 1024) return [];
       final data = jsonDecode(raw);
       if (data is! List || data.length > 30) return [];
-      return [for (final row in data.whereType<Map<String, dynamic>>()) ServerConversation.fromJson(row)];
+      final result = <ServerConversation>[];
+      for (final card in data.whereType<Map<String, dynamic>>()) {
+        final row = ServerConversation.fromJson(card);
+        if (card['has_audio_file'] == true) audioFileIds.add(row.id);
+        result.add(row);
+      }
+      return result;
     } on Exception {
       return [];
     } on TypeError {

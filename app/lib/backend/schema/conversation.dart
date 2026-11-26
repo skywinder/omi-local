@@ -725,10 +725,17 @@ class ServerConversation {
   }
 
   int getDurationInSeconds() {
-    // started_at is the streaming-session origin, not this conversation's start,
-    // so finishedAt - startedAt over-counts; prefer the transcript span (#4056).
-    if (transcriptSegments.isEmpty && finishedAt != null && startedAt != null) {
-      return finishedAt!.difference(startedAt!).inSeconds;
+    final start = startedAt;
+    final end = finishedAt;
+    if (start != null && end != null && !end.isBefore(start)) {
+      final duration = end.difference(start);
+      // Finished local imports set these bounds from the WAV, even when the list
+      // carries just the first transcript segment or the recording ends in silence.
+      if (externalIntegration?.localTranscript != null) {
+        return (duration.inMicroseconds / Duration.microsecondsPerSecond).round();
+      }
+      // For streaming conversations the session may span multiple conversations (#4056).
+      if (transcriptSegments.isEmpty) return duration.inSeconds;
     }
     return _getDurationInSecondsByTranscripts();
   }

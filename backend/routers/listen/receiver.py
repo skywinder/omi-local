@@ -850,7 +850,7 @@ class ListenReceiver:
             await self._handle_speaker_assigned(payload)
         elif kind == 'translation':
             # Relay-side live translation target; validated by the session host.
-            self.host.set_live_translation(payload.get('language'), payload.get('other_language'))
+            self.host.set_live_translation(payload.get('language'), payload.get('other_language'), payload.get('revision'))
         elif kind == 'finalization_reason':
             reason = payload.get('reason')
             if reason in {

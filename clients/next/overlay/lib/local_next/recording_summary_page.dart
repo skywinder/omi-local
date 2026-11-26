@@ -25,6 +25,7 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
   SummaryProvider? _provider;
   SummaryTemplate? _template;
   SummaryRegeneration? _attempt;
+  SummaryJob? _job;
   Object? _error;
   bool _busy = false;
 
@@ -64,6 +65,10 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
       _provider = options.providers.where((row) => row.endpoint.binding == options.defaultBinding).firstOrNull;
       _select(options.templates.where((row) => row.id == options.defaultTemplate).firstOrNull);
     });
+    if (options.job case final job?) {
+      if (job.state == 'queued') await _waitForSummary(job);
+      if (job.state == 'failed' && mounted) setState(() => _job = job);
+    }
   });
 
   void _select(SummaryTemplate? template) {
@@ -106,9 +111,33 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
           prompt: prompt,
         );
       }
-      await widget.library.regenerateSummary(widget.id, _attempt!);
-      if (mounted) Navigator.pop(context, true);
+      if (widget.library.summaryJobsAvailable) {
+        await _waitForSummary(await widget.library.enqueueSummary(widget.id, _attempt!));
+      } else {
+        await widget.library.regenerateSummary(widget.id, _attempt!);
+        if (mounted) Navigator.pop(context, true);
+      }
     });
+  }
+
+  Future<void> _waitForSummary(SummaryJob job) async {
+    final requestId = job.requestId;
+    while (mounted) {
+      if (job.requestId != requestId) throw RecordingSummaryFailure.unavailable;
+      if (job.state == 'ready') {
+        if (mounted) Navigator.pop(context, true);
+        return;
+      }
+      setState(() => _job = job);
+      if (job.state == 'failed') {
+        // A retry is a new admission, while an interrupted submission reuses its ID.
+        _attempt = null;
+        return;
+      }
+      if (job.state != 'queued') throw RecordingSummaryFailure.unavailable;
+      await Future<void>.delayed(const Duration(seconds: 4));
+      if (mounted) job = await widget.library.readSummaryJob(widget.id, requestId);
+    }
   }
 
   @override
@@ -118,6 +147,21 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
     final provider = _provider;
     final template = _template;
     final blocked = _busy || _error == RecordingSummaryFailure.conflict;
+    final progress = _job?.progress;
+    final sectionCount = switch (progress) {
+      (phase: 'sections', completed: final completed?, total: final total?)
+          when total > 0 && completed >= 0 && completed <= total =>
+        (completed: completed, total: total),
+      _ => null,
+    };
+    final phaseLabel = switch (progress?.phase) {
+      'waiting' => 'summaryPhaseWaiting',
+      'reading' => 'summaryPhaseReading',
+      'sections' => 'summaryPhaseSections',
+      'combining' => 'summaryPhaseCombining',
+      'saving' => 'summaryPhaseSaving',
+      _ => null,
+    };
     final error = switch (_error) {
       LibraryFailure.key => l.invalidKey,
       RecordingSummaryFailure.conflict => pairedSettingsLabel(context, 'summaryRegenerateChanged'),
@@ -134,7 +178,34 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
       body: ListView(
         padding: const EdgeInsets.all(OmiSpacing.md),
         children: [
-          if (_busy) const LinearProgressIndicator(),
+          if (_busy)
+            LinearProgressIndicator(value: sectionCount == null ? null : sectionCount.completed / sectionCount.total),
+          if (_job?.state == 'queued' && error == null) Text(pairedSettingsLabel(context, 'summaryRegenerateQueued')),
+          if (_job?.state == 'queued' && error == null && phaseLabel != null)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                sectionCount != null
+                    ? '${pairedSettingsLabel(context, phaseLabel)} · ${sectionCount.completed}/${sectionCount.total}'
+                    : pairedSettingsLabel(context, phaseLabel),
+              ),
+            ),
+          if (_job?.state == 'failed' && error == null)
+            Text(
+              pairedSettingsLabel(context, switch (_job?.error) {
+                'recording_changed' => 'summaryRegenerateChanged',
+                'recording_too_large' => 'summaryRegenerateTooLong',
+                'connection' || 'timeout' => 'summaryFailureConnection',
+                'http_401' || 'http_403' || 'credential_missing' => 'summaryFailureCredential',
+                'http_429' || 'http_503' => 'summaryFailureBusy',
+                'http_404' || 'configuration' => 'summaryFailureModel',
+                'invalid_json' ||
+                'invalid_summary' ||
+                'invalid_provider_response' ||
+                'output_limit' => 'summaryFailureFormat',
+                _ => 'summaryRegenerateFailed',
+              }),
+            ),
           if (error != null) Text(error),
           if (options != null) ...[
             if (options.providers.isEmpty) Text(pairedSettingsLabel(context, 'summaryRegenerateNoModel')),

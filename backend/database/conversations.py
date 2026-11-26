@@ -347,17 +347,41 @@ def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], 
     return data
 
 
+_LOCAL_SEARCH_FIELDS = [
+    'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
+    'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'local_transcript_edits',
+    'deleted',
+]
+
+
+def _local_search_row(document, uid):
+    data = document.to_dict()
+    if not data or is_soft_deleted(data) or data.get('is_locked') or data.get('local_chat_deleting'):
+        return None
+    row = _prepare_conversation_for_read(data, uid)
+    if row is not None:
+        row['id'] = document.id
+        row['_local_read_version'] = document.update_time
+    return row
+
+
+def read_local_search_sources(uid, identifiers):
+    if not identifiers:
+        return {}
+    collection = db.collection('users').document(uid).collection(conversations_collection)
+    snapshots = db.get_all(
+        [collection.document(identifier) for identifier in identifiers], field_paths=_LOCAL_SEARCH_FIELDS,
+        retry=None, timeout=6,
+    )
+    return {row['id']: row for snapshot in snapshots if (row := _local_search_row(snapshot, uid)) is not None}
+
+
 def read_local_search_page(
     uid: str, after: Optional[str], limit: int, *, timeout: float = 8, end_page_after_file: bool = False,
 ) -> tuple[list[dict], Optional[str]]:
     """Read an owner-scoped slice without photos or offset scans."""
     collection = db.collection('users').document(uid).collection(conversations_collection)
-    query = collection.order_by('__name__').select(
-        [
-            'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
-            'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'deleted',
-        ]
-    )
+    query = collection.order_by('__name__').select(_LOCAL_SEARCH_FIELDS)
     if after is not None:
         query = query.start_after({'__name__': collection.document(after)})
     rows = []
@@ -368,13 +392,8 @@ def read_local_search_page(
             return rows, last_id
         last_id = document.id
         page_full = count == limit
-        data = document.to_dict()
-        if not data or is_soft_deleted(data) or data.get('is_locked') or data.get('local_chat_deleting'):
-            continue
-        row = _prepare_conversation_for_read(data, uid)
+        row = _local_search_row(document, uid)
         if row is not None:
-            row['id'] = document.id
-            row['_local_read_version'] = document.update_time
             rows.append(row)
             if end_page_after_file:
                 local = (row.get('external_data') or {}).get('local_transcript') or {}
@@ -458,7 +477,7 @@ def upsert_conversation_with_lifecycle(uid: str, conversation_data: dict):
             # A null existing value means "never user-set" (stub docs dump None
             # fields), so only non-null values are preserved — otherwise the
             # stub's folder_id: None would revert every AI folder assignment.
-            for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
+            for field in ('starred', 'archived', 'folder_id', 'visibility', 'user_title', 'user_category'):
                 if existing.get(field) is not None:
                     write_data[field] = existing[field]
 
@@ -527,7 +546,7 @@ def persist_processing_result_with_lifecycle(
         # A null existing value means "never user-set" (stub docs dump None
         # fields), so only non-null values are preserved — otherwise the
         # stub's folder_id: None would revert every AI folder assignment.
-        for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
+        for field in ('starred', 'archived', 'folder_id', 'visibility', 'user_title', 'user_category'):
             if existing.get(field) is not None:
                 write_data[field] = existing[field]
 
@@ -744,6 +763,7 @@ def get_conversations_without_photos(
     budget: Optional[ListReadBudget] = None,
     *,
     list_fields_only: bool = False,
+    archived_only: bool = False,
 ):
     """
     Same as get_conversations but without loading photos.
@@ -787,6 +807,8 @@ def get_conversations_without_photos(
 
     if starred is not None:
         conversations_ref = conversations_ref.where(filter=FieldFilter('starred', '==', starred))
+    if archived_only:
+        conversations_ref = conversations_ref.where(filter=FieldFilter('archived', '==', True))
 
     # Apply date range filters if provided
     if start_date:
@@ -1079,8 +1101,36 @@ def update_conversation_title(uid: str, conversation_id: str, title: str):
     conversation_ref.update({'structured.title': title, 'user_title': title})
 
 
+def _local_transcript_edit_patch(raw, row, uid, changed, fields, original_segments):
+    level = row.get('data_protection_level') or 'standard'
+    segments = row['transcript_segments']
+    local = (raw.get('external_data') or {}).get('local_transcript') or {}
+    if local.get('segment_storage') != 'result-file':
+        return _prepare_conversation_for_write({'transcript_segments': segments}, uid, level)
+
+    from utils.local_transcript import encode_grouped_transcript_edits, read_grouped_transcript_edits
+
+    edits = read_grouped_transcript_edits(raw, uid)
+    for segment in changed:
+        identifier = segment['id']
+        edit = edits.setdefault(identifier, {})
+        original = original_segments[identifier]
+        if all(original[field] == segment[field] for field in fields):
+            for field in fields:
+                edit.pop(field, None)
+        else:
+            edit.update({field: segment[field] for field in fields})
+        if not edit:
+            edits.pop(identifier)
+    patch = {'local_transcript_edits': encode_grouped_transcript_edits(edits, uid) if edits else firestore.DELETE_FIELD}
+    if segments[0] in changed:
+        preview = {**segments[0], 'text': segments[0]['text'][:180]}
+        patch.update(_prepare_conversation_for_write({'transcript_segments': [preview]}, uid, level))
+    return patch
+
+
 @firestore.transactional
-def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
+def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id, result_key=None):
     owner = db.collection('users').document(uid)
     ref = owner.collection(conversations_collection).document(conversation_id)
     snapshot = ref.get(transaction=transaction, timeout=6)
@@ -1090,15 +1140,35 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     if raw.get('status') not in {None, 'completed'}:
         return 'not_ready', None
     storage = (raw.get('external_data') or {}).get('local_transcript') or {}
-    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
-        # Firestore contains only a preview. Transcript edits need the file-backed source.
-        return 'segment_unavailable', None
+    if result_key is not None and storage.get('result_key') != result_key:
+        return 'not_found', None
     row = _prepare_conversation_for_read(raw, uid)
     if row is None:
         return 'not_found', None
     row['id'] = conversation_id
+    original_segments = {}
+    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
+        from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
+
+        original_segments = dict.fromkeys(expected if field == 'speaker' else [segment_id])
+        try:
+            row = hydrate_grouped_transcript(row, local_transcript_root(), uid, original_segments=original_segments)
+        except (OSError, ValueError, KeyError, TypeError):
+            return 'transcript_unavailable', None
+
+    def save_segments(changed, fields):
+        from utils.local_transcript import TranscriptEditLimit
+
+        try:
+            patch = _local_transcript_edit_patch(raw, row, uid, changed, fields, original_segments)
+        except TranscriptEditLimit:
+            return 'transcript_edit_limit', None
+        transaction.update(ref, patch)
+        return 'ok', row
 
     def matches_original(current):
+        if result_key is not None and field in {'starred', 'archived'} and expected is None:
+            return True
         if field in {'title', 'segment_text'} and isinstance(current, str):
             return expected == hashlib.sha256(current.encode('utf-8')).hexdigest()
         return expected == current
@@ -1115,10 +1185,10 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
             patch['structured.title'] = value
         else:
             patch['structured'] = structured
-    elif field == 'starred':
-        current = bool(row.get('starred'))
-        row['starred'] = value
-        patch = {'starred': value}
+    elif field in {'starred', 'archived'}:
+        current = row.get(field) is True
+        row[field] = value
+        patch = {field: value}
     elif field == 'folder':
         current = row.get('folder_id')
         if value is not None:
@@ -1131,10 +1201,11 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         structured = row.get('structured')
         structured = structured if isinstance(structured, dict) else {}
         try:
-            current = CategoryEnum(structured.get('category')).value
+            current = CategoryEnum(row.get('user_category') or structured.get('category')).value
         except (ValueError, TypeError):
             current = CategoryEnum.other.value
         value = CategoryEnum(value).value
+        row['user_category'] = value
         structured['category'] = value
         row['structured'] = structured
         patch = {'user_category': value}
@@ -1169,9 +1240,7 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         if changed:
             for segment in changed:
                 segment.update(value, speaker_identity_status='user' if value['is_user'] else 'unknown')
-            transaction.update(ref, _prepare_conversation_for_write(
-                {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
-            ))
+            return save_segments(changed, ('person_id', 'is_user'))
         return 'ok', row
     elif field == 'segment_text':
         segments = row.get('transcript_segments')
@@ -1187,9 +1256,7 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         if not matches_original(current):
             return 'conflict', None
         segment['text'] = value
-        patch = _prepare_conversation_for_write(
-            {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
-        )
+        return save_segments([segment], ('text',))
     else:
         raise ValueError('Unsupported local recording edit')
 
@@ -1205,8 +1272,8 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     return 'ok', row
 
 
-def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None):
-    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id)
+def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None, *, result_key=None):
+    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id, result_key)
 
 
 def update_conversation_summary(uid: str, conversation_id: str, app_id: Optional[str], content: str) -> str:
@@ -1374,8 +1441,10 @@ def get_conversations_by_id_without_photos(
     include_discarded: bool = False,
     *,
     read_site: FirestoreReadSite = FirestoreReadSite.UNATTRIBUTED,
+    field_paths: Optional[List[str]] = None,
 ):
-    return _get_conversations_by_id(uid, conversation_ids, include_discarded=include_discarded, read_site=read_site)
+    return _get_conversations_by_id(uid, conversation_ids, include_discarded=include_discarded, read_site=read_site,
+                                    field_paths=field_paths)
 
 
 def _get_conversations_by_id(
@@ -1384,12 +1453,13 @@ def _get_conversations_by_id(
     include_discarded: bool = False,
     *,
     read_site: FirestoreReadSite = FirestoreReadSite.UNATTRIBUTED,
+    field_paths: Optional[List[str]] = None,
 ):
     user_ref = db.collection('users').document(uid)
     conversations_ref = user_ref.collection(conversations_collection)
 
     doc_refs = [conversations_ref.document(str(conversation_id)) for conversation_id in conversation_ids]
-    docs = db.get_all(doc_refs)
+    docs = db.get_all(doc_refs, field_paths=field_paths) if field_paths is not None else db.get_all(doc_refs)
 
     hits = 0
     misses = 0

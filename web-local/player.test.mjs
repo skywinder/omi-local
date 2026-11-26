@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {formatTime, segmentAt, playFrom, seekTo} from './player.mjs';
+import {formatTime, segmentAt, playFrom, seekTo, speakerBadge, findTurns} from './player.mjs';
+
+test('finds one literal phrase per turn and preserves the displayed character offsets', () => {
+  const turns = [{text: '🎙 [Тест]+ ещё [тест]+'}, {text: 'без совпадения'}, {text: '[теСт]+ в конце'}];
+  const matches = findTurns(turns, '  [тест]+ ');
+  assert.deepEqual(matches.map(m => [m.index, turns[m.index].text.slice(m.start, m.end)]), [[0, '[Тест]+'], [2, '[теСт]+']]);
+  assert.deepEqual(findTurns(turns, '  '), []);
+  assert.deepEqual(findTurns(turns, '.*'), []);
+  assert.deepEqual(findTurns([{text:'обновлено'}], '[тест]+'), []);
+});
+
+test('speaker labels follow edits while numbered speakers keep their live colors', () => {
+  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05'}), {label: 'Speaker 6', tone: '1'});
+  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05', speaker_name: 'Ира'}), {label: 'Ира', tone: '1'});
+  assert.deepEqual(speakerBadge({speaker_name: 'Ира', is_user: true}), {label: 'You', tone: 'neutral'});
+  assert.deepEqual(speakerBadge({speaker: 'unknown'}), {label: '', tone: 'neutral'});
+});
 
 test('clicking a phrase seeks before starting playback; seeks remain within the recording', async () => {
   const events = [];

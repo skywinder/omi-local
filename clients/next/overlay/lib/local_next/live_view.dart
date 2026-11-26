@@ -3,15 +3,30 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/models/stt_provider.dart';
+import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/widgets/transcript.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:omi/providers/locale_provider.dart';
+
+import 'accents.dart';
 import 'live_preview.dart';
+import 'cv1_transport.dart';
+import 'device_diagnostics_page.dart';
+import 'server_connection_indicator.dart';
 import 'live_tuning.dart';
 import 'paired_library.dart';
+import 'recording_page.dart';
 import 'settings_labels.dart';
+
+Widget _liveBadge(BuildContext context, NextAccent accent, IconData icon) => Container(
+  width: 38,
+  height: 38,
+  decoration: BoxDecoration(color: accent.tint(context), borderRadius: BorderRadius.circular(12)),
+  child: Icon(icon, color: accent.of(context), size: 21),
+);
 
 class LocalNextLiveButton extends StatefulWidget {
   const LocalNextLiveButton({
@@ -22,10 +37,15 @@ class LocalNextLiveButton extends StatefulWidget {
     this.isMuted,
     required this.onStop,
     this.inputNotice,
+    this.recordingTime,
+    this.hasCaptureControls,
     this.captureControls,
     this.captureSettings,
+    this.silenceThreshold,
+    this.silencePreference,
     required this.serverLabel,
     this.library,
+    this.cv1,
   });
 
   final NextLivePreview preview;
@@ -34,10 +54,15 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function()? isMuted;
   final Future<void> Function() onStop;
   final String? Function(BuildContext)? inputNotice;
+  final Widget? Function(BuildContext)? recordingTime;
+  final bool Function()? hasCaptureControls;
   final WidgetBuilder? captureControls;
   final WidgetBuilder? captureSettings;
+  final int? Function()? silenceThreshold;
+  final Listenable? silencePreference;
   final String serverLabel;
   final PairedLibrary? library;
+  final Cv1Connection? cv1;
 
   @override
   State<LocalNextLiveButton> createState() => _LocalNextLiveButtonState();
@@ -45,6 +70,7 @@ class LocalNextLiveButton extends StatefulWidget {
 
 class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   MaterialPageRoute<void>? _route;
+  bool _routeHadCapture = false;
   int _changes = 0;
   Future<void> _saving = Future.value();
   String get _key => 'next.live.translation.${widget.preview.owner}';
@@ -52,6 +78,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   @override
   void initState() {
     super.initState();
+    widget.capture.addListener(_captureChanged);
     _restore();
   }
 
@@ -89,6 +116,15 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
         });
   }
 
+  void _captureChanged() {
+    if (_route == null) return;
+    if (widget.isRecording()) {
+      _routeHadCapture = true;
+    } else if (_routeHadCapture) {
+      _endRoute();
+    }
+  }
+
   void _endRoute() {
     final route = _route;
     _route = null;
@@ -102,14 +138,21 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   @override
   void didUpdateWidget(LocalNextLiveButton oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.capture != widget.capture) {
+      oldWidget.capture.removeListener(_captureChanged);
+      widget.capture.addListener(_captureChanged);
+    }
     if (oldWidget.preview != widget.preview) {
       _endRoute();
       _restore();
+    } else {
+      _captureChanged();
     }
   }
 
   @override
   void dispose() {
+    widget.capture.removeListener(_captureChanged);
     _endRoute();
     super.dispose();
   }
@@ -117,6 +160,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   Future<void> _open() async {
     if (_route != null) return;
     final view = widget;
+    _routeHadCapture = view.isRecording();
     final route = _route = MaterialPageRoute<void>(
       builder: (_) => _LivePage(
         view: view,
@@ -135,19 +179,33 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
     builder: (context, _) {
       final l = context.l10n;
       if (!widget.isRecording()) {
-        return TextButton.icon(
-          icon: const Icon(Icons.subtitles_outlined),
-          label: Text(l.liveTranscript),
-          onPressed: _open,
+        return ListTile(
+          leading: _liveBadge(context, NextAccent.slate, Icons.subtitles_outlined),
+          title: Text(l.liveTranscript),
+          subtitle: Text(_liveStatus(context, widget.preview, recording: false, muted: false)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _open,
         );
       }
       final preview = widget.preview;
       final muted = widget.isMuted?.call() == true;
       final status = _liveStatus(context, preview, recording: true, muted: muted);
-      final atSessionLimit = !muted && preview.reason == 'session_limit';
+      final (accent, icon) = muted
+          ? (NextAccent.slate, Icons.mic_off_outlined)
+          : switch (preview.phase) {
+              NextPreviewPhase.listening => (NextAccent.teal, Icons.graphic_eq),
+              NextPreviewPhase.unavailable => (NextAccent.coral, Icons.subtitles_off_outlined),
+              NextPreviewPhase.connecting => (NextAccent.amber, Icons.hourglass_top),
+              NextPreviewPhase.idle => (NextAccent.slate, Icons.subtitles_outlined),
+            };
       final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
           ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
           : '';
+      final timer = widget.recordingTime?.call(context);
+      final notice = widget.inputNotice?.call(context);
+      final waitingForInput = notice != null && preview.phase == NextPreviewPhase.idle;
+      final showControls = widget.hasCaptureControls?.call() == true;
+      final theme = Theme.of(context).textTheme;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
         child: Card(
@@ -156,19 +214,66 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
           elevation: 0,
           shape: const RoundedRectangleBorder(borderRadius: OmiRadius.mdAll),
           clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            key: const ValueKey('next-live-strip'),
-            leading: const Icon(Icons.subtitles_outlined),
-            title: Text(
-              atSessionLimit ? l.liveTranscript : '${l.liveTranscript} · $status',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: atSessionLimit
-                ? Text(status)
-                : (line.isEmpty ? null : Text(line, maxLines: 1, overflow: TextOverflow.ellipsis)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _open,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                key: const ValueKey('next-live-strip'),
+                onTap: _open,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        spacing: 8,
+                        children: [
+                          _liveBadge(context, accent, icon),
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l.liveTranscript,
+                                  style: theme.titleSmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  waitingForInput ? notice : status,
+                                  style: theme.bodySmall,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (timer != null)
+                            Expanded(
+                              flex: 2,
+                              child: Align(alignment: AlignmentDirectional.centerEnd, child: timer),
+                            ),
+                          const Icon(Icons.chevron_right, size: 18),
+                        ],
+                      ),
+                      if ((notice != null && !waitingForInput) || line.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 46),
+                          child: Text(
+                            notice ?? line,
+                            style: theme.bodySmall,
+                            maxLines: notice != null ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (widget.captureControls case final controls? when showControls)
+                Padding(padding: const EdgeInsetsDirectional.only(end: 4), child: controls(context)),
+            ],
           ),
         ),
       );
@@ -178,17 +283,21 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
 
 String _liveStatus(BuildContext context, NextLivePreview preview, {required bool recording, required bool muted}) {
   final l = context.l10n;
-  if (recording && muted) return l.muted;
+  if (!recording) {
+    return pairedSettingsLabel(context, preview.lines.isEmpty ? 'nextIdleTranscript' : 'nextLastTranscript');
+  }
+  if (muted) return l.muted;
   return switch (preview.phase) {
-    NextPreviewPhase.idle => recording ? l.waitingForData : l.off,
-    NextPreviewPhase.connecting => preview.lines.isEmpty ? l.livePreviewStarting : l.reconnecting,
+    NextPreviewPhase.idle => l.waitingForData,
+    NextPreviewPhase.connecting => preview.reason == 'reconnecting' ? l.reconnecting : l.livePreviewStarting,
+    NextPreviewPhase.listening when preview.withdrawnText != null => pairedSettingsLabel(context, 'nextLiveRevising'),
     NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
-    NextPreviewPhase.unavailable when preview.reason == 'disabled' => l.off,
-    NextPreviewPhase.unavailable when preview.reason == 'session_limit' && recording => pairedSettingsLabel(
+    NextPreviewPhase.unavailable when preview.reason == 'disabled' => pairedSettingsLabel(context, 'nextLiveDisabled'),
+    NextPreviewPhase.unavailable when preview.reason == 'session_limit' => pairedSettingsLabel(
       context,
       'liveSessionLimit',
     ),
-    NextPreviewPhase.unavailable => recording ? l.transcriptionUnavailableRecordingContinues : l.statusFailed,
+    NextPreviewPhase.unavailable => l.transcriptionUnavailableRecordingContinues,
   };
 }
 
@@ -250,13 +359,13 @@ class _LivePageState extends State<_LivePage> {
     final preview = view.preview;
     final l = context.l10n;
     return ListenableBuilder(
-      listenable: Listenable.merge([view.capture, preview]),
+      listenable: Listenable.merge([view.capture, preview, view.silencePreference]),
       builder: (context, _) {
         final recording = view.isRecording();
         final status = _liveStatus(context, preview, recording: recording, muted: view.isMuted?.call() == true);
         return Scaffold(
           appBar: AppBar(
-            title: Text(l.liveTranscript),
+            title: Cv1HeaderTitle(title: l.liveTranscript, link: view.cv1),
             actions: [
               IconButton(
                 icon: const Icon(Icons.tune),
@@ -270,12 +379,37 @@ class _LivePageState extends State<_LivePage> {
           body: SafeArea(
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.dns_outlined),
-                  title: Text(view.serverLabel),
-                  subtitle: Text(
-                    preview.reason == 'session_limit' ? status : (view.inputNotice?.call(context) ?? status),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md, vertical: OmiSpacing.xs),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: view.library != null
+                        ? NextServerIndicator(library: view.library!, name: view.serverLabel)
+                        : Text(view.serverLabel),
                   ),
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.subtitles_outlined,
+                    color: recording && preview.phase == NextPreviewPhase.listening
+                        ? OmiColors.success
+                        : OmiColors.textTertiary,
+                  ),
+                  title: Text(status, maxLines: 3, overflow: TextOverflow.ellipsis),
+                  trailing: switch (view.recordingTime?.call(context)) {
+                    final timer? => ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.32),
+                      child: timer,
+                    ),
+                    _ => null,
+                  },
+                  subtitle: switch (view.inputNotice?.call(context)) {
+                    final String notice => Text(notice),
+                    _ when !recording && preview.lines.isEmpty && preview.savedGroupId == null => Text(
+                      pairedSettingsLabel(context, 'nextStartForText'),
+                    ),
+                    _ => null,
+                  },
                 ),
                 if (preview.speakerStatus case final reporting?)
                   Padding(
@@ -298,8 +432,51 @@ class _LivePageState extends State<_LivePage> {
                       ),
                     ),
                   ),
-                Expanded(child: _Transcript(lines: preview.lines)),
-                if (view.captureControls case final controls? when recording) controls(context),
+                if (preview.savedGroupId case final group?)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.save_outlined),
+                    title: Text(pairedSettingsLabel(context, 'nextLiveBoundarySaved')),
+                    subtitle: Text(
+                      '${pairedSettingsLabel(context, 'nextLiveBoundarySince')} '
+                      '${OmiDuration.offset(preview.boundarySeconds)}',
+                    ),
+                    trailing: view.library == null ? null : const Icon(Icons.chevron_right),
+                    onTap: view.library == null
+                        ? null
+                        : () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => RecordingPage(
+                                library: view.library!,
+                                id: PairedLibrary.savedGroupResultsId(group),
+                                fromSavedRecording: true,
+                              ),
+                            ),
+                          ),
+                  ),
+                Expanded(
+                  child: _Transcript(
+                    lines: preview.lines,
+                    contentVersion: preview.contentVersion,
+                    withdrawn: preview.withdrawnText,
+                  ),
+                ),
+                if (view.captureControls case final controls? when recording && view.hasCaptureControls?.call() == true)
+                  controls(context),
+                if (view.silenceThreshold case final threshold?)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(OmiSpacing.md, OmiSpacing.xs, OmiSpacing.md, OmiSpacing.sm),
+                    child: Text(
+                      switch (threshold()) {
+                        final int seconds when seconds > 0 =>
+                          "${pairedSettingsLabel(context, 'nextSilenceThreshold')} · "
+                              "$seconds\u00a0${pairedSettingsLabel(context, 'nextSilenceSecondsAbbr')}",
+                        _ => pairedSettingsLabel(context, 'nextSilenceThresholdOff'),
+                      },
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -310,12 +487,14 @@ class _LivePageState extends State<_LivePage> {
 }
 
 class _Transcript extends StatelessWidget {
-  const _Transcript({required this.lines});
+  const _Transcript({required this.lines, required this.contentVersion, this.withdrawn});
+  final int contentVersion;
+  final String? withdrawn;
   final List<NextPreviewLine> lines;
 
   @override
   Widget build(BuildContext context) {
-    if (lines.isEmpty) return const SizedBox.shrink();
+    if (lines.isEmpty && withdrawn == null) return const SizedBox.shrink();
     final ordinals = <String, int>{};
     final committed = <TranscriptSegment>[];
     final drafts = <NextPreviewLine>[];
@@ -343,24 +522,49 @@ class _Transcript extends StatelessWidget {
         ),
       );
     }
-    final draft = drafts.isEmpty
+    final accent = withdrawn != null ? NextAccent.slate : NextAccent.teal;
+    final draft = drafts.isEmpty && withdrawn == null
         ? null
-        : ListTile(
+        : Padding(
             key: const ValueKey('next-live-drafts'),
-            title: Text(context.l10n.preview),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final line in drafts) ...[
-                  Text(line.text),
-                  for (final translation in line.translations.values)
-                    Text(translation, style: OmiType.subhead.copyWith(color: OmiColors.textSecondary)),
-                ],
-              ],
+            padding: const EdgeInsetsDirectional.fromSTEB(56, 4, 16, 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .75),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: accent.tint(context),
+                  border: Border.all(color: accent.of(context).withValues(alpha: .45)),
+                  borderRadius: const BorderRadiusDirectional.only(
+                    topStart: Radius.circular(6),
+                    topEnd: Radius.circular(18),
+                    bottomStart: Radius.circular(18),
+                    bottomEnd: Radius.circular(18),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      withdrawn == null ? context.l10n.preview : pairedSettingsLabel(context, 'nextLiveWithdrawn'),
+                      style: OmiType.subhead.copyWith(color: accent.of(context)),
+                    ),
+                    if (withdrawn != null) Text(withdrawn!, style: OmiType.body),
+                    for (final line in drafts) ...[
+                      Text(line.text, style: OmiType.body),
+                      for (final translation in line.translations.values)
+                        Text(translation, style: OmiType.subhead.copyWith(color: OmiColors.textSecondary)),
+                    ],
+                  ],
+                ),
+              ),
             ),
           );
     return TranscriptWidget(
       segments: committed,
+      contentVersion: contentVersion,
       unresolvedSpeakers: unknownSpeaker,
       followLatest: true,
       topMargin: false,
@@ -379,7 +583,6 @@ class _TranslationSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = context.l10n;
     final localeCode = Localizations.localeOf(context).languageCode;
     return SafeArea(
       child: ListenableBuilder(
@@ -404,33 +607,24 @@ class _TranslationSettings extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(pairedSettingsLabel(context, 'liveTranslationTargetLanguage'), style: OmiType.headline),
-                DropdownButton<String>(
+                _LanguageChoice(
                   key: const ValueKey('next-live-target'),
                   value: target,
-                  isExpanded: true,
-                  items: [
-                    DropdownMenuItem(value: '', child: Text(l.off)),
-                    for (final code in codes) DropdownMenuItem(value: code, child: Text(options[code]!)),
-                  ],
-                  onChanged: (code) {
-                    if (code != null) change(code, code.isEmpty || code == other ? '' : other);
-                  },
+                  options: options,
+                  codes: codes,
+                  title: pairedSettingsLabel(context, 'liveTranslationTargetLanguage'),
+                  onSelected: (code) => change(code, code.isEmpty || code == other ? '' : other),
                 ),
                 if (target.isNotEmpty) ...[
                   Text(pairedSettingsLabel(context, 'liveTranslationBidirectional'), style: OmiType.headline),
                   Text(pairedSettingsLabel(context, 'liveTranslationPairHelp')),
-                  DropdownButton<String>(
+                  _LanguageChoice(
                     key: const ValueKey('next-live-other'),
                     value: other,
-                    isExpanded: true,
-                    items: [
-                      DropdownMenuItem(value: '', child: Text(l.off)),
-                      for (final code in codes)
-                        if (code != target) DropdownMenuItem(value: code, child: Text(options[code]!)),
-                    ],
-                    onChanged: (code) {
-                      if (code != null) change(target, code);
-                    },
+                    options: options,
+                    codes: codes.where((code) => code != target).toList(),
+                    title: pairedSettingsLabel(context, 'liveTranslationBidirectional'),
+                    onSelected: (code) => change(target, code),
                   ),
                 ],
               ],
@@ -440,4 +634,86 @@ class _TranslationSettings extends StatelessWidget {
       ),
     );
   }
+}
+
+class _LanguageChoice extends StatelessWidget {
+  const _LanguageChoice({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.codes,
+    required this.title,
+    required this.onSelected,
+  });
+  final String value;
+  final Map<String, String> options;
+  final List<String> codes;
+  final String title;
+  final ValueChanged<String> onSelected;
+
+  String _name(String code) {
+    final native = LocaleProvider.getDisplayName(Locale(code));
+    return native == code ? options[code]! : native;
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    title: Text(value.isEmpty ? context.l10n.off : _name(value)),
+    trailing: const Icon(Icons.expand_more),
+    onTap: () async {
+      var query = '';
+      final selected = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (context) => StatefulBuilder(
+            builder: (context, refresh) {
+              final l = context.l10n;
+              final matches = codes.where(
+                (code) => '$code ${options[code]} ${_name(code)}'.toLowerCase().contains(query),
+              );
+              final visible = [if (query.isEmpty || l.off.toLowerCase().contains(query)) '', ...matches];
+              return Scaffold(
+                appBar: AppBar(title: Text(title)),
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(OmiSpacing.md),
+                        child: TextField(
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search),
+                            hintText: l.searchLanguageHint,
+                          ),
+                          onChanged: (text) => refresh(() => query = text.trim().toLowerCase()),
+                        ),
+                      ),
+                      Expanded(
+                        child: visible.isEmpty
+                            ? Center(child: Text(l.noResultsFound))
+                            : ListView.builder(
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                itemCount: visible.length,
+                                itemBuilder: (context, i) {
+                                  final code = visible[i];
+                                  return ListTile(
+                                    title: Text(code.isEmpty ? l.off : _name(code)),
+                                    subtitle: code.isEmpty ? null : Text(code),
+                                    trailing: value == code ? const Icon(Icons.check) : null,
+                                    onTap: () => Navigator.pop(context, code),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      if (context.mounted && selected != null) onSelected(selected);
+    },
+  );
 }

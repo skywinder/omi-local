@@ -1,6 +1,6 @@
 """Paired goal writes use canonical goal events without hosted wakeups."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Response
 from pydantic import BaseModel, Field, StringConstraints
@@ -14,6 +14,8 @@ from models.goal import (
     GoalProgressEvent,
     GoalProgressEventCreate,
     GoalResponse,
+    GoalRelationshipDisposition,
+    GoalStatus,
 )
 from routers.local_recording_chat import _UUID
 from utils.goals_response import normalize_goal_history_entry, normalize_goal_response
@@ -37,6 +39,12 @@ class Progress(BaseModel):
     note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
     metric: GoalMetric | None = None
     conversation_id: str | None = Field(default=None, pattern=_UUID)
+
+
+class Lifecycle(BaseModel):
+    request_id: str = Field(pattern=_UUID)
+    expected_revision: str = Field(min_length=1, max_length=64)
+    status: Literal['background', 'paused', 'achieved', 'abandoned']
 
 
 class GoalDetail(BaseModel):
@@ -104,3 +112,22 @@ def progress(goal_id: GoalId, body: Progress, response: Response, uid: str = Dep
         raise HTTPException(422, 'local_goal_invalid_progress') from None
     response.headers['Cache-Control'] = 'no-store'
     return saved
+
+
+@router.post('/{goal_id}/lifecycle', response_model=GoalResponse)
+def lifecycle(goal_id: GoalId, body: Lifecycle, response: Response, uid: str = Depends(require_paired_owner)):
+    try:
+        saved = goals.transition_goal_lifecycle(
+            uid, goal_id,
+            status=GoalStatus(body.status),
+            relationship_disposition=GoalRelationshipDisposition.retain,
+            idempotency_key=body.request_id,
+            account_generation=goals.get_task_workflow_account_generation(uid),
+            paired_expected_revision=body.expected_revision,
+        )
+    except goals.GoalNotFoundError:
+        raise HTTPException(404, 'local_goal_unavailable') from None
+    except goals.GoalConflictError:
+        raise HTTPException(409, 'local_goal_conflict') from None
+    response.headers['Cache-Control'] = 'no-store'
+    return normalize_goal_response(saved)

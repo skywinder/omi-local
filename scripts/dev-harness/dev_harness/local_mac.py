@@ -42,6 +42,11 @@ def pairing_data(key: str) -> dict:
     return {"version": 1, "owner_uid": "alice", "key_sha256": hashlib.sha256(key.encode()).hexdigest()}
 
 
+def pairing_identity_matches(saved: object, expected: dict) -> bool:
+    """Compare the phone identity without replacing separately granted credentials."""
+    return isinstance(saved, dict) and all(saved.get(field) == value for field, value in expected.items())
+
+
 def ngrok_port(cfg) -> int:
     # Follow the harness's existing port offset, without another public listener.
     return 4040 + cfg.backend_port - config.BACKEND_PORT

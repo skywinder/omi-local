@@ -14,6 +14,24 @@ class Terminal(io.StringIO):
         return True
 
 
+def test_native_pair_accepts_active_phone_key_with_archive_grant(monkeypatch, tmp_path):
+    from dev_harness import local_env
+
+    config = SimpleNamespace(repo_root=tmp_path, layout=SimpleNamespace(state_root=tmp_path))
+    key = 'a' * 43
+    local_mac.private_json(tmp_path / 'pairing.json', {
+        **local_mac.pairing_data(key), 'archive_read_key_sha256': 'e' * 64,
+    })
+    monkeypatch.setattr(local_setup.sys, 'stdin', Terminal())
+    monkeypatch.setattr(local_setup.sys, 'stdout', Terminal())
+    monkeypatch.setattr(local_env, 'read_env', lambda _: {'OMI_LOCAL_APP_KEY': key})
+    monkeypatch.setattr(local_mac, 'read_config', lambda _: {'url': 'https://example.invalid'})
+    frames = []
+    monkeypatch.setattr(local_setup, 'show_frame', lambda _, rows: frames.extend(rows))
+    assert local_setup.pair(config) == 0
+    assert f'App key: {key}' in frames
+
+
 def test_start_stops_at_first_failed_precondition(monkeypatch):
     events = []
     monkeypatch.setattr(local_setup.sys, 'stdin', Terminal())

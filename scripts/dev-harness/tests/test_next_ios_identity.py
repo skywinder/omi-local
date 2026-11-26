@@ -202,14 +202,67 @@ def test_scheme_builds_the_runner_it_launches(tmp_path):
 @pytest.mark.skipif(sys.platform != 'darwin', reason='macOS signing tools')
 def test_signed_simulator_artifact_and_sealed_content(tmp_path):
     app = package(tmp_path, iphone.BUNDLE)
-    shutil.copyfile('/usr/bin/true', app / 'Runner')
-    (app / 'Runner').chmod(0o755)
+    framework = app / 'Frameworks' / 'OpusKit.framework'
+    framework.mkdir(parents=True)
+    decoder = tmp_path / 'decoder.c'
+    decoder.write_text('int decoder_fixture(void) { return 0; }\n')
+    main = tmp_path / 'main.c'
+    main.write_text('int decoder_fixture(void); int main(void) { return decoder_fixture(); }\n')
+    subprocess.run(['xcrun', 'clang', '-dynamiclib', '-install_name', '@rpath/OpusKit.framework/OpusKit',
+                    decoder, '-o', framework / 'OpusKit'], check=True, capture_output=True)
+    subprocess.run(['xcrun', 'clang', main, framework / 'OpusKit', '-o', app / 'Runner'],
+                   check=True, capture_output=True)
     asset = app / 'Note.txt'
     asset.write_text('fixture')
-    subprocess.run(['codesign', '--force', '--sign', '-', app], check=True, capture_output=True)
+    subprocess.run(['codesign', '--force', '--deep', '--sign', '-', app], check=True, capture_output=True)
     proof = iphone.attest(app, simulator=True)
     assert proof['bundle'] == 'org.omilocal.next'
     assert proof['signature'] == 'passed'
     asset.write_text('modified')
     with pytest.raises(ValueError, match='codesign'):
         iphone.attest(app, simulator=True)
+
+
+@pytest.mark.skipif(shutil.which('swiftc') is None, reason='Swift toolchain')
+def test_cv1_legacy_import_validates_window_and_preserves_received_prefix(tmp_path):
+    main = tmp_path / 'main.swift'
+    main.write_text('''import Foundation
+      func word<T: FixedWidthInteger>(_ value: T) -> Data {
+        withUnsafeBytes(of: value.bigEndian) { Data($0) }
+      }
+      let start: UInt64 = 0xAABBCCDD11
+      func info(_ count: UInt64) -> Data {
+        Data([2]) + word(start) + word(start + count) + word(UInt32(100)) + word(UInt64(0)) + word(UInt16(444))
+      }
+      func begin(_ n: UInt32) -> Data { Data([5]) + word(start) + word(n) }
+      func done(_ n: UInt64) -> Data { Data([4, 0]) + word(start + n) }
+      let bounded = CV1LegacyRead(info: info(95), maxRecords: 32)!
+      precondition(bounded.command == Data([0x11]) + word(start) + word(UInt32(32)))
+      let last = CV1LegacyRead(info: info(95), maxRecords: 12)!
+      precondition(last.command == Data([0x11]) + word(start) + word(UInt32(12)))
+      precondition(CV1LegacyRead(info: info(95), maxRecords: 0) == nil)
+      precondition(CV1LegacyRead(info: info(95), maxRecords: 33) == nil)
+      precondition(CV1LegacyRead(info: info(0), maxRecords: 32) == nil && CV1LegacyRead(info: info(101), maxRecords: 32) == nil)
+      precondition(CV1LegacyRead(info: info(2) + Data(repeating: 0, count: 10), maxRecords: 32) == nil)
+      let data = Data((0..<888).map { UInt8($0 % 251) })
+      let read = CV1LegacyRead(info: info(2), maxRecords: 32)!
+      precondition(read.receive(begin(2)) == .more)
+      precondition(read.receive(Data([3]) + data.prefix(643)) == .more)
+      precondition(read.wholeRecords == data.prefix(444))
+      precondition(read.receive(Data([3]) + data.suffix(245)) == .more)
+      precondition(read.receive(done(2)) == .complete && read.wholeRecords == data)
+      let truncated = CV1LegacyRead(info: info(2), maxRecords: 32)!
+      precondition(truncated.receive(begin(2)) == .more)
+      precondition(truncated.receive(Data([3]) + data.prefix(740)) == .more)
+      precondition(truncated.receive(done(2)) == .interrupted && truncated.wholeRecords == data.prefix(444))
+      precondition(CV1LegacyRead(info: info(2), maxRecords: 32)!.receive(begin(1)) == .interrupted)
+      precondition(CV1LegacyRead(info: info(2), maxRecords: 32)!.receive(Data([3, 0])) == .interrupted)
+      let wrongCursor = CV1LegacyRead(info: info(2), maxRecords: 32)!
+      precondition(wrongCursor.receive(begin(2)) == .more)
+      precondition(wrongCursor.receive(Data([3]) + data) == .more)
+      precondition(wrongCursor.receive(done(3)) == .interrupted)
+    ''')
+    program = tmp_path / 'cv1-archive'
+    subprocess.run(['swiftc', '-module-cache-path', str(tmp_path / 'modules'), NEXT / 'ios/CV1Protocol.swift',
+                    main, '-o', program], check=True)
+    subprocess.run([program], check=True)
