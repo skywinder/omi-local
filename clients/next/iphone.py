@@ -223,10 +223,10 @@ def run(args):
                         default_server=args.default_server)
         if args.usb:
             install_usb(product, device, **settings)
-            print('Omi Local Next installed. Open it on the iPhone to finish startup.')
+            print(f'{NAME} installed. Open it on the iPhone to finish startup.')
         else:
             install(product, sim, device, **settings)
-            print('Omi Local Next installed and launched.')
+            print(f'{NAME} installed and launched.')
 
 
 if __name__ == '__main__':

@@ -26,7 +26,7 @@ def prepare_native(app):
         '', settings.read_text(), flags=re.MULTILINE,
     ))
     # The donor's app build config, receiver declarations and resources refer to
-    # native services that Next does not launch. Retain only Flutter's themes and icon.
+    # native services that Next does not launch. Retain Flutter's themes and install the Next launcher resources.
     main = android / 'app/src/main'
     donor_source = (main / 'kotlin', main / 'java/com')
     donor_variants = (android / 'app/src' / name for name in ('dev', 'prod', 'debug', 'profile'))
@@ -35,6 +35,7 @@ def prepare_native(app):
             shutil.rmtree(path)
     shutil.copyfile(HERE / 'android/app.gradle', android / 'app/build.gradle')
     shutil.copyfile(HERE / 'android/AndroidManifest.xml', main / 'AndroidManifest.xml')
+    shutil.copytree(HERE / 'android/res', main / 'res', dirs_exist_ok=True)
     activity = main / 'kotlin/org/omilocal/next/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
     for source in ('MainActivity.kt', 'NextCV1.kt', 'NextReminders.kt'):

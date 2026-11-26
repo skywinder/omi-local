@@ -8,6 +8,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'accents.dart';
+import 'app_identity.dart';
 import 'archive.dart';
 import 'category_backfill.dart';
 import 'server_connection_indicator.dart';
@@ -39,7 +40,7 @@ class LocalNextApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Omi Local Next',
+    title: nextAppName,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     theme: _nextTheme(Brightness.light),

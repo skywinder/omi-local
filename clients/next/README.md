@@ -1,8 +1,9 @@
 # Omi Local Next
 
 Omi Local Next is the primary development client for the paired Omi Local server on `sky-dev`.
-Its iOS application identifier is `org.omilocal.next`. Pair it with the server's
-app key in its own Keychain. The existing app owns its pending phone recordings.
+The iOS and Android launchers show **Omi Next** with a teal N icon. The application
+identifier is `org.omilocal.next`. Pair it with the server's app key in its own
+Keychain. The existing app owns its pending phone recordings.
 
 The build starts from the complete Flutter app tree at the Git revision in
 [upstream.json](upstream.json). The self-hosted Flutter entry point is
