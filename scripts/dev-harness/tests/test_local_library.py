@@ -524,7 +524,7 @@ def test_runtime_journal_observes_final_completion_without_transcript(library):
 
 
 # Remote access: an explicit public origin behind Tailscale Serve, with identity.
-PUBLIC = 'https://bastion.example.ts.net:8444'
+PUBLIC = 'https://library.example.ts.net:8444'
 
 
 def public_handler(library, **access):
@@ -536,7 +536,7 @@ def public_handler(library, **access):
 
 
 def public(library, path, http_handler, *, method='GET', extra=None, origin=PUBLIC):
-    headers = {'Host': 'bastion.example.ts.net:8444', 'Origin': origin, **(extra or {})}
+    headers = {'Host': 'library.example.ts.net:8444', 'Origin': origin, **(extra or {})}
     return request(library, path, method=method, headers=headers, http_handler=http_handler)
 
 

@@ -1,7 +1,7 @@
 # Omi Local backend compatibility
 
 The initial comparison used the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593). Next now pins [782a793](https://github.com/BasedHardware/omi/commit/782a7937650c8e0f71455ebc0aae182eb86ab28b). The existing Local client and the Next client can use
-the same paired deployment. Bastion has its own deployed revision and is
+the same paired deployment. The test server has its own deployed revision and is
 checked separately from this worktree.
 
 ## What can track the original
@@ -45,9 +45,9 @@ skips both stored transcript fields. Next opens the full detail by ID.
 The existing Local app still receives the full list. Older paired servers
 accept the extra query parameter and serve their existing response.
 
-## Bastion acceptance, November 25
+## Paired server acceptance, November 25
 
-Bastion now serves page metadata, projected cards and authenticated WAV ranges.
+The test server now serves page metadata, projected cards and authenticated WAV ranges.
 A ten-row page measured 118,001 bytes for the existing client and 54,991 bytes
 for Next, with matching IDs and summaries. The next ten rows had distinct
 IDs. Opening a saved recording returned its original transcript. Its first 44
@@ -72,11 +72,11 @@ The Local storage contract from `625034a` now covers large grouped recordings
 in Next's backend. The detail and metadata-edit responses expand the stored
 preview from the checksummed transcript. Segment and speaker changes against a
 file-backed preview return a conflict. A fixture with 1,500 segments verified
-complete expansion and rejection of a changed file. Each Bastion release keeps
+complete expansion and rejection of a changed file. Each test server release keeps
 its previous Compose file list for rollback, including the original provider
 and capture adjustments.
 
-The paired archive search on Bastion returned a snippet from a real file-backed
+The paired archive search on the test server returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired
 detail response. The same check verified pagination was available, authentication
 was required and an empty query was rejected. The isolated HTTP regression also
