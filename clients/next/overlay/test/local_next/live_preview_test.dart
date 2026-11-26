@@ -215,7 +215,7 @@ void main() {
       );
       await _until(preview, () => preview.lines.last.text == 'Revised next conversation');
       expect(preview.lines.last.start, 10);
-      preview.confirmConversationBoundary('first', (9.1 * 16000).round());
+      preview.confirmConversationBoundary('first', 10 * 16000);
       expect(preview.lines.map((line) => line.text), ['Revised next conversation']);
       replacement.add(_snapshot('suffix', 3, [_row('early', 'Still stored on the server')]));
       await _until(preview, () => preview.lines.isEmpty);

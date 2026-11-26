@@ -172,6 +172,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Saved conversation text', findRichText: true), findsNothing);
     expect(find.text('Unfinished sentence', findRichText: true), findsOneWidget);
+    final drafts = find.byKey(const ValueKey('next-live-drafts'));
+    expect(find.descendant(of: drafts, matching: find.text('Unfinished sentence')), findsOneWidget);
+    socket.send({
+      'type': 'local_transcript_snapshot',
+      'preview_id': 'preview-fixture',
+      'revision': 2,
+      'segments': [
+        {'id': 'line', 'text': 'Saved conversation text. Unfinished sentence.', 'start': 1, 'end': 12},
+      ],
+    });
+    await tester.pumpAndSettle();
+    expect(drafts, findsNothing);
+    expect(find.text('Saved conversation text. Unfinished sentence.', findRichText: true), findsOneWidget);
     expect(find.text('Conversation audio saved'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
     expect(capture.value, isTrue);
@@ -376,11 +389,19 @@ void main() {
     expect(find.text('Первый перевод', findRichText: true), findsNothing);
     expect(find.textContaining('No translation model is configured'), findsOneWidget);
 
-    void longSnapshot(int revision, int count) => socket.send({
+    void longSnapshot(int revision, int count, {String? tail}) => socket.send({
       'type': 'local_transcript_snapshot',
       'preview_id': 'preview-fixture',
       'revision': revision,
-      'segments': List.generate(count, (i) => {'id': 'line-$i', 'text': 'Sentence $i', 'start': i, 'end': i + 1}),
+      'segments': List.generate(
+        count,
+        (i) => {
+          'id': 'line-$i',
+          'text': i == count - 1 && tail != null ? tail : 'Sentence $i',
+          'start': i,
+          'end': i + 1,
+        },
+      ),
     });
     longSnapshot(4, 45);
     await tester.pumpAndSettle();
@@ -401,6 +422,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.position.extentAfter, lessThan(2));
 
+    final beforeCorrection = tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).contentVersion;
+    final extended = List.filled(30, 'Same turn continues.').join(' ');
+    longSnapshot(6, 46, tail: extended);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).contentVersion,
+      greaterThan(beforeCorrection),
+    );
+    expect(find.text(extended, findRichText: true), findsOneWidget);
+    expect(controller.position.extentAfter, lessThan(2));
+    longSnapshot(7, 46);
+    await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(stops, 0);

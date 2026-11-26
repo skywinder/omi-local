@@ -208,8 +208,9 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
 .live-tuning button { margin-inline-end:8px; padding:6px 12px; }
 .live-tuning [role=status], .turn-label { font-size:13px; color:var(--muted); }
 .live-turns { list-style:none; padding:0; margin:0; }
-.live-turns li { border-inline-start:3px solid #657285; padding-inline-start:12px; margin-block:10px; }
-.live-turns .draft { border-inline-start-style:dashed; }
+.live-turns li { background:#fcfbf8; border:1px solid var(--line); border-inline-start:3px solid #657285; border-radius:6px 16px 16px; padding:9px 14px; margin-block:10px; width:fit-content; max-width:100%; }
+.live-turns .draft { background:#e9f4ef; border-color:#aecfc2; border-inline-start:3px dashed #297563; }
+.live-turns .draft .turn-label { color:#28594c; }
 
 .live-session { padding-block:12px; border-block-start:1px solid var(--line); }
 .live-session-header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }

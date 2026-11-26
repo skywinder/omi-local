@@ -340,3 +340,11 @@ These are statuses of the live stream, not the separate **Diarization** provider
 for completed recordings. Labels are anonymous within a recording and do not prove
 speaker identity or diarization accuracy. A healthy service alone never marks a
 recording as successfully diarized.
+
+Next follows revisions that extend an existing speaker turn. After a confirmed
+silence cut, Live hides turns that ended at or before the cut and keeps a turn
+that spans it. Without word timestamps, that turn can include the end of the
+previous conversation. The final archive still uses the saved audio boundary.
+Pending words appear in a separate tinted bubble until the recognizer confirms
+or revises them. The web monitor retains speaker and draft rows in its
+100,000-character display window.

@@ -35,6 +35,20 @@ def test_full_snapshots_replace_retract_and_isolate_sessions():
     assert segment.id != PreviewSegment().id
 
 
+def test_confirmed_turn_survives_mixed_drafts_and_receives_their_final_words():
+    segment = PreviewSegment()
+    segment.configure({'diarization': True})
+    first = {'text': 'Первая фраза.', 'speaker': 0, 'start': 0, 'end': 2}
+    waiting = {'text': 'Снова', 'speaker': 0, 'start': 4, 'end': 5, 'is_draft': True}
+    provisional = {'lines': [first, waiting, {'text': 'слышно'}], 'buffer_transcription': 'слова'}
+    fixed, draft = segment.update(provisional, 6)['segments']
+    assert fixed['text'] == first['text'] and fixed['speaker'] == 'SPEAKER_00'
+    assert not fixed['is_draft'] and draft['is_draft'] and draft['text'] == 'Снова слышно слова'
+    joined = {**first, 'text': 'Первая фраза. Снова слышны слова.', 'end': 6}
+    final, = segment.update({'lines': [joined], 'buffer_transcription': ''}, 7)['segments']
+    assert final['id'] == fixed['id'] and final['text'] == joined['text'] and not final['is_draft']
+
+
 def test_authoritative_timed_speakers_keep_corrections_removals_and_real_translations():
     segment = PreviewSegment()
     segment.configure({'diarization': True, 'stt_provider': 'synthetic-stt'})
@@ -696,6 +710,16 @@ async def test_library_draft_is_owner_scoped_and_disappears_after_stop(monkeypat
         assert 'sessions' not in status and 'text' not in status['live_transcript']
         owners[0].local_preview.segment.update({'lines': [], 'buffer_transcription': 'исправлено'}, .02)
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]['text'] == 'исправлено'
+        segment = owners[0].local_preview.segment
+        segment.update({'lines': [{'start': 0, 'end': .01, 'text': 'а' * 100_000}],
+                        'buffer_transcription': 'новая речь'}, .02)
+        window = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
+        fixed, draft = window['segments']
+        assert window['text_truncated'] and len(window['text']) == 100_000
+        assert fixed['start'] is None and not fixed['is_draft']
+        assert draft['text'] == 'новая речь' and draft['is_draft']
+        assert fixed['text'] + ' ' + draft['text'] == window['text']
+        assert len(segment.segments[0]['text']) == 100_000
         owners[0].state.shutdown_event.set()
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
     finally:

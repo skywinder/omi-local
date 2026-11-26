@@ -156,6 +156,21 @@ test('recording failure identifies the failed stage even with a saved transcript
 });
 
 
+test('a draft moves into the existing speaker bubble when the turn grows', async t => {
+  const ui = monitor(t);
+  const first = {speaker: 'SPEAKER_00', start: 1, text: 'Начало.'};
+  const session = {source: 'phone', preview_id: 'example', revision: 1,
+    segments: [first, {is_draft: true, text: 'Продолжение'}]};
+  ui.requests[0].reply('', {}, [session]);
+  await settle();
+  assert.match(ui.root.textContent, /Начало\.ЧерновикПродолжение/);
+  ui.tick();
+  ui.requests[1].reply('', {}, [{...session, revision: 2, segments: [{...first, text: 'Начало. Продолжение.'}]}]);
+  await settle();
+  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Начало\. Продолжение\./);
+  assert.equal(ui.root.textContent.split('Продолжение').length, 2);
+});
+
 test('parallel inputs keep independent activity and update speaker turns without duplicating drafts', async t => {
   const ui = monitor(t);
   let now = 1000;

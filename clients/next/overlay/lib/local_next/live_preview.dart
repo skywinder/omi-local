@@ -145,6 +145,14 @@ class NextLivePreview extends ChangeNotifier {
   String? get reason => _reason;
   List<NextPreviewLine> _lines = const [];
   List<NextPreviewLine> get lines => _lines;
+  int _contentVersion = 0;
+  int get contentVersion => _contentVersion;
+
+  void _replaceLines(Iterable<NextPreviewLine> lines) {
+    _lines = List.unmodifiable(lines);
+    _contentVersion++;
+  }
+
   String _target = '', _other = '';
   String get targetLanguage => _target;
   String get otherLanguage => _other;
@@ -174,7 +182,7 @@ class NextLivePreview extends ChangeNotifier {
     if (_recording == recordingId && source == _source && codec == _codec) return;
     _detach();
     if (recordingId != _shownRecording) {
-      _lines = const [];
+      _replaceLines(const []);
       _priorCount = 0;
       _boundarySample = 0;
       _retiredIds.clear();
@@ -188,15 +196,18 @@ class NextLivePreview extends ChangeNotifier {
     unawaited(_open());
   }
 
-  bool _withinConversation(double start) => start + .001 >= boundarySeconds;
+  // WLK may extend one speaker turn across a silence cut. Its words have no
+  // individual timestamps, so keep the whole turn while any of its audio is current.
+  bool _withinConversation(double start, double end) =>
+      _boundarySample == 0 || end > boundarySeconds || start >= boundarySeconds;
 
   /// Applies only the silence cut acknowledged by the paired audio journal.
   /// Snapshot offsets and the capture's lifetime stay on the original recording clock.
   void confirmConversationBoundary(String recordingId, int sample) {
     if (_disposed || recordingId != _shownRecording || sample <= _boundarySample) return;
     _boundarySample = sample;
-    _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.start)).length;
-    _lines = List.unmodifiable(_lines.where((line) => _withinConversation(line.start)));
+    _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.start, line.end)).length;
+    _replaceLines(_lines.where((line) => _withinConversation(line.start, line.end)));
     notifyListeners();
   }
 
@@ -338,7 +349,7 @@ class NextLivePreview extends ChangeNotifier {
     _other = other;
     _controlRevision++;
     _translationStatus = null;
-    _lines = List.unmodifiable(_lines.map((line) => line.withoutTranslation()));
+    _replaceLines(_lines.map((line) => line.withoutTranslation()));
     _sendTranslation();
     notifyListeners();
   }
@@ -440,7 +451,7 @@ class NextLivePreview extends ChangeNotifier {
       }
       if (HardSecretDetector.contains(text)) continue;
       final offset = _offset ?? 0.0;
-      if (!_withinConversation(start.toDouble() + offset)) continue;
+      if (!_withinConversation(start.toDouble() + offset, end.toDouble() + offset)) continue;
       final rowId = jsonEncode([id, key]);
       final old = previous[rowId];
       final translations = <String, String>{};
@@ -483,7 +494,7 @@ class NextLivePreview extends ChangeNotifier {
     }
     _previewId = id;
     _revision = revision;
-    _lines = List.unmodifiable([..._lines.take(_priorCount), ...next]);
+    _replaceLines([..._lines.take(_priorCount), ...next]);
     _ready();
     notifyListeners();
   }

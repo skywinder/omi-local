@@ -368,7 +368,9 @@ class _LivePageState extends State<_LivePage> {
                             ),
                           ),
                   ),
-                Expanded(child: _Transcript(lines: preview.lines)),
+                Expanded(
+                  child: _Transcript(lines: preview.lines, contentVersion: preview.contentVersion),
+                ),
                 if (view.captureControls case final controls? when recording) controls(context),
               ],
             ),
@@ -380,7 +382,8 @@ class _LivePageState extends State<_LivePage> {
 }
 
 class _Transcript extends StatelessWidget {
-  const _Transcript({required this.lines});
+  const _Transcript({required this.lines, required this.contentVersion});
+  final int contentVersion;
   final List<NextPreviewLine> lines;
 
   @override
@@ -413,24 +416,45 @@ class _Transcript extends StatelessWidget {
         ),
       );
     }
+    const accent = NextAccent.teal;
     final draft = drafts.isEmpty
         ? null
-        : ListTile(
+        : Padding(
             key: const ValueKey('next-live-drafts'),
-            title: Text(context.l10n.preview),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final line in drafts) ...[
-                  Text(line.text),
-                  for (final translation in line.translations.values)
-                    Text(translation, style: OmiType.subhead.copyWith(color: OmiColors.textSecondary)),
-                ],
-              ],
+            padding: const EdgeInsetsDirectional.fromSTEB(56, 4, 16, 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .75),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: accent.tint(context),
+                  border: Border.all(color: accent.of(context).withValues(alpha: .45)),
+                  borderRadius: const BorderRadiusDirectional.only(
+                    topStart: Radius.circular(6),
+                    topEnd: Radius.circular(18),
+                    bottomStart: Radius.circular(18),
+                    bottomEnd: Radius.circular(18),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(context.l10n.preview, style: OmiType.subhead.copyWith(color: accent.of(context))),
+                    for (final line in drafts) ...[
+                      Text(line.text, style: OmiType.body),
+                      for (final translation in line.translations.values)
+                        Text(translation, style: OmiType.subhead.copyWith(color: OmiColors.textSecondary)),
+                    ],
+                  ],
+                ),
+              ),
             ),
           );
     return TranscriptWidget(
       segments: committed,
+      contentVersion: contentVersion,
       unresolvedSpeakers: unknownSpeaker,
       followLatest: true,
       topMargin: false,

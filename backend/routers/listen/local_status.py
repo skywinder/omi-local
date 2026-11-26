@@ -136,6 +136,27 @@ async def snapshot(uid: str) -> dict:
     }
 
 
+_PREVIEW_TEXT_LIMIT = 100_000
+
+
+def _visible_preview_rows(rows, text_length):
+    if text_length <= _PREVIEW_TEXT_LIMIT:
+        return rows
+    remaining = _PREVIEW_TEXT_LIMIT
+    visible = []
+    for row in reversed(rows):
+        if remaining <= 0:
+            break
+        text = row['text']
+        if len(text) > remaining:
+            # A suffix has no word-level timestamps or matching partial translation.
+            visible.append({**row, 'text': text[-remaining:], 'translations': [], 'start': None})
+            break
+        visible.append(row)
+        remaining -= len(text) + 1  # Separator in the flattened snapshot text.
+    return visible[::-1]
+
+
 async def preview_snapshot(uid: str) -> dict:
     """RAM-only drafts, separate from the content-free phone status contract."""
     result = await snapshot(uid)
@@ -167,8 +188,8 @@ async def preview_snapshot(uid: str) -> dict:
             # This ephemeral preview token already identifies the draft on iPhone;
             # it is not the persisted recording or owner's identifier.
             'preview_id': preview.segment.id if preview is not None else None,
-            'text': text[-100000:], 'text_truncated': len(text) > 100000,
-            'segments': preview.segment.segments if preview is not None and len(text) <= 100000 else [],
+            'text': text[-_PREVIEW_TEXT_LIMIT:], 'text_truncated': len(text) > _PREVIEW_TEXT_LIMIT,
+            'segments': _visible_preview_rows(preview.segment.segments, len(text)) if preview is not None else [],
             'revision': preview.segment.revision if preview is not None else 0,
             'updates': preview.updates if preview is not None else 0,
         })

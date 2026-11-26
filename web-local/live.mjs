@@ -166,7 +166,7 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
         } else {
           block.append(element('p', session.text ? 'live-text' : 'live-empty', session.text || 'Ожидаем распознанную речь…'));
         }
-        if (session.text_truncated) block.append(element('p', 'monitor-note', 'Показана последняя часть длинного черновика. Полный финальный текст будет доступен после остановки.'));
+        if (session.text_truncated) block.append(element('p', 'monitor-note', 'Показаны последние реплики длинного эфира. Полная расшифровка появится в архиве после обработки.'));
         fragment.append(block);
       }
       text.replaceChildren(fragment);
