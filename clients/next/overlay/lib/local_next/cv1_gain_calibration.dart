@@ -34,7 +34,7 @@ Future<Cv1GainDecoder> openCv1GainDecoder() async {
   return _OpusGainDecoder();
 }
 
-enum Cv1GainAdvice { noAudio, limitedAudio, overload, masked, low, usable }
+enum Cv1GainAdvice { noAudio, noSpeechAudio, limitedAudio, noRoomBaseline, overload, masked, low, usable }
 
 /// Holds only sample statistics from the same CV1 Opus packets used by capture.
 class Cv1GainCalibration {
@@ -73,8 +73,10 @@ class Cv1GainCalibration {
     final spoken = speech;
     final background = room;
     if (spoken.seconds == 0 && background.seconds == 0) return Cv1GainAdvice.noAudio;
-    if (spoken.seconds < 4 || background.seconds < 1.5) return Cv1GainAdvice.limitedAudio;
+    if (spoken.seconds == 0) return Cv1GainAdvice.noSpeechAudio;
     if (spoken.peak >= -1 || spoken.atLimit > 0) return Cv1GainAdvice.overload;
+    if (spoken.seconds < 4) return Cv1GainAdvice.limitedAudio;
+    if (background.seconds < 1.5) return Cv1GainAdvice.noRoomBaseline;
     if (!spoken.rms.isFinite || spoken.rms - background.rms < 8) return Cv1GainAdvice.masked;
     if (spoken.peak < -25) return Cv1GainAdvice.low;
     return Cv1GainAdvice.usable;

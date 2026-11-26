@@ -311,7 +311,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
     actions.publish(library.audioOwnerId, labels);
     switch (actions.take(library.audioOwnerId, labels.keys.toSet())) {
       case NextHomeAction.device:
-        unawaited(showNextDevices(context, inputs!));
+        unawaited(showNextDevices(context, inputs!, library: library));
       case NextHomeAction.task:
         unawaited(createLocalTask(context, library));
       case NextHomeAction.mute || NextHomeAction.unmute:
@@ -384,7 +384,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Cv1HeaderTitle(title: l.conversations, link: _inputs?.connection),
+                Cv1HeaderTitle(
+                  title: l.conversations,
+                  link: _inputs?.connection,
+                  openDevices: _inputs == null
+                      ? null
+                      : () => unawaited(showNextDevices(context, _inputs!, library: library)),
+                ),
                 if (widget.openServers != null)
                   Row(
                     mainAxisSize: MainAxisSize.min,

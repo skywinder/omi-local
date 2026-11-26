@@ -377,19 +377,6 @@ class LocalNextCaptureControls extends StatelessWidget {
   final Future<bool> Function(Cv1DoubleTapAction)? onDoubleTap;
   final VoidCallback? openServers;
 
-  void _openDiagnostics(BuildContext context, Listenable capture) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => NextDeviceDiagnosticsPage(
-          link: inputs.connection,
-          capture: capture,
-          captureBusy: () => inputs.hasCaptureInProgress,
-          library: library,
-        ),
-      ),
-    );
-  }
-
   Widget _boundaries(PairedLibrary paired) =>
       _ConversationBoundaryTile(seconds: groupSilence!, paired: paired, save: onGroupSilence!);
 
@@ -462,14 +449,14 @@ class LocalNextCaptureControls extends StatelessWidget {
                         subtitle: Text(cv1DeviceStatus(context, link)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          unawaited(showNextDevices(context, inputs));
+                          unawaited(showNextDevices(context, inputs, library: library));
                         },
                       ),
                       ListTile(
                         leading: const Icon(Icons.monitor_heart_outlined),
                         title: Text(l.deviceDiagnostics),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _openDiagnostics(context, capture),
+                        onTap: () => _openDiagnostics(context, inputs, library: library),
                       ),
                       if (inputs.cv1.resumeSettings case final resume?)
                         SwitchListTile(
@@ -628,7 +615,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                   ].join(' · '),
             textAlign: TextAlign.center,
           ),
-          onPressed: () => unawaited(showNextDevices(context, inputs)),
+          onPressed: () => unawaited(showNextDevices(context, inputs, library: library)),
         ),
     ];
     if (buttons.length == 1) return buttons.single;
@@ -814,7 +801,20 @@ String _shortCv1Id(String id) {
   return BtDevice.shortId(octets.length == 6 ? octets.skip(3).join() : id) as String;
 }
 
-Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) async {
+void _openDiagnostics(BuildContext context, NextCaptureInputs inputs, {PairedLibrary? library}) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => NextDeviceDiagnosticsPage(
+        link: inputs.connection,
+        capture: Listenable.merge([inputs, inputs.phone, inputs.cv1, inputs.ownerChange]),
+        captureBusy: () => inputs.hasCaptureInProgress,
+        library: library,
+      ),
+    ),
+  );
+}
+
+Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs, {PairedLibrary? library}) async {
   final connection = inputs.connection;
   if (connection.phase == Cv1LinkPhase.idle) unawaited(connection.scan());
   BuildContext? picker;
@@ -827,8 +827,9 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
   }
 
   connection.addListener(closeWhenReady);
+  bool? openDiagnostics;
   try {
-    await showModalBottomSheet<void>(
+    openDiagnostics = await showModalBottomSheet<bool>(
       context: context,
       builder: (context) => SafeArea(
         child: ListenableBuilder(
@@ -889,6 +890,13 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
                             },
                     ),
                 ],
+                if (connection.phase == Cv1LinkPhase.ready)
+                  ListTile(
+                    leading: const Icon(Icons.graphic_eq),
+                    title: Text(pairedSettingsLabel(context, 'gainDiagnosticsShortcut')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(context, true),
+                  ),
                 if (connection.permissionDenied)
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -915,5 +923,8 @@ Future<void> showNextDevices(BuildContext context, NextCaptureInputs inputs) asy
     );
   } finally {
     connection.removeListener(closeWhenReady);
+  }
+  if (openDiagnostics == true && context.mounted && !inputs._closed) {
+    _openDiagnostics(context, inputs, library: library);
   }
 }

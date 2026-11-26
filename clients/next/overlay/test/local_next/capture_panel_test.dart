@@ -218,17 +218,19 @@ void main() {
       packet(103, 2);
       await tester.pump(const Duration(seconds: 3));
       expect(find.text('Speak or play the phrase now'), findsOneWidget);
-      decoders.last.sample = 8000;
+      decoders.last.sample = 1000;
       for (var counter = 104; counter <= 353; counter++) {
         packet(counter, 2);
       }
       await tester.pump(const Duration(seconds: 5));
-      expect(find.textContaining('The phrase rose above'), findsOneWidget);
+      expect(find.textContaining('The phrase was quiet'), findsOneWidget);
       expect(find.textContaining('Audio received · 5.0 / 5 s'), findsOneWidget);
       expect(find.textContaining('Speech above room level'), findsOneWidget);
       expect(find.textContaining('−∞'), findsNothing);
       expect(requestedGains, isEmpty);
-      await tester.tap(find.text('Increase gain · 7/8'));
+      final suggestion = find.text('Apply suggested gain · 7/8 (+30dB)');
+      await tester.ensureVisible(suggestion);
+      await tester.tap(suggestion);
       expect(requestedGains, [7]);
       expect(link.calibrating, isFalse);
       expect(journal.recordings, 0);
@@ -310,7 +312,7 @@ void main() {
     }
   });
 
-  testWidgets('header follows the live CV1 battery and clears it between connections', (tester) async {
+  testWidgets('the live CV1 battery opens microphone diagnostics and clears between connections', (tester) async {
     final journal = _Journal();
     final wire = _Wire();
     final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
@@ -321,7 +323,13 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             appBar: AppBar(
-              title: Cv1HeaderTitle(title: 'Archive', link: inputs.connection),
+              title: Builder(
+                builder: (context) => Cv1HeaderTitle(
+                  title: 'Archive',
+                  link: inputs.connection,
+                  openDevices: () => unawaited(showNextDevices(context, inputs)),
+                ),
+              ),
             ),
           ),
         ),
@@ -329,9 +337,16 @@ void main() {
       wire.ready();
       await tester.pump();
       expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
-      wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 97)));
+      wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 97, gain: 6, gainWritable: true)));
       await tester.pump();
       expect(find.descendant(of: find.byType(AppBar), matching: find.text('97%')), findsOneWidget);
+      await tester.tap(find.text('97%'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Microphone and gain'));
+      await tester.pumpAndSettle();
+      expect(find.text('Test CV1 microphone'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
       wire.emit(Cv1TransportState(Cv1LinkPhase.idle, ++wire.generation));
       await tester.pump();
       expect(find.text('97%'), findsNothing);
@@ -408,7 +423,7 @@ void main() {
       await tester.pump();
       expect(find.text('5 / 8'), findsOneWidget);
       expect(find.text('+10dB'), findsOneWidget);
-      await tester.tap(find.text('Factory gain · 6/8'));
+      await tester.tap(find.text('High · Factory gain · 6/8'));
       await tester.pump();
       expect(find.text('6 / 8'), findsWidgets);
       await tester.tap(find.byTooltip('Decrease gain'));

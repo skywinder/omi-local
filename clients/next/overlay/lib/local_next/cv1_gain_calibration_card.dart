@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'cv1_gain_calibration.dart';
@@ -245,6 +246,14 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     String label(String key) => pairedSettingsLabel(context, key);
     final meter = _meter;
     final canStart = !_opening && !widget.busy() && widget.gain > 0;
+    final latest = _results.firstOrNull;
+    final suggestedGain = latest?.gain == widget.gain
+        ? switch (latest?.advice) {
+            Cv1GainAdvice.low when widget.gain < 8 => widget.gain + 1,
+            Cv1GainAdvice.overload when widget.gain > 1 => widget.gain - 1,
+            _ => null,
+          }
+        : null;
     final prompt = switch (_phase) {
       _Phase.waiting => label('gainTestWaiting'),
       _Phase.settling || _Phase.room => label('gainTestQuiet'),
@@ -266,7 +275,11 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           TextButton.icon(
             onPressed: canStart ? _start : null,
             icon: const Icon(Icons.graphic_eq),
-            label: Text(label('gainTestStart')),
+            label: Text(
+              latest != null && latest.gain != widget.gain
+                  ? '${label('gainTestRetest')} · ${widget.gain}/8'
+                  : label('gainTestStart'),
+            ),
           ),
           TextButton.icon(
             onPressed: canStart ? () => _start(_Test.coldPlayback) : null,
@@ -277,14 +290,14 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           Semantics(liveRegion: true, child: Text(prompt)),
           if (_phase == _Phase.ready)
             FilledButton(onPressed: () => setState(() => _enter(_Phase.countdown)), child: Text(label('gainTestGo'))),
-          if (_phase == _Phase.speech) ...[
+          if (_phase == _Phase.speech || _phase == _Phase.room)
             ExcludeSemantics(
               child: LinearProgressIndicator(
                 value: (((_recent?.rms ?? double.negativeInfinity) + 70) / 70).clamp(0.0, 1.0),
               ),
             ),
+          if (_phase == _Phase.speech)
             Text(_coverage(context, 'gainAudioReceived', meter.speech.seconds, _speechSeconds)),
-          ],
           TextButton(
             onPressed: () => _finish(notice: 'gainTestCancelled'),
             child: Text(context.l10n.cancel),
@@ -309,6 +322,12 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           if (cold.gain != widget.gain) Text(label('gainWakeGainChanged')),
         ],
         if (meter == null && (_results.isNotEmpty || _coldResult != null)) ...[
+          if ((suggestedGain, widget.changeGain) case (final value?, final changeGain?))
+            FilledButton.tonalIcon(
+              onPressed: canStart ? () => changeGain(value) : null,
+              icon: const Icon(Icons.tune),
+              label: Text('${label('gainTestApplySuggestion')} · $value/8 (${micGainLevelLabel(context, value)})'),
+            ),
           if (widget.changeGain case final changeGain?)
             Wrap(
               spacing: 8,
@@ -331,11 +350,14 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
                 [
                   _coverage(context, 'gainRoomReceived', result.room.seconds, 2),
                   _coverage(context, 'gainAudioReceived', result.speech.seconds, 5),
-                  if (result.speech.seconds > 0 && result.room.seconds > 0) ...[
-                    '${label('gainTestRoom')} · ${_db(result.room.rms)}',
+                  if (result.room.seconds > 0) '${label('gainTestRoom')} · ${_db(result.room.rms)}',
+                  if (result.speech.seconds > 0) ...[
                     '${label('gainTestSpeechLevel')} · ${_db(result.speech.rms)}',
                     '${label('gainTestPeak')} · ${_db(result.speech.peak)}',
-                    if (result.room.rms.isFinite && result.speech.rms.isFinite)
+                    if (result.room.seconds >= 1.5 &&
+                        result.speech.seconds >= 4 &&
+                        result.room.rms.isFinite &&
+                        result.speech.rms.isFinite)
                       '${label('gainAboveRoom')} · ${(result.speech.rms - result.room.rms).toStringAsFixed(1)} dB',
                   ],
                   label('gainTestAdvice_${result.advice.name}'),

@@ -128,9 +128,23 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 onChanged: (value) => setDraft(() => draft = value),
               ),
               if (field == 'gain')
-                TextButton(
-                  onPressed: draft == _cv1FactoryGain ? null : () => setDraft(() => draft = _cv1FactoryGain.toDouble()),
-                  child: Text('${pairedSettingsLabel(context, 'gainFactory')} · $_cv1FactoryGain/8'),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  children: [
+                    for (final (name, value) in [
+                      (l.quiet, 2),
+                      (l.normal, 4),
+                      ('${l.high} · ${pairedSettingsLabel(context, 'gainFactory')}', _cv1FactoryGain),
+                    ])
+                      ChoiceChip(
+                        label: Text('$name · $value/8'),
+                        selected: draft == value,
+                        onSelected: (selected) {
+                          if (selected) setDraft(() => draft = value.toDouble());
+                        },
+                      ),
+                  ],
                 ),
             ],
           ),
@@ -157,6 +171,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
     final saved = await widget.link.writeSetting(field, value);
     if (!mounted) return;
     setState(() => _writing = false);
+    _refresh(force: true);
     if (!saved) {
       ScaffoldMessenger.of(
         context,
@@ -661,9 +676,10 @@ String _reasonLabel(BuildContext context, Cv1LinkPhase phase, Cv1LinkReason? rea
 }
 
 class Cv1HeaderTitle extends StatelessWidget {
-  const Cv1HeaderTitle({super.key, required this.title, required this.link});
+  const Cv1HeaderTitle({super.key, required this.title, required this.link, this.openDevices});
   final String title;
   final Cv1Connection? link;
+  final VoidCallback? openDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -683,13 +699,19 @@ class Cv1HeaderTitle extends StatelessWidget {
             const SizedBox(width: 8),
             Tooltip(
               message: 'CV1 · ${context.l10n.battery} · $label',
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  value == null ? const Icon(Icons.battery_unknown, size: 18) : cv1DeviceIcon(connection),
-                  const SizedBox(width: 2),
-                  Text(label, style: Theme.of(context).textTheme.labelMedium),
-                ],
+              child: InkWell(
+                onTap: openDevices,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      value == null ? const Icon(Icons.battery_unknown, size: 18) : cv1DeviceIcon(connection),
+                      const SizedBox(width: 2),
+                      Text(label, style: Theme.of(context).textTheme.labelMedium),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

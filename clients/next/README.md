@@ -150,9 +150,11 @@ measurements and link duration. The journal does not contain Bluetooth
 identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
 and a confirmed Bluetooth write. Device Diagnostics uses the upstream Omi gain
-labels for the firmware's 0–8 levels. Measured signal levels use dBFS.
-The gain editor can select the original firmware default of 6/8 and applies it
-when you tap Save.
+labels for the firmware's 0–8 levels. Tap the **CV1** battery button and then
+**Microphone and gain** to go straight to diagnostics. The editor uses the Omi
+presets Quiet (2/8), Normal (4/8), and High (the firmware default, 6/8). Tap
+**Save** to apply the selected level. Diagnostics refreshes from the device
+after the write. Measured signal uses dBFS.
 Use two short CV1 archive recordings of the
 same phrase to compare gain settings, or open **Test CV1 microphone** for a
 direct measurement. Make a short sound near the CV1 to wake the microphone.
@@ -162,8 +164,10 @@ for five seconds at your normal distance. Only the background and speech
 windows enter the results.
 The moving meter shows the latest audio, and the result shows how much CV1
 audio arrived during each window and how far speech rose above the room level.
-Use the one-step controls to compare up to two levels at equal distance and
-volume. To check whether a quiet speaker starts the stream after silence, use
+If CV1 sent room audio but no audio during the phrase, wake it and retry. If the
+test measures a quiet phrase with enough room audio or a peak close to clipping,
+it offers a one-step change and a retest. Compare up to two levels at equal
+distance and volume. To check whether a quiet speaker starts the stream after silence, use
 **Test quiet playback**. Stay quiet for the 12-second countdown and play the
 phrase at the cue. Tap **Repeat after waking CV1**, make a short sound next to
 the pendant during the countdown, and play the same phrase at the same volume
