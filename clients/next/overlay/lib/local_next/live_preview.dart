@@ -156,6 +156,9 @@ class NextLivePreview extends ChangeNotifier {
   String? _recording, _shownRecording;
   String _source = '', _codec = '';
   int _epoch = 0, _retries = 0, _revision = 0, _priorCount = 0;
+  int _boundarySample = 0;
+  String? get savedGroupId => _boundarySample == 0 ? null : _shownRecording;
+  double get boundarySeconds => _boundarySample / 16000;
   String? _previewId;
   double? _offset;
   final _retiredIds = <String>{};
@@ -171,6 +174,7 @@ class NextLivePreview extends ChangeNotifier {
     if (recordingId != _shownRecording) {
       _lines = const [];
       _priorCount = 0;
+      _boundarySample = 0;
       _retiredIds.clear();
     }
     _recording = _shownRecording = recordingId;
@@ -179,6 +183,18 @@ class NextLivePreview extends ChangeNotifier {
     _retries = 0;
     _reason = null;
     unawaited(_open());
+  }
+
+  bool _withinConversation(double start) => start + .001 >= boundarySeconds;
+
+  /// Applies only the silence cut acknowledged by the paired audio journal.
+  /// Snapshot offsets and the capture's lifetime stay on the original recording clock.
+  void confirmConversationBoundary(String recordingId, int sample) {
+    if (_disposed || recordingId != _shownRecording || sample <= _boundarySample) return;
+    _boundarySample = sample;
+    _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.start)).length;
+    _lines = List.unmodifiable(_lines.where((line) => _withinConversation(line.start)));
+    notifyListeners();
   }
 
   void end(String recordingId) {
@@ -415,6 +431,7 @@ class NextLivePreview extends ChangeNotifier {
       }
       if (HardSecretDetector.contains(text)) continue;
       final offset = _offset ?? 0.0;
+      if (!_withinConversation(start.toDouble() + offset)) continue;
       final rowId = jsonEncode([id, key]);
       final old = previous[rowId];
       final translations = <String, String>{};

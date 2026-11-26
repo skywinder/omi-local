@@ -45,6 +45,9 @@ successful route changes and foreground return checkpoint active parts for deliv
 ordinary health polls do not rotate parts. Keep previous live-draft words within
 the same recording across sockets, with recording-relative timestamps and
 draft-scoped corrections; clear them when starting a new recording.
+A grouped silence-cut receipt advances the Live transcript only for its own
+recording, after the journal verifies the exact ID and checksum. Keep the
+original timer and stream. Ignore earlier segments on later snapshots.
 Contain the Future returned by preview send; an async socket-write error retires
 only that socket and schedules recovery, never a storage error or input restart.
 Translation control sends share that protection; resend the saved language pair

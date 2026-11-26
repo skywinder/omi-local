@@ -177,6 +177,26 @@ void main() {
       expect(preview.lines.map((line) => line.text), ['before', 'after']);
       expect(preview.lines.map((line) => line.id).toSet(), hasLength(2));
       expect(preview.lines.last.start, 9);
+      preview.confirmConversationBoundary('different recording', 8 * 16000);
+      expect(preview.savedGroupId, isNull);
+      preview.confirmConversationBoundary('first', 8 * 16000);
+      preview.confirmConversationBoundary('first', 7 * 16000); // Older upload, acknowledged late.
+      expect(preview.savedGroupId, 'first');
+      expect(preview.boundarySeconds, 8);
+      expect(preview.phase, NextPreviewPhase.listening);
+      expect(preview.lines.map((line) => line.text), ['after']);
+      replacement.add(
+        _snapshot('suffix', 2, [
+          _row('early', 'Old text in a newer snapshot'),
+          {..._row('x', 'Revised next conversation'), 'start': 1.0, 'end': 2.0},
+        ]),
+      );
+      await _until(preview, () => preview.lines.last.text == 'Revised next conversation');
+      expect(preview.lines.last.start, 10);
+      preview.confirmConversationBoundary('first', (9.1 * 16000).round());
+      expect(preview.lines.map((line) => line.text), ['Revised next conversation']);
+      replacement.add(_snapshot('suffix', 3, [_row('early', 'Still stored on the server')]));
+      await _until(preview, () => preview.lines.isEmpty);
       replacement.add(
         jsonEncode({
           'type': 'service_status',
@@ -194,6 +214,7 @@ void main() {
       preview.begin('second', 'phone', 'pcm16');
       final third = await fresh;
       expect(preview.lines, isEmpty);
+      expect(preview.savedGroupId, isNull);
       third.add(_snapshot('other', 1, [_row('z', 'fresh')]));
       await _until(preview, () => preview.lines.length == 1);
       third.add(_snapshot('other', 2, []));

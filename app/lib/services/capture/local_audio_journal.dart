@@ -20,6 +20,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     required this.upload,
     this.openJournal,
     this.groupSilence,
+    this.onConversationBoundary,
     DateTime Function()? clock,
     this.partDuration = const Duration(minutes: 5),
     this.maxStorageBytes = 512 * 1024 * 1024,
@@ -36,6 +37,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   final LocalPartUploader upload;
   final Future<RandomAccessFile> Function(File file)? openJournal;
   final int? Function()? groupSilence;
+  final void Function(String recordingId, int sample)? onConversationBoundary;
   final DateTime Function() clock;
   final Duration partDuration;
   final int maxStorageBytes;
@@ -330,6 +332,10 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           }
           await file.delete(); // Only this exact immutable body has been acknowledged.
           _deliveryRevision++;
+          final boundary = receipt['conversation_boundary_sample'];
+          if (header['version'] == 3 && header['silence_seconds'] != 0 && boundary is int && boundary > 0) {
+            onConversationBoundary?.call(header['recording_id'] as String, boundary);
+          }
         } catch (_) {
           // A part for another server must not starve this server's deliveries.
           deliveryFailed = true;

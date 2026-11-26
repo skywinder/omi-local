@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/services/capture/local_audio_outbox.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/capture/local_opus_preroll.dart';
@@ -390,6 +391,47 @@ void main() {
     expect(directory.listSync().whereType<File>(), hasLength(1));
     expect(wrong.deliveryRevision, 0);
     wrong.dispose();
+  });
+
+  test('only a matching grouped delivery receipt can advance the Live boundary', () async {
+    final boundaries = <(String, int)>[];
+    var valid = false;
+    var grouping = true;
+    final grouped = LocalAudioJournal(
+      directory: directory,
+      groupSilence: () => grouping ? 15 : null,
+      upload: (body, _) async => {
+        ...receipt(body),
+        if (!valid) 'sha256': 'unconfirmed',
+        'conversation_boundary_sample': 240000,
+      },
+      onConversationBoundary: (id, sample) => boundaries.add((id, sample)),
+    );
+    addTearDown(grouped.dispose);
+    await grouped.initialize();
+    LocalAudioRecording begin() => grouped.beginForServer(
+      source: 'phone',
+      codec: 'pcm16',
+      serverId: LocalAudioJournal.serverIdentity('https://synthetic.example/', 'synthetic-key'),
+    );
+    final recording = begin();
+    await recording.add([1, 0]);
+    await recording.checkpoint();
+    await grouped.drain();
+    expect(boundaries, isEmpty);
+    expect(directory.listSync().whereType<File>().where((file) => file.path.endsWith('.ready')), hasLength(1));
+    valid = true;
+    await grouped.drain();
+    expect(boundaries, [(recording.recordingId, 240000)]);
+    await recording.stop();
+    await grouped.drain();
+    final before = boundaries.length;
+    grouping = false;
+    final legacy = begin();
+    await legacy.add([1, 0]);
+    await legacy.stop();
+    await grouped.drain();
+    expect(boundaries, hasLength(before));
   });
 
   test('restart trims only an incomplete final packet and preserves every complete packet', () async {

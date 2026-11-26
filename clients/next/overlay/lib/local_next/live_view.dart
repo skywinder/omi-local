@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:omi/backend/schema/transcript_segment.dart';
 import 'package:omi/models/stt_provider.dart';
+import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 import 'package:omi/widgets/transcript.dart';
@@ -16,6 +17,7 @@ import 'device_diagnostics_page.dart';
 import 'server_connection_indicator.dart';
 import 'live_tuning.dart';
 import 'paired_library.dart';
+import 'recording_page.dart';
 import 'settings_labels.dart';
 
 class LocalNextLiveButton extends StatefulWidget {
@@ -301,7 +303,7 @@ class _LivePageState extends State<_LivePage> {
                   title: Text(status),
                   subtitle: switch (view.inputNotice?.call(context)) {
                     final String notice => Text(notice),
-                    _ when !recording && preview.lines.isEmpty => Text(
+                    _ when !recording && preview.lines.isEmpty && preview.savedGroupId == null => Text(
                       pairedSettingsLabel(context, 'nextStartForText'),
                     ),
                     _ => null,
@@ -327,6 +329,25 @@ class _LivePageState extends State<_LivePage> {
                             : 'liveTranslationFailed',
                       ),
                     ),
+                  ),
+                if (preview.savedGroupId case final group?)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.save_outlined),
+                    title: Text(pairedSettingsLabel(context, 'nextLiveBoundarySaved')),
+                    subtitle: Text(
+                      '${pairedSettingsLabel(context, 'nextLiveBoundarySince')} '
+                      '${OmiDuration.offset(preview.boundarySeconds)}',
+                    ),
+                    trailing: view.library == null ? null : const Icon(Icons.chevron_right),
+                    onTap: view.library == null
+                        ? null
+                        : () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  RecordingPage(library: view.library!, id: group, fromSavedRecording: true),
+                            ),
+                          ),
                   ),
                 Expanded(child: _Transcript(lines: preview.lines)),
                 if (view.captureControls case final controls? when recording) controls(context),

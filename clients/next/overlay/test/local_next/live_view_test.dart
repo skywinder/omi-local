@@ -119,6 +119,44 @@ void main() {
     expect(find.text('No active recording'), findsOneWidget);
   });
 
+  testWidgets('a saved conversation clears only older Live text and leaves Stop available', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final socket = _Socket();
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final capture = ValueNotifier(true);
+    addTearDown(preview.dispose);
+    addTearDown(capture.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: LocalNextLiveButton(
+            preview: preview,
+            capture: capture,
+            isRecording: () => capture.value,
+            onStop: () async => capture.value = false,
+            serverLabel: 'fixture.local',
+          ),
+        ),
+      ),
+    );
+    preview.begin('saved-group', 'phone', 'pcm16');
+    await tester.pump();
+    socket.snapshot(1, 'Saved conversation text', draft: true);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved conversation text', findRichText: true), findsOneWidget);
+    preview.confirmConversationBoundary('saved-group', 10 * 16000);
+    await tester.pumpAndSettle();
+    expect(find.text('Saved conversation text', findRichText: true), findsNothing);
+    expect(find.text('Unfinished sentence', findRichText: true), findsOneWidget);
+    expect(find.text('Conversation audio saved'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+    expect(capture.value, isTrue);
+  });
+
   testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();

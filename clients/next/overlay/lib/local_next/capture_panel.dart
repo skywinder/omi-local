@@ -87,25 +87,32 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         // Audio capture remains available with the default part settings.
       }
       if (_closed) return;
+      final preview = NextLivePreview(library.audioOwnerId, library.connectPreview);
       final journal = _journal = LocalAudioJournal(
         directory: Directory('${documents.path}/outbox/${library.audioOwnerId}'),
         groupSilence: () => library.conversationGroups ? _groupSilence.value : null,
+        onConversationBoundary: (id, sample) {
+          if (!_closed) preview.confirmConversationBoundary(id, sample);
+        },
         upload: (body, id) {
           if (_closed) throw StateError('Pairing closed');
           return library.uploadPart(body, id);
         },
       );
-      await journal.initialize();
-      if (_closed) return;
+      try {
+        await journal.initialize();
+      } catch (_) {
+        preview.dispose();
+        rethrow;
+      }
+      if (_closed) {
+        preview.dispose();
+        return;
+      }
       journal.addListener(_deliveryChanged);
       WidgetsBinding.instance.addObserver(journal);
       _inputs = NextCaptureInputs(
-        NextPhoneCapture(
-          journal,
-          library.audioOwnerId,
-          FlutterPhoneMicrophone(),
-          preview: NextLivePreview(library.audioOwnerId, library.connectPreview),
-        ),
+        NextPhoneCapture(journal, library.audioOwnerId, FlutterPhoneMicrophone(), preview: preview),
         _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
         doubleTapAction: () => _doubleTap,
