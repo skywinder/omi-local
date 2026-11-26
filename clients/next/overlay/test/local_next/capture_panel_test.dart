@@ -150,6 +150,7 @@ void main() {
     final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
     final link = inputs.connection;
     final decoders = <_GainDecoder>[];
+    final requestedGains = <int>[];
     try {
       await tester.pumpWidget(
         MaterialApp(
@@ -160,6 +161,7 @@ void main() {
               link: link,
               gain: 6,
               busy: () => inputs.hasCaptureInProgress,
+              changeGain: requestedGains.add,
               openDecoder: () async {
                 final decoder = _GainDecoder();
                 decoders.add(decoder);
@@ -201,14 +203,29 @@ void main() {
         packet(counter, 2);
       }
       await tester.pump(const Duration(seconds: 2));
+      expect(find.text('Room measured. Get the phrase or speaker ready.'), findsOneWidget);
+      // Waiting and preparing the speaker must not enter either measurement.
+      decoders.last.sample = 32767;
+      packet(102, 2);
+      await tester.pump(const Duration(seconds: 9));
+      expect(link.calibrating, isTrue);
+      await tester.tap(find.text('Start speech countdown'));
+      await tester.pump();
+      expect(find.text('Start speaking in · 3'), findsOneWidget);
+      expect(find.text('Increase gain · 7/8'), findsNothing);
+      packet(103, 2);
+      await tester.pump(const Duration(seconds: 3));
       expect(find.text('Speak or play the phrase now'), findsOneWidget);
       decoders.last.sample = 8000;
-      for (var counter = 102; counter <= 351; counter++) {
+      for (var counter = 104; counter <= 353; counter++) {
         packet(counter, 2);
       }
       await tester.pump(const Duration(seconds: 5));
       expect(find.textContaining('The phrase rose above'), findsOneWidget);
       expect(find.textContaining('−∞'), findsNothing);
+      expect(requestedGains, isEmpty);
+      await tester.tap(find.text('Increase gain · 7/8'));
+      expect(requestedGains, [7]);
       expect(link.calibrating, isFalse);
       expect(journal.recordings, 0);
       expect(decoders.every((decoder) => decoder.closed), isTrue);
@@ -323,7 +340,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Decrease gain'));
       await tester.pump();
-      expect(find.text('5 / 8 · +10dB'), findsOneWidget);
+      expect(find.text('5 / 8'), findsOneWidget);
       expect(radio.writes, isEmpty);
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();

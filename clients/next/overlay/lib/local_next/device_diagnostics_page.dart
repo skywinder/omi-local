@@ -8,8 +8,6 @@ import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
-import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
-
 import 'cv1_gain_calibration_card.dart';
 import 'cv1_transport.dart';
 import 'gain_samples.dart';
@@ -107,7 +105,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                       tooltip: pairedSettingsLabel(context, 'gainDown'),
                       onPressed: draft > 0 ? () => setDraft(() => draft--) : null,
                     ),
-                    Flexible(child: Text('${draft.round()} / 8 · ${micGainLevelLabel(context, draft.round())}')),
+                    Flexible(child: Text('${draft.round()} / 8')),
                     IconButton(
                       icon: const Icon(Icons.add),
                       tooltip: pairedSettingsLabel(context, 'gainUp'),
@@ -153,8 +151,13 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
         widget.captureBusy()) {
       return;
     }
+    await _writeSetting(field, selected);
+  }
+
+  Future<void> _writeSetting(String field, int value) async {
+    if (_writing || widget.captureBusy()) return;
     setState(() => _writing = true);
-    final saved = await link.writeSetting(field, selected);
+    final saved = await widget.link.writeSetting(field, value);
     if (!mounted) return;
     setState(() => _writing = false);
     if (!saved) {
@@ -253,13 +256,18 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.mic_outlined),
                       title: Text(l.micGain),
-                      subtitle: Text('$gain / 8 · ${micGainLevelLabel(context, gain)}'),
+                      subtitle: Text('$gain / 8'),
                       trailing: const Icon(Icons.tune),
                       onTap: widget.captureBusy() || _writing ? null : () => _edit('gain', l.micGain, gain, 8),
                     ),
                     if (widget.captureBusy() && !link.calibrating)
                       Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
-                    Cv1GainCalibrationCard(link: link, gain: gain, busy: () => _writing || widget.captureBusy()),
+                    Cv1GainCalibrationCard(
+                      link: link,
+                      gain: gain,
+                      busy: () => _writing || widget.captureBusy(),
+                      changeGain: (value) => _writeSetting('gain', value),
+                    ),
                     if (widget.library case final library? when library.audioPlayback)
                       ExpansionTile(
                         tilePadding: EdgeInsets.zero,

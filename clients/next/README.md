@@ -149,16 +149,20 @@ minutes. Connection events can be copied with timestamps, reason codes, last
 measurements and link duration. The journal does not contain Bluetooth
 identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
-and a confirmed Bluetooth write. Device Diagnostics exposes gain as the Omi 0–8 scale
-with dB labels and one-step changes. Use two short CV1 archive recordings of the
+and a confirmed Bluetooth write. Device Diagnostics exposes gain on the Omi 0–8 scale.
+These levels identify the firmware setting. Measured levels are displayed in dBFS.
+Use two short CV1 archive recordings of the
 same phrase to compare gain settings, or open **Test CV1 microphone** for a
 direct measurement. Make a short sound near the CV1 to wake the microphone.
-Wait for the prompt, then speak for five seconds at your normal distance. The
-phone skips the first second of audio and measures two seconds of room noise.
+The phone skips the first second of audio and measures two seconds of room noise.
+When ready, start the three-second countdown, then speak or play a phrase
+for five seconds at your normal distance. Only the background and speech
+windows enter the results.
 It decodes only CV1 audio in memory
 and compares up to two tested gain levels. Stop any active recording before
 testing. The test reports missing audio, weak sound, sound close to the room
-level, or peaks near the digital limit. Adjust gain explicitly and repeat with
+level, or peaks near the digital limit. Use the one-step controls after a test
+to adjust gain and repeat with
 the same source and distance. The test measures level and does not run speech
 recognition. For an archived comparison the phone reads at most the first ten
 seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital

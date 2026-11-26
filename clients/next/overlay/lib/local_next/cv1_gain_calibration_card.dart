@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'cv1_gain_calibration.dart';
@@ -10,18 +9,22 @@ import 'cv1_transport.dart';
 import 'settings_labels.dart';
 import 'wav_level.dart';
 
+enum _Phase { waiting, settling, room, ready, countdown, speech }
+
 class Cv1GainCalibrationCard extends StatefulWidget {
   const Cv1GainCalibrationCard({
     super.key,
     required this.link,
     required this.gain,
     required this.busy,
+    this.changeGain,
     this.openDecoder = openCv1GainDecoder,
   });
 
   final Cv1Connection link;
   final int gain;
   final bool Function() busy;
+  final ValueChanged<int>? changeGain;
   final Future<Cv1GainDecoder> Function() openDecoder;
 
   @override
@@ -37,7 +40,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   Cv1GainCalibration? _meter;
   String? _notice;
   final _results = <({int gain, WavLevel room, WavLevel speech, Cv1GainAdvice advice})>[];
-  bool _gotData = false;
+  _Phase _phase = _Phase.waiting;
 
   @override
   void initState() {
@@ -57,7 +60,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   }
 
   Future<void> _start() async {
-    if (_opening || widget.busy() || widget.gain == 0) return;
+    if (_opening || widget.busy()) return;
     final link = widget.link;
     final connected = link.linkState?.generation;
     final gain = widget.gain;
@@ -78,7 +81,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
         return;
       }
       _meter = Cv1GainCalibration(decoder);
-      _gotData = false;
+      _phase = _Phase.waiting;
       _quarterSeconds = 0;
       _tick = Timer.periodic(const Duration(milliseconds: 250), _advance);
     } catch (_) {
@@ -92,27 +95,41 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     final meter = _meter;
     if (meter == null) return;
     try {
-      if (meter.accept(raw) && !_gotData) {
-        _gotData = true;
-        _quarterSeconds = 0;
+      if (meter.accept(raw) && _phase == _Phase.waiting) {
+        setState(() => _enter(_Phase.settling));
       }
     } catch (_) {
       _finish(notice: 'gainTestDecodeFailed');
     }
   }
 
+  void _enter(_Phase phase) {
+    _phase = phase;
+    _quarterSeconds = 0;
+    _meter!.settling = phase != _Phase.room && phase != _Phase.speech;
+    _meter!.speaking = phase == _Phase.speech;
+  }
+
   void _advance(Timer timer) {
-    final meter = _meter!;
     _quarterSeconds++;
     if (widget.link.audioFailed) {
       _finish(notice: 'nextLinkAudioFailure');
-    } else if (_quarterSeconds >= 32) {
-      _finish(report: true);
-    } else {
-      setState(() {
-        meter.settling = !_gotData || _quarterSeconds < 4;
-        meter.speaking = _gotData && _quarterSeconds >= 12;
-      });
+      return;
+    }
+    switch (_phase) {
+      case _Phase.waiting when _quarterSeconds >= 32:
+      case _Phase.speech when _quarterSeconds >= 20:
+        _finish(report: true);
+      case _Phase.settling when _quarterSeconds >= 4:
+        setState(() => _enter(_Phase.room));
+      case _Phase.room when _quarterSeconds >= 8:
+        setState(() => _enter(_Phase.ready));
+      case _Phase.ready when _quarterSeconds >= 120:
+        _finish(notice: 'gainTestReadyExpired');
+      case _Phase.countdown when _quarterSeconds >= 12:
+        setState(() => _enter(_Phase.speech));
+      case _:
+        setState(() {});
     }
   }
 
@@ -152,23 +169,29 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   Widget build(BuildContext context) {
     String label(String key) => pairedSettingsLabel(context, key);
     final meter = _meter;
-    final reading = meter == null || !_gotData ? null : (meter.speaking ? meter.speech : meter.room);
+    final reading = meter == null ? null : (_phase == _Phase.speech ? meter.speech : meter.room);
+    final prompt = switch (_phase) {
+      _Phase.waiting => label('gainTestWaiting'),
+      _Phase.settling || _Phase.room => label('gainTestQuiet'),
+      _Phase.ready => label('gainTestReady'),
+      _Phase.countdown => '${label('gainTestCountdown')} · ${3 - _quarterSeconds ~/ 4}',
+      _Phase.speech => label('gainTestSpeak'),
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label(widget.gain == 0 ? 'gainTestMuted' : 'gainTestHelp')),
+        Text(label('gainTestHelp')),
         if (meter == null)
           TextButton.icon(
-            onPressed: _opening || widget.busy() || widget.gain == 0 ? null : _start,
+            onPressed: _opening || widget.busy() ? null : _start,
             icon: const Icon(Icons.graphic_eq),
             label: Text(label('gainTestStart')),
           )
         else ...[
-          Semantics(
-            liveRegion: true,
-            child: Text(label(!_gotData ? 'gainTestWaiting' : (meter.speaking ? 'gainTestSpeak' : 'gainTestQuiet'))),
-          ),
-          if (reading != null && reading.seconds > 0) ...[
+          Semantics(liveRegion: true, child: Text(prompt)),
+          if (_phase == _Phase.ready)
+            FilledButton(onPressed: () => setState(() => _enter(_Phase.countdown)), child: Text(label('gainTestGo'))),
+          if (_phase == _Phase.speech && reading != null && reading.seconds > 0) ...[
             ExcludeSemantics(child: LinearProgressIndicator(value: ((reading.peak + 60) / 60).clamp(0.0, 1.0))),
             Text('${label('gainTestPeak')} · ${_db(reading.peak)}'),
           ],
@@ -178,11 +201,25 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           ),
         ],
         if (_notice case final key?) Text(label(key)),
-        if (meter == null)
+        if (meter == null && _results.isNotEmpty) ...[
+          if (widget.changeGain case final changeGain?)
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton(
+                  onPressed: _opening || widget.busy() || widget.gain <= 1 ? null : () => changeGain(widget.gain - 1),
+                  child: Text('${label('gainDown')} · ${(widget.gain - 1).clamp(0, 8)}/8'),
+                ),
+                OutlinedButton(
+                  onPressed: _opening || widget.busy() || widget.gain >= 8 ? null : () => changeGain(widget.gain + 1),
+                  child: Text('${label('gainUp')} · ${(widget.gain + 1).clamp(0, 8)}/8'),
+                ),
+              ],
+            ),
           for (final result in _results)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('${result.gain} / 8 · ${micGainLevelLabel(context, result.gain)}'),
+              title: Text('${result.gain} / 8'),
               subtitle: Text(
                 [
                   if (result.speech.seconds > 0 && result.room.seconds > 0) ...[
@@ -194,6 +231,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
                 ].join('\n'),
               ),
             ),
+        ],
       ],
     );
   }
