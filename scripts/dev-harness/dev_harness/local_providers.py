@@ -404,7 +404,19 @@ class Registry:
         return key
 
     def _draft(self, body, state, *, models=False):
-        profile = validate_profile(body.get('profile'), models=models)
+        candidate = deepcopy(body.get('profile'))
+        if isinstance(candidate, dict) and candidate.get('stage') == 'live' and candidate.get('kind') == 'parakeet-local':
+            from . import local_live
+            if getattr(self.cfg, 'container_runtime', False):
+                raise SettingsError('Локальный Parakeet поддерживается в macOS.')
+            settings = candidate.get('settings', {})
+            if not isinstance(settings, dict):
+                raise SettingsError('Некорректные параметры провайдера.')
+            address = f'ws://127.0.0.1:{local_live.port(self.cfg)}/asr'
+            if settings.get('url', address) != address:
+                raise SettingsError('Локальный Parakeet должен использовать порт этого сервера.', field='url')
+            candidate['settings'] = {**settings, 'url': address}
+        profile = validate_profile(candidate, models=models)
         previous = next((p for p in state['profiles'] if p['id'] == profile.get('id')), None)
         if previous and (previous['stage'], previous['kind']) != (profile['stage'], profile['kind']):
             raise SettingsError('Для другого типа создайте новую карточку.')
