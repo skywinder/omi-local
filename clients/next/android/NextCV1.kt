@@ -2,6 +2,7 @@ package org.omilocal.next
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
@@ -13,7 +14,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -64,7 +68,22 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val complete: (ByteArray?) -> Unit,
     )
 
+    private var rediscoverTarget = false
+    private var waitingForRadio = false
+    private val radioState = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED || target == null) return
+            when (runCatching { adapter?.state }.getOrNull()) {
+                BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> waitForRadio()
+                BluetoothAdapter.STATE_ON -> if (waitingForRadio) connect()
+            }
+        }
+    }
+
     init {
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(radioState, filter, Context.RECEIVER_EXPORTED)
+        else context.registerReceiver(radioState, filter)
         commands.setMethodCallHandler(::command)
         events.setStreamHandler(this)
     }
@@ -78,6 +97,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
             clearLink()
             target = saved
             readyOnce = true
+            rediscoverTarget = true
             connect()
         } else {
             publish(phase)
@@ -90,6 +110,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     }
 
     fun dispose() {
+        context.unregisterReceiver(radioState)
         commands.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null
@@ -205,6 +226,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
 
     private fun disconnect(reason: String? = null) {
         target = null
+        rediscoverTarget = false
+        waitingForRadio = false
         readyOnce = false
         retryDelay = 1000
         clearLink()
@@ -217,15 +240,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
             publish("failed", reason, code)
             return
         }
+        rediscoverTarget = true
         publish("reconnecting", reason, code)
         val delay = retryDelay
         retryDelay = minOf(retryDelay * 2, 30000)
         after(delay) { connect() }
     }
 
-    private fun startScan() {
+    private fun startScan(savedAddress: String? = null) {
         val scanner = adapter?.bluetoothLeScanner
         if (scanner == null) {
+            if (savedAddress != null) return connect()
             publish("unavailable", "radio")
             return
         }
@@ -234,6 +259,14 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 handler.post {
                     if (scan !== this) return@post
                     val address = result.device.address
+                    if (savedAddress != null) {
+                        if (address == savedAddress && target == savedAddress) {
+                            stopScan()
+                            cancelTimer()
+                            connect(result.device)
+                        }
+                        return@post
+                    }
                     val name = result.scanRecord?.deviceName ?: "Omi CV1"
                     if (devices.put(address, name) == null) {
                         sink?.success(mapOf("type" to "device", "id" to address, "name" to name))
@@ -246,31 +279,54 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     if (scan === this) {
                         stopScan()
                         cancelTimer()
-                        publish("failed", "connect", errorCode)
+                        if (savedAddress != null) connect() else publish("failed", "connect", errorCode)
                     }
                 }
             }
         }
         scan = callback
-        publish("scanning")
-        val filters = listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(Cv1Uuid.audioService)).build())
-        scanner.startScan(filters, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
-        after(12000) {
+        publish(if (savedAddress == null) "scanning" else "reconnecting")
+        val filter = ScanFilter.Builder().apply {
+            if (savedAddress == null) setServiceUuid(ParcelUuid(Cv1Uuid.audioService)) else setDeviceAddress(savedAddress)
+        }.build()
+        try {
+            scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), callback)
+        } catch (error: SecurityException) {
             stopScan()
-            publish("idle")
+            if (savedAddress == null) throw error
+            return connect()
+        }
+        after(if (savedAddress == null) 12000 else 6000) {
+            stopScan()
+            if (savedAddress != null) connect() else publish("idle")
         }
     }
 
-    private fun connect() {
+    private fun waitForRadio() {
+        if (waitingForRadio) return
+        waitingForRadio = true
+        rediscoverTarget = readyOnce
+        clearLink()
+        publish("unavailable", "radio")
+    }
+
+    private fun connect(discovered: BluetoothDevice? = null) {
         val address = target ?: return
-        publish(if (readyOnce) "reconnecting" else "connecting")
         try {
-            gatt = adapter?.getRemoteDevice(address)?.connectGatt(context, false, callbacks, android.bluetooth.BluetoothDevice.TRANSPORT_LE)
+            if (adapter?.isEnabled != true) return waitForRadio()
+            waitingForRadio = false
+            if (rediscoverTarget && discovered == null) {
+                rediscoverTarget = false
+                return startScan(address)
+            }
+            publish(if (readyOnce) "reconnecting" else "connecting")
+            val device = discovered ?: adapter?.getRemoteDevice(address)
+            gatt = device?.connectGatt(context, false, callbacks, BluetoothDevice.TRANSPORT_LE)
         } catch (_: SecurityException) {
             publish("unavailable", "permission")
             return
         }
-        if (gatt == null) return lost(false, "connect")
+        if (gatt == null) return lost(readyOnce, "connect")
         after(15000) { lost(true, "timeout") }
     }
 

@@ -276,6 +276,40 @@ void main() {
     expect(expired.events, isEmpty);
   });
 
+  test('a selected CV1 resumes the active recording with a fresh subscription after the radio restarts', () async {
+    final folder = await Directory.systemTemp.createTemp('next-radio-restore-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => throw StateError('offline'));
+    await journal.initialize();
+    final capture = NextCv1Capture(journal, 'fixture', canStart: () => true);
+    final radio = _Radio()..enabling.complete();
+    final link = Cv1Connection(radio, capture);
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 21, deviceId: 'selected'));
+      capture.start();
+      await Future<void>.delayed(Duration.zero);
+      final first = radio.commands.single.$2;
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.unavailable, 2, reason: Cv1LinkReason.radio));
+      expect(link.linkedDeviceId, isNull);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 21, deviceId: 'selected'));
+      expect(link.phase, Cv1LinkPhase.unavailable);
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 3, codec: 21, deviceId: 'selected'));
+      await Future<void>.delayed(Duration.zero);
+      expect(link.linkedDeviceId, 'selected');
+      expect(capture.wantsAudio, isTrue);
+      expect(radio.commands.last.$1, 3);
+      expect(radio.commands.last.$2, isNot(first));
+      expect(radio.commands.last.$3, isTrue);
+    } finally {
+      await link.close();
+      await capture.close();
+      link.dispose();
+      capture.dispose();
+      await journal.drain();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
   test('Stop and Start while enabling supersede the subscription, even on the same link', () async {
     final folder = await Directory.systemTemp.createTemp('next-cv1-radio-');
     final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => throw StateError('offline'));
