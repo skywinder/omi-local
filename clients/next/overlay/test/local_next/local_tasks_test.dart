@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/action_item.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/backend/schema/gen/action_items_folders_wire.g.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
+import 'package:omi/local_next/local_tasks_page.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_chat.dart';
 import 'package:omi/local_next/recording_edit.dart';
+import 'package:omi/local_next/task_due.dart';
+import 'package:omi/local_next/task_reminder_sync.dart';
 import 'package:omi/local_next/task_suggestion.dart';
 import 'package:omi/widgets/transcript.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _recording = '00000000-0000-4000-8000-000000000001';
 
@@ -25,6 +30,19 @@ class _TaskLibrary extends PairedLibrary {
   final opens = <String>[];
   int suggestionCalls = 0;
   String? acceptedDigest;
+  LocalTaskDue? due;
+  bool scheduleUnavailable = false;
+
+  @override
+  LocalTaskDue? taskDue(String id) => due;
+
+  @override
+  Future<List<LocalTaskReminder>> readTaskReminders() async {
+    if (scheduleUnavailable) throw LibraryFailure.unavailable;
+    final instant = due?.instant;
+    if (task!.completed || instant == null) return [];
+    return [(id: task!.id, description: task!.description, at: instant, exact: true)];
+  }
 
   @override
   Future<RecordingChatProvider?> readTaskSuggestionProvider(String id) async =>
@@ -109,13 +127,84 @@ class _TaskLibrary extends PairedLibrary {
   Future<ActionItemWithMetadata> readTask(String id) async => task!;
 
   @override
-  Future<ActionItemWithMetadata> editTask(String id, RecordingEdit edit) async => task = task!.copyWith(
-    description: edit.field == 'description' ? edit.value as String : null,
-    completed: edit.field == 'completed' ? edit.value as bool : null,
-  );
+  Future<ActionItemWithMetadata> editTask(String id, RecordingEdit edit) async {
+    if (edit.field == 'due') {
+      expect(edit.wire['expected'], due?.wire);
+      final value = edit.value as Map<String, dynamic>?;
+      due = value == null ? null : LocalTaskDue(value);
+    }
+    return task = task!.copyWith(
+      description: edit.field == 'description' ? edit.value as String : null,
+      completed: edit.field == 'completed' ? edit.value as bool : null,
+    );
+  }
 }
 
 void main() {
+  testWidgets(
+    'a task can gain an exact reminder and completion clears the local alarm',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      const channel = MethodChannel('org.omilocal.next/reminders');
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final schedules = <List>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'timezone':
+            return 'Asia/Yerevan';
+          case 'replace':
+            schedules.add(call.arguments as List);
+          case 'clear':
+            schedules.add([]);
+            return null;
+        }
+        return {'allowed': true, 'precise': true};
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final future = DateTime.now().add(const Duration(days: 2));
+      final library = _TaskLibrary()
+        ..taskRemindersAvailable = true
+        ..task = const ActionItemWithMetadata(id: 'fixture-task', description: 'Test appointment', completed: false)
+        ..due = LocalTaskDue.day(future.toIso8601String().split('T').first, 'Asia/Yerevan');
+      final reminders = TaskReminderSync()..bind(library);
+      addTearDown(reminders.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: LocalTasksPage(library: library, reminders: reminders),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Task reminders on this phone'));
+      await tester.pumpAndSettle();
+      expect(reminders.enabled, isTrue);
+      await tester.tap(find.byTooltip('Set reminder'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Exact time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(library.due?.kind, 'instant');
+      expect(library.due?.timezone, 'Asia/Yerevan');
+      expect(schedules.last.single, containsPair('id', 'fixture-task'));
+
+      final last = schedules.length;
+      library.scheduleUnavailable = true;
+      await reminders.sync(library, 'Omi task reminder');
+      await tester.pumpAndSettle();
+      expect(reminders.syncFailed, isTrue);
+      expect(schedules.length, last);
+      library.scheduleUnavailable = false;
+      await tester.tap(find.byType(Checkbox));
+      await tester.pumpAndSettle();
+      expect(reminders.syncFailed, isFalse);
+      expect(schedules.last, isEmpty);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
   testWidgets('task suggestions require model consent and separate acceptance of source evidence', (tester) async {
     final library = _TaskLibrary();
     await tester.pumpWidget(

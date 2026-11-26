@@ -1,10 +1,14 @@
 package org.omilocal.next
 
 import android.content.pm.ApplicationInfo
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.time.ZoneId
 
 class MainActivity : FlutterActivity() {
     private var cv1: NextCV1? = null
@@ -12,6 +16,28 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
         cv1 = NextCV1(applicationContext, engine.dartExecutor.binaryMessenger)
+        MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/reminders")
+            .setMethodCallHandler { call, result ->
+                val reminders = NextReminders(applicationContext)
+                try {
+                    when (call.method) {
+                        "timezone" -> result.success(ZoneId.systemDefault().id)
+                        "status" -> result.success(reminders.status())
+                        "replace" -> result.success(reminders.replace(call.arguments))
+                        "clear" -> {
+                            reminders.clear()
+                            result.success(null)
+                        }
+                        "exactSettings" -> {
+                            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (_: Exception) {
+                    result.error("local_task_reminders_unavailable", null, null)
+                }
+            }
         MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/environment")
             .setMethodCallHandler { call, result ->
                 if (call.method != "takeLocalMacSettings") {

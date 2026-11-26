@@ -18,6 +18,9 @@ class RecordingEdit {
     : field = 'description',
       segmentId = null;
   const RecordingEdit.taskCompleted(bool this.expected, bool this.value) : field = 'completed', segmentId = null;
+  const RecordingEdit.taskDue(Map<String, dynamic>? this.expected, Map<String, dynamic>? this.value)
+    : field = 'due',
+      segmentId = null;
   const RecordingEdit.speaker(Map<String, Object?> this.expected, Map<String, Object?> this.value)
     : field = 'speaker',
       segmentId = null;

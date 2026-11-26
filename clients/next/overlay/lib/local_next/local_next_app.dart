@@ -22,6 +22,7 @@ import 'device_diagnostics_page.dart';
 import 'home_shortcuts.dart';
 import 'offline_recordings_page.dart';
 import 'task_editor.dart';
+import 'task_reminder_sync.dart';
 import 'paired_library.dart';
 import 'recording_page.dart';
 import 'server_catalog.dart';
@@ -103,12 +104,15 @@ class _Pairing extends StatefulWidget {
 
 class _PairingState extends State<_Pairing> {
   late final NextServerSession session;
+  final _reminders = TaskReminderSync();
   PairedLibrary? _shown;
 
   @override
   void initState() {
     super.initState();
     session = widget.session ?? NextServerSession(NextServerCatalog());
+    _shown = session.active;
+    _reminders.bind(_shown);
     session.addListener(_changed);
     session.initialize();
   }
@@ -116,6 +120,7 @@ class _PairingState extends State<_Pairing> {
   void _changed() {
     if (_shown != session.active) {
       _shown = session.active;
+      _reminders.bind(_shown);
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
     setState(() {});
@@ -124,6 +129,7 @@ class _PairingState extends State<_Pairing> {
   @override
   void dispose() {
     session.removeListener(_changed);
+    _reminders.dispose();
     session.dispose();
     super.dispose();
   }
@@ -137,6 +143,7 @@ class _PairingState extends State<_Pairing> {
       key: ObjectKey(active),
       shortcuts: widget.shortcuts,
       library: active,
+      reminders: _reminders,
       serverName: named?.name ?? active.origin.authority,
       pairingBusy: session.busy,
       openServers: () => Navigator.of(
@@ -154,11 +161,13 @@ class LocalNextLibraryPage extends StatefulWidget {
     this.serverName,
     this.pairingBusy = false,
     this.shortcuts,
+    this.reminders,
   });
   final VoidCallback? openServers;
   final String? serverName;
   final bool pairingBusy;
   final NextHomeShortcuts? shortcuts;
+  final TaskReminderSync? reminders;
   final PairedLibrary library;
   @override
   State<LocalNextLibraryPage> createState() => _LibraryPageState();
@@ -178,7 +187,12 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
       } catch (_) {
         return; // The profile check publishes its own connection status.
       }
-      if (mounted && paired == widget.library && _canRefreshRecordings()) await _archive.recoverAfterServerCheck();
+      if (!mounted || paired != widget.library) return;
+      if (widget.reminders case final reminders?) {
+        final title = pairedSettingsLabel(context, 'localReminderTitle');
+        unawaited(reminders.sync(paired, title));
+      }
+      if (_canRefreshRecordings()) await _archive.recoverAfterServerCheck();
     }
 
     unawaited(check());
@@ -383,7 +397,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                 case _ArchiveAction.offline:
                   open(OfflineRecordingsPage(library: library));
                 case _ArchiveAction.tasks:
-                  open(LocalTasksPage(library: library));
+                  open(LocalTasksPage(library: library, reminders: widget.reminders));
                 case _ArchiveAction.recaps:
                   open(DailyRecapsPage(library: library));
                 case _ArchiveAction.goals:

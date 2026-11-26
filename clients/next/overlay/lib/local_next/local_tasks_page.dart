@@ -10,10 +10,13 @@ import 'recording_edit.dart';
 import 'recording_page.dart';
 import 'settings_labels.dart';
 import 'task_editor.dart';
+import 'task_reminder_editor.dart';
+import 'task_reminder_sync.dart';
 
 class LocalTasksPage extends StatefulWidget {
-  const LocalTasksPage({super.key, required this.library});
+  const LocalTasksPage({super.key, required this.library, this.reminders});
   final PairedLibrary library;
+  final TaskReminderSync? reminders;
 
   @override
   State<LocalTasksPage> createState() => _LocalTasksPageState();
@@ -52,6 +55,7 @@ class _LocalTasksPageState extends State<LocalTasksPage> {
         _offset += page.actionItems.length;
         _more = page.hasMore;
       });
+      if (!append) _syncReminders();
     } catch (_) {
       if (mounted) setState(() => _loadFailed = true);
     } finally {
@@ -65,7 +69,42 @@ class _LocalTasksPageState extends State<LocalTasksPage> {
 
   Future<void> _save(ActionItemWithMetadata task, RecordingEdit edit) async {
     final saved = await widget.library.editTask(task.id, edit);
-    if (mounted) setState(() => _tasks[saved.id] = saved);
+    if (mounted) {
+      setState(() => _tasks[saved.id] = saved);
+      _syncReminders();
+    }
+  }
+
+  void _syncReminders() {
+    if (widget.reminders case final reminders?) {
+      unawaited(reminders.sync(widget.library, pairedSettingsLabel(context, 'localReminderTitle')));
+    }
+  }
+
+  Future<void> _editReminder(ActionItemWithMetadata task) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final saved = await widget.library.readTask(task.id);
+      if (!mounted) return;
+      setState(() {
+        _tasks[saved.id] = saved;
+        _busy = false;
+      });
+      if (saved.isLocked || saved.completed) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) =>
+            TaskReminderEditor(initial: widget.library.taskDue(saved.id), save: (edit) => _save(saved, edit)),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(taskEditError(context, error))));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _toggle(ActionItemWithMetadata task) async {
@@ -122,9 +161,16 @@ class _LocalTasksPageState extends State<LocalTasksPage> {
     }
   }
 
+  Widget? _subtitle(ActionItemWithMetadata task) {
+    final reminder = taskReminderLabel(context, widget.library.taskDue(task.id));
+    if (reminder != null) return Text(reminder);
+    return task.conversationId == null ? null : Text(pairedSettingsLabel(context, 'localTaskSource'));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
+    final supportsReminders = widget.library.taskRemindersAvailable;
     final rows = [..._tasks.values];
     // Keep each partition in the server's order as tasks enter and leave it.
     final ordered = [...rows.where((row) => !row.completed), ...rows.where((row) => row.completed)];
@@ -147,6 +193,8 @@ class _LocalTasksPageState extends State<LocalTasksPage> {
           Expanded(
             child: ListView(
               children: [
+                if (widget.reminders case final reminders? when supportsReminders)
+                  TaskReminderSettings(library: widget.library, reminders: reminders),
                 for (final task in ordered)
                   ListTile(
                     key: ValueKey(task.id),
@@ -155,14 +203,23 @@ class _LocalTasksPageState extends State<LocalTasksPage> {
                       onChanged: _busy || task.isLocked ? null : (_) => _toggle(task),
                     ),
                     title: Text(task.description),
-                    subtitle: task.conversationId == null
-                        ? null
-                        : Text(pairedSettingsLabel(context, 'localTaskSource')),
+                    subtitle: _subtitle(task),
                     onTap: task.conversationId == null || task.isLocked ? null : () => _source(task),
-                    trailing: IconButton(
-                      tooltip: l.edit,
-                      icon: const Icon(Icons.edit_outlined),
-                      onPressed: _busy || task.isLocked ? null : () => _edit(task),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (supportsReminders && !task.completed)
+                          IconButton(
+                            tooltip: pairedSettingsLabel(context, 'localReminderEdit'),
+                            icon: const Icon(Icons.alarm_outlined),
+                            onPressed: _busy || task.isLocked ? null : () => _editReminder(task),
+                          ),
+                        IconButton(
+                          tooltip: l.edit,
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: _busy || task.isLocked ? null : () => _edit(task),
+                        ),
+                      ],
                     ),
                   ),
                 if (!_busy && !_loadFailed && ordered.isEmpty && !_more)

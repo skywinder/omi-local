@@ -29,6 +29,7 @@ import 'processing.dart';
 import 'recording_chat.dart';
 import 'recording_summary.dart';
 import 'recording_edit.dart';
+import 'task_due.dart';
 import 'task_suggestion.dart';
 
 enum NextServerConnection { checking, connected, unreachable, rejected, invalid }
@@ -94,6 +95,7 @@ class PairedLibrary {
   bool processingRetryAvailable = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
+  bool taskRemindersAvailable = false;
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
   bool dailyRecapsAvailable = false;
@@ -115,6 +117,7 @@ class PairedLibrary {
   late final _audioOrigin = _readAudioOrigin();
   final _clients = <HttpClient>{};
   final _previews = <WebSocket>{};
+  final _taskDues = <String, LocalTaskDue>{};
   String get audioOwnerId => sha256.convert(utf8.encode(jsonEncode([origin.toString(), _key]))).toString();
   late final offlineRecordings = NextOfflineRecordings(audioOwnerId);
   bool get canOpenOffline => !_closed;
@@ -133,6 +136,8 @@ class PairedLibrary {
     processingRetryAvailable = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
+    taskRemindersAvailable = false;
+    _taskDues.clear();
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
     dailyRecapsAvailable = false;
@@ -503,6 +508,7 @@ class PairedLibrary {
     processingRetryAvailable = data['local_processing_retry_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
+    taskRemindersAvailable = tasksAvailable && data['local_task_reminders_version'] == 1;
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
@@ -692,11 +698,33 @@ class PairedLibrary {
 
   static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
 
+  LocalTaskDue? taskDue(String id) => _taskDues[id];
+
+  void _rememberTaskDue(Map<String, dynamic> data) {
+    final id = data['id'];
+    if (!isSignedIn || id is! String) return;
+    final due = LocalTaskDue.fromTask(data);
+    if (due == null) {
+      _taskDues.remove(id);
+    } else {
+      _taskDues[id] = due;
+    }
+  }
+
   Future<ActionItemsResponse> readTasks(int offset) async {
     if (!isSignedIn || !tasksAvailable) throw LibraryFailure.unavailable;
     final page = await _request(
       '/v1/action-items',
-      (response) async => ActionItemsResponse.fromJson(await _json(response, 1 << 20) as Map<String, dynamic>),
+      (response) async {
+        final data = await _json(response, 1 << 20) as Map<String, dynamic>;
+        final page = ActionItemsResponse.fromJson(data);
+        if (data['action_items'] case final List rows) {
+          for (final row in rows.whereType<Map<String, dynamic>>()) {
+            _rememberTaskDue(row);
+          }
+        }
+        return page;
+      },
       query: {'offset': '$offset', 'limit': '30'},
       overallTimeout: _deadline,
     );
@@ -705,6 +733,40 @@ class PairedLibrary {
   }
 
   Future<ActionItemWithMetadata> readTask(String id) => _taskRequest(id: id, method: 'GET');
+
+  Future<List<LocalTaskReminder>> readTaskReminders() async {
+    if (!isSignedIn || !taskRemindersAvailable) throw LibraryFailure.unavailable;
+    final items = await _request('/v1/local/action-items/reminders/schedule', (response) async {
+      final data = await _json(response, 128 << 10);
+      if (data is! List || data.length > 96) throw LibraryFailure.malformed;
+      final reminders = <LocalTaskReminder>[];
+      final ids = <String>{};
+      for (final row in data) {
+        if (row is! Map ||
+            row['id'] is! String ||
+            row['description'] is! String ||
+            row['exact_time'] is! bool ||
+            row['notify_at'] is! String) {
+          throw LibraryFailure.malformed;
+        }
+        final id = row['id'] as String;
+        final description = row['description'] as String;
+        final at = DateTime.tryParse(row['notify_at'] as String);
+        if (!_folderId.hasMatch(id) ||
+            !ids.add(id) ||
+            description.isEmpty ||
+            description.length > 400 ||
+            at == null ||
+            !at.isUtc) {
+          throw LibraryFailure.malformed;
+        }
+        reminders.add((id: id, description: description, at: at, exact: row['exact_time'] as bool));
+      }
+      return reminders;
+    });
+    if (!isSignedIn) throw LibraryFailure.key;
+    return items;
+  }
 
   Future<ActionItemWithMetadata> createTask(
     String requestId,
@@ -885,8 +947,10 @@ class PairedLibrary {
       (response) async {
         if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
         if (response.statusCode != HttpStatus.ok) throw LibraryFailure.unavailable;
-        final task = ActionItemWithMetadata.fromJson(await _json(response, 128 << 10) as Map<String, dynamic>);
+        final payload = await _json(response, 128 << 10) as Map<String, dynamic>;
+        final task = ActionItemWithMetadata.fromJson(payload);
         if (id != null && task.id != id) throw LibraryFailure.malformed;
+        _rememberTaskDue(payload);
         return task;
       },
       method: method,
