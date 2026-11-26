@@ -1,3 +1,4 @@
+import {mountLiveTuning} from './live-tuning.mjs';
 import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
 import {mountSettings} from '/settings.mjs';
@@ -414,7 +415,8 @@ $('note-category').addEventListener('change', event => changeNote('category', ev
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));
-mountLiveMonitor($('live-monitor'));
+const refreshLiveTuning = mountLiveTuning($('live-tuning'));
+mountLiveMonitor($('live-monitor'), refreshLiveTuning, $('live-tuning'));
 showView();
 refresh();
 

@@ -242,6 +242,16 @@ model: the prompt tells it to translate, not to follow instructions in the lines
 
 ## Live STT
 
+The web library’s **Сейчас** tab shows the phone and audio input for each stream.
+Its timer measures audio received by the server. Five seconds without new frames
+flags that input even if another device keeps sending audio. Speaker turns show
+the time of their first segment. Drafts have a dashed marker.
+
+Open **Настройки живого распознавания** to change the audio buffer, speaker limit
+or draft visibility. Changes save when the control is committed. The status
+shows whether active streams have acknowledged the change. If another client
+saved first, reload the values before editing again.
+
 The live server must accept little-endian PCM16, mono, 16 kHz, and the complete
 WhisperLiveKit protocol: initial `config/useAudioWorklet`,
 `lines/buffer_transcription` snapshots, an empty binary end-of-stream frame,

@@ -33,6 +33,7 @@ from .local_library_notes import NoteConflict, NoteStates, valid_change
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/style.css': ('style.css', 'text/css; charset=utf-8'),
           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+          '/live-tuning.mjs': ('live-tuning.mjs', 'text/javascript; charset=utf-8'),
           '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
           '/settings.mjs': ('settings.mjs', 'text/javascript; charset=utf-8'),
           '/recording-processing.mjs': ('recording-processing.mjs', 'text/javascript; charset=utf-8'),

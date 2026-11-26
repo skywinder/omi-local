@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Ваши аудиозаписи и транскрипты на этом Mac.">
+  <meta name="description" content="Ваши аудиозаписи и транскрипты на вашем сервере.">
   <meta name="omiloc-assets" content="__OMILOC_ASSETS__">
   <title>omiloc · Записи</title>
   <link rel="icon" href="data:,">
@@ -12,7 +12,7 @@
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="/" aria-label="omiloc — записи">omiloc<span class="brand-dot"></span></a><span class="top-label">Личная аудиотека</span><span class="local-badge"><span></span>На этом Mac</span></header>
+  <header class="topbar"><a class="brand" href="/" aria-label="omiloc — записи">omiloc<span class="brand-dot"></span></a><span class="top-label">Личная аудиотека</span><span class="local-badge"><span></span>Свой сервер</span></header>
   <main class="workspace">
     <aside class="library" aria-label="Аудиозаписи">
       <div class="library-heading"><div><p class="eyebrow">БИБЛИОТЕКА</p><h1>Записи <span id="count"></span></h1></div><button id="refresh" class="icon-button" title="Обновить список" aria-label="Обновить список">↻</button></div>
@@ -40,7 +40,7 @@
     </aside>
     <section class="detail" aria-label="Просмотр записи">
       <nav class="detail-tabs" aria-label="Режим просмотра"><button id="view-live" class="selected" aria-pressed="true">Сейчас</button><button id="view-recording" aria-pressed="false">Запись</button><button id="view-settings" aria-pressed="false">Настройки</button></nav>
-      <section id="live-monitor" class="live-monitor" aria-label="Текущее распознавание"></section>
+      <section id="live-monitor" class="live-monitor" aria-label="Текущее распознавание"><details id="live-tuning" class="live-tuning"><summary>Настройки живого распознавания</summary></details></section>
       <section id="provider-settings" class="provider-settings" aria-label="Настройки провайдеров" hidden></section>
       <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>

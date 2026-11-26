@@ -41,9 +41,9 @@ function monitor(t) {
   t.mock.method(globalThis, 'fetch', (url, options) => new Promise((resolve, reject) => {
     assert.equal(url, '/api/runtime');
     assert.equal(options.cache, 'no-store');
-    requests.push({signal: options.signal, reject, reply: (text, diarization) => resolve({ok: true, json: async () => ({
+    requests.push({signal: options.signal, reject, reply: (text, diarization, sessions) => resolve({ok: true, json: async () => ({
       backend: 'ready', capture: {state: 'received', frames_received: requests.length},
-      sessions: [{source: 'omi', preview_id: 'synthetic-draft', text}],
+      sessions: sessions ?? [{source: 'omi', preview_id: 'synthetic-draft', text}],
       live_transcript: {state: 'streaming', updates: requests.length}, final_stt: {state: 'ready'}, events: [],
       observed_at: '2026-09-10T12:00:00Z', diarization,
     })})});
@@ -153,4 +153,28 @@ test('recording failure identifies the failed stage even with a saved transcript
   const record = {status: 'failed', attempts: 3, processing: {stt: {status: 'ready'}, summary: {status: 'failed', error_code: 'invalid_json'}}};
   assert.match(processingFailure(record), /Суммаризация.*JSON.*3/);
   assert.match(processingFailure({...record, processing: {}}), /Этап сбоя не сохранён/);
+});
+
+
+test('parallel inputs keep independent activity and update speaker turns without duplicating drafts', async t => {
+  const ui = monitor(t);
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const phone = {source: 'phone', preview_id: 'phone', origin: {phone_platform: 'ios'},
+    frames_received: 5, segments: [{speaker: 'SPEAKER_00', start: 1, text: 'Один'},
+      {speaker: 'SPEAKER_00', start: 2, text: 'два'}, {is_draft: true, text: 'три'}]};
+  const cv1 = {source: 'omi', preview_id: 'cv1', frames_received: 4, text: 'Другой поток'};
+  const poll = async (first, second) => {
+    ui.requests.at(-1).reply('', {}, [first, second]);
+    await settle();
+  };
+  await poll(phone, cv1);
+  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Один дваЧерновиктри/);
+  assert.match(ui.root.textContent, /Проверяем потокДругой поток/);
+  now += 6000; ui.tick();
+  await poll({...phone, frames_received: 6, segments: [{speaker: 'SPEAKER_01', start: 3, text: 'Три'}]}, cv1);
+  assert.match(ui.root.textContent, /Получаем звукГоворящий 2 · 0:03Три/);
+  assert.match(ui.root.textContent, /Кадры не поступают ≥ 5 сДругой поток/);
+  assert.match(ui.root.textContent, /Требуют внимания: 1 из 2/);
+  assert.doesNotMatch(ui.root.textContent, /Один два|Черновиктри/);
 });

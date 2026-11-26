@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {draftPayload, mountSettings, profileMatches, providerDefaults, providerFields, settingsRequest} from './settings.mjs';
+import {mountLiveTuning} from './live-tuning.mjs';
 import {processingRows, renderProcessing} from './recording-processing.mjs';
 
 test('adapters expose supported settings and preserve independent diarization', () => {
@@ -273,4 +274,48 @@ test('processing display handles old records and renders untrusted summaries as 
   renderProcessing(ui.root, summary, {});
   assert.equal(summary.hidden, true);
   assert.equal(ui.root.hidden, true);
+});
+
+
+test('quick controls preserve an edited revision across a poll, and require reload after a conflict', async t => {
+  const {root} = dom(t);
+  root.closest = () => null;
+  let state = {available: true, revision: 1, active_sessions: 0,
+    settings: {asr_coalesce_min_s: 1, max_speakers: 2, preview_mode: 'stable'}};
+  const calls = [];
+  let release;
+  const refresh = mountLiveTuning(root, async (_path, body, method) => {
+    calls.push(body);
+    if (method === 'GET') {
+      if (calls.length === 2) return new Promise(resolve => { release = resolve; });
+      return structuredClone(state);
+    }
+    if (body.revision !== state.revision) throw new Error('Настройки изменились.');
+    state = {...state, settings: body.settings, revision: state.revision + 1};
+    return structuredClone(state);
+  });
+  await refresh();
+  assert.equal(calls.length, 0);
+  root.open = true;
+  await refresh();
+  const oldPoll = refresh();
+  const number = root.querySelectorAll('input').find(input => input.id === 'live-max_speakers');
+  const form = root.querySelector('form');
+  number.value = '3'; number.dispatch('input'); number.dispatch('change');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls[2], {revision: 1, settings: state.settings, changed_fields: ['max_speakers']});
+  release({...state, revision: 1, settings: {...state.settings, max_speakers: 1}});
+  await oldPoll;
+  assert.equal(Number(number.value), 3);
+  state.revision++;
+  number.value = '4'; number.dispatch('input'); number.dispatch('change');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(root.textContent, /Настройки изменились/);
+  assert.equal(form.querySelector('fieldset').disabled, true);
+  await refresh();
+  assert.equal(calls.length, 4);
+  form.querySelectorAll('button')[1].onclick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(Number(number.value), 3);
+  assert.equal(form.querySelector('fieldset').disabled, false);
 });

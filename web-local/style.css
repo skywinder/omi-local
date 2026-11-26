@@ -186,3 +186,33 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
 .note-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
 .note-actions [aria-pressed=true] { background: var(--active); color: var(--accent); border-color: var(--line); }
 .favorite-mark { color: var(--accent); }
+
+.live-tuning { border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:18px; }
+.live-tuning summary { cursor:pointer; font-weight:600; }
+.live-tuning fieldset { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr)); gap:16px; border:0; padding:16px 0; margin:0; }
+.live-tuning label { display:block; font-size:14px; }
+.live-tuning input[type=range] { width:60%; vertical-align:middle; }
+.live-tuning input[type=number] { width:4em; margin-inline-start:8px; }
+.live-tuning select { display:block; max-width:100%; }
+.live-tuning button { margin-inline-end:8px; padding:6px 12px; }
+.live-tuning [role=status], .turn-label { font-size:13px; color:var(--muted); }
+.live-turns { list-style:none; padding:0; margin:0; }
+.live-turns li { border-inline-start:3px solid #657285; padding-inline-start:12px; margin-block:10px; }
+.live-turns .draft { border-inline-start-style:dashed; }
+
+.live-session { padding-block:12px; border-block-start:1px solid var(--line); }
+.live-session-header { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.stream-source { margin:0; font-size:15px; line-height:1.5; }
+.stream-source[data-input=omi] { color:#006153; }
+.stream-source[data-input=phone] { color:#174d85; }
+.stream-activity { font-size:12px; color:var(--muted); }
+.stream-activity[data-tone=active] { color:#23633b; }
+.stream-activity[data-tone=waiting] { color:#794b00; }
+.stream-activity[data-tone=error], .monitor-badge[data-tone=error] { color:#9a2b34; background:#ffedea; }
+.live-turns li[data-speaker="0"] { border-color:#177564; }
+.live-turns li[data-speaker="1"] { border-color:#2e679b; }
+.live-turns li[data-speaker="2"] { border-color:#b66d2d; }
+.live-turns li[data-speaker="3"] { border-color:#ae5145; }
+.live-turns .live-text { margin:2px 0 0; font-size:16px; line-height:1.6; }
+.live-tuning input[type=range] { accent-color:#177564; }
+.live-tuning button { border:1px solid var(--line); border-radius:6px; min-height:36px; }
