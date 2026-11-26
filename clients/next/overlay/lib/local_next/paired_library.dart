@@ -19,6 +19,7 @@ import 'package:omi/backend/schema/person.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
 import 'package:omi/services/local_runtime_status_model.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import 'daily_recap.dart';
 import 'wav_level.dart';
@@ -632,6 +633,9 @@ class PairedLibrary {
   Future<ServerConversation> detail(String id) => _readDetail(id, resolveLocalRecording: false);
 
   Future<ServerConversation> refreshSavedRecording(String id) => _readDetail(id, resolveLocalRecording: true);
+
+  // The archive has a separate, stable alias for the results of a delivery group.
+  static String savedGroupResultsId(String recordingId) => const Uuid().v5(recordingId, 'waiting-for-parts');
 
   Future<ServerConversation> _readDetail(String id, {required bool resolveLocalRecording}) async {
     _conversation(id);

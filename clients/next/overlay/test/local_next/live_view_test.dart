@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/live_preview.dart';
 import 'package:omi/local_next/live_view.dart';
@@ -82,6 +83,21 @@ class _TuningPair extends PairedLibrary {
   }
 }
 
+class _SavedGroupPair extends _TuningPair {
+  String? opened;
+
+  @override
+  Future<ServerConversation> refreshSavedRecording(String id) async {
+    opened = id;
+    return ServerConversation.fromJson({
+      'id': id,
+      'created_at': '2026-11-26T06:00:00Z',
+      'status': 'completed',
+      'structured': {'title': 'Saved session fixture'},
+    });
+  }
+}
+
 void main() {
   testWidgets('paired server stays connected on the idle Live screen', (tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -124,8 +140,10 @@ void main() {
     final socket = _Socket();
     final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
     final capture = ValueNotifier(true);
+    final library = _SavedGroupPair();
     addTearDown(preview.dispose);
     addTearDown(capture.dispose);
+    addTearDown(library.close);
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -137,23 +155,29 @@ void main() {
             isRecording: () => capture.value,
             onStop: () async => capture.value = false,
             serverLabel: 'fixture.local',
+            library: library,
           ),
         ),
       ),
     );
-    preview.begin('saved-group', 'phone', 'pcm16');
+    const recording = '00000000-0000-4000-8000-000000000017';
+    preview.begin(recording, 'phone', 'pcm16');
     await tester.pump();
     socket.snapshot(1, 'Saved conversation text', draft: true);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     expect(find.text('Saved conversation text', findRichText: true), findsOneWidget);
-    preview.confirmConversationBoundary('saved-group', 10 * 16000);
+    preview.confirmConversationBoundary(recording, 10 * 16000);
     await tester.pumpAndSettle();
     expect(find.text('Saved conversation text', findRichText: true), findsNothing);
     expect(find.text('Unfinished sentence', findRichText: true), findsOneWidget);
     expect(find.text('Conversation audio saved'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+    expect(capture.value, isTrue);
+    await tester.tap(find.text('Conversation audio saved'));
+    await tester.pumpAndSettle();
+    expect(library.opened, 'ad07c88e-e147-5d43-a41e-48099e2aa947');
     expect(capture.value, isTrue);
   });
 

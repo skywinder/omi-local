@@ -344,8 +344,11 @@ class _LivePageState extends State<_LivePage> {
                         ? null
                         : () => Navigator.of(context).push<void>(
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  RecordingPage(library: view.library!, id: group, fromSavedRecording: true),
+                              builder: (_) => RecordingPage(
+                                library: view.library!,
+                                id: PairedLibrary.savedGroupResultsId(group),
+                                fromSavedRecording: true,
+                              ),
                             ),
                           ),
                   ),

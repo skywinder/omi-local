@@ -144,7 +144,8 @@ the phone continues capturing. After a silence cut is durably published,
 the grouped delivery receipt includes its recording-relative
 `conversation_boundary_sample` at 16 kHz. Next applies it only after checking
 the exact part ID and hash and only to the matching recording. The Live view
-keeps text after that point and links to the saved recordings. Capture,
+keeps text after that point and opens the group's archive alias
+(`UUIDv5(recording_id, "waiting-for-parts")`). Capture,
 timecodes and the timer continue on the original clock. Reconnects and
 delayed transcript snapshots respect the confirmed cut. A straddling
 transcript row appears only once it has a start within the new conversation.
