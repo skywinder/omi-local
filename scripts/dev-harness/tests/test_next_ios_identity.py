@@ -236,24 +236,28 @@ def test_cv1_legacy_import_validates_window_and_preserves_received_prefix(tmp_pa
       }
       func begin(_ n: UInt32) -> Data { Data([5]) + word(start) + word(n) }
       func done(_ n: UInt64) -> Data { Data([4, 0]) + word(start + n) }
-      let bounded = CV1LegacyRead(info: info(95))!
+      let bounded = CV1LegacyRead(info: info(95), maxRecords: 32)!
       precondition(bounded.command == Data([0x11]) + word(start) + word(UInt32(32)))
-      precondition(CV1LegacyRead(info: info(0)) == nil && CV1LegacyRead(info: info(101)) == nil)
-      precondition(CV1LegacyRead(info: info(2) + Data(repeating: 0, count: 10)) == nil)
+      let last = CV1LegacyRead(info: info(95), maxRecords: 12)!
+      precondition(last.command == Data([0x11]) + word(start) + word(UInt32(12)))
+      precondition(CV1LegacyRead(info: info(95), maxRecords: 0) == nil)
+      precondition(CV1LegacyRead(info: info(95), maxRecords: 33) == nil)
+      precondition(CV1LegacyRead(info: info(0), maxRecords: 32) == nil && CV1LegacyRead(info: info(101), maxRecords: 32) == nil)
+      precondition(CV1LegacyRead(info: info(2) + Data(repeating: 0, count: 10), maxRecords: 32) == nil)
       let data = Data((0..<888).map { UInt8($0 % 251) })
-      let read = CV1LegacyRead(info: info(2))!
+      let read = CV1LegacyRead(info: info(2), maxRecords: 32)!
       precondition(read.receive(begin(2)) == .more)
       precondition(read.receive(Data([3]) + data.prefix(643)) == .more)
       precondition(read.wholeRecords == data.prefix(444))
       precondition(read.receive(Data([3]) + data.suffix(245)) == .more)
       precondition(read.receive(done(2)) == .complete && read.wholeRecords == data)
-      let truncated = CV1LegacyRead(info: info(2))!
+      let truncated = CV1LegacyRead(info: info(2), maxRecords: 32)!
       precondition(truncated.receive(begin(2)) == .more)
       precondition(truncated.receive(Data([3]) + data.prefix(740)) == .more)
       precondition(truncated.receive(done(2)) == .interrupted && truncated.wholeRecords == data.prefix(444))
-      precondition(CV1LegacyRead(info: info(2))!.receive(begin(1)) == .interrupted)
-      precondition(CV1LegacyRead(info: info(2))!.receive(Data([3, 0])) == .interrupted)
-      let wrongCursor = CV1LegacyRead(info: info(2))!
+      precondition(CV1LegacyRead(info: info(2), maxRecords: 32)!.receive(begin(1)) == .interrupted)
+      precondition(CV1LegacyRead(info: info(2), maxRecords: 32)!.receive(Data([3, 0])) == .interrupted)
+      let wrongCursor = CV1LegacyRead(info: info(2), maxRecords: 32)!
       precondition(wrongCursor.receive(begin(2)) == .more)
       precondition(wrongCursor.receive(Data([3]) + data) == .more)
       precondition(wrongCursor.receive(done(3)) == .interrupted)
