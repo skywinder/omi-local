@@ -608,9 +608,9 @@ void main() {
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
-      expect(find.text('Conversation boundaries'), findsOneWidget);
+      expect(find.text('Finish conversation after silence'), findsOneWidget);
       expect(find.textContaining('Applies to the next recording.'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('next-recording-boundaries')));
+      await tester.tap(find.text('Finish conversation after silence'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Split after silence · 30s'));
       await tester.pumpAndSettle();

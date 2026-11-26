@@ -169,6 +169,42 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('long press edits favorites, handles stale edits, archives and restores from the list', (tester) async {
+    final library = _EditableLibrary()..recordingArchive = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = find.text('Original title');
+    Future<void> action(String label) async {
+      await tester.longPress(title);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    await action('Add to favorites');
+    expect(library.starred, isTrue);
+    await action('Remove from favorites');
+    expect(library.starred, isFalse);
+    library.conflict = true;
+    await action('Archive recording');
+    expect(title, findsOneWidget);
+    expect(library.archived, isFalse);
+    library.conflict = false;
+    await action('Archive recording');
+    expect(title, findsNothing);
+    await tester.tap(find.byKey(const ValueKey('archive-archived')));
+    await tester.pumpAndSettle();
+    await action('Restore from archive');
+    expect(title, findsNothing);
+    expect(library.requests.last, {'field': 'archived', 'expected': true, 'value': false});
+  });
+
   testWidgets('archiving and restoring a paired conversation moves it between the two lists', (tester) async {
     final library = _EditableLibrary()..recordingArchive = true;
     addTearDown(library.close);

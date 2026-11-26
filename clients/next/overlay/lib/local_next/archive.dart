@@ -16,6 +16,8 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'paired_library.dart';
 import 'archive_cache.dart';
+import 'archive_visibility.dart';
+import 'recording_edit.dart';
 import 'settings_labels.dart';
 import 'recording_page.dart';
 import 'conversation_categories.dart';
@@ -29,6 +31,38 @@ class PairedArchiveProvider extends ChangeNotifier {
   final bool Function()? _canRefreshRecordings;
   late final _cache = NextArchiveCache(_library.audioOwnerId);
   bool showingCached = false;
+  ArchiveVisibility visibility = const ArchiveVisibility();
+  bool _visibilityRequested = false;
+  bool _visibilityChanged = false;
+
+  Future<void> _restoreVisibility() async {
+    final saved = await ArchiveVisibility.read(_library.audioOwnerId);
+    if (_disposed || _visibilityChanged || !saved.active) return;
+    visibility = saved;
+    _groupEntries();
+    notifyListeners();
+  }
+
+  Future<void> changeVisibility(BuildContext context) async {
+    final choice = await showDialog<ArchiveVisibility>(
+      context: context,
+      builder: (_) => ArchiveVisibilityDialog(visibility),
+    );
+    if (choice == null || _disposed || !context.mounted) return;
+    try {
+      if (!await choice.save(_library.audioOwnerId)) throw StateError('Archive preferences unavailable');
+      if (_disposed) return;
+      visibility = choice;
+      _visibilityChanged = true;
+      _groupEntries();
+      notifyListeners();
+    } catch (_) {
+      if (!_disposed && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.failedToSaveCheckConnection)));
+      }
+    }
+  }
+
   final _rows = <String, ServerConversation>{};
   final _editsDuringRead = <String, ServerConversation>{};
   final _publicationsDuringRead = <String, List<ServerConversation>>{};
@@ -176,7 +210,7 @@ class PairedArchiveProvider extends ChangeNotifier {
     if (!_rows.containsKey(row.id)) return;
     if (busy) _editsDuringRead[row.id] = row;
     _rows[row.id] = row;
-    entries = List.unmodifiable(entries.map((entry) => entry.row?.id == row.id ? (day: entry.day, row: row) : entry));
+    _groupEntries();
     notifyListeners();
   }
 
@@ -192,11 +226,16 @@ class PairedArchiveProvider extends ChangeNotifier {
   }
 
   void _groupEntries() {
-    final sorted = _rows.values.toList()
-      ..sort((a, b) {
-        final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
-        return time != 0 ? time : a.id.compareTo(b.id);
-      });
+    final sorted =
+        _rows.values
+            .where(
+              (row) => visibility.includes(row, cachedAudioFile: showingCached && _cache.audioFileIds.contains(row.id)),
+            )
+            .toList()
+          ..sort((a, b) {
+            final time = (b.startedAt ?? b.createdAt).compareTo(a.startedAt ?? a.createdAt);
+            return time != 0 ? time : a.id.compareTo(b.id);
+          });
     final grouped = <({DateTime day, ServerConversation? row})>[];
     for (final row in sorted) {
       final start = (row.startedAt ?? row.createdAt).toLocal();
@@ -219,6 +258,10 @@ class PairedArchiveProvider extends ChangeNotifier {
       notifyListeners();
     }
     try {
+      if (!_visibilityRequested) {
+        _visibilityRequested = true;
+        unawaited(_restoreVisibility());
+      }
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
       if (!_library.recordingArchive) _archivedOnly = false;
@@ -246,8 +289,8 @@ class PairedArchiveProvider extends ChangeNotifier {
       _offset += result.consumed;
       more = result.more && result.consumed > 0;
       partial |= result.partial;
-      _groupEntries();
       showingCached = false;
+      _groupEntries();
       if (!append && !result.partial && !_archivedOnly && !_starredOnly && folder == null && category == null) {
         unawaited(_cache.write(_rows.values.toList()));
       }
@@ -322,6 +365,42 @@ class PairedArchiveFeed extends StatelessWidget {
   final String Function(BuildContext context, Object? failure) errorText;
   final Set<String>? selection;
 
+  Future<void> _quickActions(BuildContext context, ServerConversation row) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final edit = await showModalBottomSheet<RecordingEdit>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(row.starred ? Icons.star : Icons.star_outline),
+              title: Text(pairedSettingsLabel(sheet, row.starred ? 'recordingUnstar' : 'recordingStar')),
+              onTap: () => Navigator.pop(sheet, RecordingEdit.starred(row.starred, !row.starred)),
+            ),
+            if (archive._library.recordingArchive)
+              ListTile(
+                leading: Icon(row.archived ? Icons.unarchive_outlined : Icons.archive_outlined),
+                title: Text(
+                  pairedSettingsLabel(sheet, row.archived ? 'recordingRestoreFromArchive' : 'recordingMoveToArchive'),
+                ),
+                onTap: () => Navigator.pop(sheet, RecordingEdit.archived(row.archived, !row.archived)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (edit == null || archive._disposed || !context.mounted) return;
+    try {
+      final updated = await archive._library.editRecording(row.id, edit);
+      archive.applyEdit(updated);
+    } catch (error) {
+      if (archive._disposed || !context.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      if (error == RecordingEditFailure.conflict) archive.refreshAfterArchiveEdit();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = context.l10n;
@@ -341,7 +420,11 @@ class PairedArchiveFeed extends StatelessWidget {
       }
       return OmiEmptyState(
         icon: Icons.forum_rounded,
-        title: archive.archivedOnly ? pairedSettingsLabel(context, 'recordingArchiveEmpty') : l.noConversationsYet,
+        title: archive.visibility.active
+            ? pairedSettingsLabel(context, 'archiveVisibilityEmpty')
+            : archive.archivedOnly
+            ? pairedSettingsLabel(context, 'recordingArchiveEmpty')
+            : l.noConversationsYet,
       );
     }
     return Column(
@@ -375,6 +458,15 @@ class PairedArchiveFeed extends StatelessWidget {
                   row: row,
                   onOpen: onOpen,
                   selected: selection?.contains(row.id),
+                  onHold:
+                      selection == null &&
+                          !archive.showingCached &&
+                          archive._library.recordingEdits &&
+                          !row.isLocked &&
+                          row.externalIntegration?.localRecording == null &&
+                          row.status == ConversationStatus.completed
+                      ? () => _quickActions(context, row)
+                      : null,
                 );
               },
             ),
@@ -386,10 +478,11 @@ class PairedArchiveFeed extends StatelessWidget {
 }
 
 class _ArchiveRow extends StatelessWidget {
-  const _ArchiveRow({super.key, required this.row, required this.onOpen, this.selected});
+  const _ArchiveRow({super.key, required this.row, required this.onOpen, this.onHold, this.selected});
   final ServerConversation row;
   final ValueChanged<String> onOpen;
   final bool? selected;
+  final VoidCallback? onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -419,6 +512,7 @@ class _ArchiveRow extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => onOpen(row.id),
+          onLongPress: onHold,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(

@@ -528,6 +528,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                                   }
                                 },
                         ),
+                        FilterChip(
+                          key: const ValueKey('archive-visibility'),
+                          avatar: const Icon(Icons.tune),
+                          label: Text(pairedSettingsLabel(context, 'archiveVisibility')),
+                          selected: archive.visibility.active,
+                          onSelected: (_) => archive.changeVisibility(context),
+                        ),
                         if (library.foldersAvailable)
                           ActionChip(
                             avatar: const Icon(Icons.folder_outlined),

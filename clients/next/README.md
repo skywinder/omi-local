@@ -362,6 +362,11 @@ checked.
 
 ## Edit a saved recording
 
+In the recordings list, long-press a completed, editable conversation to add or remove a favorite,
+archive it, or restore it from the Archive view. **Recording filters** remembers the minimum
+duration in seconds (0 disables it), **Hide recordings without audio**, and **Hide recordings
+marked “No speech”** on this phone for the paired server. Filters only change what is shown.
+
 In a finished recording, use the menu to rename it, add it to favorites or
 correct a transcript line. The archive's **Starred** filter uses the server's
 paged starred query. Transcript edits preserve segment IDs and timestamps
@@ -505,10 +510,10 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. **Conversation
-boundaries** is available in capture settings and Live settings. It selects
+current stream shows its separately acknowledged limit. **Finish conversation after
+silence** is available in capture settings and Live settings. It selects
 one recording per part, one conversation until Stop, or separation after a
-chosen silent interval. The grouped options appear on a compatible paired
+chosen silent interval. The phone or CV1 keeps capturing across conversation boundaries. The grouped options appear on a compatible paired
 server. A saved change applies to the next recording. Conversation publication follows the server's durable sample clock.
 Live drafts still represent the capture session.
 

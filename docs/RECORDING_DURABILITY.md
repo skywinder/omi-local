@@ -133,8 +133,8 @@ only along a continuous sample range. With a configured silence threshold it
 publishes a conversation after the corresponding silent interval and retains
 onset context for the next conversation. With splitting disabled it retains all
 captured samples through finish, including silence. Matching receipts remain
-available after original staged parts are retired. Next offers **Conversation
-boundaries** with grouped delivery on a compatible paired server. The setting
+available after original staged parts are retired. Next offers **Finish conversation
+after silence** with grouped delivery on a compatible paired server. The setting
 applies to the next capture and is remembered for that pairing. The journal
 retains version-two delivery in the one-recording-per-part mode.
 

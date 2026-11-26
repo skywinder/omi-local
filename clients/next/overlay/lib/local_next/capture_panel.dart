@@ -738,21 +738,21 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([widget.paired.ownerChange, widget.seconds]),
-    builder: (context, _) => ListTile(
-      leading: const Icon(Icons.call_split),
-      title: Text(pairedSettingsLabel(context, 'groupCaptureLabel')),
-      subtitle: Text('${_label(widget.seconds.value)}\n${pairedSettingsLabel(context, 'nextBoundaryAppliesLater')}'),
-      isThreeLine: true,
-      trailing: PopupMenuButton<int>(
-        key: const ValueKey('next-recording-boundaries'),
-        tooltip: context.l10n.edit,
-        enabled: !_saving && widget.paired.ownerChange.permitsCapture,
-        initialValue: widget.seconds.value ?? -1,
-        onSelected: _save,
-        itemBuilder: (context) => [
-          for (final value in [-1, ...LocalAudioJournal.groupSilenceChoices])
-            PopupMenuItem(value: value, child: Text(_label(value == -1 ? null : value))),
-        ],
+    builder: (context, _) => PopupMenuButton<int>(
+      key: const ValueKey('next-recording-boundaries'),
+      tooltip: pairedSettingsLabel(context, 'groupCaptureLabel'),
+      enabled: !_saving && widget.paired.ownerChange.permitsCapture,
+      initialValue: widget.seconds.value ?? -1,
+      onSelected: _save,
+      itemBuilder: (context) => [
+        for (final value in [-1, ...LocalAudioJournal.groupSilenceChoices])
+          PopupMenuItem(value: value, child: Text(_label(value == -1 ? null : value))),
+      ],
+      child: ListTile(
+        leading: const Icon(Icons.call_split),
+        title: Text(pairedSettingsLabel(context, 'groupCaptureLabel')),
+        subtitle: Text('${_label(widget.seconds.value)}\n${pairedSettingsLabel(context, 'nextBoundaryAppliesLater')}'),
+        trailing: const Icon(Icons.arrow_drop_down),
       ),
     ),
   );

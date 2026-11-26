@@ -194,6 +194,55 @@ Future<void> _show(WidgetTester tester, PairedLibrary library) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('visibility filters keep exact threshold, audio without text and prefs for this pairing', (tester) async {
+    final start = DateTime.utc(2026);
+    final short = _row(_firstId, '', start, localState: 'saved', recording: {'duration_seconds': 9.99});
+    final silent = _row(_secondId, '', start, localState: 'no_speech', recording: {'duration_seconds': 10});
+    final missing = _row(_thirdId, '', start, localState: 'waiting_for_parts', recording: {'duration_seconds': 12});
+    final rows = [short, silent, missing];
+    final library = _ArchiveLibrary((_) async => (rows: rows, consumed: 3, partial: false, more: false), short);
+    await _show(tester, library);
+    await tester.pumpAndSettle();
+    Future<void> options() async {
+      await tester.tap(find.byKey(const ValueKey('archive-visibility')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> save() async {
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+    }
+
+    await options();
+    await tester.enterText(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)), '10');
+    await tester.tap(find.text('Hide recordings without audio'));
+    await save();
+    final active = tester.widget<PairedArchiveFeed>(find.byType(PairedArchiveFeed)).archive;
+    expect(active.visibility.minimumSeconds, 10);
+    expect(active.visibility.hideWithoutAudio, isTrue);
+    expect(short.externalIntegration?.localRecording?['duration_seconds'], 9.99);
+    expect(find.byKey(const ValueKey(_firstId)), findsNothing);
+    expect(find.byKey(const ValueKey(_secondId)), findsOneWidget);
+    expect(find.byKey(const ValueKey(_thirdId)), findsNothing);
+    await options();
+    await tester.tap(find.text('Hide recordings marked “No speech”'));
+    await save();
+    expect(find.text('No recordings match these filters'), findsOneWidget);
+    final same = PairedArchiveProvider(library);
+    await same.refresh();
+    expect(same.entries, isEmpty);
+    final other = _ArchiveLibrary(library.page, short, address: '100.64.0.2');
+    final separate = PairedArchiveProvider(other);
+    await separate.refresh();
+    expect(separate.entries.where((item) => item.row != null), hasLength(3));
+    same.dispose();
+    separate.dispose();
+    addTearDown(library.close);
+    addTearDown(other.close);
+  });
+
   testWidgets('a finished recording opens its result list without reopening itself', (tester) async {
     final date = DateTime.utc(2026, 1, 2);
     final first = _row(_secondId, 'One published conversation', date, transcript: {'recording_results_id': _firstId});
@@ -401,7 +450,6 @@ void main() {
     expect(recordingDuration(row(local: true, finished: start.subtract(const Duration(seconds: 1)))), 14);
     final imported = row(local: true, finished: end);
     expect(recordingDuration(imported), 4606);
-    SharedPreferences.setMockInitialValues({});
     final library = _ArchiveLibrary(
       (_) async => (rows: [imported], consumed: 1, partial: false, more: false),
       imported,
@@ -415,7 +463,6 @@ void main() {
   });
 
   test('cold offline archive is scoped to its pairing and a successful empty page clears the cache', () async {
-    SharedPreferences.setMockInitialValues({});
     final row = _row(_firstId, 'Saved title', DateTime.utc(2026));
     var offline = false;
     var rows = [row];
@@ -449,7 +496,6 @@ void main() {
   });
 
   testWidgets('the open archive recovers on the next successful profile check without a tap', (tester) async {
-    SharedPreferences.setMockInitialValues({});
     final row = _row(_firstId, 'Available again', DateTime.utc(2026));
     final library = _RecoveringLibrary((_) async => (rows: [row], consumed: 1, partial: false, more: false), row)
       ..verified = false;
