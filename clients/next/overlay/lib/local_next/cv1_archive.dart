@@ -44,12 +44,8 @@ class Cv1Archive {
     final saved = _lastWindow == null ? await _checkpoint(deviceKey) : null;
     final previous = _lastWindow ?? saved?.hashes ?? const <String>[];
     final overlapCount = (_nextSequence ?? saved?.end ?? sequence) - sequence;
-    final matches =
-        overlapCount >= 0 &&
-        overlapCount <= previous.length &&
-        overlapCount <= hashes.length &&
-        listEquals(previous.sublist(previous.length - overlapCount), hashes.sublist(0, overlapCount));
-    if (_lastWindow != null && !matches) {
+    final repeated = _verifiedOverlap(previous, overlapCount, hashes);
+    if (_lastWindow != null && repeated == null) {
       if (overlapCount > 0) {
         final changed = await newWindowFile(sequence, bytes);
         await changed.writeAsBytes(bytes, flush: true);
@@ -58,8 +54,9 @@ class Cv1Archive {
     }
     // Legacy firmware lacks a ring identity. Across launches, skip only records
     // matching the original sequence, timestamp and full payload hash.
-    final overlap = matches ? overlapCount * _record : 0;
+    final overlap = (repeated ?? 0) * _record;
     final fresh = Uint8List.sublistView(bytes, overlap);
+    if (fresh.isEmpty) return 0;
     if (records + fresh.length ~/ _record > maxRecords * maxWindows) {
       throw const FormatException('CV1 series is full');
     }
@@ -72,10 +69,8 @@ class Cv1Archive {
       await file.writeAsBytes(fresh, flush: true);
       rethrow;
     }
-    if (fresh.isNotEmpty) {
-      _sessionFile ??= await newWindowFile(sequence + overlap ~/ _record, fresh);
-      await _sessionFile!.writeAsBytes(fresh, mode: FileMode.append, flush: true);
-    }
+    _sessionFile ??= await newWindowFile(sequence + overlap ~/ _record, fresh);
+    await _sessionFile!.writeAsBytes(fresh, mode: FileMode.append, flush: true);
     _sessionDevice = deviceId;
     _sessionCodec = codec;
     _lastWindow = hashes;
@@ -106,6 +101,14 @@ class Cv1Archive {
       }
     }
     return complete;
+  }
+
+  // An interrupted reply may end before the last record we already hold.
+  int? _verifiedOverlap(List<String> saved, int overlap, List<String> received) {
+    if (overlap < 0 || overlap > saved.length) return null;
+    final count = overlap.clamp(0, received.length);
+    final start = saved.length - overlap;
+    return listEquals(saved.sublist(start, start + count), received.sublist(0, count)) ? count : null;
   }
 
   List<String> _recordHashes(Uint8List bytes) => [
@@ -162,6 +165,19 @@ class Cv1Archive {
     final codec = fields[1] == '20' ? 'opus' : 'opus_fs320';
     final raw = await file.readAsBytes();
     if (raw.length < _record) throw const FormatException('Incomplete CV1 batch');
+    if (fields.length == 5) {
+      final saved = await _checkpoint(fields[2]);
+      final count = raw.length ~/ _record;
+      if (saved != null && count <= maxRecords) {
+        final overlap = saved.end - int.parse(fields[3]);
+        if (overlap >= count && _verifiedOverlap(saved.hashes, overlap, _recordHashes(raw)) == count) {
+          // Earlier builds could stage a duplicate when an interrupted read ended
+          // inside the saved range. The checkpoint follows durable outbox storage.
+          await file.delete();
+          return 0;
+        }
+      }
+    }
     final groups = <({int offset, int epoch, List<List<int>> packets})>[];
     int? previous;
     var micros = 0;

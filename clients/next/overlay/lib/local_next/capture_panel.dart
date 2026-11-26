@@ -402,7 +402,7 @@ class NextCaptureInputs extends ChangeNotifier {
             if (batch.bytes.isNotEmpty) {
               final micros = await archive.append(batch.bytes, target.deviceId, batch.start, codec);
               importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
-              importWindowsDone++;
+              if (batch.complete) importWindowsDone++;
               if (!_closed) notifyListeners();
             }
             if (!batch.complete || batch.bytes.isEmpty) {

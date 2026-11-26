@@ -90,6 +90,36 @@ void main() {
     expect(journal.pendingParts, 1);
   });
 
+  test('an interrupted read wholly inside a previously saved window carries no new audio', () async {
+    final first = Uint8List.fromList([...record(epoch), ...record(epoch + 1), ...record(epoch + 2)]);
+    await archive.append(first, 'pendant', 40, 20);
+    expect(await archive.append(record(epoch + 1), 'pendant', 41, 20), 0);
+    expect(await archive.finish(), 60000);
+
+    final resumed = Cv1Archive(journal, 'paired-owner');
+    expect(await resumed.append(record(epoch + 1), 'pendant', 41, 20), 0);
+    expect(await resumed.append(record(epoch + 3), 'pendant', 43, 20), 20000);
+    expect(await resumed.finish(), 20000);
+    expect(resumed.staged, isEmpty);
+  });
+
+  test('recovery removes a legacy staged duplicate only when its sequence and all records match', () async {
+    final first = Uint8List.fromList([...record(epoch), ...record(epoch + 1), ...record(epoch + 2)]);
+    await archive.append(first, 'pendant', 40, 20);
+    final fields = archive.staged.single.uri.pathSegments.last.split('.');
+    await archive.finish();
+    final duplicate = File('${dir.path}/${fields[0]}.20.${fields[2]}.41.cv1');
+    await duplicate.writeAsBytes(record(epoch + 1));
+    expect(await archive.recover(), isTrue);
+    expect(await duplicate.exists(), isFalse);
+    expect(journal.pendingParts, 1);
+
+    final changed = File('${dir.path}/11111111-2222-4333-8444-555555555555.20.${fields[2]}.41.cv1');
+    await changed.writeAsBytes(record(epoch + 10));
+    expect(await archive.recover(), isTrue);
+    expect(journal.pendingParts, 2);
+  });
+
   test('a subsequent import verifies the previous tail across restart without skipping a reused sequence', () async {
     final first = Uint8List.fromList([...record(epoch), ...record(epoch + 1)]);
     final next = Uint8List.fromList([...record(epoch + 1), ...record(epoch + 2)]);
