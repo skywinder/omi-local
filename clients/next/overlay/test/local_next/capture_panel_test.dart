@@ -96,6 +96,19 @@ class _Subscription extends Fake implements StreamSubscription<Cv1TransportEvent
   Future<void> cancel() async => onCancel();
 }
 
+Widget _controlsScaffold(NextCaptureInputs inputs) => Scaffold(
+  appBar: AppBar(
+    title: Cv1HeaderTitle(title: 'Conversations', link: inputs.connection),
+    actions: [
+      Builder(
+        builder: (context) =>
+            IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () => showNextDevices(context, inputs)),
+      ),
+    ],
+  ),
+  body: LocalNextCaptureControls(inputs: inputs),
+);
+
 class _Journal extends LocalAudioJournal {
   _Journal({super.clock})
     : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
@@ -643,10 +656,10 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+          home: _controlsScaffold(inputs),
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Studio CV1'));
       await tester.pumpAndSettle();
@@ -665,7 +678,7 @@ void main() {
       wire.ready();
       await tester.pumpAndSettle();
       expect(find.text('Studio CV1'), findsNothing);
-      expect(find.text('CV1 · Connected'), findsOneWidget);
+      expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       await inputs.close();
@@ -692,14 +705,13 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+          home: _controlsScaffold(inputs),
         ),
       );
       final phone = find.byKey(const ValueKey('next-phone-capture'));
-      final bluetooth = find.byKey(const ValueKey('next-cv1-devices'));
+      final bluetooth = find.byIcon(Icons.settings_outlined);
       final record = find.byKey(const ValueKey('next-cv1-capture'));
-      expect(find.text('Connect Omi'), findsOneWidget);
-      expect(tester.getRect(phone).top, tester.getRect(bluetooth).top);
+      expect(find.byKey(const ValueKey('next-cv1-devices')), findsNothing);
       await tester.tap(bluetooth);
       await tester.pumpAndSettle();
       expect(find.widgetWithText(ListTile, 'Device ID · 000001'), findsOneWidget);
@@ -712,9 +724,9 @@ void main() {
       await tester.tap(second);
       await tester.pumpAndSettle();
       expect(wire.selected, 'AA:BB:CC:00:00:02');
-      expect(tester.getRect(record).top, tester.getRect(bluetooth).top);
-      expect(tester.getRect(record).bottom, tester.getRect(bluetooth).bottom);
-      expect(tester.getRect(record).right, lessThan(tester.getRect(bluetooth).left));
+      expect(tester.getRect(record).top, tester.getRect(phone).top);
+      expect(tester.getRect(record).bottom, tester.getRect(phone).bottom);
+      expect(tester.getRect(phone).right, lessThan(tester.getRect(record).left));
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -744,11 +756,11 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+          home: _controlsScaffold(inputs),
         ),
       );
       expect(wire.selected, isNull);
-      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(ListTile, 'Device ID · 5A6B7C'), findsOneWidget);
     } finally {
@@ -773,7 +785,7 @@ void main() {
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+          home: _controlsScaffold(inputs),
         ),
       );
       wire.ready();
@@ -786,16 +798,16 @@ void main() {
       packet(1);
       await tester.pump();
       expect(find.textContaining('Waiting for CV1 audio'), findsNothing);
-      expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
+      expect(find.byKey(const ValueKey('next-recording-time')), findsOneWidget);
       now = now.add(const Duration(seconds: 6));
       await tester.pump(const Duration(seconds: 6));
       expect(find.textContaining('CV1 stopped sending audio'), findsOneWidget);
-      expect(find.textContaining('Waiting for data'), findsOneWidget);
+
       expect(inputs.cv1.active, isTrue);
       packet(2);
       await tester.pump();
       expect(find.textContaining('CV1 stopped sending audio'), findsNothing);
-      expect(find.text('CV1 · Connected · Recording'), findsOneWidget);
+      expect(find.byKey(const ValueKey('next-recording-time')), findsOneWidget);
       expect(wire.subscriptions, [true]);
     } finally {
       journal.seal.complete();
@@ -810,7 +822,7 @@ void main() {
     tester,
   ) async {
     var now = DateTime.utc(2026);
-    final journal = _Journal(clock: () => now);
+    final journal = _Journal(clock: () => now)..pendingParts = 1;
     final mic = _Microphone();
     final wire = _Wire();
     final ownerChange = NextOwnerChangeGate();
@@ -825,7 +837,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: LocalNextCaptureControls(inputs: inputs)),
+        home: _controlsScaffold(inputs),
       ),
     );
     try {
@@ -834,12 +846,20 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
-      expect(find.text('Phone microphone · 00:00'), findsOneWidget);
+      final time = find.text('Phone microphone · 00:00');
+      expect(time, findsOneWidget);
+      final pending = find.byKey(const ValueKey('next-audio-on-phone'));
+      expect(tester.getCenter(time).dy, closeTo(tester.getCenter(pending).dy, 1));
+      await tester.tap(pending);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('until the paired server confirms'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
       now = now.add(const Duration(seconds: 9));
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Phone microphone · 00:09'), findsOneWidget);
       expect(ownerChange.tryHold(), isFalse);
-      await tester.tap(find.byKey(const ValueKey('next-cv1-devices')));
+      await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
       wire.rejectConnection = true;
       await tester.tap(find.text('Studio CV1'));
@@ -852,11 +872,11 @@ void main() {
       await tester.tap(find.text('Studio CV1'));
       await tester.pumpAndSettle();
       expect(wire.selected, 'fixture');
-      expect(find.text('CV1 · Connected'), findsOneWidget);
+      expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
       wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 75)));
       await tester.pump();
-      expect(find.text('CV1 · 75%'), findsOneWidget);
-      expect(find.text('CV1 · Connected'), findsNothing);
+      expect(find.text('75%'), findsOneWidget);
+      expect(find.byIcon(Icons.battery_unknown), findsNothing);
       expect(mic.recording, isTrue);
       expect(wire.subscriptions, isEmpty);
 
@@ -870,18 +890,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(inputs.phone.active, isFalse);
       expect(wire.subscriptions, [true]);
-      expect(find.textContaining('Waiting for data'), findsOneWidget);
+      expect(find.textContaining('Waiting for CV1 audio'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Mute'));
       await tester.pumpAndSettle();
       wire.emit(Cv1DiagnosticsEvent(wire.generation, const Cv1Diagnostics(battery: 0)));
       await tester.pump();
-      expect(find.text('CV1 · 0% · Muted'), findsOneWidget);
+      expect(find.text('0%'), findsOneWidget);
+      expect(find.byTooltip('Unmute'), findsOneWidget);
       expect(wire.subscriptions, [true, false]);
       expect(ownerChange.tryHold(), isFalse, reason: 'mute keeps the current capture owner');
       wire.reconnect();
       await tester.pumpAndSettle();
-      expect(find.text('CV1 · Connected · Muted'), findsOneWidget);
+      expect(find.byTooltip('Unmute'), findsOneWidget);
       expect(wire.subscriptions, [true, false]);
       await tester.tap(find.byTooltip('Unmute'));
       await tester.pumpAndSettle();
@@ -890,7 +911,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(inputs.cv1.active, isFalse);
       expect(wire.subscriptions.last, isFalse);
-      expect(find.text('CV1 · Connected'), findsOneWidget);
+      expect(find.byIcon(Icons.battery_unknown), findsOneWidget);
 
       expect(ownerChange.tryHold(), isTrue);
       await tester.pump();

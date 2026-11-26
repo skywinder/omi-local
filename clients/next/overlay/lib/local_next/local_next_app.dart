@@ -56,6 +56,8 @@ ThemeData _nextTheme(Brightness brightness) {
   final theme = buildOmiTheme(brightness: brightness);
   final disabled = Color.alphaBlend(palette.textPrimary.withValues(alpha: .58), palette.surface0);
   final outline = Color.alphaBlend(palette.textPrimary.withValues(alpha: .56), palette.surface0);
+  const buttonPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 8);
+  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
   return theme.copyWith(
     disabledColor: disabled,
     textTheme: theme.textTheme.copyWith(
@@ -64,10 +66,19 @@ ThemeData _nextTheme(Brightness brightness) {
     ),
     iconTheme: IconThemeData(color: palette.textPrimary),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: palette.textPrimary, disabledForegroundColor: disabled),
+      style: TextButton.styleFrom(
+        padding: buttonPadding,
+        shape: buttonShape,
+        foregroundColor: palette.textPrimary,
+        disabledForegroundColor: disabled,
+      ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
+        shape: buttonShape,
+        padding: buttonPadding,
+        minimumSize: const Size(48, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
         foregroundColor: palette.textPrimary,
         disabledForegroundColor: disabled,
         side: BorderSide(color: outline),
@@ -75,6 +86,10 @@ ThemeData _nextTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
+        shape: buttonShape,
+        padding: buttonPadding,
+        minimumSize: const Size(48, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
         backgroundColor: palette.accent,
         foregroundColor: palette.onAccent,
         disabledBackgroundColor: palette.surface3,
@@ -465,97 +480,95 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               onInputsReady: _bindInputs,
               openServers: widget.openServers,
             ),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+          if (selection != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Wrap(
-                spacing: OmiSpacing.sm,
-                children: selection != null
-                    ? [
-                        ActionChip(
-                          label: Text(l.cancel),
-                          onPressed: _selectionBusy ? null : () => setState(() => _selection = null),
-                        ),
-                        if (library.folderManagementAvailable)
-                          ActionChip(
-                            label: Text('${l.moveToFolder} · ${selection.length}/100'),
-                            onPressed: selection.isEmpty || _selectionBusy ? null : _moveSelected,
-                          ),
-                        if (library.categoryBackfill)
-                          ActionChip(
-                            label: Text(
-                              '${pairedSettingsLabel(context, 'categoryBackfillAction')} · ${selection.length}/8',
-                            ),
-                            onPressed: selection.isEmpty || selection.length > 8 || _selectionBusy
-                                ? null
-                                : _classifySelected,
-                          ),
-                      ]
-                    : [
-                        if (library.recordingArchive)
-                          FilterChip(
-                            key: const ValueKey('archive-archived'),
-                            label: Text(pairedSettingsLabel(context, 'recordingArchive')),
-                            selected: archive.archivedOnly,
-                            onSelected: archive.busy ? null : archive.filterArchived,
-                          ),
-                        FilterChip(
-                          label: Text(l.starred),
-                          selected: archive.starredOnly,
-                          onSelected: archive.busy ? null : archive.filterStarred,
-                        ),
-                        FilterChip(
-                          key: const ValueKey('archive-category'),
-                          label: Text(
-                            archive.category == null
-                                ? l.categories
-                                : conversationCategoryLabel(context, archive.category!),
-                          ),
-                          selected: archive.category != null,
-                          onSelected: archive.busy
-                              ? null
-                              : (_) async {
-                                  final category = await pickConversationCategory(
-                                    context,
-                                    current: archive.category,
-                                    filter: true,
-                                  );
-                                  if (mounted && identical(archive, _archive) && category != null) {
-                                    await archive.filterCategory(
-                                      category == allConversationCategories ? null : category,
-                                    );
-                                  }
-                                },
-                        ),
-                        FilterChip(
-                          key: const ValueKey('archive-visibility'),
-                          avatar: const Icon(Icons.tune),
-                          label: Text(pairedSettingsLabel(context, 'archiveVisibility')),
-                          selected: archive.visibility.active,
-                          onSelected: (_) => archive.changeVisibility(context),
-                        ),
-                        if (library.foldersAvailable)
-                          ActionChip(
-                            avatar: const Icon(Icons.folder_outlined),
-                            label: Text(archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders')),
-                            onPressed: archive.busy
-                                ? null
-                                : () async {
-                                    final choice = await pickLocalFolder(
-                                      context,
-                                      library,
-                                      moving: false,
-                                      onRename: archive.renameFolder,
-                                      onDelete: (id) => archive.refreshAfterArchiveEdit(deletedFolderId: id),
-                                    );
-                                    if (choice != null) await archive.filterFolder(choice.folder);
-                                  },
-                          ),
-                      ],
+                spacing: 6,
+                children: [
+                  ActionChip(
+                    label: Text(l.cancel),
+                    onPressed: _selectionBusy ? null : () => setState(() => _selection = null),
+                  ),
+                  if (library.folderManagementAvailable)
+                    ActionChip(
+                      label: Text('${l.moveToFolder} · ${selection.length}/100'),
+                      onPressed: selection.isEmpty || _selectionBusy ? null : _moveSelected,
+                    ),
+                  if (library.categoryBackfill)
+                    ActionChip(
+                      label: Text('${pairedSettingsLabel(context, 'categoryBackfillAction')} · ${selection.length}/8'),
+                      onPressed: selection.isEmpty || selection.length > 8 || _selectionBusy ? null : _classifySelected,
+                    ),
+                ],
               ),
+            )
+          else
+            _LibraryToolbar(
+              children: [
+                if (library.recordingArchive)
+                  _LibraryControl(
+                    key: const ValueKey('archive-archived'),
+                    icon: Icons.archive_outlined,
+                    label: pairedSettingsLabel(context, 'recordingArchive'),
+                    selected: archive.archivedOnly,
+                    onPressed: archive.busy ? null : () => archive.filterArchived(!archive.archivedOnly),
+                  ),
+                _LibraryControl(
+                  key: const ValueKey('archive-starred'),
+                  icon: Icons.star_outline,
+                  label: l.starred,
+                  selected: archive.starredOnly,
+                  onPressed: archive.busy ? null : () => archive.filterStarred(!archive.starredOnly),
+                ),
+                _LibraryControl(
+                  key: const ValueKey('archive-category'),
+                  icon: Icons.category_outlined,
+                  label: archive.category == null
+                      ? l.categories
+                      : conversationCategoryLabel(context, archive.category!),
+                  selected: archive.category != null,
+                  onPressed: archive.busy
+                      ? null
+                      : () async {
+                          final category = await pickConversationCategory(
+                            context,
+                            current: archive.category,
+                            filter: true,
+                          );
+                          if (mounted && identical(archive, _archive) && category != null) {
+                            await archive.filterCategory(category == allConversationCategories ? null : category);
+                          }
+                        },
+                ),
+                _LibraryControl(
+                  key: const ValueKey('archive-visibility'),
+                  icon: Icons.tune,
+                  label: l.filters,
+                  selected: archive.visibility.active,
+                  onPressed: () => archive.changeVisibility(context),
+                ),
+                if (library.foldersAvailable)
+                  _LibraryControl(
+                    key: const ValueKey('archive-folder'),
+                    icon: Icons.folder_outlined,
+                    selected: archive.folder != null,
+                    label: archive.folder?.name ?? pairedSettingsLabel(context, 'localFolders'),
+                    onPressed: archive.busy
+                        ? null
+                        : () async {
+                            final choice = await pickLocalFolder(
+                              context,
+                              library,
+                              moving: false,
+                              onRename: archive.renameFolder,
+                              onDelete: (id) => archive.refreshAfterArchiveEdit(deletedFolderId: id),
+                            );
+                            if (choice != null) await archive.filterFolder(choice.folder);
+                          },
+                  ),
+              ],
             ),
-          ),
           if (_selectionActivity == _ArchiveSelectionActivity.classify && selection != null)
             const LinearProgressIndicator(minHeight: 2),
           Expanded(
@@ -582,6 +595,96 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LibraryToolbar extends StatelessWidget {
+  const _LibraryToolbar({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: Material(
+      color: OmiColors.surface1,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final baseWidth = MediaQuery.textScalerOf(context).scale(12) * 4.7;
+          final width = (box.maxWidth / children.length).clamp(baseWidth, double.infinity);
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [for (final control in children) SizedBox(width: width, child: control)],
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _LibraryControl extends StatelessWidget {
+  const _LibraryControl({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onPressed == null
+        ? Theme.of(context).disabledColor
+        : selected
+        ? OmiColors.textPrimary
+        : OmiColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: Material(
+          color: selected ? OmiColors.surface3 : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 18, color: color),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

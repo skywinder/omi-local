@@ -169,6 +169,34 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('all five library controls fit one accessible row on a narrow phone', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 720);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final library = _EditableLibrary()
+      ..recordingArchive = true
+      ..foldersAvailable = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final rects = [
+      for (final key in ['archived', 'starred', 'category', 'visibility', 'folder'])
+        tester.getRect(find.byKey(ValueKey('archive-$key'))),
+    ];
+    for (final rect in rects) {
+      expect(rect.top, rects.first.top);
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(rect.right, lessThanOrEqualTo(320));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('long press edits favorites, handles stale edits, archives and restores from the list', (tester) async {
     final library = _EditableLibrary()..recordingArchive = true;
     addTearDown(library.close);
@@ -350,7 +378,7 @@ void main() {
     expect(library.currentFolder, 'project-folder', reason: 'Sent edits: ${library.requests}');
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(ActionChip));
+    await tester.tap(find.byKey(const ValueKey('archive-folder')));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
@@ -414,7 +442,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Revised title'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilterChip, 'Starred'));
+    await tester.tap(find.byKey(const ValueKey('archive-starred')));
     await tester.pumpAndSettle();
     expect(library.filters, [false, true]);
     expect(find.text('Revised title'), findsOneWidget);

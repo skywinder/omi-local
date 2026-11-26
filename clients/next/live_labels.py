@@ -32,6 +32,9 @@ KEYS = (
 # establish whether a service started or whether an interrupted request applied.
 PROCESSING_MESSAGES = {
     'en': {
+        'nextRecordPhone': 'Record phone mic',
+        'nextAudioOnPhone': 'Audio on phone',
+        'nextAudioOnPhoneHint': 'This counts audio parts stored on this phone, including the part currently being recorded. A finished part stays here until the paired server confirms it has saved it.',
         'archiveVisibility': 'Recording filters',
         'archiveMinimumSeconds': 'Minimum duration (seconds)',
         'archiveHideWithoutAudio': 'Hide recordings without audio',
@@ -352,6 +355,9 @@ PROCESSING_MESSAGES = {
         'serverStageStale': 'Waiting for fresh processing status.',
     },
     'ru': {
+        'nextRecordPhone': 'Запись с телефона',
+        'nextAudioOnPhone': 'Аудио на телефоне',
+        'nextAudioOnPhoneHint': 'Счётчик показывает части аудио на этом телефоне, включая текущую запись. Готовая часть остаётся здесь до подтверждения от вашего сервера, что он её сохранил.',
         'archiveVisibility': 'Фильтры записей',
         'archiveMinimumSeconds': 'Минимальная длительность (секунды)',
         'archiveHideWithoutAudio': 'Скрывать записи без аудио',

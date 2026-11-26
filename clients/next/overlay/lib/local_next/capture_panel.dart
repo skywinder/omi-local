@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:omi/ui/omi_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -521,7 +522,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                       subtitle: Text(
                         journal.pendingParts == 0
                             ? pairedSettingsLabel(context, 'nextOutboxHealthy')
-                            : '${l.nPending(journal.pendingParts)} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB',
+                            : "${pairedSettingsLabel(context, 'nextAudioOnPhone')} · ${journal.pendingParts} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB",
                       ),
                       trailing: journal.deliveryFailed
                           ? TextButton(onPressed: journal.retry, child: Text(l.retry))
@@ -581,8 +582,10 @@ class LocalNextCaptureControls extends StatelessWidget {
     final l = context.l10n;
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
-    final link = inputs.connection;
-    final buttonStyle = OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8));
+    final buttonStyle = OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      minimumSize: const Size(48, 38),
+    );
     final buttons = [
       OutlinedButton.icon(
         key: const ValueKey('next-phone-capture'),
@@ -591,7 +594,10 @@ class LocalNextCaptureControls extends StatelessWidget {
             ? null
             : inputs.togglePhone,
         icon: Icon(capture.active ? Icons.stop : Icons.mic, size: 18),
-        label: Text(capture.active ? '${l.stop} · ${l.phone}' : l.recordWithPhoneMic, textAlign: TextAlign.center),
+        label: Text(
+          capture.active ? '${l.stop} · ${l.phone}' : pairedSettingsLabel(context, 'nextRecordPhone'),
+          textAlign: TextAlign.center,
+        ),
       ),
       if (cv1.linked || cv1.active)
         OutlinedButton.icon(
@@ -605,36 +611,49 @@ class LocalNextCaptureControls extends StatelessWidget {
           icon: Icon(cv1.active ? Icons.stop : Icons.fiber_manual_record, size: 18),
           label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', textAlign: TextAlign.center),
         ),
-      if (hasCv1)
-        OutlinedButton.icon(
-          key: const ValueKey('next-cv1-devices'),
-          style: buttonStyle,
-          icon: cv1DeviceIcon(link),
-          label: Text(
-            link.phase == Cv1LinkPhase.idle && !cv1.active
-                ? pairedSettingsLabel(context, 'nextConnectOmi')
-                : [
-                    'CV1',
-                    cv1DeviceStatus(context, link),
-                    if (cv1.intent == Cv1CaptureIntent.muted)
-                      l.muted
-                    else if (cv1.active && cv1.linked)
-                      cv1.hasPersistedAudio && !cv1.audioPaused ? l.recording : l.waitingForData,
-                  ].join(' · '),
-            textAlign: TextAlign.center,
-          ),
-          onPressed: () => unawaited(showNextDevices(context, inputs, library: library)),
-        ),
     ];
-    if (buttons.length == 1) return buttons.single;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 560),
-      child: IntrinsicHeight(
-        child: Row(
-          spacing: 6,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [for (final button in buttons) Expanded(child: button)],
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(spacing: 8, children: [for (final button in buttons) Expanded(child: button)]),
+    );
+  }
+
+  Widget _statusLine(BuildContext context, LocalAudioJournal journal) {
+    final timer = _time(context);
+    if (timer == null && journal.pendingParts == 0 && !journal.deliveryFailed) return const SizedBox.shrink();
+    final l = context.l10n;
+    final label = pairedSettingsLabel(context, 'nextAudioOnPhone');
+    final hint = pairedSettingsLabel(context, 'nextAudioOnPhoneHint');
+    return Padding(
+      key: const ValueKey('next-capture-status'),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          if (timer != null) Flexible(child: timer),
+          if (timer != null && journal.pendingParts > 0) const SizedBox(width: 8),
+          if (journal.pendingParts > 0)
+            Flexible(
+              child: TextButton.icon(
+                key: const ValueKey('next-audio-on-phone'),
+                icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+                label: Text('$label · ${journal.pendingParts}', textAlign: TextAlign.start),
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text(label),
+                    content: Text(hint),
+                    actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(l.ok))],
+                  ),
+                ),
+              ),
+            ),
+          if (journal.deliveryFailed)
+            IconButton(
+              icon: const Icon(Icons.sync_problem_outlined),
+              tooltip: l.captureBannerRetrySync,
+              onPressed: journal.retry,
+            ),
+        ],
       ),
     );
   }
@@ -651,7 +670,7 @@ class LocalNextCaptureControls extends StatelessWidget {
       listenable: Listenable.merge([captureState, journal, link]),
       builder: (context, _) => Column(
         children: [
-          if (_time(context) case final timer?) timer,
+          _statusLine(context, journal),
           _recordingActions(context),
           if (cv1.active)
             Wrap(
@@ -680,8 +699,6 @@ class LocalNextCaptureControls extends StatelessWidget {
               CaptureProblem.empty => l.onboardingActNoAudioPhone,
               CaptureProblem.micStalled => pairedSettingsLabel(context, 'nextMicStalled'),
             }),
-          if (journal.pendingParts > 0) Text(l.nPending(journal.pendingParts)),
-          if (journal.deliveryFailed) TextButton(onPressed: journal.retry, child: Text(l.captureBannerRetrySync)),
           if (inputs.preview case final preview?)
             LocalNextLiveButton(
               preview: preview,
@@ -798,7 +815,15 @@ class _ActiveRecordingTimeState extends State<_ActiveRecordingTime> {
       seconds ~/ 60 % 60,
       seconds % 60,
     ].map((v) => v.toString().padLeft(2, '0')).join(':');
-    return Text('${widget.input} · $time', key: const ValueKey('next-recording-time'));
+    return Text(
+      '${widget.input} · $time',
+      key: const ValueKey('next-recording-time'),
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+        color: OmiColors.textPrimary,
+        fontWeight: FontWeight.w600,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
   }
 }
 
