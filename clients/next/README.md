@@ -135,7 +135,7 @@ library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
-The elapsed time and audio-part count appear together. Tap **Audio on phone** for an explanation. The count includes the open audio part and sealed parts awaiting a durable server receipt.
+The Live Transcript card shows the active input and elapsed time. The gear menu's **Phone upload queue** shows the audio stored on the phone, including the open part and sealed parts awaiting a durable server receipt. Delivery problems also appear beside the recording buttons.
 Archive, favorites, categories, filters and folders share one toolbar. Color and icons distinguish the phone microphone, CV1, active recording, connection states, and selected filters in both themes. Larger text can be reached by scrolling the toolbar horizontally.
 The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.
@@ -491,10 +491,11 @@ device** clears this selection.
 
 ## Live transcript
 
-While recording, the strip above the archive filters shows the current
-recognition status and the latest line when available. Tap it to open the
-same full Live transcript. The Live button keeps the last session accessible
-after recording stops.
+While recording, the card above the archive filters shows the current input,
+elapsed time, recognition status, and the latest line or a short input notice.
+CV1 mute and **Finish & listen** are available on this card and in the full
+Live transcript. Tap the card header to open Live. The last session remains
+accessible after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
 Omi transcript list and shows where live processing runs. Translation can use
@@ -514,12 +515,16 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. **Finish conversation after
-silence** is available in capture settings and Live settings. It selects
-one recording per part, one conversation until Stop, or separation after a
-chosen silent interval. The phone or CV1 keeps capturing across conversation boundaries. The grouped options appear on a compatible paired
-server. A saved change applies to the next recording. Conversation publication follows the server's durable sample clock.
-Live drafts still represent the capture session.
+current stream shows its separately acknowledged limit. **Stop after silence**
+in capture settings and Live settings selects one recording per part, one
+conversation until Stop, or a timed silence interval. A timed interval stops
+capture after detected speech followed by silence. Enable **Keep listening
+after silence** to finish the conversation and continue monitoring. The choices
+appear on a compatible paired server and apply to the next recording.
+A connected CV1 that stops sending audio can also finish on the phone's
+timer. For incoming audio, automatic Stop depends on the paired server's
+silence detector. Live timestamps include gaps in the input. The server uses the
+durable audio samples to publish and trim saved conversations.
 
 ## Processing profiles
 

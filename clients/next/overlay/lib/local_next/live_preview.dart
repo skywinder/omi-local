@@ -11,6 +11,7 @@ bool _supported(String source, String codec) =>
     source == 'phone' && codec == 'pcm16' || source == 'omi' && (codec == 'opus' || codec == 'opus_fs320');
 
 final _upgraded = Expando<Socket>();
+typedef PreviewSilence = ({String recordingId, int seconds});
 
 void abortPairedPreview(WebSocket socket) {
   _upgraded[socket]?.destroy();
@@ -30,6 +31,7 @@ Future<WebSocket> upgradePairedPreview(
   String source,
   String codec, {
   Map<String, String> audioOrigin = const {},
+  PreviewSilence? silence,
 }) async {
   const timeout = Duration(seconds: 15);
   Socket? detached;
@@ -70,6 +72,12 @@ Future<WebSocket> upgradePairedPreview(
       ..set(HttpHeaders.upgradeHeader, 'websocket')
       ..set('Sec-WebSocket-Key', nonce)
       ..set('Sec-WebSocket-Version', '13');
+    if (silence != null) {
+      req.headers
+        ..set('X-Omi-Local-Recording-Group', silence.recordingId)
+        ..set('X-Omi-Local-Group-Silence', silence.seconds)
+        ..set('X-Omi-Local-Group-Stop', '1');
+    }
     for (final name in const ['X-App-Platform', 'X-Omi-Local-Recording-Origin']) {
       final value = audioOrigin[name];
       if (value != null) req.headers.set(name, value);
@@ -113,6 +121,8 @@ class NextPreviewLine {
     required this.text,
     required this.start,
     required this.end,
+    required this.audioStart,
+    required this.audioEnd,
     this.speaker,
     this.isDraft = false,
     this.translations = const {},
@@ -121,16 +131,27 @@ class NextPreviewLine {
   final String text;
   final double start;
   final double end;
+  final double audioStart, audioEnd;
   final String? speaker;
   final bool isDraft;
   final Map<String, String> translations;
 
   NextPreviewLine withoutTranslation() => translations.isEmpty
       ? this
-      : NextPreviewLine(id: id, text: text, start: start, end: end, speaker: speaker, isDraft: isDraft);
+      : NextPreviewLine(
+          id: id,
+          text: text,
+          start: start,
+          end: end,
+          audioStart: audioStart,
+          audioEnd: audioEnd,
+          speaker: speaker,
+          isDraft: isDraft,
+        );
 }
 
-typedef PreviewConnector = Future<WebSocket> Function(String owner, String source, String codec);
+typedef PreviewConnector =
+    Future<WebSocket> Function(String owner, String source, String codec, {PreviewSilence? silence});
 
 class NextLivePreview extends ChangeNotifier {
   NextLivePreview(this.owner, this._connect, {this.retryDelay = const Duration(seconds: 1), this.onReconnect});
@@ -170,7 +191,10 @@ class NextLivePreview extends ChangeNotifier {
   int _epoch = 0, _retries = 0, _revision = 0, _priorCount = 0;
   int _boundarySample = 0;
   String? get savedGroupId => _boundarySample == 0 ? null : _shownRecording;
-  double get boundarySeconds => _boundarySample / 16000;
+  double get boundarySeconds => _elapsedAt(_boundarySample / 16000, isEnd: true);
+  final _captureGaps = <({double audio, double offset})>[];
+  PreviewSilence? _silence;
+  VoidCallback? _onSilence;
   String? _previewId;
   double? _offset;
   final _retiredIds = <String>{};
@@ -179,7 +203,7 @@ class NextLivePreview extends ChangeNotifier {
   StreamController<Object>? _outgoing;
   int _queuedBytes = 0;
 
-  void begin(String recordingId, String source, String codec) {
+  void begin(String recordingId, String source, String codec, {int? silenceSeconds, VoidCallback? onSilence}) {
     if (_disposed || !_supported(source, codec)) return;
     if (_recording == recordingId && source == _source && codec == _codec) return;
     _detach();
@@ -188,7 +212,12 @@ class NextLivePreview extends ChangeNotifier {
       _priorCount = 0;
       _boundarySample = 0;
       _retiredIds.clear();
+      _captureGaps.clear();
     }
+    _onSilence = onSilence;
+    _silence = onSilence != null && silenceSeconds != null && silenceSeconds > 0
+        ? (recordingId: recordingId, seconds: silenceSeconds)
+        : null;
     _recording = _shownRecording = recordingId;
     _source = source;
     _codec = codec;
@@ -201,7 +230,7 @@ class NextLivePreview extends ChangeNotifier {
   // WLK may extend one speaker turn across a silence cut. Its words have no
   // individual timestamps, so keep the whole turn while any of its audio is current.
   bool _withinConversation(double start, double end) =>
-      _boundarySample == 0 || end > boundarySeconds || start >= boundarySeconds;
+      _silence != null || _boundarySample == 0 || end * 16000 > _boundarySample || start * 16000 >= _boundarySample;
 
   /// Applies only the silence cut acknowledged by the paired audio journal.
   /// Snapshot offsets and the capture's lifetime stay on the original recording clock.
@@ -209,8 +238,8 @@ class NextLivePreview extends ChangeNotifier {
     if (_disposed || recordingId != _shownRecording || sample <= _boundarySample) return;
     _boundarySample = sample;
     if ((_withdrawn?.end ?? 0) <= boundarySeconds) _withdrawn = null;
-    _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.start, line.end)).length;
-    _replaceLines(_lines.where((line) => _withinConversation(line.start, line.end)));
+    _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.audioStart, line.audioEnd)).length;
+    _replaceLines(_lines.where((line) => _withinConversation(line.audioStart, line.audioEnd)));
     notifyListeners();
   }
 
@@ -230,7 +259,7 @@ class NextLivePreview extends ChangeNotifier {
     notifyListeners();
     if (epoch != _epoch) return;
     try {
-      final socket = await _connect(owner, _source, _codec);
+      final socket = await _connect(owner, _source, _codec, silence: _silence);
       if (epoch != _epoch) {
         abortPairedPreview(socket);
         return;
@@ -314,19 +343,38 @@ class NextLivePreview extends ChangeNotifier {
   }
 
   /// The capture owner calls this only inside LocalAudioRecording.afterPersisted.
-  void addPersisted(String recordingId, String source, String codec, Uint8List bytes, {required double startSeconds}) {
+  void addPersisted(
+    String recordingId,
+    String source,
+    String codec,
+    Uint8List bytes, {
+    required double startSeconds,
+    double? elapsedSeconds,
+  }) {
     if (_recording != recordingId ||
         source != _source ||
         codec != _codec ||
-        _outgoing == null ||
         bytes.isEmpty ||
         bytes.length > 4096 ||
         !startSeconds.isFinite ||
         startSeconds < 0) {
       return;
     }
+    final offset = (elapsedSeconds ?? startSeconds) - startSeconds;
+    // Keep missing capture time without stretching timestamps for packet jitter.
+    if (offset.isFinite && offset > (_captureGaps.lastOrNull?.offset ?? 0) + 0.75) {
+      _captureGaps.add((audio: startSeconds, offset: offset));
+    }
+    if (_outgoing == null) return;
     _offset ??= startSeconds;
     _send(Uint8List.fromList(bytes));
+  }
+
+  double _elapsedAt(double audio, {bool isEnd = false}) {
+    for (final gap in _captureGaps.reversed) {
+      if (isEnd ? gap.audio < audio : gap.audio <= audio) return audio + gap.offset;
+    }
+    return audio;
   }
 
   int _size(Object value) => value is Uint8List ? value.length : (value as String).length;
@@ -382,6 +430,14 @@ class NextLivePreview extends ChangeNotifier {
     if (event is! Map) return;
     if (event['type'] == 'service_status') {
       final status = event['status'];
+      if (event['provider'] == 'local_audio_group' &&
+          status == 'flush_part' &&
+          _silence != null &&
+          _recording == _silence!.recordingId &&
+          event['reason'] == _recording) {
+        _onSilence?.call();
+        return;
+      }
       if (event['provider'] == 'offline_capture' && status == 'ready') _confirmRecovery();
       if (event['provider'] == 'local_live_tuning') {
         final revision = event['revision'], speakers = event['max_speakers'];
@@ -408,6 +464,14 @@ class NextLivePreview extends ChangeNotifier {
       if (event['provider'] == 'local_live_preview') {
         if (status == 'stt_failed') {
           final why = event['reason'];
+          if (_silence != null && event['retryable'] != true) {
+            // The paired socket can still detect silence without Live STT.
+            _admission?.cancel();
+            _phase = NextPreviewPhase.unavailable;
+            _reason = const {'busy', 'disabled', 'session_limit'}.contains(why) ? why as String : 'unavailable';
+            notifyListeners();
+            return;
+          }
           _lost(
             epoch,
             terminal: event['retryable'] != true,
@@ -454,8 +518,9 @@ class NextLivePreview extends ChangeNotifier {
         return;
       }
       if (HardSecretDetector.contains(text)) continue;
-      final offset = _offset ?? 0.0;
-      if (!_withinConversation(start.toDouble() + offset, end.toDouble() + offset)) continue;
+      final audioStart = start.toDouble() + (_offset ?? 0);
+      final audioEnd = end.toDouble() + (_offset ?? 0);
+      if (!_withinConversation(audioStart, audioEnd)) continue;
       final rowId = jsonEncode([id, key]);
       final old = previous[rowId];
       final translations = <String, String>{};
@@ -480,16 +545,18 @@ class NextLivePreview extends ChangeNotifier {
           _target.isNotEmpty &&
           (!acceptedTranslations || event['translation_revision'] == null) &&
           old != null &&
-          old.start == start + offset &&
-          old.end == end + offset) {
+          old.audioStart == audioStart &&
+          old.audioEnd == audioEnd) {
         translations.addAll(old.translations);
       }
       next.add(
         NextPreviewLine(
           id: rowId,
           text: text,
-          start: start.toDouble() + offset,
-          end: end.toDouble() + offset,
+          start: _elapsedAt(audioStart),
+          end: audioEnd == audioStart ? _elapsedAt(audioEnd) : _elapsedAt(audioEnd, isEnd: true),
+          audioStart: audioStart,
+          audioEnd: audioEnd,
           isDraft: row['is_draft'] == true,
           speaker: row['speaker'] is String ? row['speaker'] as String : null,
           translations: Map.unmodifiable(translations),
@@ -499,14 +566,14 @@ class NextLivePreview extends ChangeNotifier {
     _withdrawn = null;
     final withdrawn = event['withdrawn'];
     if (withdrawn case {'text': final String text, 'end': final num end}) {
-      final time = end.toDouble() + (_offset ?? 0);
+      final audioEnd = end.toDouble() + (_offset ?? 0);
       if (text.isNotEmpty &&
           text.length <= 4096 &&
           end.isFinite &&
           end >= 0 &&
-          (_boundarySample == 0 || time > boundarySeconds) &&
+          (_silence != null || _boundarySample == 0 || audioEnd * 16000 > _boundarySample) &&
           !HardSecretDetector.contains(text)) {
-        _withdrawn = (text: text, end: time);
+        _withdrawn = (text: text, end: _elapsedAt(audioEnd, isEnd: true));
       }
     }
     _previewId = id;

@@ -65,12 +65,20 @@ enum CaptureProblem { permission, microphone, storage, empty, micStalled }
 enum PhoneMicStatus { waiting, recording, interrupted, recovering }
 
 class NextPhoneCapture extends ChangeNotifier {
-  NextPhoneCapture(this.journal, this.owner, this.microphone, {this.preview, this.makeTimer = Timer.new});
+  NextPhoneCapture(
+    this.journal,
+    this.owner,
+    this.microphone, {
+    this.preview,
+    this.makeTimer = Timer.new,
+    this.keepListeningAfterSilence,
+  });
 
   final LocalAudioJournal journal;
   final String owner;
   final NextPhoneMicrophone microphone;
   final NextLivePreview? preview;
+  final bool Function()? keepListeningAfterSilence;
   final Timer Function(Duration, void Function()) makeTimer;
   PhoneMicStatus? micStatus;
   Timer? _watchdog;
@@ -107,6 +115,7 @@ class NextPhoneCapture extends ChangeNotifier {
     micStatus = PhoneMicStatus.waiting;
     startedAt = journal.clock();
     final current = _recording = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: owner);
+    final stopAfterSilence = (current.silenceSeconds ?? 0) > 0 && keepListeningAfterSilence?.call() != true;
     notifyListeners();
     try {
       _interruptions = microphone.interruptions.listen(
@@ -116,7 +125,17 @@ class NextPhoneCapture extends ChangeNotifier {
       );
       await _startRecorder(current);
       if (_acceptsAudio(current)) {
-        preview?.begin(current.recordingId, current.source, current.codec);
+        preview?.begin(
+          current.recordingId,
+          current.source,
+          current.codec,
+          silenceSeconds: current.silenceSeconds,
+          onSilence: stopAfterSilence
+              ? () {
+                  if (_acceptsAudio(current) && micStatus == PhoneMicStatus.recording) unawaited(stop());
+                }
+              : null,
+        );
       }
     } catch (error) {
       if (micStatus != PhoneMicStatus.interrupted || error is PhoneCaptureDenied) {
@@ -210,6 +229,7 @@ class NextPhoneCapture extends ChangeNotifier {
       return;
     }
     _triedRestart = false;
+    final batchEnd = journal.clock().difference(startedAt!).inMicroseconds / Duration.microsecondsPerSecond;
     for (int offset = 0; offset < bytes.length; offset += LocalAudioJournal.maxFrameBytes) {
       final end = math.min(offset + LocalAudioJournal.maxFrameBytes, bytes.length);
       final view = Uint8List.sublistView(bytes, offset, end);
@@ -227,8 +247,11 @@ class NextPhoneCapture extends ChangeNotifier {
                       current.source,
                       current.codec,
                       frame,
-                      startSeconds:
-                          current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
+                      startSeconds: math.max(
+                        0,
+                        current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
+                      ),
+                      elapsedSeconds: batchEnd - (bytes.length - offset) / 32000,
                     ),
             )
             .catchError((Object _) => _fail(current, CaptureProblem.storage)),

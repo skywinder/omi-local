@@ -37,6 +37,8 @@ class LocalNextLiveButton extends StatefulWidget {
     this.isMuted,
     required this.onStop,
     this.inputNotice,
+    this.recordingTime,
+    this.hasCaptureControls,
     this.captureControls,
     this.captureSettings,
     required this.serverLabel,
@@ -50,6 +52,8 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function()? isMuted;
   final Future<void> Function() onStop;
   final String? Function(BuildContext)? inputNotice;
+  final Widget? Function(BuildContext)? recordingTime;
+  final bool Function()? hasCaptureControls;
   final WidgetBuilder? captureControls;
   final WidgetBuilder? captureSettings;
   final String serverLabel;
@@ -171,10 +175,14 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
               NextPreviewPhase.connecting => (NextAccent.amber, Icons.hourglass_top),
               NextPreviewPhase.idle => (NextAccent.slate, Icons.subtitles_outlined),
             };
-      final atSessionLimit = !muted && preview.reason == 'session_limit';
       final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
           ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
           : '';
+      final timer = widget.recordingTime?.call(context);
+      final notice = widget.inputNotice?.call(context);
+      final waitingForInput = notice != null && preview.phase == NextPreviewPhase.idle;
+      final showControls = widget.hasCaptureControls?.call() == true;
+      final theme = Theme.of(context).textTheme;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
         child: Card(
@@ -183,19 +191,66 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
           elevation: 0,
           shape: const RoundedRectangleBorder(borderRadius: OmiRadius.mdAll),
           clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            key: const ValueKey('next-live-strip'),
-            leading: _liveBadge(context, accent, icon),
-            title: Text(
-              atSessionLimit ? l.liveTranscript : '${l.liveTranscript} · $status',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: atSessionLimit
-                ? Text(status)
-                : (line.isEmpty ? null : Text(line, maxLines: 1, overflow: TextOverflow.ellipsis)),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _open,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              InkWell(
+                key: const ValueKey('next-live-strip'),
+                onTap: _open,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        spacing: 8,
+                        children: [
+                          _liveBadge(context, accent, icon),
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l.liveTranscript,
+                                  style: theme.titleSmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  waitingForInput ? notice : status,
+                                  style: theme.bodySmall,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (timer != null)
+                            Expanded(
+                              flex: 2,
+                              child: Align(alignment: AlignmentDirectional.centerEnd, child: timer),
+                            ),
+                          const Icon(Icons.chevron_right, size: 18),
+                        ],
+                      ),
+                      if ((notice != null && !waitingForInput) || line.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 46),
+                          child: Text(
+                            notice ?? line,
+                            style: theme.bodySmall,
+                            maxLines: notice != null ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (widget.captureControls case final controls? when showControls)
+                Padding(padding: const EdgeInsetsDirectional.only(end: 4), child: controls(context)),
+            ],
           ),
         ),
       );
@@ -317,7 +372,14 @@ class _LivePageState extends State<_LivePage> {
                         ? OmiColors.success
                         : OmiColors.textTertiary,
                   ),
-                  title: Text(status),
+                  title: Text(status, maxLines: 3, overflow: TextOverflow.ellipsis),
+                  trailing: switch (view.recordingTime?.call(context)) {
+                    final timer? => ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.32),
+                      child: timer,
+                    ),
+                    _ => null,
+                  },
                   subtitle: switch (view.inputNotice?.call(context)) {
                     final String notice => Text(notice),
                     _ when !recording && preview.lines.isEmpty && preview.savedGroupId == null => Text(
@@ -376,7 +438,8 @@ class _LivePageState extends State<_LivePage> {
                     withdrawn: preview.withdrawnText,
                   ),
                 ),
-                if (view.captureControls case final controls? when recording) controls(context),
+                if (view.captureControls case final controls? when recording && view.hasCaptureControls?.call() == true)
+                  controls(context),
               ],
             ),
           ),

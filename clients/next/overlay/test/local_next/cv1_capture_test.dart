@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_resume.dart';
@@ -82,14 +82,14 @@ class _Fixture {
 
 class _PreviewProbe extends NextLivePreview {
   _PreviewProbe(String owner)
-    : super(owner, (owner, source, codec) => throw StateError('No network in capture fixture'));
+    : super(owner, (owner, source, codec, {silence}) => throw StateError('No network in capture fixture'));
 
   String? active;
   final openings = <String>[];
   final frames = <List<int>>[];
 
   @override
-  void begin(String recordingId, String source, String codec) {
+  void begin(String recordingId, String source, String codec, {int? silenceSeconds, VoidCallback? onSilence}) {
     if (active == recordingId) return;
     active = recordingId;
     openings.add(recordingId);
@@ -101,7 +101,14 @@ class _PreviewProbe extends NextLivePreview {
   }
 
   @override
-  void addPersisted(String recordingId, String source, String codec, Uint8List bytes, {required double startSeconds}) {
+  void addPersisted(
+    String recordingId,
+    String source,
+    String codec,
+    Uint8List bytes, {
+    required double startSeconds,
+    double? elapsedSeconds,
+  }) {
     expect(active, recordingId);
     frames.add(bytes);
   }

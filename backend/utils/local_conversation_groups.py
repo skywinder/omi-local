@@ -77,10 +77,11 @@ class LiveSilenceBoundary:
             group_id = str(uuid.UUID(group))
         except ValueError:
             return None
-        return cls(group_id, int(seconds))
+        return cls(group_id, int(seconds), stop_capture=headers.get('x-omi-local-group-stop') == '1')
 
-    def __init__(self, group_id, seconds):
+    def __init__(self, group_id, seconds, *, stop_capture=False):
         self.group_id = group_id
+        self.stop_capture = stop_capture
         self.threshold = seconds * RATE
         self.detector = SpeechDetector()
         self.tail = b''

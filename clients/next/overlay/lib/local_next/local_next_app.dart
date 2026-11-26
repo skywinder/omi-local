@@ -400,6 +400,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
     return Scaffold(
       appBar: AppBar(
         centerTitle: false,
+        toolbarHeight: kToolbarHeight + (MediaQuery.textScalerOf(context).scale(24) - 24).clamp(0.0, 40.0),
         title: InkWell(
           key: const ValueKey('archive-servers'),
           onTap: widget.pairingBusy ? null : widget.openServers,

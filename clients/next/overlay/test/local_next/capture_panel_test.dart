@@ -110,7 +110,7 @@ Widget _controlsScaffold(NextCaptureInputs inputs) => Scaffold(
 );
 
 class _Journal extends LocalAudioJournal {
-  _Journal({super.clock})
+  _Journal({super.clock, super.groupSilence})
     : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
   Set<LocalDeliveryIssue> issues = {};
   @override
@@ -125,12 +125,21 @@ class _Journal extends LocalAudioJournal {
   @override
   LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) {
     recordings++;
-    return _Recording(seal.future);
+    return _Recording(seal.future, codec, groupSilence?.call(), recordings);
   }
 }
 
 class _Recording extends Fake implements LocalAudioRecording {
-  _Recording(this.sealed);
+  _Recording(this.sealed, this.codec, this.silenceSeconds, this.number);
+  final int number;
+  @override
+  final String codec;
+  @override
+  final int? silenceSeconds;
+  @override
+  String get source => codec == 'pcm16' ? 'phone' : 'omi';
+  @override
+  String get recordingId => 'fixture-$number';
   final Future<void> sealed;
   @override
   double get audioSeconds => 1;
@@ -615,7 +624,10 @@ void main() {
     final mic = _Microphone();
     final wire = _Wire();
     final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
-    final preview = NextLivePreview('fixture', (owner, source, codec) async => throw const SocketException('offline'));
+    final preview = NextLivePreview(
+      'fixture',
+      (owner, source, codec, {silence}) async => throw const SocketException('offline'),
+    );
     final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic, preview: preview), wire);
     final changes = <int?>[];
     final boundary = ValueNotifier<int?>(null);
@@ -641,7 +653,11 @@ void main() {
       wire.ready();
       await inputs.startCv1();
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+      final strip = find.byKey(const ValueKey('next-live-strip'));
+      expect(find.descendant(of: strip, matching: find.text('CV1 · 00:00')), findsOneWidget);
+      expect(find.descendant(of: strip, matching: find.text('Waiting for CV1 audio')), findsOneWidget);
+      expect(find.byTooltip('Finish conversation and keep listening'), findsOneWidget);
+      await tester.tap(strip);
       await tester.pumpAndSettle();
       expect(find.text('CV1 · 00:00'), findsOneWidget);
       now = now.add(const Duration(seconds: 7));
@@ -655,14 +671,14 @@ void main() {
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
-      expect(find.text('Finish conversation after silence'), findsOneWidget);
+      expect(find.text('Stop after silence'), findsOneWidget);
       expect(find.textContaining('Applies to the next recording.'), findsOneWidget);
-      await tester.tap(find.text('Finish conversation after silence'));
+      await tester.tap(find.text('Stop after silence'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Split after silence · 30s'));
+      await tester.tap(find.text('30s'));
       await tester.pumpAndSettle();
       expect(changes, [30]);
-      expect(find.textContaining('Split after silence · 30s'), findsOneWidget);
+      expect(find.textContaining('30s'), findsOneWidget);
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.pageBack();
       await tester.pumpAndSettle();
@@ -677,6 +693,45 @@ void main() {
       pair.close();
       journal.dispose();
       boundary.dispose();
+      await mic.audioSession.close();
+    }
+  });
+
+  testWidgets('CV1 seals after the configured no-audio interval on the same link', (tester) async {
+    var now = DateTime.utc(2026);
+    final journal = _Journal(clock: () => now, groupSilence: () => 60);
+    final mic = _Microphone();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire);
+    try {
+      wire.ready();
+      await inputs.startCv1();
+      void packet(int counter) =>
+          inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      packet(0);
+      packet(1);
+      await tester.pump();
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      packet(2);
+      await tester.pump();
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      now = now.add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(inputs.cv1.active, isFalse);
+      expect(inputs.cv1.sealing, isTrue);
+      expect(wire.subscriptions, [true, false]);
+      expect(journal.recordings, 1);
+    } finally {
+      journal.seal.complete();
+      final closing = inputs.close();
+      await tester.pump();
+      await closing;
+      inputs.dispose();
+      journal.dispose();
       await mic.audioSession.close();
     }
   });
@@ -880,18 +935,14 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
-      final time = find.text('Phone microphone · 00:00');
+      final time = find.text('Phone · 00:00');
       expect(time, findsOneWidget);
-      final pending = find.byKey(const ValueKey('next-audio-on-phone'));
-      expect(tester.getCenter(time).dy, closeTo(tester.getCenter(pending).dy, 1));
-      await tester.tap(pending);
-      await tester.pumpAndSettle();
-      expect(find.textContaining('until the paired server confirms'), findsOneWidget);
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
+      expect(find.textContaining('Audio on phone'), findsNothing);
+      final pending = find.byKey(const ValueKey('next-delivery-warning'));
+      expect(pending, findsNothing);
       journal.showIssue(LocalDeliveryIssue.receipt);
       await tester.pump();
-      expect(find.text('Delivery paused'), findsOneWidget);
+      expect(find.byTooltip('Delivery paused'), findsOneWidget);
       await tester.tap(pending);
       await tester.pumpAndSettle();
       expect(find.textContaining('invalid audio receipt'), findsOneWidget);
@@ -902,7 +953,7 @@ void main() {
       await tester.pumpAndSettle();
       now = now.add(const Duration(seconds: 9));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('Phone microphone · 00:09'), findsOneWidget);
+      expect(find.text('Phone · 00:09'), findsOneWidget);
       expect(ownerChange.tryHold(), isFalse);
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
