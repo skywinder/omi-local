@@ -133,8 +133,8 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       item.textContent = name + ' · ' + (label || (report?.stale ? 'проверка устарела' : 'нет данных'));
       item.title = stage?.name || '';
     }
-    const draft = JSON.stringify(sessions.map(({preview_id, source, origin, revision, text, text_truncated, segments}) =>
-      [preview_id, source, origin, revision, text, text_truncated, segments]));
+    const draft = JSON.stringify(sessions.map(({preview_id, source, origin, revision, text, text_truncated, segments, withdrawn}) =>
+      [preview_id, source, origin, revision, text, text_truncated, segments, withdrawn]));
     if (draft !== lastDraft || data.backend !== previous?.backend) {
       lastDraft = draft;
       indicators = [];
@@ -152,7 +152,7 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
         header.append(source, indicator);
         block.append(header);
         const turns = speakerTurns(session.segments);
-        if (turns.length) {
+        if (turns.length || session.withdrawn?.text) {
           const list = element('ol', 'live-turns');
           for (const turn of turns) {
             const row = element('li', turn.draft ? 'draft' : '');
@@ -160,6 +160,12 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
             const speaker = turn.draft ? 'Черновик' : turn.speaker === null ? 'Говорящий не определён' : `Говорящий ${turn.speaker + 1}`;
             row.append(element('span', 'turn-label', [speaker, Number.isFinite(turn.start) ? formatTime(turn.start) : ''].filter(Boolean).join(' · ')),
               element('p', 'live-text', turn.text.join(' ')));
+            list.append(row);
+          }
+          if (session.withdrawn?.text) {
+            const row = element('li', 'withdrawn');
+            row.append(element('span', 'turn-label', 'Предыдущий текст · не подтверждено'),
+              element('p', 'live-text', session.withdrawn.text));
             list.append(row);
           }
           block.append(list);

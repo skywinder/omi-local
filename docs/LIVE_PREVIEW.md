@@ -348,3 +348,9 @@ previous conversation. The final archive still uses the saved audio boundary.
 Pending words appear in a separate tinted bubble until the recognizer confirms
 or revises them. The web monitor retains speaker and draft rows in its
 100,000-character display window.
+
+When the recognizer withdraws its last wording before providing a replacement,
+the paired client and web monitor show the previous turn (up to 2,048 characters)
+in a separate unconfirmed bubble. It is scoped to the current live session and
+kept in memory. The next changed wording or a conversation reset clears it.
+Confirmed rows, translations and the final archive use their own authoritative text.

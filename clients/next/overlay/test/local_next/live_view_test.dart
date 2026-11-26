@@ -185,6 +185,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(drafts, findsNothing);
     expect(find.text('Saved conversation text. Unfinished sentence.', findRichText: true), findsOneWidget);
+    socket.send({
+      'type': 'local_transcript_snapshot',
+      'preview_id': 'preview-fixture',
+      'revision': 3,
+      'segments': [],
+      'withdrawn': {'text': 'Unfinished sentence', 'end': 12},
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Previous wording · unconfirmed'), findsOneWidget);
+    expect(find.text('Unfinished sentence'), findsOneWidget);
+    expect(tester.widget<TranscriptWidget>(find.byType(TranscriptWidget)).segments, isEmpty);
+    socket.snapshot(4, 'Old text');
+    await tester.pumpAndSettle();
+    expect(find.text('Previous wording · unconfirmed'), findsNothing);
     expect(find.text('Conversation audio saved'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
     expect(capture.value, isTrue);

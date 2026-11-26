@@ -30,8 +30,16 @@ def test_full_snapshots_replace_retract_and_isolate_sessions():
     assert second['segments'][0]['speaker'] is None
     assert second['segments'][0]['speaker_id'] == -1
     assert second['segments'][0]['is_draft'] is True
-    assert segment.update({'lines': [], 'buffer_transcription': ''}, 8)['segments'] == []
+    removed = segment.update({'lines': [], 'buffer_transcription': ''}, 8)
+    assert removed['segments'] == [] and segment.text == ''
+    assert removed['withdrawn'] == {'text': second['segments'][0]['text'], 'end': 8}
     assert segment.update({'lines': [], 'buffer_transcription': ''}, 9) is None
+    assert segment.withdrawn == removed['withdrawn']
+    restored = segment.update({'lines': [{'text': 'уточнение', 'start': 0, 'end': 9}], 'buffer_transcription': ''}, 10)
+    assert 'withdrawn' not in restored and segment.withdrawn is None
+    segment.update({'lines': [], 'buffer_transcription': ''}, 11)
+    segment.begin_conversation(11)
+    assert segment.withdrawn is None
     assert segment.id != PreviewSegment().id
 
 
@@ -784,6 +792,7 @@ async def test_outbox_owned_library_draft_uses_preview_without_server_wav(monkey
         current.local_preview.segment.update({'lines': [], 'buffer_transcription': ''}, 1.25)
         retracted = (await local_status.preview_snapshot('synthetic-owner'))['sessions'][0]
         assert retracted['text'] == '' and retracted['segments'] == [] and retracted['revision'] == 3
+        assert retracted['withdrawn']['text'] == 'исправлено'
         current.state.shutdown_event.set()
         assert (await local_status.preview_snapshot('synthetic-owner'))['sessions'] == []
     finally:

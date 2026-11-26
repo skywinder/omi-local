@@ -73,6 +73,7 @@ class PreviewSegment:
         self.awaiting_speech = False
         self.previous_draft = ''
         self.previous_cumulative = ''
+        self.withdrawn = None
 
     @staticmethod
     def _pending_line(line):
@@ -85,6 +86,7 @@ class PreviewSegment:
         self.previous_cumulative = ' '.join(row.get('text', '').strip() for row in now.get('lines', [])
                                             if isinstance(row, dict) and row.get('speaker') != -2
                                             and self._pending_line(row) and isinstance(row.get('text'), str))
+        self.withdrawn = None
         self.conversation_floor = audio_seconds
         self.awaiting_speech = True
         self.segments = []
@@ -194,11 +196,23 @@ class PreviewSegment:
         if segments == self.segments and translation_revision == self.last_translation_revision:
             return None
         self.last_translation_revision = translation_revision
+        text = ' '.join(row['text'] for row in segments)
+        if text != self.text:
+            # A full snapshot can withdraw a hypothesis before any replacement
+            # arrives. Keep one bounded tail as a separately labelled RAM-only
+            # hint. Authoritative rows and their translations still retract.
+            self.withdrawn = None
+            prefix = text + ' ' if text else ''
+            if not draft and self.segments and self.text.startswith(prefix):
+                last = self.segments[-1]
+                if len(last['text']) <= 2048:
+                    self.withdrawn = {'text': last['text'], 'end': last['end']}
         self.segments = segments
-        self.text = ' '.join(segment['text'] for segment in segments)
+        self.text = text
         self.revision += 1
         return {'type': 'local_transcript_snapshot', 'preview_id': self.id,
                 'revision': self.revision, 'segments': segments,
+                **({'withdrawn': self.withdrawn} if self.withdrawn else {}),
                 **({'translation_revision': translation_revision} if translation_revision is not None else {})}
 
 
@@ -448,6 +462,7 @@ class LocalLivePreview:
             self.segment.text = ''
             self.segment.segments = []
             self.segment.last_snapshot = None
+            self.segment.withdrawn = None
             while not self.queue.empty():
                 self.queue.get_nowait()
             self.pending_bytes = 0

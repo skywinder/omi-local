@@ -212,6 +212,7 @@ String _liveStatus(BuildContext context, NextLivePreview preview, {required bool
   return switch (preview.phase) {
     NextPreviewPhase.idle => l.waitingForData,
     NextPreviewPhase.connecting => preview.reason == 'reconnecting' ? l.reconnecting : l.livePreviewStarting,
+    NextPreviewPhase.listening when preview.withdrawnText != null => pairedSettingsLabel(context, 'nextLiveRevising'),
     NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
     NextPreviewPhase.unavailable when preview.reason == 'disabled' => pairedSettingsLabel(context, 'nextLiveDisabled'),
     NextPreviewPhase.unavailable when preview.reason == 'session_limit' => pairedSettingsLabel(
@@ -369,7 +370,11 @@ class _LivePageState extends State<_LivePage> {
                           ),
                   ),
                 Expanded(
-                  child: _Transcript(lines: preview.lines, contentVersion: preview.contentVersion),
+                  child: _Transcript(
+                    lines: preview.lines,
+                    contentVersion: preview.contentVersion,
+                    withdrawn: preview.withdrawnText,
+                  ),
                 ),
                 if (view.captureControls case final controls? when recording) controls(context),
               ],
@@ -382,13 +387,14 @@ class _LivePageState extends State<_LivePage> {
 }
 
 class _Transcript extends StatelessWidget {
-  const _Transcript({required this.lines, required this.contentVersion});
+  const _Transcript({required this.lines, required this.contentVersion, this.withdrawn});
   final int contentVersion;
+  final String? withdrawn;
   final List<NextPreviewLine> lines;
 
   @override
   Widget build(BuildContext context) {
-    if (lines.isEmpty) return const SizedBox.shrink();
+    if (lines.isEmpty && withdrawn == null) return const SizedBox.shrink();
     final ordinals = <String, int>{};
     final committed = <TranscriptSegment>[];
     final drafts = <NextPreviewLine>[];
@@ -416,8 +422,8 @@ class _Transcript extends StatelessWidget {
         ),
       );
     }
-    const accent = NextAccent.teal;
-    final draft = drafts.isEmpty
+    final accent = withdrawn != null ? NextAccent.slate : NextAccent.teal;
+    final draft = drafts.isEmpty && withdrawn == null
         ? null
         : Padding(
             key: const ValueKey('next-live-drafts'),
@@ -441,7 +447,11 @@ class _Transcript extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(context.l10n.preview, style: OmiType.subhead.copyWith(color: accent.of(context))),
+                    Text(
+                      withdrawn == null ? context.l10n.preview : pairedSettingsLabel(context, 'nextLiveWithdrawn'),
+                      style: OmiType.subhead.copyWith(color: accent.of(context)),
+                    ),
+                    if (withdrawn != null) Text(withdrawn!, style: OmiType.body),
                     for (final line in drafts) ...[
                       Text(line.text, style: OmiType.body),
                       for (final translation in line.translations.values)

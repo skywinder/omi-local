@@ -165,7 +165,11 @@ test('a draft moves into the existing speaker bubble when the turn grows', async
   await settle();
   assert.match(ui.root.textContent, /Начало\.ЧерновикПродолжение/);
   ui.tick();
-  ui.requests[1].reply('', {}, [{...session, revision: 2, segments: [{...first, text: 'Начало. Продолжение.'}]}]);
+  ui.requests[1].reply('', {}, [{...session, revision: 2, segments: [first], withdrawn: {text: 'Продолжение', end: 2}}]);
+  await settle();
+  assert.match(ui.root.textContent, /Начало\.Предыдущий текст · не подтвержденоПродолжение/);
+  ui.tick();
+  ui.requests[2].reply('', {}, [{...session, revision: 3, segments: [{...first, text: 'Начало. Продолжение.'}]}]);
   await settle();
   assert.match(ui.root.textContent, /Говорящий 1 · 0:01Начало\. Продолжение\./);
   assert.equal(ui.root.textContent.split('Продолжение').length, 2);

@@ -190,6 +190,7 @@ async def preview_snapshot(uid: str) -> dict:
             'preview_id': preview.segment.id if preview is not None else None,
             'text': text[-_PREVIEW_TEXT_LIMIT:], 'text_truncated': len(text) > _PREVIEW_TEXT_LIMIT,
             'segments': _visible_preview_rows(preview.segment.segments, len(text)) if preview is not None else [],
+            **({'withdrawn': preview.segment.withdrawn} if preview is not None and preview.segment.withdrawn else {}),
             'revision': preview.segment.revision if preview is not None else 0,
             'updates': preview.updates if preview is not None else 0,
         })

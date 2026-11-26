@@ -147,6 +147,8 @@ class NextLivePreview extends ChangeNotifier {
   List<NextPreviewLine> get lines => _lines;
   int _contentVersion = 0;
   int get contentVersion => _contentVersion;
+  ({String text, double end})? _withdrawn;
+  String? get withdrawnText => _withdrawn?.text;
 
   void _replaceLines(Iterable<NextPreviewLine> lines) {
     _lines = List.unmodifiable(lines);
@@ -206,6 +208,7 @@ class NextLivePreview extends ChangeNotifier {
   void confirmConversationBoundary(String recordingId, int sample) {
     if (_disposed || recordingId != _shownRecording || sample <= _boundarySample) return;
     _boundarySample = sample;
+    if ((_withdrawn?.end ?? 0) <= boundarySeconds) _withdrawn = null;
     _priorCount = _lines.take(_priorCount).where((line) => _withinConversation(line.start, line.end)).length;
     _replaceLines(_lines.where((line) => _withinConversation(line.start, line.end)));
     notifyListeners();
@@ -282,6 +285,7 @@ class NextLivePreview extends ChangeNotifier {
   }
 
   void _detach() {
+    _withdrawn = null;
     _epoch++;
     _speakerStatus = null;
     _retry?.cancel();
@@ -491,6 +495,19 @@ class NextLivePreview extends ChangeNotifier {
           translations: Map.unmodifiable(translations),
         ),
       );
+    }
+    _withdrawn = null;
+    final withdrawn = event['withdrawn'];
+    if (withdrawn case {'text': final String text, 'end': final num end}) {
+      final time = end.toDouble() + (_offset ?? 0);
+      if (text.isNotEmpty &&
+          text.length <= 4096 &&
+          end.isFinite &&
+          end >= 0 &&
+          (_boundarySample == 0 || time > boundarySeconds) &&
+          !HardSecretDetector.contains(text)) {
+        _withdrawn = (text: text, end: time);
+      }
     }
     _previewId = id;
     _revision = revision;
