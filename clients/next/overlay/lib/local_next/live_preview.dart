@@ -133,11 +133,12 @@ class NextPreviewLine {
 typedef PreviewConnector = Future<WebSocket> Function(String owner, String source, String codec);
 
 class NextLivePreview extends ChangeNotifier {
-  NextLivePreview(this.owner, this._connect, {this.retryDelay = const Duration(seconds: 1)});
+  NextLivePreview(this.owner, this._connect, {this.retryDelay = const Duration(seconds: 1), this.onReconnect});
 
   final String owner;
   final PreviewConnector _connect;
   final Duration retryDelay;
+  final VoidCallback? onReconnect;
   NextPreviewPhase _phase = NextPreviewPhase.idle;
   NextPreviewPhase get phase => _phase;
   String? _reason;
@@ -153,6 +154,7 @@ class NextLivePreview extends ChangeNotifier {
   ({String state, int? revision, int? speakers})? get speakerStatus => _speakerStatus;
   int _controlRevision = 0;
   bool _disposed = false;
+  bool _awaitingRecovery = false;
   String? _recording, _shownRecording;
   String _source = '', _codec = '';
   int _epoch = 0, _retries = 0, _revision = 0, _priorCount = 0;
@@ -181,6 +183,7 @@ class NextLivePreview extends ChangeNotifier {
     _source = source;
     _codec = codec;
     _retries = 0;
+    _awaitingRecovery = false;
     _reason = null;
     unawaited(_open());
   }
@@ -232,18 +235,19 @@ class NextLivePreview extends ChangeNotifier {
             )
             .then<void>((_) {}, onError: (Object _, StackTrace __) => _lost(epoch)),
       );
-      _admission = Timer(const Duration(seconds: 30), () => _lost(epoch, terminal: true));
+      _admission = Timer(const Duration(seconds: 30), () => _lost(epoch));
       socket.listen(
         (message) {
           if (epoch == _epoch) _message(message, epoch);
         },
-        onDone: () => _lost(epoch, terminal: {1003, 1008, 1009, 1013}.contains(socket.closeCode)),
+        onDone: () => _lost(epoch, terminal: {1003, 1008, 1009}.contains(socket.closeCode)),
         onError: (Object _) => _lost(epoch),
         cancelOnError: true,
       );
       if (_target.isNotEmpty) _sendTranslation();
     } catch (error) {
-      final terminal = error is WebSocketException && error.httpStatusCode != null && error.httpStatusCode! < 500;
+      final status = error is WebSocketException ? error.httpStatusCode : null;
+      final terminal = status != null && status < 500 && status != 408 && status != 429;
       _lost(epoch, terminal: terminal);
     }
   }
@@ -251,13 +255,17 @@ class NextLivePreview extends ChangeNotifier {
   void _lost(int epoch, {bool terminal = false, String reason = 'unavailable'}) {
     if (epoch != _epoch) return;
     _detach();
-    if (terminal || _retries >= 3) {
+    if (terminal) {
       _phase = NextPreviewPhase.unavailable;
       _reason = reason;
     } else {
       _phase = NextPreviewPhase.connecting;
-      final delay = retryDelay * (1 << _retries++);
-      _retry = Timer(delay, _open);
+      _reason = 'reconnecting';
+      _awaitingRecovery = true;
+      final backoff = retryDelay * (1 << _retries);
+      const ceiling = Duration(seconds: 15);
+      _retries = min(_retries + 1, 4);
+      _retry = Timer(backoff > ceiling ? ceiling : backoff, _open);
     }
     notifyListeners();
   }
@@ -359,6 +367,7 @@ class NextLivePreview extends ChangeNotifier {
     if (event is! Map) return;
     if (event['type'] == 'service_status') {
       final status = event['status'];
+      if (event['provider'] == 'offline_capture' && status == 'ready') _confirmRecovery();
       if (event['provider'] == 'local_live_tuning') {
         final revision = event['revision'], speakers = event['max_speakers'];
         if (status == 'unsupported' && _speakerStatus == null) {
@@ -386,7 +395,7 @@ class NextLivePreview extends ChangeNotifier {
           final why = event['reason'];
           _lost(
             epoch,
-            terminal: true,
+            terminal: event['retryable'] != true,
             reason: const {'busy', 'disabled', 'session_limit'}.contains(why) ? why as String : 'unavailable',
           );
         } else if (status == 'ready') {
@@ -481,8 +490,16 @@ class NextLivePreview extends ChangeNotifier {
 
   void _ready() {
     _admission?.cancel();
+    _retries = 0;
     _phase = NextPreviewPhase.listening;
     _reason = null;
+    _confirmRecovery();
+  }
+
+  void _confirmRecovery() {
+    if (!_awaitingRecovery) return;
+    _awaitingRecovery = false;
+    onReconnect?.call();
   }
 
   @override

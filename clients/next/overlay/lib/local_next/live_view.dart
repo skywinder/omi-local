@@ -211,7 +211,7 @@ String _liveStatus(BuildContext context, NextLivePreview preview, {required bool
   if (muted) return l.muted;
   return switch (preview.phase) {
     NextPreviewPhase.idle => l.waitingForData,
-    NextPreviewPhase.connecting => preview.lines.isEmpty ? l.livePreviewStarting : l.reconnecting,
+    NextPreviewPhase.connecting => preview.reason == 'reconnecting' ? l.reconnecting : l.livePreviewStarting,
     NextPreviewPhase.listening => preview.lines.isEmpty ? l.saySomething : l.deviceOnboardingListening,
     NextPreviewPhase.unavailable when preview.reason == 'disabled' => pairedSettingsLabel(context, 'nextLiveDisabled'),
     NextPreviewPhase.unavailable when preview.reason == 'session_limit' => pairedSettingsLabel(

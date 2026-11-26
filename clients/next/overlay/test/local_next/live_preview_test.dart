@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/local_next/live_preview.dart';
+import 'package:omi/services/capture/local_audio_journal.dart';
 
 class _Server {
   late HttpServer http;
@@ -242,6 +244,77 @@ void main() {
       expect(server.requests, hasLength(3));
     },
   );
+
+  test('a prolonged outage checkpoints offline audio once and resumes the same active recording', () async {
+    final server = _Server();
+    await server.open();
+    final directory = await Directory.systemTemp.createTemp('next-reconnect-');
+    addTearDown(() => directory.delete(recursive: true));
+    final delivered = <Uint8List>[];
+    final journal = LocalAudioJournal(
+      directory: directory,
+      upload: (body, owner) async {
+        expect(owner, 'paired');
+        final size = ByteData.sublistView(body, 8, 12).getUint32(0);
+        final header = jsonDecode(utf8.decode(body.sublist(12, 12 + size)));
+        delivered.add(body);
+        return {'id': header['id'], 'stored': true, 'sha256': sha256.convert(body).toString()};
+      },
+    );
+    addTearDown(journal.dispose);
+    await journal.initialize();
+    final recording = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: 'paired');
+    final restored = Completer<void>();
+    final attempted = Completer<void>();
+    final recoveries = <Future<void>>[];
+    var attempts = 0;
+    final preview = NextLivePreview(
+      'paired',
+      (owner, source, codec) async {
+        attempts++;
+        if (attempts > 1 && attempts <= 6) throw const SocketException('offline');
+        if (attempts == 7) {
+          attempted.complete();
+          await restored.future;
+        }
+        return server.dial(owner, source, codec);
+      },
+      retryDelay: const Duration(milliseconds: 1),
+      onReconnect: () => recoveries.add(journal.recoverConnection()),
+    );
+    addTearDown(preview.dispose);
+    final first = server.connected.stream.first;
+    preview.begin(recording.recordingId, 'phone', 'pcm16');
+    final ready = jsonEncode({'type': 'service_status', 'provider': 'local_live_preview', 'status': 'ready'});
+    final accepted = jsonEncode({'type': 'service_status', 'provider': 'offline_capture', 'status': 'ready'});
+    final firstPeer = await first;
+    firstPeer.add(ready);
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    expect(recoveries, isEmpty);
+    await firstPeer.close(WebSocketStatus.goingAway);
+    await attempted.future.timeout(const Duration(seconds: 4));
+    expect(preview.reason, 'reconnecting');
+    await recording.add([1, 2, 3, 4]);
+    expect(delivered, isEmpty);
+    final next = server.connected.stream.first;
+    restored.complete();
+    final peer = await next;
+    peer.add(accepted);
+    peer.add(accepted);
+    peer.add(ready);
+    await _until(preview, () => preview.phase == NextPreviewPhase.listening);
+    await recoveries.single;
+    await journal.drain();
+    expect(journal.activeRecordings, 1);
+    expect(journal.deliveryRevision, 1);
+    expect(delivered.single.sublist(delivered.single.length - 4), [1, 2, 3, 4]);
+    await recording.add([5, 6]);
+    await recording.stop();
+    await journal.drain();
+    expect(journal.deliveryRevision, 2);
+    expect(delivered.last.sublist(delivered.last.length - 2), [5, 6]);
+    preview.end(recording.recordingId);
+  });
 
   test('rejects same-origin redirects and forged upgrade responses before sending any audio', () async {
     final http = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

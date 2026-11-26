@@ -89,7 +89,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         // Audio capture remains available with the default part settings.
       }
       if (_closed) return;
-      final preview = NextLivePreview(library.audioOwnerId, library.connectPreview);
+      late final NextLivePreview preview;
       final journal = _journal = LocalAudioJournal(
         directory: Directory('${documents.path}/outbox/${library.audioOwnerId}'),
         groupSilence: () => library.conversationGroups ? _groupSilence.value : null,
@@ -107,6 +107,13 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
               LibraryFailure.unavailable || LibraryFailure.storage => LocalDeliveryIssue.server,
             };
           }
+        },
+      );
+      preview = NextLivePreview(
+        library.audioOwnerId,
+        library.connectPreview,
+        onReconnect: () {
+          if (!_closed) unawaited(journal.recoverConnection());
         },
       );
       try {

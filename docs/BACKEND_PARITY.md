@@ -78,9 +78,9 @@ attempt is pending. It leaves that history on disk. New requests from the web
 and Next both use the shared `summary-jobs` queue. Before replacing an older
 deployment, verify that its historical jobs have finished. On November 26 the
 installed legacy worker still called the importer with `--summary-update`.
-The shared queue publishes through `scripts.local_summary_worker`. Rehearse
-the importer and worker together on an isolated copy before switching the
-production image. The deployed import also writes `summary-initial.json` beside
+The shared queue publishes through `scripts.local_summary_worker`. Bastion now runs
+the shared image `6ecd352` after a private restore rehearsal and a successful
+production archive comparison (see [Docker verification](DOCKER.md)). The legacy import also writes `summary-initial.json` beside
 the full transcript. A local Firestore emulator rehearsal imported a synthetic
 1,500-segment recording with the legacy importer, published its legacy result,
 then used the shared importer and summary worker against the same state.
