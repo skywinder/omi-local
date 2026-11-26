@@ -156,7 +156,7 @@ def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monk
             'settings': {'base_url': 'https://llm.example/v1', 'model': 'qwen3'}, 'credential_ref': 'translation-ref'}
     registry = Registry(profile(), card)
     providers = []
-    control = {'type': 'translation', 'language': 'en'}
+    control = {'type': 'translation', 'language': 'en', 'revision': 1}
     if other_language:
         control['other_language'] = other_language
     def connect(endpoint, *, key):
@@ -175,13 +175,16 @@ def test_translation_control_frame_stays_local_and_annotates_snapshots(cfg, monk
                 socket.send_text(json.dumps(control))
                 first = socket.receive_json()  # No further audio/snapshot required.
             assert first['lines'][0]['text'] == 'initial' and first['lines'][0]['translations'] == []
-            assert socket.receive_json() == {'type': 'translation_status', 'status': 'ready'}
+            assert first['translation_revision'] == 1
+            assert socket.receive_json() == {'type': 'translation_status', 'status': 'ready', 'revision': 1}
             translated = socket.receive_json()
             destination = other_language or 'en'
             assert translated['lines'][0]['translations'] == [{'lang': destination, 'text': f'{destination}:initial'}]
             assert translated['buffer_transcription'] == 'draft'
-            socket.send_text(json.dumps({'type': 'translation', 'language': ''}))
-            assert socket.receive_json()['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
+            socket.send_text(json.dumps({'type': 'translation', 'language': '', 'revision': 2}))
+            changed = socket.receive_json()
+            assert changed['lines'] == [{'text': 'initial', 'start': 0, 'end': .1}]
+            assert changed['translation_revision'] == 2
             socket.send_bytes(b'')
             assert socket.receive_json()['buffer_transcription'] == 'corrected'
             assert socket.receive_json() == {'type': 'ready_to_stop'}
@@ -256,6 +259,48 @@ async def test_disconnect_still_drains_provider_without_delivering(cfg):
                                  send_text=lambda raw: asyncio.sleep(0))
     await relay.relay_session(downstream, profile(), cfg, connector=lambda *a, **k: provider)
     assert provider.sent == [b'']
+
+
+@pytest.mark.anyio
+async def test_quiet_capture_socket_remains_open_until_audio_returns_or_eof(cfg, monkeypatch):
+    wait_for = asyncio.wait_for
+    provider = Provider()
+    prompt = asyncio.Event()
+    allow_audio = asyncio.Event()
+    frames = asyncio.Queue()
+    audio = b'\x01\x00' * 100
+    frames.put_nowait({'type': 'websocket.receive', 'bytes': audio})
+    frames.put_nowait({'type': 'websocket.receive', 'bytes': b''})
+
+    async def receive():
+        prompt.set()
+        await allow_audio.wait()
+        return await frames.get()
+
+    async def advance_capture_timeout(future, timeout):
+        # Exercise the old 60-second relay deadline without changing EOF drain.
+        if getattr(future, 'cr_code', None) is receive.__code__ and timeout == 60:
+            timeout = 0
+        return await wait_for(future, timeout)
+
+    monkeypatch.setattr(asyncio, 'wait_for', advance_capture_timeout)
+
+    async def send(_raw):
+        pass
+
+    downstream = SimpleNamespace(receive=receive, send_text=send)
+    session = asyncio.create_task(relay.relay_session(downstream, profile(), cfg, connector=lambda *a, **k: provider))
+    try:
+        await wait_for(prompt.wait(), 1)
+        assert provider.sent == [] and not session.done()
+        allow_audio.set()
+        await wait_for(session, 1)
+    finally:
+        if not session.done():
+            session.cancel()
+            with suppress(asyncio.CancelledError):
+                await session
+    assert provider.sent == [audio, b'']
 
 
 @pytest.mark.anyio

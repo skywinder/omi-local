@@ -37,6 +37,10 @@ def normalize_translation_languages(language, other_language=None):
     return language, other_language
 
 
+def normalize_translation_revision(value):
+    return value if type(value) is int and 0 <= value <= 9007199254740991 else None
+
+
 def preview_url() -> str | None:
     value = os.getenv('OMI_LOCAL_LIVE_PREVIEW_URL', '').strip()
     if not value:
@@ -64,6 +68,7 @@ class PreviewSegment:
         self.configured_diarization = False
         self.provider = 'custom-live'
         self.last_snapshot = None
+        self.last_translation_revision = None
 
     def configure(self, message: dict) -> None:
         # WLK emits a placeholder speaker even with diarization disabled. Only
@@ -142,13 +147,16 @@ class PreviewSegment:
             segments.append(self._row('draft', draft, segments[-1]['end'] if segments else 0.0,
                                       audio_seconds, draft=True))
         self.last_snapshot = snapshot
-        if segments == self.segments:
+        translation_revision = normalize_translation_revision(snapshot.get('translation_revision'))
+        if segments == self.segments and translation_revision == self.last_translation_revision:
             return None
+        self.last_translation_revision = translation_revision
         self.segments = segments
         self.text = ' '.join(segment['text'] for segment in segments)
         self.revision += 1
         return {'type': 'local_transcript_snapshot', 'preview_id': self.id,
-                'revision': self.revision, 'segments': segments}
+                'revision': self.revision, 'segments': segments,
+                **({'translation_revision': translation_revision} if translation_revision is not None else {})}
 
 
 class LocalLivePreview:
@@ -162,12 +170,13 @@ class LocalLivePreview:
     TRANSLATION_STATUSES = frozenset({'ready', 'unconfigured', 'failed'})
 
     def __init__(self, url, send_segments, *, unavailable_reason='disabled', translation_language=None,
-                 translation_other_language=None):
+                 translation_other_language=None, translation_revision=None):
         self.url = url
         self.send_segments = send_segments
         self.queue = asyncio.Queue()
         self.translation_language, self.translation_other_language = normalize_translation_languages(
             translation_language, translation_other_language)
+        self.translation_revision = normalize_translation_revision(translation_revision)
         self.control_ready = False
         self.pending_bytes = 0
         self.audio_bytes = 0
@@ -200,28 +209,34 @@ class LocalLivePreview:
         return {'state': state, 'labeled_segments': labeled}
 
     @classmethod
-    def from_environment(cls, send_segments, *, translation_language=None, translation_other_language=None):
+    def from_environment(cls, send_segments, *, translation_language=None, translation_other_language=None,
+                         translation_revision=None):
         try:
             return cls(preview_url(), send_segments, translation_language=translation_language,
-                       translation_other_language=translation_other_language)
+                       translation_other_language=translation_other_language, translation_revision=translation_revision)
         except ValueError:
             # A preview configuration error must never disable WAV capture.
             return cls(None, send_segments, unavailable_reason='invalid_configuration')
 
-    def set_translation(self, language, other_language=None) -> None:
+    def set_translation(self, language, other_language=None, revision=None) -> None:
         """Relay-side live translation target; an invalid or empty code turns it off."""
         language, other_language = normalize_translation_languages(language, other_language)
-        if (language, other_language) == (self.translation_language, self.translation_other_language):
+        revision = normalize_translation_revision(revision)
+        if (language, other_language, revision) == (self.translation_language, self.translation_other_language,
+                                                   self.translation_revision):
             return
         self.translation_language = language
         self.translation_other_language = other_language
+        self.translation_revision = revision
         if self.control_ready and self.accepting:
             self.queue.put_nowait(self._translation_frame())
 
     def _translation_frame(self) -> str:
         return json.dumps({'type': 'translation', 'language': self.translation_language or '',
                            **({'other_language': self.translation_other_language}
-                              if self.translation_other_language else {})})
+                              if self.translation_other_language else {}),
+                           **({'revision': self.translation_revision}
+                              if self.translation_revision is not None else {})})
 
     async def _send_status(self, status, reason=None, *, provider='local_live_preview', extra=None):
         if not self.deliver:
@@ -278,7 +293,9 @@ class LocalLivePreview:
             if message.get('type') == 'translation_status':
                 # Forward only fixed contract values; the relay never sends content here.
                 if message.get('status') in self.TRANSLATION_STATUSES:
-                    await self._send_status(message['status'], provider='local_live_translation')
+                    revision = normalize_translation_revision(message.get('revision'))
+                    await self._send_status(message['status'], provider='local_live_translation',
+                                            extra={'revision': revision} if revision is not None else None)
                 continue
             if message.get('type') == 'live_tuning_status':
                 status = message.get('status')

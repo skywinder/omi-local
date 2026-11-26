@@ -212,12 +212,16 @@ live preview only. The relay on the connected server sends each batch of committ
 as one `chat/completions` request asking for a JSON array in the same order, and
 attaches the result to the lines as `translations: [{"lang": "<code>", "text": ...}]`.
 Translations are cached per line text and selected language pair for the session, so corrections that keep
-a line's text cost nothing; a rewritten line is translated again. The last,
-still-growing line is translated once it ends a sentence or stays unchanged for
+a line's text cost nothing. A timed correction keeps its previous translation
+visible until the replacement arrives when it still maps to the same line. Next uses the translations in the current versioned snapshot as the complete set for each line. Splitting a line clears its previous translation; a language change within a two-way conversation replaces the previous direction.
+The last, still-growing line is translated once it ends a sentence or stays unchanged for
 two seconds. A failed batch is not retried within the session.
 Turning translation on or changing its language also translates the current
-visible transcript, without waiting for more speech. Repeated unchanged snapshots
-do not postpone the two-second settling timer.
+visible transcript, without waiting for more speech. Each Next language change
+has its own revision. A response from an earlier revision cannot replace the
+translation or status for the current language, even when switching back to
+the same pair. Older clients can still send unversioned controls. Repeated
+unchanged snapshots do not postpone the two-second settling timer.
 
 The language settings and the on/off switch live in the app (Settings → Local Mac →
 Live translation, and the language chip on the live transcript screen). Enable
@@ -230,6 +234,8 @@ The relay validates the returned source and destination codes before displaying 
 Existing settings keep one-way translation. Two-way translation requires both the
 updated app and backend/relay. Saved language changes travel over the already open
 listen socket, so switching modes never restarts a recording.
+The relay can wait through quiet periods with no CV1 audio. The listen socket's
+session limits and explicit end-of-input still govern when the stream ends.
 Without either active text model, the app shows that the provider is missing; without
 the switch the card is never contacted. Transcript text is untrusted input to the
 model: the prompt tells it to translate, not to follow instructions in the lines.

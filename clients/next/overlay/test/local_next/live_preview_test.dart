@@ -136,11 +136,31 @@ void main() {
     expect(preview.lines.single.translations, {'de': 'erste'});
     peer.add(_snapshot('trial', 3, [_row('a', 'corrected', translation: 'neu')], control: 1));
     await _until(preview, () => preview.lines.single.translations['de'] == 'neu');
+    peer.add(
+      _snapshot('trial', 4, [
+        {
+          ..._row('a', 'direction changed'),
+          'translations': [
+            {'lang': 'ru', 'text': 'перевод'},
+          ],
+        },
+      ], control: 1),
+    );
+    await _until(preview, () => preview.lines.single.text == 'direction changed');
+    expect(preview.lines.single.translations, {'ru': 'перевод'});
+    peer.add(
+      _snapshot('trial', 5, [
+        {..._row('a', 'first half'), 'end': 0.5},
+        {..._row('b', 'second half'), 'start': 0.5},
+      ], control: 1),
+    );
+    await _until(preview, () => preview.lines.length == 2);
+    expect(preview.lines.every((line) => line.translations.isEmpty), isTrue);
     final off = server.received.stream.first;
     preview.setTranslation('');
-    expect(preview.lines.single.translations, isEmpty);
+    expect(preview.lines.every((line) => line.translations.isEmpty), isTrue);
     expect(jsonDecode(await off as String), {'type': 'translation', 'language': '', 'revision': 2});
-    peer.add(_snapshot('trial', 4, []));
+    peer.add(_snapshot('trial', 6, []));
     await _until(preview, () => preview.lines.isEmpty);
     preview.end('rec');
     expect(preview.phase, NextPreviewPhase.idle);

@@ -62,6 +62,18 @@ def test_authoritative_timed_speakers_keep_corrections_removals_and_real_transla
     assert segment.update({'lines': [{**line, 'speaker': 5}], 'buffer_transcription': ''}, 6) is None
 
 
+def test_translation_revision_is_forwarded_even_when_speech_is_unchanged():
+    segment = PreviewSegment()
+    snapshot = {'lines': [{'text': 'Original.', 'start': 0, 'end': 1}], 'buffer_transcription': ''}
+    first = segment.update({**snapshot, 'translation_revision': 1}, 2)
+    second = segment.update({**snapshot, 'translation_revision': 3}, 2)
+    assert first['translation_revision'] == 1 and second['translation_revision'] == 3
+    assert first['segments'] == second['segments'] and second['revision'] == first['revision'] + 1
+    assert segment.update({**snapshot, 'translation_revision': 3}, 2) is None
+    unversioned = segment.update({**snapshot, 'translation_revision': True}, 2)
+    assert 'translation_revision' not in unversioned
+
+
 @pytest.mark.parametrize('capability', [None, False, 'true'])
 def test_provider_placeholder_is_unknown_without_explicit_diarization(capability):
     segment = PreviewSegment()
@@ -233,16 +245,16 @@ async def test_translation_language_reaches_only_the_relay_before_audio(monkeypa
     preview.feed(pcm)
     for _ in range(20):
         await asyncio.sleep(0)
-    preview.set_translation('DE', other_language)
-    preview.set_translation('not-a-code')
+    preview.set_translation('DE', other_language, 2)
+    preview.set_translation('not-a-code', revision=3)
     await preview.finish()
     frames = [json.loads(item) for item in socket.sent if isinstance(item, str)]
     if relay_enabled:
         pair = {'other_language': other_language} if other_language else {}
         assert json.loads(socket.sent[0]) == {'type': 'translation', 'language': 'en', **pair}
         assert frames == [{'type': 'translation', 'language': 'en', **pair},
-                          {'type': 'translation', 'language': 'de', **pair},
-                          {'type': 'translation', 'language': ''}]
+                          {'type': 'translation', 'language': 'de', **pair, 'revision': 2},
+                          {'type': 'translation', 'language': '', 'revision': 3}]
     else:
         assert frames == []
     assert [item for item in socket.sent if isinstance(item, bytes)] == [pcm, b'']
@@ -252,7 +264,7 @@ async def test_translation_language_reaches_only_the_relay_before_audio(monkeypa
 @pytest.mark.anyio
 async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypatch):
     monkeypatch.setenv('OMI_LOCAL_LIVE_PROVIDER_RELAY', '1')
-    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured'})
+    socket = ControlAwareSocket(response={'type': 'translation_status', 'status': 'unconfigured', 'revision': 7})
     monkeypatch.setattr('utils.local_live_preview.websockets.connect', lambda *a, **kw: socket)
     send = AsyncMock()
     preview = LocalLivePreview('ws://127.0.0.1:20004/asr', send, translation_language='en')
@@ -260,7 +272,8 @@ async def test_translation_status_is_forwarded_with_fixed_provider_name(monkeypa
     for _ in range(20):
         await asyncio.sleep(0)
     statuses = [call.args[0] for call in send.call_args_list if call.args[0].get('type') == 'service_status']
-    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation'} in statuses
+    assert {'type': 'service_status', 'status': 'unconfigured', 'provider': 'local_live_translation',
+            'revision': 7} in statuses
     socket.incoming.put_nowait(json.dumps({'type': 'translation_status', 'status': 'weird value'}))
     for _ in range(10):
         await asyncio.sleep(0)

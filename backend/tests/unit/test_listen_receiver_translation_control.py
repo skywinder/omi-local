@@ -77,7 +77,7 @@ async def test_translation_frame_is_dispatched_to_host_and_never_enqueued(listen
     languages = []
     websocket = _FramesWebSocket([
         {'text': json.dumps({'type': 'translation', 'language': 'en'})},
-        {'text': json.dumps({'type': 'translation', 'language': 'es', 'other_language': 'ru'})},
+        {'text': json.dumps({'type': 'translation', 'language': 'es', 'other_language': 'ru', 'revision': 7})},
         {'text': json.dumps({'type': 'translation'})},
         {'type': 'websocket.disconnect', 'code': 1000},
     ])
@@ -91,10 +91,10 @@ async def test_translation_frame_is_dispatched_to_host_and_never_enqueued(listen
         use_custom_stt=True,
         audio_bytes_send=None,
         transcripts=SimpleNamespace(enqueue=received_segments.extend),
-        set_live_translation=lambda language, other: languages.append((language, other)),
+        set_live_translation=lambda language, other, revision: languages.append((language, other, revision)),
     )
     await receiver.ListenReceiver(host, [], {}).receive_data()
-    assert languages == [('en', None), ('es', 'ru'), (None, None)]
+    assert languages == [('en', None, None), ('es', 'ru', 7), (None, None, None)]
     assert received_segments == []
     assert host.state.close_code == 1000
     assert host.state.first_audio_byte_timestamp is None
@@ -109,16 +109,18 @@ def test_runtime_normalizes_language_and_updates_an_existing_preview(listen_modu
     runtime.local_preview = None
     runtime.set_live_translation(' DE ')
     assert runtime.live_translation_language == 'de'
-    runtime.set_live_translation(' ES ', 'RU')
+    runtime.set_live_translation(' ES ', 'RU', 1)
     assert (runtime.live_translation_language, runtime.live_translation_other_language) == ('es', 'ru')
-    runtime.local_preview = SimpleNamespace(set_translation=lambda language, other: calls.append((language, other)))
+    assert runtime.live_translation_revision == 1
+    runtime.local_preview = SimpleNamespace(
+        set_translation=lambda language, other, revision: calls.append((language, other, revision)))
     runtime.set_live_translation('en-US')
-    runtime.set_live_translation('fr')
-    runtime.set_live_translation('es', 'ru')
-    runtime.set_live_translation('es', 'es')
+    runtime.set_live_translation('fr', revision=True)
+    runtime.set_live_translation('es', 'ru', 2)
+    runtime.set_live_translation('es', 'es', 3)
     assert runtime.live_translation_language is None
     assert runtime.live_translation_other_language is None
-    assert calls == [(None, None), ('fr', None), ('es', 'ru'), (None, None)]
+    assert calls == [(None, None, None), ('fr', None, None), ('es', 'ru', 2), (None, None, 3)]
 
 
 def test_live_preview_runtime_preserves_original_pcm_capture(tmp_path, listen_modules):

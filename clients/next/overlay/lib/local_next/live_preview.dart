@@ -435,9 +435,6 @@ class NextLivePreview extends ChangeNotifier {
       final rowId = jsonEncode([id, key]);
       final old = previous[rowId];
       final translations = <String, String>{};
-      // A stale translation response may still contain authoritative corrected
-      // source text. Keep a translation already accepted for this same row.
-      if (_target.isNotEmpty && old != null && old.start == start + offset) translations.addAll(old.translations);
       if (acceptedTranslations) {
         final values = row['translations'];
         if (values is List) {
@@ -451,6 +448,17 @@ class NextLivePreview extends ChangeNotifier {
             }
           }
         }
+      }
+      // A current, versioned snapshot includes the relay's correction matching.
+      // Its empty translation also matters when a line splits or changes direction.
+      // Earlier controls and legacy relays can only reuse the same sample span.
+      if (translations.isEmpty &&
+          _target.isNotEmpty &&
+          (!acceptedTranslations || event['translation_revision'] == null) &&
+          old != null &&
+          old.start == start + offset &&
+          old.end == end + offset) {
+        translations.addAll(old.translations);
       }
       next.add(
         NextPreviewLine(
