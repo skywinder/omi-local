@@ -177,8 +177,8 @@ only along a continuous sample range. With a configured silence threshold it
 publishes a conversation after the corresponding silent interval and retains
 onset context for the next conversation. With splitting disabled it retains all
 captured samples through finish, including silence. Matching receipts remain
-available after original staged parts are retired. Next offers **Finish conversation
-after silence** with grouped delivery on a compatible paired server. The setting
+available after original staged parts are retired. Next offers **Stop after silence**
+with grouped delivery on a compatible paired server. The setting
 applies to the next capture and is remembered for that pairing. The journal
 retains version-two delivery in the one-recording-per-part mode.
 
@@ -188,19 +188,25 @@ the phone continues capturing. After a silence cut is durably published,
 the grouped delivery receipt includes its recording-relative
 `conversation_boundary_sample` at 16 kHz. Next applies it only after checking
 the exact part ID and hash and only to the matching recording. The Live view
-keeps text after that point and opens the group's archive alias
+keeps text after that point while continuously listening and opens the group's archive alias
 (`UUIDv5(recording_id, "waiting-for-parts")`). Capture,
-timecodes and the timer continue on the original clock. Reconnects and
-delayed transcript snapshots respect the confirmed cut. A straddling
-transcript row appears only once it has a start within the new conversation.
+and the timer continue on the original clock. Live timecodes include packet
+gaps, with receipt matching and filtering still using the audio sample clock.
+Reconnects and delayed transcript snapshots respect the confirmed cut.
 Older receipts keep the continuous Live view.
 
-Legacy paired preview sockets that send both `X-Omi-Local-Recording-Group`
+Paired preview sockets that send both `X-Omi-Local-Recording-Group`
 and `X-Omi-Local-Group-Silence` receive per-session speech activity and a
 `flush_part` hint on a speech-to-silence transition. The hint can seal a
 phone part early. It is independent of the durable receipt. On those sockets
-Live starts the next preview at the resumed speech. Next uses the receipt and
-keeps the recording-relative clock when it omits these headers.
+Live starts the next preview at the resumed speech. Next also sends
+`X-Omi-Local-Group-Stop: 1` for timed Stop so current servers retain the
+last transcript. The matching live hint stops the owning input and runs the
+normal local seal and upload path even when Live STT is disabled. With
+**Keep listening after silence**, Next uses the grouped receipt to advance
+Live instead. A connected CV1 that has sent audio can finish locally when it
+stops sending complete packets for the configured interval. Muting and BLE
+disconnects suspend that timer.
 
 The finish marker becomes ready after Stop,
 or on restart after recoverable parts have been sealed. A malformed group

@@ -102,7 +102,7 @@ void main() {
   testWidgets('paired server stays connected on the idle Live screen', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final library = _TuningPair();
-    final preview = NextLivePreview('fixture', (owner, source, codec) => throw StateError('no recording'));
+    final preview = NextLivePreview('fixture', (owner, source, codec, {silence}) => throw StateError('no recording'));
     final capture = ValueNotifier(false);
     addTearDown(library.close);
     addTearDown(preview.dispose);
@@ -138,7 +138,7 @@ void main() {
   testWidgets('a saved conversation clears only older Live text and leaves Stop available', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final capture = ValueNotifier(true);
     final library = _SavedGroupPair();
     addTearDown(preview.dispose);
@@ -210,8 +210,12 @@ void main() {
 
   testWidgets('a full live server explains the missing transcript while Stop stays available', (tester) async {
     SharedPreferences.setMockInitialValues({});
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 650);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     final socket = _Socket();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     final library = _TuningPair();
     addTearDown(preview.dispose);
@@ -222,11 +226,16 @@ void main() {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('en'),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.5)),
+          child: child!,
+        ),
         home: Scaffold(
           body: LocalNextLiveButton(
             preview: preview,
             capture: recording,
             isRecording: () => recording.value,
+            recordingTime: (_) => const Text('CV1 · 02:00', maxLines: 1, overflow: TextOverflow.ellipsis),
             serverLabel: 'fixture.local',
             library: library,
             onStop: () async {
@@ -247,6 +256,9 @@ void main() {
     await tester.pump();
     const warning = 'All live transcription slots are in use. Audio is still recording.';
     expect(find.text(warning), findsOneWidget);
+    final card = find.byKey(const ValueKey('next-live-strip'));
+    expect(tester.getRect(card).contains(tester.getCenter(find.text('CV1 · 02:00'))), isTrue);
+    expect(tester.getRect(card).bottom, greaterThanOrEqualTo(tester.getRect(find.text(warning)).bottom));
     expect(recording.value, isTrue);
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
@@ -260,7 +272,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
     final library = _TuningPair();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     addTearDown(preview.dispose);
     addTearDown(recording.dispose);
@@ -345,7 +357,7 @@ void main() {
       'next.live.translation.fixture-owner': <String>['ru', ''],
     });
     final socket = _Socket();
-    final preview = NextLivePreview('fixture-owner', (owner, source, codec) async => socket);
+    final preview = NextLivePreview('fixture-owner', (owner, source, codec, {silence}) async => socket);
     final recording = ValueNotifier(true);
     final muted = ValueNotifier(false);
     var stops = 0;

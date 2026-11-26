@@ -284,7 +284,7 @@ class ListenSessionRuntime:
             boundary = getattr(self, 'group_silence_boundary', None)
             previous_activity = boundary.activity_status if boundary is not None else None
             if boundary is not None and boundary.feed(pcm):
-                if self.local_preview is not None:
+                if self.local_preview is not None and not boundary.stop_capture:
                     update = self.local_preview.segment.begin_conversation(boundary.closed_at / GROUP_RATE)
                     self.spawn(self.request.websocket.send_json(update), name='local_conversation_boundary')
                 self.send_event(MessageServiceStatusEvent(provider='local_audio_group', status='flush_part',

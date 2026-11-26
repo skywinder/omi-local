@@ -3,12 +3,13 @@
 import builtins
 import importlib.util
 import json
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from utils import local_live_preview, offline_audio_capture
+from utils import local_conversation_groups, local_live_preview, offline_audio_capture
 from utils.stt import speaker_identity
 
 
@@ -31,6 +32,7 @@ def listen_modules():
     The exercised normalization and speaker epoch helpers remain real too.
     """
     real_helpers = {
+        'utils.local_conversation_groups': local_conversation_groups,
         'utils.local_live_preview': local_live_preview,
         'utils.offline_audio_capture': offline_audio_capture,
         'utils.stt.speaker_identity': speaker_identity,
@@ -144,3 +146,40 @@ def test_live_preview_runtime_preserves_original_pcm_capture(tmp_path, listen_mo
     with wave.open(str(capture.wav_path), 'rb') as wav:
         assert wav.readframes(wav.getnframes()) == b''.join(frames)
     assert metadata['frames_received'] == 2
+
+
+@pytest.mark.parametrize('stop_capture', [False, True])
+def test_paired_silence_stop_keeps_last_live_text(listen_modules, monkeypatch, stop_capture):
+    _, module = listen_modules
+    from models.message_event import MessageServiceStatusEvent
+    from utils import local_conversation_groups as groups
+
+    monkeypatch.setattr(groups, 'SpeechDetector', lambda: SimpleNamespace(voiced=any))
+    monkeypatch.setattr(module, 'MessageServiceStatusEvent', MessageServiceStatusEvent)
+    group = str(uuid.uuid4())
+    runtime = module.ListenSessionRuntime.__new__(module.ListenSessionRuntime)
+    runtime.capture_sink = None
+    runtime.outbox_preview_only = True
+    runtime.outbox_preview_frames = runtime.outbox_preview_pcm_bytes = 0
+    runtime.group_silence_boundary = groups.LiveSilenceBoundary.from_headers({
+        'x-omi-local-recording-group': group,
+        'x-omi-local-group-silence': '15',
+        'x-omi-local-group-stop': '1' if stop_capture else '0',
+    })
+    events, resets = [], []
+    runtime.send_event = events.append
+    runtime.spawn = lambda pending, **kwargs: pending.close()
+
+    async def send_json(_):
+        pass
+
+    runtime.request = SimpleNamespace(websocket=SimpleNamespace(send_json=send_json))
+    runtime.local_preview = SimpleNamespace(
+        feed=lambda _: None,
+        segment=SimpleNamespace(begin_conversation=resets.append, resume_after_silence=lambda _: None),
+    )
+    runtime.capture_decoded_audio(encoded_bytes=320, pcm=b'\x01\x00' * groups.FRAME)
+    silence = bytes(2 * 15 * groups.RATE)
+    runtime.capture_decoded_audio(encoded_bytes=len(silence), pcm=silence)
+    assert [event.reason for event in events if event.status == 'flush_part'] == [group]
+    assert resets == ([] if stop_capture else [15.01])
