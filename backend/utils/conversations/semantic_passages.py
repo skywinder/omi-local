@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class Passage:
     text: str
     snippet: dict | None = None
+    source_text: str | None = None
 
 
 def owner_digest(uid: str) -> str:
@@ -51,6 +52,7 @@ def passages(row: dict):
     for index, segment in enumerate(segments):
         if not isinstance(segment, dict) or not (text := _string(segment.get('text'))):
             continue
+        source_text = text
         start = _seconds(segment.get('start'))
         end = _seconds(segment.get('end'))
         snippet = {
@@ -68,4 +70,6 @@ def passages(row: dict):
                 if context:
                     text = f'{context}\n{text}'
         for chunk in _windows(text):
-            yield Passage(chunk, snippet)
+            # Neighboring context helps rank short replies, but belongs to a
+            # different segment and cannot be cited under this segment's ID.
+            yield Passage(chunk, snippet, source_text if len(source_text) < 80 else chunk)

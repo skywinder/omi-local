@@ -130,6 +130,13 @@ as soon as the conversation becomes unavailable. Firestore assigns new revisions
 after importing an emulator snapshot. The worker rebinds existing vectors to those
 revisions when the indexed text and passage positions have the same digest.
 
+Archive chat uses this same socket for up to six semantic excerpts and alternates
+them with keyword matches under the existing context budget. It sends only text
+from the verified, cited segment. Summary passages and neighboring lines can help
+the index rank a source. They cannot be cited as that segment. New or revised
+transcripts remain searchable by words while the index catches up. A missing or
+stale semantic index leaves the existing bounded keyword scan available.
+
 ## Bastion acceptance, November 25
 
 Bastion now serves page metadata, projected cards and authenticated WAV ranges.

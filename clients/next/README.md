@@ -327,15 +327,15 @@ endpoint and an applied summary provider.
 ## Chat across the archive
 
 Open **Search conversations** and tap **Ask about the archive**. The server
-scans saved transcripts belonging to this pairing, selects excerpts that
-match the question's words, and checks source versions before and after
-inference. The model can receive excerpts, recording titles and dates and
+combines word matches with results from its local semantic index and checks
+the source versions before and after inference. The keyword scan also covers
+recordings that are new or have changed since the last index refresh. The
+model can receive excerpts, recording titles and dates and
 recent turns after confirmation. Tap a citation to open the matching
 recording. Follow-up context lasts while the chat page is open.
 
-The screen reports when the scan reaches its time limit or when a transcript
-file could not be verified. Search by meaning,
-a persistent index and archive chat history are separate parity items.
+The screen reports when only part of the archive could be checked. Persistent
+archive chat history is a separate parity item.
 
 ## Edit a saved recording
 

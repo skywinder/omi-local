@@ -574,6 +574,39 @@ with ExitStack() as stack:
     suggestion_model.assert_called_once()
     file.write_bytes(original_bytes)
 
+# A meaning-only question can reach the checked correction without exposing stale or low-score pointers.
+from utils.conversations.semantic_passages import passages as indexed_passages, source_revision
+checked = local_transcript.hydrate_grouped_transcript(grouped_db._prepare_conversation_for_read(persisted, fixture_uid),
+                                                   local_transcript.local_transcript_root(), fixture_uid)
+position = next(i for i, passage in enumerate(indexed_passages(checked))
+                if passage.snippet and passage.snippet['segment_id'] == later.id)
+saved_version = grouped_doc.update_time
+grouped_doc.update_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+hit = {'id': conversation.id, 'score': .84, 'position': position, 'revision': source_revision(grouped_doc.update_time)}
+meaning_question = {**question, 'question': 'Где нашли подтверждение?',
+                    'history': [{'question': 'Относительно договора', 'answer': 'Продолжаем.'}]}
+def paraphrase_reply(payload, *, archive):
+    assert archive and payload['sources'] == [edit['value']]
+    return json.dumps({'answer': 'Found through the semantic index.', 'sources': [1]})
+
+with ExitStack() as stack:
+    rank = stack.enter_context(replace_for_chat.object(paired_chat.local_semantic_search, 'rank', return_value=[hit]))
+    receiver = stack.enter_context(replace_for_chat.object(paired_chat, '_library_request', side_effect=paraphrase_reply))
+    revisions = stack.enter_context(replace_for_chat.object(paired_chat.chat_db, 'sources_current', return_value=True))
+    result = client.post(archive_chat, json=meaning_question, headers=headers)
+    assert result.status_code == 200, result.text
+    source, = result.json()['evidence_references']
+    assert source['segment_id'] == later.id and source['summary'] == edit['value']
+    rank.assert_called_once_with(fixture_uid, 'Где нашли подтверждение?\\nОтносительно договора')
+    for unsafe in ({**hit, 'revision': 'stale'}, {**hit, 'score': .72}):
+        rank.return_value = [unsafe]
+        assert client.post(archive_chat, json=meaning_question, headers=headers).status_code == 422
+    receiver.assert_called_once()
+    rank.return_value = [hit]
+    revisions.side_effect = [True, False]
+    assert client.post(archive_chat, json=meaning_question, headers=headers).status_code == 409
+
+grouped_doc.update_time = saved_version
 old_db.get_all.return_value = search_snapshots
 query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
 

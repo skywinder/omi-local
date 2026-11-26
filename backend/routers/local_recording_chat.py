@@ -1,6 +1,7 @@
 """Paired recording and archive chat with verifiable transcript evidence."""
 
 import json
+import math
 import re
 from datetime import datetime, timezone
 from time import monotonic
@@ -12,16 +13,23 @@ from google.api_core.exceptions import DeadlineExceeded
 from pydantic import BaseModel, Field, ValidationError
 
 from database import local_recording_chat as chat_db
-from database.conversations import read_local_search_page
+from database.conversations import read_local_search_page, read_local_search_sources
 from models.chat import ChatEvidenceReference
 from routers.local_processing import library_origin
-from utils.conversations.local_chat import provider_history, rank_archive_sources, select_sources
+from utils.conversations import local_semantic_search
+from utils.conversations.local_chat import (
+    merge_archive_sources, provider_history, rank_archive_sources, select_sources, semantic_archive_source,
+)
 from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
 from utils.local_transport_auth import require_paired_owner
+from utils.observability.fallback import record_fallback
 from utils.offline_network_policy import OfflineEgressBlocked
 
 router = APIRouter(tags=['local'])
 _UUID = r'^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+# A floor for the deployed multilingual E5 cosine score, not a probability.
+_ARCHIVE_SEMANTIC_MIN_SCORE = 0.78
+_ARCHIVE_SEMANTIC_LIMIT = 6
 RecordingId = Annotated[str, Path(pattern=_UUID)]
 
 
@@ -207,6 +215,25 @@ def read_archive_chat(response: Response, _uid: str = Depends(require_paired_own
     return {'turns': [], 'next_before': None, 'provider': _chat_provider(archive=True), 'has_transcript': True}
 
 
+def _semantic_archive_sources(uid, query, hydrate):
+    sources = []
+    try:
+        hits = [hit for hit in local_semantic_search.rank(uid, query)
+                if type(score := hit.get('score')) in {int, float} and math.isfinite(score)
+                and _ARCHIVE_SEMANTIC_MIN_SCORE <= score <= 1.001]
+        rows = read_local_search_sources(uid, list(dict.fromkeys(hit['id'] for hit in hits)))
+        for identifier, row, passage in local_semantic_search.resolve_passages(hits, rows, hydrate):
+            if source := semantic_archive_source(identifier, row, passage):
+                sources.append(source)
+                if len(sources) == _ARCHIVE_SEMANTIC_LIMIT:
+                    break
+    except (DeadlineExceeded, local_semantic_search.SemanticUnavailable) as error:
+        record_fallback(component='other', from_mode='archive_chat_hybrid', to_mode='archive_chat_keyword',
+                        reason='timeout' if isinstance(error, DeadlineExceeded) else 'capability_mismatch',
+                        outcome='degraded')
+    return sources
+
+
 @router.post('/v1/local/conversations/chat', response_model=ChatTurn)
 def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Depends(require_paired_owner)):
     question = prompt.question.strip()
@@ -216,6 +243,9 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
     deadline = monotonic() + 26
     scan_limited = False
     root = local_transcript_root()
+
+    def hydrate(row):
+        return hydrate_grouped_transcript(row, root, uid)
 
     def archive_rows():
         nonlocal scan_limited
@@ -237,7 +267,7 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
                 if not re.fullmatch(_UUID, row['id']):
                     continue
                 try:
-                    checked = hydrate_grouped_transcript(row, root, uid)
+                    checked = hydrate(row)
                 except (OSError, ValueError):
                     scan_limited = True
                     continue
@@ -246,7 +276,10 @@ def ask_archive_chat(prompt: ArchiveQuestion, response: Response, uid: str = Dep
                 return
 
     previous = prompt.history[0].question if prompt.history else ''
-    sources = rank_archive_sources(archive_rows(), question, previous)
+    semantic_query = '\n'.join(filter(None, (question, previous)))[:240].rstrip()
+    semantic = _semantic_archive_sources(uid, semantic_query, hydrate)
+    keyword = rank_archive_sources(archive_rows(), question, previous)
+    sources = merge_archive_sources(keyword, semantic)
     if not sources:
         reason = 'archive_chat_scan_limited' if scan_limited else 'archive_chat_no_match'
         raise HTTPException(422, reason)

@@ -46,8 +46,9 @@ def rank(uid, query):
         raise SemanticUnavailable() from None
 
 
-def resolve(hits, rows, hydrate, *, limit=15):
-    items = []
+def resolve_passages(hits, rows, hydrate):
+    """Yield canonical passages in pointer rank order."""
+    found = False
     stale = False
     for hit in hits:
         identifier = hit['id']
@@ -57,21 +58,31 @@ def resolve(hits, rows, hydrate, *, limit=15):
         if source_revision(row['_local_read_version']) != hit['revision']:
             stale = True
             continue
-        started_at = row.get('started_at') or row.get('created_at')
-        if not isinstance(started_at, datetime):
+        if not isinstance(row.get('started_at') or row.get('created_at'), datetime):
             continue
+        position = hit['position']
+        try:
+            passage = next(islice(passages(hydrate(row)), position, position + 1), None)
+        except (OSError, ValueError):
+            stale = True
+            continue
+        if passage is not None:
+            found = True
+            yield identifier, row, passage
+    if stale and not found:
+        raise SemanticUnavailable()
+
+
+def resolve(hits, rows, hydrate, *, limit=15):
+    items = []
+    for identifier, row, passage in resolve_passages(hits, rows, hydrate):
+        started_at = row.get('started_at') or row.get('created_at')
         structured = row.get('structured')
         title = str(structured.get('title') or '') if isinstance(structured, dict) else ''
-        position = hit['position']
-        passage = next(islice(passages(hydrate(row)), position, position + 1), None)
-        if passage is None:
-            continue
         items.append({
             'id': identifier, 'title': title[:240], 'started_at': started_at,
             'match_snippets': [passage.snippet] if passage.snippet else [],
         })
         if len(items) == limit:
             break
-    if stale and not items:
-        raise SemanticUnavailable()
     return items

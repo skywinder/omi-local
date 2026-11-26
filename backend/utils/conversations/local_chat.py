@@ -4,6 +4,7 @@ import json
 import math
 import re
 from heapq import nlargest
+from itertools import zip_longest
 from unicodedata import normalize
 
 
@@ -23,11 +24,13 @@ def _segment_source(segment):
         return None
     line = text.strip()
     identifier = segment.get('id')
+    start = _milliseconds(segment.get('start'))
+    end = _milliseconds(segment.get('end'))
     return line, {
         'text': line[:1200],
         'segment_id': identifier if isinstance(identifier, str) and 0 < len(identifier) <= 256 else None,
-        'start_ms': _milliseconds(segment.get('start')),
-        'end_ms': _milliseconds(segment.get('end')),
+        'start_ms': start,
+        'end_ms': None if start is not None and end is not None and end < start else end,
     }
 
 
@@ -66,6 +69,14 @@ _QUESTION_WORDS = set(
 )
 
 
+def _archive_source(identifier, row, source):
+    structured = row.get('structured')
+    title = structured.get('title') if isinstance(structured, dict) else None
+    return {**source, 'conversation_id': identifier, 'revision': row['_local_read_version'],
+            'title': title[:160] if isinstance(title, str) else None,
+            'started_at': row.get('started_at') or row.get('created_at')}
+
+
 def rank_archive_sources(rows, query, previous_question=''):
     """Choose evidence from a stream of owner rows using Unicode keyword overlap."""
     query_terms = _terms(query) - _QUESTION_WORDS
@@ -82,6 +93,8 @@ def rank_archive_sources(rows, query, previous_question=''):
             if extracted is None:
                 continue
             line, source = extracted
+            if source['segment_id'] is None:
+                continue
             words = _terms(line)
             overlap = words & query_terms
             earlier_overlap = words & previous_terms
@@ -93,24 +106,45 @@ def rank_archive_sources(rows, query, previous_question=''):
     def candidates():
         for row in rows:
             for score, line_index, source in nlargest(4, from_recording(row)):
-                started_at = row.get('started_at') or row.get('created_at')
-                structured = row.get('structured')
-                title = structured.get('title') if isinstance(structured, dict) else None
-                yield score, row['id'], line_index, {
-                    **source, 'conversation_id': row['id'], 'revision': row['_local_read_version'],
-                    'title': title[:160] if isinstance(title, str) else None,
-                    'started_at': started_at,
-                }
+                yield score, row['id'], line_index, _archive_source(row['id'], row, source)
 
+    return [source for _, _, _, source in nlargest(34, candidates())]
+
+
+def semantic_archive_source(identifier, row, passage):
+    """Use only text from the cited segment, excluding summary and neighbor text."""
+    snippet = passage.snippet
+    if not snippet or not passage.source_text:
+        return None
+    extracted = _segment_source({**snippet, 'id': snippet['segment_id'], 'text': passage.source_text})
+    if extracted is None:
+        return None
+    _, source = extracted
+    if source['segment_id'] is None:
+        return None
+    return _archive_source(identifier, row, source)
+
+
+def merge_archive_sources(keyword, semantic):
+    """Alternate ranks with exact matches first, retaining the shared evidence budget."""
     selected = []
+    seen = set()
     remaining, chars = 22_000, 9000
-    for _, _, _, source in nlargest(34, candidates()):
-        text = source['text']
-        size = len(json.dumps(text, ensure_ascii=False).encode('utf-8'))
-        if size <= remaining and len(text) <= chars:
+    for pair in zip_longest(keyword, semantic):
+        for source in pair:
+            if source is None:
+                continue
+            key = (source['conversation_id'], source['segment_id'])
+            text = source['text']
+            size = len(json.dumps(text, ensure_ascii=False).encode('utf-8'))
+            if key in seen or size > remaining or len(text) > chars:
+                continue
             selected.append(source)
+            seen.add(key)
             remaining -= size
             chars -= len(text)
+            if len(selected) == 34:
+                return selected
     return selected
 
 
