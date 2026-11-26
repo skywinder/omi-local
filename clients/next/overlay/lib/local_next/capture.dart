@@ -95,6 +95,7 @@ class NextPhoneCapture extends ChangeNotifier {
   Future<void>? _starting;
   Future<void>? _stopping;
   bool get active => _recording != null;
+  int? get silenceSeconds => _recording?.silenceSeconds;
 
   Future<void> start() => _starting ??= _start().whenComplete(() {
     _starting = null;

@@ -473,6 +473,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(stops, 1);
     expect(find.text('Stop'), findsNothing);
+    expect(find.text('fixture.local'), findsNothing);
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('fixture.local'), findsOneWidget);
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('next-live-target')));

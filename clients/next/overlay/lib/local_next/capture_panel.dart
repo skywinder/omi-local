@@ -992,6 +992,14 @@ class LocalNextCaptureControls extends StatelessWidget {
               captureSettings: library?.conversationGroups == true && groupSilence != null && onGroupSilence != null
                   ? (_) => _boundaries(library!)
                   : null,
+              silenceThreshold: library?.conversationGroups == true && groupSilence != null
+                  ? () => capture.active
+                        ? capture.silenceSeconds
+                        : cv1.canFinish
+                        ? cv1.silenceSeconds
+                        : groupSilence!.value
+                  : null,
+              silencePreference: groupSilence,
               serverLabel: serverLabel,
               library: library,
             )

@@ -177,6 +177,7 @@ class NextCv1Capture extends ChangeNotifier {
   }
 
   bool get canFinish => active && _recording != null;
+  int? get silenceSeconds => _recording?.silenceSeconds;
 
   /// Seal the current conversation while the same CV1 notification subscription
   /// keeps delivering frames. A new journal starts on the next complete packet.

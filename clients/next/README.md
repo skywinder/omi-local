@@ -135,7 +135,12 @@ library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
-The Live Transcript card shows the active input and elapsed time. The gear menu's **Phone upload queue** shows the audio stored on the phone, including the open part and sealed parts awaiting a durable server receipt. Delivery problems also appear beside the recording buttons.
+The Live Transcript card shows the active input and elapsed time.
+The Live Transcript screen shows the active silence threshold below the text.
+While a conversation is recording it shows the threshold in use. After a
+full Stop, including a stop triggered by silence, Live returns to Conversations.
+With **Keep listening after silence** enabled, Live stays open for the next
+conversation. The gear menu's **Phone upload queue** shows the audio stored on the phone, including the open part and sealed parts awaiting a durable server receipt. Delivery problems also appear beside the recording buttons.
 Archive, favorites, categories, filters and folders share one toolbar. Color and icons distinguish the phone microphone, CV1, active recording, connection states, and selected filters in both themes. Larger text can be reached by scrolling the toolbar horizontally.
 The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.

@@ -41,6 +41,8 @@ class LocalNextLiveButton extends StatefulWidget {
     this.hasCaptureControls,
     this.captureControls,
     this.captureSettings,
+    this.silenceThreshold,
+    this.silencePreference,
     required this.serverLabel,
     this.library,
     this.cv1,
@@ -56,6 +58,8 @@ class LocalNextLiveButton extends StatefulWidget {
   final bool Function()? hasCaptureControls;
   final WidgetBuilder? captureControls;
   final WidgetBuilder? captureSettings;
+  final int? Function()? silenceThreshold;
+  final Listenable? silencePreference;
   final String serverLabel;
   final PairedLibrary? library;
   final Cv1Connection? cv1;
@@ -66,6 +70,7 @@ class LocalNextLiveButton extends StatefulWidget {
 
 class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   MaterialPageRoute<void>? _route;
+  bool _routeHadCapture = false;
   int _changes = 0;
   Future<void> _saving = Future.value();
   String get _key => 'next.live.translation.${widget.preview.owner}';
@@ -73,6 +78,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   @override
   void initState() {
     super.initState();
+    widget.capture.addListener(_captureChanged);
     _restore();
   }
 
@@ -110,6 +116,15 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
         });
   }
 
+  void _captureChanged() {
+    if (_route == null) return;
+    if (widget.isRecording()) {
+      _routeHadCapture = true;
+    } else if (_routeHadCapture) {
+      _endRoute();
+    }
+  }
+
   void _endRoute() {
     final route = _route;
     _route = null;
@@ -123,14 +138,21 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   @override
   void didUpdateWidget(LocalNextLiveButton oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.capture != widget.capture) {
+      oldWidget.capture.removeListener(_captureChanged);
+      widget.capture.addListener(_captureChanged);
+    }
     if (oldWidget.preview != widget.preview) {
       _endRoute();
       _restore();
+    } else {
+      _captureChanged();
     }
   }
 
   @override
   void dispose() {
+    widget.capture.removeListener(_captureChanged);
     _endRoute();
     super.dispose();
   }
@@ -138,6 +160,7 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   Future<void> _open() async {
     if (_route != null) return;
     final view = widget;
+    _routeHadCapture = view.isRecording();
     final route = _route = MaterialPageRoute<void>(
       builder: (_) => _LivePage(
         view: view,
@@ -336,7 +359,7 @@ class _LivePageState extends State<_LivePage> {
     final preview = view.preview;
     final l = context.l10n;
     return ListenableBuilder(
-      listenable: Listenable.merge([view.capture, preview]),
+      listenable: Listenable.merge([view.capture, preview, view.silencePreference]),
       builder: (context, _) {
         final recording = view.isRecording();
         final status = _liveStatus(context, preview, recording: recording, muted: view.isMuted?.call() == true);
@@ -440,6 +463,20 @@ class _LivePageState extends State<_LivePage> {
                 ),
                 if (view.captureControls case final controls? when recording && view.hasCaptureControls?.call() == true)
                   controls(context),
+                if (view.silenceThreshold case final threshold?)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(OmiSpacing.md, OmiSpacing.xs, OmiSpacing.md, OmiSpacing.sm),
+                    child: Text(
+                      switch (threshold()) {
+                        final int seconds when seconds > 0 =>
+                          "${pairedSettingsLabel(context, 'nextSilenceThreshold')} · "
+                              "$seconds\u00a0${pairedSettingsLabel(context, 'nextSilenceSecondsAbbr')}",
+                        _ => pairedSettingsLabel(context, 'nextSilenceThresholdOff'),
+                      },
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
               ],
             ),
           ),
