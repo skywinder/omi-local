@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from database import _client, conversations
@@ -61,7 +61,7 @@ async def read_request(request: Request) -> NoteRequest:
         raise HTTPException(400, 'Invalid note states request') from error
 
 
-def note_state(row, key):
+def note_state(row, key, card=None):
     if (not row or row.get('is_locked') or row.get('local_chat_deleting') or conversations.is_soft_deleted(row)
             or row.get('status') not in {None, 'completed'}
             or ((row.get('external_data') or {}).get('local_transcript') or {}).get('result_key') != key):
@@ -70,7 +70,25 @@ def note_state(row, key):
     labels = summary_labels(summary if isinstance(summary, dict) else {})
     manual = row.get('user_category')
     category = manual if isinstance(manual, str) and manual in CategoryEnum._value2member_map_ else labels.get('category', 'other')
-    return {**labels, 'category': category, 'starred': row.get('starred') is True, 'archived': row.get('archived') is True}
+    result = {**labels, 'category': category, 'starred': row.get('starred') is True, 'archived': row.get('archived') is True}
+    if card:
+        structured = summary if isinstance(summary, dict) else {}
+        title = row.get('user_title')
+        if not isinstance(title, str):
+            title = structured.get('title')
+        values = {}
+        if isinstance(title, str) and len(title) <= 500:
+            values['title'] = title
+        overview = structured.get('overview')
+        if card == 'detail' and isinstance(overview, str) and len(overview) <= 20000:
+            values['overview'] = overview
+            publication = row.get('local_summary_publication')
+            model = publication.get('model') if isinstance(publication, dict) else None
+            if isinstance(model, str) and 0 < len(model) <= 300:
+                values['model'] = model
+        if values:
+            result['card'] = values
+    return result
 
 
 def conversation_id(key):
@@ -79,7 +97,8 @@ def conversation_id(key):
 
 @router.post('/v1/local/library/note-states', dependencies=[Depends(require_local_preview)])
 def local_library_note_states(response: Response, uid: str = Depends(require_paired_owner),
-                              request: NoteRequest = Depends(read_request)):
+                              request: NoteRequest = Depends(read_request),
+                             card: Annotated[str | None, Header(alias='X-Omiloc-Card')] = None):
     response.headers['Cache-Control'] = 'no-store'
     if request.change is not None:
         key = request.keys[0]
@@ -93,13 +112,20 @@ def local_library_note_states(response: Response, uid: str = Depends(require_pai
             raise HTTPException(404, 'Note unavailable')
         return {key: result}
 
+    if card not in {None, 'titles', 'detail'} or (card == 'detail' and len(request.keys) != 1):
+        raise HTTPException(400, 'Invalid recording projection')
+    fields = _FIELDS
+    if card:
+        fields += ('user_title', 'structured.title')
+    if card == 'detail':
+        fields += ('structured.overview', 'local_summary_publication.model')
     keys = {conversation_id(key): key for key in request.keys}
     client = _client.get_firestore_client()
     collection = client.collection('users').document(uid).collection('conversations')
-    records = client.get_all([collection.document(cid) for cid in keys], field_paths=_FIELDS, retry=None, timeout=8)
+    records = client.get_all([collection.document(cid) for cid in keys], field_paths=fields, retry=None, timeout=8)
     result = {}
     for doc in records:
         if doc is not None and doc.exists and (key := keys.get(doc.id)):
-            if (state := note_state(doc.to_dict(), key)) is not None:
+            if (state := note_state(doc.to_dict(), key, card)) is not None:
                 result[key] = state
     return result

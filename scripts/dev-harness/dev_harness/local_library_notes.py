@@ -34,6 +34,12 @@ def public_note(value):
         normalized = item.replace('\u200d', '') if field == 'emoji' else item
         if normalized and normalized.isprintable():
             result[field] = item
+    card = value.get('card')
+    if isinstance(card, dict):
+        fields = {key: card[key] for key, limit in (('title', 500), ('overview', 20000), ('model', 300))
+                  if isinstance(card.get(key), str) and len(card[key]) <= limit}
+        if fields:
+            result['card'] = fields
     return result
 
 
@@ -41,17 +47,24 @@ class NoteStates:
     def __init__(self, cfg):
         self.cfg = cfg
 
-    def exchange(self, keys, *, change=None):
+    def exchange(self, keys, *, change=None, detail=False):
         key = read_env(self.cfg.repo_root / '.env')['OMI_LOCAL_APP_KEY']
         endpoint = f'http://127.0.0.1:{self.cfg.backend_port}/v1/local/library/note-states'
         deadline = time.monotonic() + 8
         result = {}
+        headers = {'Authorization': 'Bearer ' + key}
+        if change is None:
+            headers['X-Omiloc-Card'] = 'detail' if detail else 'titles'
+        # Keep the existing 200-record read. Titles are bounded by the paired API;
+        # the overview is requested only for the open recording.
+        batch_size = 1 if detail else 200
+        response_limit = 256 * 1024 if detail else 1024 * 1024
         with httpx.Client(trust_env=False, follow_redirects=False, timeout=3) as client:
-            for start in range(0, len(keys), 200):
+            for start in range(0, len(keys), batch_size):
                 if time.monotonic() >= deadline:
                     raise TimeoutError('Note metadata timeout')
-                batch = keys[start:start + 200]
-                with client.stream('POST', endpoint, headers={'Authorization': 'Bearer ' + key},
+                batch = keys[start:start + batch_size]
+                with client.stream('POST', endpoint, headers=headers,
                                    json={'keys': batch, 'change': change}) as response:
                     if change is not None and response.status_code == 404:
                         return {}
@@ -61,7 +74,7 @@ class NoteStates:
                     body = bytearray()
                     for part in response.iter_bytes():
                         body.extend(part)
-                        if len(body) > 128 * 1024 or time.monotonic() >= deadline:
+                        if len(body) > response_limit or time.monotonic() >= deadline:
                             raise ValueError('Invalid note response')
                 rows = json.loads(body)
                 if not isinstance(rows, dict) or set(rows) - set(batch):

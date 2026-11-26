@@ -145,22 +145,28 @@ def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(libra
     calls = []
     available = True
 
-    def exchange(keys, *, change=None):
+    def exchange(keys, *, change=None, detail=False):
         calls.append((keys, change))
         if not available:
             raise OSError('Unavailable')
         if 'category' in (change or {}):
             raise NoteConflict()
         metadata.update(change or {})
-        return {key: metadata.copy()}
+        card = {'title': 'Renamed on phone'}
+        if detail:
+            card.update(overview='Fresh published overview', model='Current model')
+        return {key: {**metadata, **({'card': card} if change is None else {})}}
 
     assets = Path(__file__).resolve().parents[3] / 'web-local'
     route = handler(library, assets, notes=SimpleNamespace(exchange=exchange))
     rows = request(library, '/api/recordings', http_handler=route)
     assert key.encode() not in rows[2]
     row, = json.loads(rows[2])['recordings']
-    assert row['note'] == metadata
+    assert row['note'] == metadata and row['summary']['title'] == 'Renamed on phone'
     detail = f"/api/recordings/{row['id']}"
+    shown = json.loads(request(library, detail, http_handler=route)[2])
+    assert shown['summary_current'] and shown['summary'] == {'title': 'Renamed on phone', 'overview': 'Fresh published overview'}
+    assert shown['processing']['summary'] == {'status': 'ready', 'model': 'Current model'}
     payload = '{"archived":true}'
     headers = {'Origin': 'http://127.0.0.1:20001', 'Content-Type': 'application/json', 'Content-Length': str(len(payload))}
     assert request(library, detail + '/notes', method='PATCH', headers=headers, payload=payload, http_handler=route)[0] == 403

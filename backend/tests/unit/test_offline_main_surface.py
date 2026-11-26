@@ -134,6 +134,16 @@ with patch_notes.object(local_library_notes._client, 'get_firestore_client', ret
     read = loopback.post(note_path, json={'keys': [note_key]}, headers=note_headers)
     assert read.json() == {note_key: {'category': 'education', 'emoji': '🎓', 'starred': True, 'archived': False}}
     assert read.headers['cache-control'] == 'no-store'
+    note_raw['structured'].update(title='Generated title', overview='Generated overview')
+    note_raw['user_title'] = 'Renamed in Next'
+    note_raw['local_summary_publication'] = {'model': 'Fixture model', 'request_id': 'private'}
+    assert 'card' not in loopback.post(note_path, json={'keys': [note_key]}, headers=note_headers).json()[note_key]
+    def projected(mode):
+        return loopback.post(note_path, json={'keys': [note_key]}, headers={**note_headers, 'X-Omiloc-Card': mode})
+    assert projected('titles').json()[note_key]['card'] == {'title': 'Renamed in Next'}
+    assert 'structured.overview' not in note_db.get_all.call_args.kwargs['field_paths']
+    assert projected('detail').json()[note_key]['card'] == {'title': 'Renamed in Next', 'overview': 'Generated overview', 'model': 'Fixture model'}
+    assert loopback.post(note_path, json={'keys': [note_key, 'b'*64]}, headers={**note_headers, 'X-Omiloc-Card':'detail'}).status_code == 400
     changed = loopback.post(note_path, json={'keys': [note_key], 'change': {'archived': True}}, headers=note_headers)
     assert changed.json()[note_key]['archived'] is True
     note_tx.update.assert_called_once_with(note_ref, {'archived': True})

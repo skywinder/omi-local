@@ -435,17 +435,24 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
         def do_HEAD(self):
             self.do_GET()
 
-        def enrich_notes(self, records):
+        def enrich_notes(self, records, *, detail=False):
             keys = library.note_keys(records) if notes is not None else {}
             if not keys:
                 return True
             try:
-                states = notes.exchange(list(dict.fromkeys(keys.values())))
+                states = notes.exchange(list(dict.fromkeys(keys.values())), detail=detail)
             except (httpx.HTTPError, OSError, ValueError, KeyError):
                 return False
             for row in records:
                 if (note := states.get(keys.get(row['id']))) is not None:
-                    row['note'] = note
+                    row['note'] = {key: value for key, value in note.items() if key != 'card'}
+                    if card := note.get('card'):
+                        row['summary'] = {**(row.get('summary') or {}),
+                                          **{key: card[key] for key in ('title', 'overview') if key in card}}
+                        if detail and 'overview' in card:
+                            row['summary_current'] = True
+                            if card.get('model'):
+                                row['processing'] = {**row['processing'], 'summary': {'status': 'ready', 'model': card['model']}}
             return True
 
         def do_PATCH(self):
@@ -660,7 +667,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 record = library.get(parts[3])
                 if len(parts) == 4:
                     detail = library.public(record, detail=True)
-                    if not self.enrich_notes([detail]):
+                    if not self.enrich_notes([detail], detail=True):
                         detail['notes_unavailable'] = True
                     return self.send_json(detail)
                 with record['audio'].open('rb') as stream:

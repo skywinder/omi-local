@@ -149,12 +149,16 @@ let canonicalRecap;
 function renderRecap(record) {
   $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
   $('summary-edit').hidden = !record.summary_editable;
-  const summary = canonicalRecap?.id === record.id ? {...record.summary, overview: canonicalRecap.overview} : record.summary;
+  const summary = !record.summary_current && canonicalRecap?.id === record.id ? {...record.summary, overview: canonicalRecap.overview} : record.summary;
   renderProcessing($('recording-processing'), $('recording-summary'), {...record, summary});
 }
 
 function syncRecap(id, options) {
   if (state.detail?.id !== id || typeof options.overview !== 'string') return;
+  if (state.detail.summary_current) {
+    if (state.detail.summary?.overview !== options.overview) refresh();
+    return;
+  }
   canonicalRecap = {id, overview: options.overview};
   renderRecap(state.detail);
 }
@@ -165,6 +169,7 @@ async function select(id, open = true) {
   audio.removeAttribute('src');
   audio.load();
   state.selected = id;
+  canonicalRecap = null;
   state.detail = null;
   noteFeedback();
   showView(open ? 'recording' : state.view);
@@ -188,8 +193,10 @@ async function select(id, open = true) {
     audio.playbackRate = Number($('speed').value);
     if (record.decode_warning) message('В записи возможны пропуски звука.');
     renderTranscript(record);
-    if (record.summary_editable) {
-      get(`/api/recordings/${id}/summary`).then(options => syncRecap(id, options)).catch(() => {});
+    if (record.summary_editable && !record.summary_current) {
+      get(`/api/recordings/${id}/summary`).then(options => {
+        if (request === state.request) syncRecap(id, options);
+      }).catch(() => {});
     }
   } catch {
     if (request !== state.request) return;
@@ -298,8 +305,14 @@ async function refresh() {
     const {recordings, notes_unavailable: notesUnavailable} = await get('/api/recordings');
     if (noteVersion !== state.noteVersion) return;
     if (notesUnavailable) {
-      const known = new Map(state.records.map(row => [row.id, row.note]));
-      for (const row of recordings) if (!row.note && known.get(row.id)) row.note = known.get(row.id);
+      const known = new Map(state.records.map(row => [row.id, row]));
+      for (const row of recordings) {
+        const previous = known.get(row.id);
+        if (!row.note && previous?.note) {
+          row.note = previous.note;
+          row.summary = previous.summary;
+        }
+      }
     }
     const changed = JSON.stringify(recordings) !== JSON.stringify(state.records);
     state.records = recordings;
@@ -315,11 +328,20 @@ async function refresh() {
       const request = state.request;
       const record = await get(`/api/recordings/${id}`);
       if (request !== state.request || noteVersion !== state.noteVersion || !state.detail) return;
-      if (record.notes_unavailable && !record.note) record.note = state.detail.note;
+      if (record.notes_unavailable && !record.note) {
+        record.note = state.detail.note;
+        if (state.detail.summary_current) {
+          record.summary = state.detail.summary;
+          record.summary_current = true;
+          if (state.detail.processing?.summary) {
+            record.processing = {...record.processing, summary: state.detail.processing.summary};
+          }
+        }
+      }
       state.detail.note = record.note;
       state.detail.notes_unavailable = record.notes_unavailable;
       renderNoteActions();
-      if (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
+      if (record.summary_current !== state.detail.summary_current || record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
         state.detail = record;
         $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);

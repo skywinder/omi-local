@@ -81,7 +81,17 @@ installed legacy worker still called the importer with `--summary-update`.
 The shared queue publishes through `scripts.local_summary_worker`. Rehearse
 the importer and worker together on an isolated copy before switching the
 production image. The deployed import also writes `summary-initial.json` beside
-the full transcript; include an existing long result when checking detail reads.
+the full transcript. A local Firestore emulator rehearsal imported a synthetic
+1,500-segment recording with the legacy importer, published its legacy result,
+then used the shared importer and summary worker against the same state.
+Replaying the import and publication preserved the document and a title edited
+through the paired API. Chrome could seek to the last segment at 24:59.
+
+For imported recordings the web list requests current titles from the paired
+note-state route. Opening one card also requests its overview and published
+model. The optional `X-Omiloc-Card` header accepts `titles` for a batch and
+`detail` for one recording. Requests without it retain the metadata-only
+response. Earlier backends ignore the header and the library uses the file card.
 
 ## Paired task reminders
 
