@@ -55,7 +55,8 @@ on the pendant. Its audio download protocol advances the ring cursor after BLE
 transmission completes, before a phone can acknowledge a durable journal write.
 Next currently supports live BLE capture and phone outbox recovery. Importing
 offline SD audio requires a transfer protocol with a durable receiver checkpoint.
-See the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
+Firmware tags 3.0.23 and 3.0.24 implement ring identity and explicit cursor acknowledgement. Next still needs the matching phone journal and resumable transfer.
+See the [CV1 3.0.23 transfer commands](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.23/omi/firmware/omi/src/lib/core/storage.c) and the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
 
 The Local Mac card includes the number and size of parts retained on the phone.
 Its header names the authenticated saved server (for example, `faeon`), not the

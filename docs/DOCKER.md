@@ -546,6 +546,10 @@ This preserves ownership checks and Firebase's correct export-on-exit behavior.
 `stt`, `ingress`, and the optional `tunnel` share Nginx's network namespace,
 which survives app and STT reloads. The internal backend, Firebase, Redis, and STT
 listen on 127.0.0.1. Nginx normally publishes two ports on host 127.0.0.1.
+If the ingress container itself is stopped and started, its new network namespace
+can leave the running app unreachable (HTTP 502). Gracefully restart the app
+after ingress, and restart any other services sharing that namespace. Verify a
+paired archive read and delivery of queued audio through the public entry point.
 The Tailscale override adds only the backend ingress on the verified host VPN IPv4;
 the unauthenticated library stays loopback-only and ingress rejects local preview.
 The backend's outbound policy is unchanged; remote providers are accessed through
