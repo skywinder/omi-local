@@ -16,6 +16,9 @@
   <main class="workspace">
     <aside class="library" aria-label="Аудиозаписи">
       <div class="library-heading"><div><p class="eyebrow">БИБЛИОТЕКА</p><h1>Записи <span id="count"></span></h1></div><button id="refresh" class="icon-button" title="Обновить список" aria-label="Обновить список">↻</button></div>
+      <button type="button" id="active-recordings" class="active-recordings" hidden>
+        <strong>Идёт запись</strong><span id="active-inputs"></span>
+      </button>
       <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти запись…" aria-label="Поиск по дате, источнику и началу транскрипта"></label>
       <div class="filters" aria-label="Фильтр записей">
         <button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button>

@@ -22,6 +22,7 @@ function showView(view = state.view) {
   const live = view === 'live';
   const recording = view === 'recording';
   $('live-monitor').hidden = !live;
+  $('active-recordings').setAttribute('aria-pressed', String(live));
   $('provider-settings').hidden = view !== 'settings';
   $('welcome').hidden = !recording || !!state.detail;
   $('recording-detail').hidden = !recording || !state.detail;
@@ -415,8 +416,20 @@ $('note-category').addEventListener('change', event => changeNote('category', ev
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));
-const refreshLiveTuning = mountLiveTuning($('live-tuning'));
-mountLiveMonitor($('live-monitor'), refreshLiveTuning, $('live-tuning'));
+const activeRecordings = $('active-recordings');
+activeRecordings.addEventListener('click', () => {
+  showView('live');
+  $('view-live').focus();
+});
+const controls = $('live-tuning');
+mountLiveMonitor($('live-monitor'), {
+  controls, refreshControls: mountLiveTuning(controls),
+  onSources(labels, activity) {
+    activeRecordings.hidden = !labels.length;
+    activeRecordings.dataset.tone = activity.tone;
+    $('active-inputs').textContent = [...labels, activity.label].join(' · ');
+  },
+});
 showView();
 refresh();
 

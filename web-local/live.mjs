@@ -60,7 +60,7 @@ function element(tag, cls, text) {
   return node;
 }
 
-export function mountLiveMonitor(root, refreshControls = () => {}, controls = null) {
+export function mountLiveMonitor(root, {refreshControls = () => {}, controls = null, onSources = () => {}} = {}) {
   const title = element('div', 'monitor-heading');
   const heading = element('div');
   heading.append(element('p', 'eyebrow', 'РАСПОЗНАВАНИЕ НА СЕРВЕРЕ'), element('h2', '', 'Сейчас'));
@@ -77,6 +77,12 @@ export function mountLiveMonitor(root, refreshControls = () => {}, controls = nu
     fields[id] = {value, detail};
     cards.append(card);
   }
+  const services = element('ul', 'live-services');
+  const stages = [['stt', 'Транскрипция'], ['diarization', 'Разметка голосов'], ['summary', 'Модель итогов']].map(([id, name]) => {
+    const item = element('li');
+    services.append(item);
+    return {id, name, item};
+  });
   const transcriptHeading = element('div', 'transcript-heading');
   transcriptHeading.append(element('h3', '', 'Live-транскрипт'), element('span', '', 'Черновик уточняется во время речи'));
   const text = element('div', 'live-draft');
@@ -86,7 +92,7 @@ export function mountLiveMonitor(root, refreshControls = () => {}, controls = nu
   const events = element('ol', 'monitor-events');
   journal.append(summary, journalNote, events);
   const freshness = element('p', 'monitor-freshness');
-  root.append(title, note, cards, ...(controls ? [controls] : []), transcriptHeading, text, journal, freshness);
+  root.append(title, note, cards, services, ...(controls ? [controls] : []), transcriptHeading, text, journal, freshness);
   let previous = null, lastProgress = Date.now(), lastDraft = '', lastEvents = '', timer;
   let streams = new Map(), indicators = [];
   let paused = false, request = null, generation = 0;
@@ -117,6 +123,16 @@ export function mountLiveMonitor(root, refreshControls = () => {}, controls = nu
       : 'Нет подтверждения работы диаризации.';
     fields.final.value.textContent = final.provider || 'Финальный STT';
     fields.final.detail.textContent = `${states[final.state] || 'Недоступен'}${final.jobs?.pending ? ` · в очереди: ${final.jobs.pending}` : ''}${final.jobs?.failed ? ` · ошибок: ${final.jobs.failed}` : ''}`;
+    for (const {id, name, item} of stages) {
+      const report = data.backend === 'ready' ? data.stages : null;
+      const stage = report?.stale === false ? report[id] : null;
+      const state = stage?.status ?? 'unknown';
+      const label = {ready: 'доступна', disabled: 'отключена', unavailable: 'недоступна',
+        misconfigured: 'ошибка настройки'}[state];
+      item.dataset.state = state;
+      item.textContent = name + ' · ' + (label || (report?.stale ? 'проверка устарела' : 'нет данных'));
+      item.title = stage?.name || '';
+    }
     const draft = JSON.stringify(sessions.map(({preview_id, source, origin, revision, text, text_truncated, segments}) =>
       [preview_id, source, origin, revision, text, text_truncated, segments]));
     if (draft !== lastDraft || data.backend !== previous?.backend) {
@@ -170,6 +186,7 @@ export function mountLiveMonitor(root, refreshControls = () => {}, controls = nu
         badge.dataset.tone = 'waiting';
       }
     }
+    onSources(sessions.map(liveSourceLabel), {label: badge.textContent, tone: badge.dataset.tone});
     streams = currentStreams;
     const serialized = JSON.stringify(data.events || []);
     if (serialized !== lastEvents) {

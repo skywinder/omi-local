@@ -17,7 +17,7 @@ test('disconnect, stop, and decoding errors do not masquerade as receiving audio
   assert.equal(audioActivity({backend: 'ready', capture: {state: 'decode_error'}}, received(10), 10, 0).tone, 'error');
 });
 
-function monitor(t) {
+function monitor(t, options) {
   class Element {
     children = [];
     dataset = {};
@@ -41,14 +41,14 @@ function monitor(t) {
   t.mock.method(globalThis, 'fetch', (url, options) => new Promise((resolve, reject) => {
     assert.equal(url, '/api/runtime');
     assert.equal(options.cache, 'no-store');
-    requests.push({signal: options.signal, reject, reply: (text, diarization, sessions) => resolve({ok: true, json: async () => ({
+    requests.push({signal: options.signal, reject, reply: (text, diarization, sessions, stages) => resolve({ok: true, json: async () => ({
       backend: 'ready', capture: {state: 'received', frames_received: requests.length},
       sessions: sessions ?? [{source: 'omi', preview_id: 'synthetic-draft', text}],
       live_transcript: {state: 'streaming', updates: requests.length}, final_stt: {state: 'ready'}, events: [],
-      observed_at: '2026-09-10T12:00:00Z', diarization,
+      observed_at: '2026-09-10T12:00:00Z', diarization, stages,
     })})});
   }));
-  mountLiveMonitor(root);
+  mountLiveMonitor(root, options);
   return {root, document, timers, requests,
     event: name => listeners.get(name)?.({persisted: true}),
     tick: () => {
@@ -177,4 +177,23 @@ test('parallel inputs keep independent activity and update speaker turns without
   assert.match(ui.root.textContent, /Кадры не поступают ≥ 5 сДругой поток/);
   assert.match(ui.root.textContent, /Требуют внимания: 1 из 2/);
   assert.doesNotMatch(ui.root.textContent, /Один два|Черновиктри/);
+});
+
+
+test('sidebar and service badges share monitor observations and discard expired evidence', async t => {
+  const observations = [];
+  const ui = monitor(t, {onSources: (labels, activity) => observations.push({labels, activity})});
+  const stages = {stale: false, summary: {status: 'ready', name: 'Demo'}};
+  ui.requests[0].reply('Синтетическая речь', {}, [{source: 'omi'}], stages);
+  await settle();
+  assert.deepEqual(observations[0].labels, ['Omi CV1']);
+  assert.match(ui.root.textContent, /Модель итогов · доступна/);
+  ui.tick(); ui.requests[1].reply('', {}, [], {...stages, stale: true});
+  await settle();
+  assert.match(ui.root.textContent, /Модель итогов · проверка устарела/);
+  assert.deepEqual(observations[1].labels, []);
+  ui.tick(); ui.requests[2].reject(Error('offline'));
+  await settle();
+  assert.match(ui.root.textContent, /Модель итогов · нет данных/);
+  assert.deepEqual(observations[2].labels, []);
 });
