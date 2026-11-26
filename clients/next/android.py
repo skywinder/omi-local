@@ -9,6 +9,7 @@ import subprocess
 import sys
 from zipfile import ZipFile
 
+from build_info import package_version
 from cv1_protocol import cv1_feature_masks, cv1_uuids
 from prepare import HERE, PIN
 
@@ -91,7 +92,10 @@ def main():
         [sys.executable, HERE / 'prepare.py', args.repository, '--android'], text=True,
     ).strip())
     subprocess.run([flutter, 'pub', 'get', '--enforce-lockfile'], cwd=app, check=True)
-    (app / 'android/local.properties').write_text(f'sdk.dir={sdk}\nflutter.sdk={flutter.parent.parent}\n')
+    name, number = package_version(app)
+    (app / 'android/local.properties').write_text(
+        f'sdk.dir={sdk}\nflutter.sdk={flutter.parent.parent}\nflutter.versionName={name}\nflutter.versionCode={number}\n'
+    )
     prepare_native(app)
     gradle = shutil.which('gradle') or str(app / 'android/gradlew')
     command = [gradle, ':app:assembleDebug', '-Ptarget=lib/main_local_next.dart',

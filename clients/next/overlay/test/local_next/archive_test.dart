@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/archive.dart';
+import 'package:omi/local_next/build_info.g.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/recording_chat.dart';
@@ -535,6 +536,23 @@ void main() {
     expect(library.offsets, [0, 0, 1]);
     expect(find.text('Older personal recording'), findsOneWidget);
     expect(find.text('👤'), findsOneWidget);
+  });
+
+  testWidgets('About shows the packaged release and source revision without a connected CV1', (tester) async {
+    final row = _row(_firstId, 'Recording', DateTime.utc(2026, 1, 2));
+    final library = _ArchiveLibrary((_) async => (rows: [row], consumed: 1, partial: false, more: false), row);
+    addTearDown(library.close);
+    await _show(tester, library);
+    final labels = AppLocalizations.of(tester.element(find.byType(LocalNextLibraryPage)));
+    await tester.tap(find.byTooltip(labels.moreOptions));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('About Omi Next'));
+    await tester.pumpAndSettle();
+    expect(find.text(nextAppVersion), findsOneWidget);
+    expect(find.text(nextBuildNumber), findsOneWidget);
+    expect(find.text(nextBuildCommit), findsOneWidget);
+    expect(find.text('CV1 firmware'), findsOneWidget);
+    expect(find.text('Unavailable'), findsOneWidget);
   });
 
   testWidgets('selected archive records get categories after confirming the model', (tester) async {

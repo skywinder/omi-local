@@ -7,6 +7,7 @@ import 'package:omi/ui/omi_theme.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'about_page.dart';
 import 'archive.dart';
 import 'category_backfill.dart';
 import 'server_connection_indicator.dart';
@@ -93,7 +94,7 @@ ThemeData _nextTheme(Brightness brightness) {
   );
 }
 
-enum _ArchiveAction { refresh, offline, tasks, recaps, goals, select }
+enum _ArchiveAction { refresh, offline, tasks, recaps, goals, select, about }
 
 enum _ArchiveSelectionActivity { move, classify }
 
@@ -434,6 +435,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   open(LocalGoalsPage(library: library));
                 case _ArchiveAction.select:
                   setState(() => _selection = {});
+                case _ArchiveAction.about:
+                  open(NextAboutPage(cv1: _inputs?.connection));
               }
             },
             itemBuilder: (context) => [
@@ -450,6 +453,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   value: _ArchiveAction.select,
                   child: Text(pairedSettingsLabel(context, 'localFolderSelect')),
                 ),
+              PopupMenuItem(value: _ArchiveAction.about, child: Text(pairedSettingsLabel(context, 'nextAbout'))),
             ],
           ),
         ],

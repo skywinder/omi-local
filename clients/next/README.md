@@ -127,6 +127,12 @@ requires separate verification.
 
 ## Mobile settings and diagnostics
 
+In **Conversations → More options → About Omi Next**, check the installed app
+version, build number and Local Git commit. Version and build number come from
+the pinned Flutter package, so use the commit to distinguish Local builds of the
+same package version. Builds from edited Next sources are marked. CV1 firmware
+is shown when the connected wearable reports it.
+
 Open the gear in **Conversations** for recording boundaries, the local upload
 queue, saved servers, processing, Live speaker settings and Omi CV1 diagnostics.
 Audio uploads include the phone platform and model when available so the web
