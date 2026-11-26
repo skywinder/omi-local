@@ -353,6 +353,45 @@ while the shared Faster-Whisper model runs one inference call at a time.
 A connection above the limit receives WebSocket close code `4409`. A slot is
 released after the session and its outstanding inference have finished.
 
+## Semantic archive search
+
+Add `compose.semantic.yaml` to the Compose files used for the paired server.
+The `semantic` service runs on CPU with no network and uses dedicated model and
+index volumes. The backend sees only the index volume with two private sockets.
+Recording and ordinary word search have independent startup and health checks.
+
+Prepare the overlay after the paired app is running this revision. The commands
+below use the default Compose project and a directory containing the verified
+`model.onnx` and `tokenizer.json` from [the pinned model](BACKEND_PARITY.md#semantic-archive-search).
+
+```sh
+semantic=(docker compose -f compose.yaml -f compose.semantic.yaml)
+"${semantic[@]}" build semantic
+docker run --rm --network none --user 0 --entrypoint sh \
+  -v omiloc-docker_semantic_model:/model -v "$PWD/semantic-model:/input:ro" \
+  omiloc-docker-semantic -ec '
+    install -d -m 700 -o 10001 -g 10001 /model
+    install -m 600 -o 10001 -g 10001 /input/model.onnx /input/tokenizer.json /model
+  '
+"${semantic[@]}" exec -T app python docker/runtime.py semantic-owner | \
+  docker run --rm -i --network none --user 0 --entrypoint sh \
+    -v omiloc-docker_semantic_index:/index omiloc-docker-semantic -ec '
+      install -d -m 700 -o 10001 -g 10001 /index
+      umask 077
+      cat > /index/owner.next
+      grep -Eq "^[0-9a-f]{64}$" /index/owner.next
+      chown 10001:10001 /index/owner.next
+      mv /index/owner.next /index/owner.digest
+    '
+"${semantic[@]}" up -d --no-deps semantic app
+```
+
+Use the full Compose file list for future starts. The app streams an inventory
+at startup and every five minutes. For an immediate scan, run
+`docker compose -f compose.yaml -f compose.semantic.yaml exec -T app python docker/runtime.py semantic-refresh`.
+The first scan encodes the archive. Later scans reuse vectors for unchanged
+records. If a scan stops before completion, the previous index remains usable.
+
 ## Development and updates
 
 `./omiloc --runtime docker dev` runs in an open Terminal:

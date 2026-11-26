@@ -79,8 +79,14 @@ Start the worker with the same model, index and owner arguments plus
 `$OMI_HARNESS_STATE_ROOT/services/semantic-search/queries.sock`. A deployment can
 override that path with `OMI_LOCAL_SEMANTIC_SOCKET`. Grant the paired backend
 access to that private socket. The worker can run in a network-disabled process.
-In this rollout the rebuild command is explicit. A new or edited recording
-appears in Meaning after its next successful scan.
+The [optional Docker overlay](DOCKER.md#semantic-archive-search) starts an independent
+refresh loop in the paired runtime. It streams a complete inventory to the worker
+on startup and every five minutes. Queries use a separate socket and keep reading
+the last complete index while an update runs. A new or edited recording appears in
+Meaning after its next successful scan. Deletions are excluded by the canonical read
+as soon as the conversation becomes unavailable. Firestore assigns new revisions
+after importing an emulator snapshot. The worker rebinds existing vectors to those
+revisions when the indexed text and passage positions have the same digest.
 
 ## Bastion acceptance, November 25
 

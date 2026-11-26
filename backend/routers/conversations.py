@@ -464,10 +464,10 @@ def search_local_archive_by_meaning(
         raise HTTPException(400, 'Invalid semantic archive search')
     try:
         hits = local_semantic_search.rank(uid, query)
+        rows = conversations_db.read_local_search_sources(uid, list(dict.fromkeys(hit['id'] for hit in hits)))
+        items = local_semantic_search.resolve(hits, rows, lambda row: _paired_detail(row, uid))
     except local_semantic_search.SemanticUnavailable:
         raise HTTPException(503, 'local_semantic_unavailable', headers={'Cache-Control': 'no-store'}) from None
-    rows = conversations_db.read_local_search_sources(uid, list(dict.fromkeys(hit['id'] for hit in hits)))
-    items = local_semantic_search.resolve(hits, rows, lambda row: _paired_detail(row, uid))
     response.headers['Cache-Control'] = 'no-store'
     return {'items': items, 'next_cursor': None}
 class ConversationStatusResponse(BaseModel):

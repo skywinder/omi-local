@@ -48,10 +48,14 @@ def rank(uid, query):
 
 def resolve(hits, rows, hydrate, *, limit=15):
     items = []
+    stale = False
     for hit in hits:
         identifier = hit['id']
         row = rows.get(identifier)
-        if row is None or source_revision(row['_local_read_version']) != hit['revision']:
+        if row is None:
+            continue
+        if source_revision(row['_local_read_version']) != hit['revision']:
+            stale = True
             continue
         started_at = row.get('started_at') or row.get('created_at')
         if not isinstance(started_at, datetime):
@@ -68,4 +72,6 @@ def resolve(hits, rows, hydrate, *, limit=15):
         })
         if len(items) == limit:
             break
+    if stale and not items:
+        raise SemanticUnavailable()
     return items

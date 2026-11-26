@@ -1,6 +1,7 @@
 """Disposable vector projection of one paired owner's canonical transcript revisions."""
 
 import fcntl
+import hashlib
 import math
 import os
 import sqlite3
@@ -13,10 +14,10 @@ from pathlib import Path
 from typing import Iterable, Protocol, Sequence
 
 
-_FORMAT = '1'
+_FORMAT = '2'
 _SCHEMA = '''
 CREATE TABLE IF NOT EXISTS identity (format TEXT NOT NULL, owner TEXT NOT NULL, model TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, revision TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sources (id TEXT PRIMARY KEY, revision TEXT NOT NULL, content_hash TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS passages (
     source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -73,6 +74,17 @@ def _normalize(embedding, dimensions):
     return [x / norm for x in embedding]
 
 
+def _content_hash(passages):
+    # Positions participate in the hash because each vector opens a specific source passage.
+    digest = hashlib.sha256()
+    stamp = struct.Struct('<QQ')
+    for position, text in passages:
+        data = text.encode('utf-8')
+        digest.update(stamp.pack(position, len(data)))
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def rebuild(path, owner: str, sources: Iterable[Source], encoder: Encoder) -> dict:
     """Reconcile a complete inventory. Partial reads leave the last index usable."""
     path = Path(path)
@@ -112,13 +124,18 @@ def _populate(stage, previous, owner, sources, encoder):
             for source in sources:
                 db.execute('INSERT INTO seen VALUES (?)', (source.id,))
                 scanned += 1
-                previous_revision = db.execute('SELECT revision FROM sources WHERE id = ?', (source.id,)).fetchone()
-                if previous_revision == (source.revision,):
+                existing = db.execute('SELECT revision, content_hash FROM sources WHERE id = ?', (source.id,)).fetchone()
+                if existing and existing[0] == source.revision:
+                    continue
+                passages = tuple(source.passages)
+                content_hash = _content_hash(passages)
+                if existing and existing[1] == content_hash:
+                    db.execute('UPDATE sources SET revision = ? WHERE id = ?', (source.revision, source.id))
                     continue
                 updated += 1
                 db.execute('DELETE FROM sources WHERE id = ?', (source.id,))
-                db.execute('INSERT INTO sources VALUES (?, ?)', (source.id, source.revision))
-                for batch in _batches(source.passages, 8):
+                db.execute('INSERT INTO sources VALUES (?, ?, ?)', (source.id, source.revision, content_hash))
+                for batch in _batches(passages, 8):
                     vectors = encoder.encode([text for _, text in batch], query=False)
                     db.executemany(
                         'INSERT INTO passages VALUES (?, ?, ?)',

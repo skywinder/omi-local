@@ -1,0 +1,24 @@
+services:
+  app:
+    environment:
+      OMI_SEMANTIC_AUTO_REFRESH: '1'
+    volumes:
+      - semantic_index:/data/harness/docker/services/semantic-search
+  semantic:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.semantic
+    network_mode: none
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    volumes:
+      - semantic_index:/index
+      - semantic_model:/model:ro
+
+volumes:
+  semantic_index:
+  semantic_model:

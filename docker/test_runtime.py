@@ -103,6 +103,23 @@ def test_backend_reload_is_explicit_and_loopback_only():
     assert '--no-proxy-headers' in command and '--reload' in command
 
 
+def test_semantic_refresh_is_optional_and_uses_the_owned_socket(tmp_path, monkeypatch):
+    from dev_harness import local_semantic_refresh
+
+    cfg = SimpleNamespace(layout=SimpleNamespace(services_dir=tmp_path))
+    request = []
+    monkeypatch.delenv('OMI_SEMANTIC_AUTO_REFRESH', raising=False)
+    monkeypatch.setattr(config, 'child_env_for', lambda _cfg: {'PROVIDER_MODE': 'offline'})
+    monkeypatch.setattr(local_semantic_refresh, 'refresh',
+                        lambda socket, **kwargs: request.append((socket, kwargs)))
+    runtime.semantic_refresh(cfg)
+    assert not request
+    runtime.semantic_refresh(cfg, once=True)
+    assert request == [(tmp_path / 'semantic-search/inventory.sock', {
+        'env': {'PROVIDER_MODE': 'offline'}, 'cwd': runtime.ROOT / 'backend',
+    })]
+
+
 def test_tailscale_volume_needs_no_ngrok_and_keeps_identity_when_switching(tmp_path):
     root, data = tmp_path / 'repo', tmp_path / 'data'
     root.mkdir()

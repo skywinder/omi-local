@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
-from utils.conversations.local_semantic_search import resolve
+import pytest
+
+from utils.conversations.local_semantic_search import SemanticUnavailable, resolve
 from utils.conversations.semantic_passages import passages, source_revision
 
 
@@ -30,3 +32,6 @@ def test_ranked_pointers_hydrate_only_current_sources_and_keep_seek_anchor():
     items = list(passages(hydrate(row)))
     assert 'bank documents' in items[2].text
     assert items[2].snippet['segment_id'] == 'seek'
+
+    with pytest.raises(SemanticUnavailable):
+        resolve([{'id': 'changed', 'revision': 'older', 'position': 2}], rows, hydrate)
