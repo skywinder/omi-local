@@ -39,6 +39,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   bool _disposed = false;
   bool _retryAppend = false;
   bool _starredOnly = false;
+  bool _archivedOnly = false;
   bool _refreshAfterRead = false;
   bool _paged = false;
   int _deliveryRevision = 0;
@@ -48,6 +49,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   String? category;
 
   bool get starredOnly => _starredOnly;
+  bool get archivedOnly => _archivedOnly;
   Future<void> refresh() => _load(append: false);
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
@@ -112,6 +114,12 @@ class PairedArchiveProvider extends ChangeNotifier {
     await _refreshFilter();
   }
 
+  Future<void> filterArchived(bool value) async {
+    if (_disposed || busy || !_library.recordingArchive || _archivedOnly == value) return;
+    _archivedOnly = value;
+    await _refreshFilter();
+  }
+
   Future<void> filterFolder(Folder? value) async {
     if (_disposed || busy) return;
     final changed = folder?.id != value?.id;
@@ -136,6 +144,7 @@ class PairedArchiveProvider extends ChangeNotifier {
   }
 
   bool _matches(ServerConversation row) =>
+      (!_library.recordingArchive || row.archived == _archivedOnly) &&
       (!_starredOnly || row.starred) &&
       (folder == null || row.folderId == folder!.id) &&
       (category == null || conversationCategoryKey(row.structured.category) == category);
@@ -150,7 +159,12 @@ class PairedArchiveProvider extends ChangeNotifier {
 
   void applyEdit(ServerConversation row) {
     if (_disposed) return;
-    if ((_starredOnly || folder != null || category != null) && _matches(row) != _rows.containsKey(row.id)) {
+    if ((_library.recordingArchive || _starredOnly || folder != null || category != null) &&
+        _matches(row) != _rows.containsKey(row.id)) {
+      if (_rows.remove(row.id) != null) {
+        _groupEntries();
+        notifyListeners();
+      }
       if (busy) {
         _editsDuringRead[row.id] = row;
         _refreshAfterRead = true;
@@ -207,7 +221,13 @@ class PairedArchiveProvider extends ChangeNotifier {
     try {
       if (!_library.verified) await _library.verify();
       if (_disposed) return;
-      final result = await _library.list(append ? _offset : 0, starredOnly: _starredOnly, folderId: folder?.id);
+      if (!_library.recordingArchive) _archivedOnly = false;
+      final result = await _library.list(
+        append ? _offset : 0,
+        starredOnly: _starredOnly,
+        archivedOnly: _archivedOnly,
+        folderId: folder?.id,
+      );
       if (_disposed) return;
       if (!append) {
         _rows.clear();
@@ -228,7 +248,7 @@ class PairedArchiveProvider extends ChangeNotifier {
       partial |= result.partial;
       _groupEntries();
       showingCached = false;
-      if (!append && !result.partial && !_starredOnly && folder == null && category == null) {
+      if (!append && !result.partial && !_archivedOnly && !_starredOnly && folder == null && category == null) {
         unawaited(_cache.write(_rows.values.toList()));
       }
     } catch (error) {
@@ -236,12 +256,13 @@ class PairedArchiveProvider extends ChangeNotifier {
       if (_isConnectionFailure(error) &&
           entries.isEmpty &&
           !append &&
+          !_archivedOnly &&
           !_starredOnly &&
           folder == null &&
           category == null) {
         final cached = await _cache.read();
         if (_disposed) return;
-        for (final row in cached) {
+        for (final row in cached.where(_matches)) {
           _rows[row.id] = row;
         }
         showingCached = cached.isNotEmpty;
@@ -318,7 +339,10 @@ class PairedArchiveFeed extends StatelessWidget {
           onRetry: archive.refresh,
         );
       }
-      return OmiEmptyState(icon: Icons.forum_rounded, title: l.noConversationsYet);
+      return OmiEmptyState(
+        icon: Icons.forum_rounded,
+        title: archive.archivedOnly ? pairedSettingsLabel(context, 'recordingArchiveEmpty') : l.noConversationsYet,
+      );
     }
     return Column(
       children: [

@@ -95,8 +95,11 @@ recording tokens. The harness resolves them to import keys and sends the paired
 key to the backend on loopback. The backend checks the owner, recording
 provenance and availability inside the write transaction. A category edit
 compares the previously shown category. The backend keeps a manual category
-when later processing updates the summary. Archiving sets only the browser's
-`archived` flag. The mobile client uses the shared favorite and category fields.
+when later processing updates the summary. Next and the browser use the same
+`archived` flag. Next confirms the previous value through the existing paired
+edit route. The archive list reads `archived_only=true`, a canonical query that
+excludes provisional recordings. Regular list requests keep their existing
+page shape. Missing archive flags on older recordings mean unarchived.
 When note metadata is temporarily unavailable, audio and transcripts remain
 available in the web library.
 

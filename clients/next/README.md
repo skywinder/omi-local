@@ -369,6 +369,13 @@ screen. Re-importing the same local processing result preserves the edits.
 A different processing result is a separate recording and retains its own
 transcript. Edits require an updated paired server.
 
+In a finished conversation, choose **Archive recording** to move it off the
+main list. Tap **Archive** above the list to browse archived conversations.
+**Restore from archive** moves it back. The archive supports the same folder,
+favorite, and category filters. It shares the flag with the web library and
+keeps the recording and transcript available. The control appears when the
+paired server advertises `local_recording_archive_version=1`.
+
 ## Organize recordings into folders
 
 The archive also has a **Categories** filter using the Omi conversation

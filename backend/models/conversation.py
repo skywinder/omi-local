@@ -337,6 +337,7 @@ class Conversation(BaseModel):
     imported: bool = False
     visibility: ConversationVisibility = ConversationVisibility.private
     starred: bool = False
+    archived: Optional[bool] = False
 
     # TODO: processing_memory_id for backward compatibility with the old memories routes and app
     processing_memory_id: Optional[str] = None

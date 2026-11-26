@@ -67,6 +67,7 @@ assert profile['local_transcription']['live']['status'] == 'disabled'
 assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
 assert profile['local_recording_edits_version'] == 1
+assert profile['local_recording_archive_version'] == 1
 assert profile['local_recording_categories_version'] == 1
 assert profile['local_category_backfill_version'] == 1
 assert profile['local_conversation_group_version'] == 1
@@ -107,7 +108,8 @@ assert loopback.post(note_path, json={'keys': [note_key], 'change': {'archived':
 note_ref, note_tx, note_doc = MagicMock(), MagicMock(), MagicMock()
 note_doc.id = note_id
 note_doc.exists = True
-note_raw = {'status': 'completed', 'external_data': {'local_transcript': {'result_key': note_key}},
+note_raw = {'status': 'completed', 'created_at': '2026-11-26T08:00:00Z', 'started_at': None, 'finished_at': None,
+            'external_data': {'local_transcript': {'result_key': note_key}},
             'structured': {'category': 'education', 'emoji': '🎓'}, 'starred': True}
 note_doc.to_dict.side_effect = lambda: json.loads(json.dumps(note_raw))
 note_ref.get.return_value = note_doc
@@ -136,6 +138,10 @@ with patch_notes.object(local_library_notes._client, 'get_firestore_client', ret
     assert changed.json()[note_key]['archived'] is True
     note_tx.update.assert_called_once_with(note_ref, {'archived': True})
     assert note_raw['starred']
+    edit_url = f'/v1/local/conversations/{note_id}/edit'
+    assert loopback.patch(edit_url, json={'field': 'archived', 'expected': False, 'value': False}, headers=note_headers).status_code == 409
+    assert loopback.patch(edit_url, json={'field': 'archived', 'expected': False, 'value': True}, headers=note_headers).status_code == 200
+    note_tx.update.assert_called_once()
     stale = loopback.post(note_path, json={'keys': [note_key], 'change': {
         'category': {'expected': 'work', 'value': 'technology'}}}, headers=note_headers)
     assert stale.status_code == 409
@@ -184,6 +190,15 @@ assert cut_archive.status_code == 200 and cut_archive.json() == []
 assert cut_archive.headers['X-Omi-List-Truncated'] == 'true'
 assert cut_archive.headers['X-Omi-Conversation-Page-Size'] == '0'
 assert 'X-Omi-Has-More' not in cut_archive.headers
+def read_archived(owner, limit, offset, **filters):
+    assert owner == 'fixture-owner' and (limit, offset) == (2, 0) and filters['archived_only'] is True
+    return [{**archive_fixture, 'archived': True}]
+with patch_notes.object(main.conversations.conversations_db, 'get_conversations_without_photos', read_archived), \
+     patch_notes.object(local_recording_rows, 'local_recording_rows', side_effect=AssertionError('Archived pages cannot include pending audio')):
+    page = client.get('/v1/conversations?limit=1&archived_only=true', headers=archive_headers)
+    assert page.status_code == 200, page.text
+    assert len(page.json()) == 1 and page.json()[0]['archived'] is True
+    assert page.headers['x-omi-has-more'] == 'false'
 main.conversations.conversations_db.get_conversations_without_photos = original_canonical
 local_recording_rows.local_recording_rows = original_local
 from utils.local_transcript import build_conversation

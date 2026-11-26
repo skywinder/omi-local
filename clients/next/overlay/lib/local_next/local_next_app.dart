@@ -493,6 +493,13 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                           ),
                       ]
                     : [
+                        if (library.recordingArchive)
+                          FilterChip(
+                            key: const ValueKey('archive-archived'),
+                            label: Text(pairedSettingsLabel(context, 'recordingArchive')),
+                            selected: archive.archivedOnly,
+                            onSelected: archive.busy ? null : archive.filterArchived,
+                          ),
                         FilterChip(
                           label: Text(l.starred),
                           selected: archive.starredOnly,

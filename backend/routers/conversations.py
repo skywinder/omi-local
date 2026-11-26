@@ -365,6 +365,12 @@ class LocalCategoryEdit(BaseModel):
     value: CategoryEnum
 
 
+class LocalArchiveEdit(BaseModel):
+    field: Literal['archived']
+    expected: bool = Field(strict=True)
+    value: bool = Field(strict=True)
+
+
 class LocalSpeakerAssignment(BaseModel):
     person_id: str | None = Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')
     is_user: bool = Field(strict=True)
@@ -385,7 +391,7 @@ class LocalSpeakerEdit(BaseModel):
 
 
 LocalRecordingEdit = Annotated[
-    LocalTitleEdit | LocalStarEdit | LocalSegmentEdit | LocalFolderEdit | LocalCategoryEdit | LocalSpeakerEdit,
+    LocalTitleEdit | LocalStarEdit | LocalArchiveEdit | LocalSegmentEdit | LocalFolderEdit | LocalCategoryEdit | LocalSpeakerEdit,
     Field(discriminator='field'),
 ]
 
@@ -818,11 +824,14 @@ def get_conversations(
     folder_id: Optional[str] = Query(None, description="Filter by folder ID"),
     starred: Optional[bool] = Query(None, description="Filter by starred status"),
     list_fields_only: bool = False,
+    archived_only: bool = False,
     uid: str = Depends(auth.get_current_user_uid),
 ):
     if start_date is not None and end_date is not None and _ensure_aware(start_date) > _ensure_aware(end_date):
         raise HTTPException(status_code=400, detail="start_date must be earlier than or equal to end_date")
     if not is_offline_runtime():
+        if archived_only:
+            raise HTTPException(400, 'Archived recordings are available only on a paired server')
         logger.info(f'get_conversations {uid} {limit} {offset} {statuses} {sources} {folder_id} {starred}')
     # force convos statuses to processing, completed on the empty filter
     if len(statuses) == 0:
@@ -859,7 +868,7 @@ def get_conversations(
 
         conversations, has_more = read_local_archive_page(
             conversations_db.get_conversations_without_photos, uid, limit, offset, budget=budget,
-            list_fields_only=list_fields_only, **filters,
+            list_fields_only=list_fields_only, archived_only=archived_only, **filters,
         )
         if response is not None:
             response.headers['X-Omi-Conversation-Page-Size'] = str(len(conversations))

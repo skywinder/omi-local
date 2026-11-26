@@ -96,6 +96,7 @@ class PairedLibrary {
   bool audioDelivery;
   bool conversationGroups = false;
   bool recordingEdits = false;
+  bool recordingArchive = false;
   bool recordingCategories = false;
   bool categoryBackfill = false;
   bool processingRetryAvailable = false;
@@ -116,6 +117,10 @@ class PairedLibrary {
   bool verified = false;
   bool get isSignedIn => verified && !_closed;
   late final _archive = ConversationApi(baseUrl: origin.origin, send: _sendArchive);
+  late final _archived = ConversationApi(
+    baseUrl: origin.origin,
+    send: (request) => _sendArchive(request, archivedOnly: true),
+  );
   late final _savedRecording = ConversationApi(
     baseUrl: origin.origin,
     send: (request) => _sendArchive(request, resolveLocalRecording: true),
@@ -139,6 +144,7 @@ class PairedLibrary {
     conversationGroups = false;
     audioPlayback = false;
     recordingEdits = false;
+    recordingArchive = false;
     recordingCategories = false;
     categoryBackfill = false;
     processingRetryAvailable = false;
@@ -513,6 +519,7 @@ class PairedLibrary {
     conversationGroups = audioDelivery && data['local_conversation_group_version'] == 1;
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
+    recordingArchive = recordingEdits && data['local_recording_archive_version'] == 1;
     recordingCategories = recordingEdits && data['local_recording_categories_version'] == 1;
     categoryBackfill = recordingCategories && data['local_category_backfill_version'] == 1;
     processingRetryAvailable = data['local_processing_retry_version'] == 1;
@@ -536,7 +543,11 @@ class PairedLibrary {
     ConversationStatus.failed,
   ];
 
-  Future<http.Response> _sendArchive(ApiRequest request, {bool resolveLocalRecording = false}) async {
+  Future<http.Response> _sendArchive(
+    ApiRequest request, {
+    bool resolveLocalRecording = false,
+    bool archivedOnly = false,
+  }) async {
     if (!isSignedIn) throw LibraryFailure.key;
     final uri = Uri.parse(request.url);
     if (request.method != 'GET' ||
@@ -583,7 +594,7 @@ class PairedLibrary {
         return http.Response.bytes(await _bytes(response, collection ? 8 << 20 : 24 << 20), 200, headers: headers);
       },
       query: collection
-          ? {...query, 'list_fields_only': 'true'}
+          ? {...query, 'list_fields_only': 'true', if (archivedOnly) 'archived_only': 'true'}
           : resolveLocalRecording
           ? {'resolve_local_recording': 'true', 'include_recording_results': 'true'}
           : {'include_recording_results': 'true'},
@@ -601,12 +612,14 @@ class PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async {
     if (offset < 0) throw LibraryFailure.malformed;
+    if (archivedOnly && !recordingArchive) throw LibraryFailure.unavailable;
     var storageCount = 0;
     bool? hasMore;
-    final result = await _archive.list(
+    final result = await (archivedOnly ? _archived : _archive).list(
       limit: pageSize,
       offset: offset,
       statuses: _archiveStatuses,
@@ -622,7 +635,9 @@ class PairedLibrary {
         throw _archiveFailure(problem);
       case ApiSuccess(:final data, :final rejectedRows, :final truncated):
         final rows = data.where((row) => _archiveId.hasMatch(row.id)).toList();
-        if (data.isNotEmpty && rows.isEmpty) throw LibraryFailure.malformed;
+        if ((data.isNotEmpty && rows.isEmpty) || (archivedOnly && rows.any((row) => !row.archived))) {
+          throw LibraryFailure.malformed;
+        }
         final received = data.length + rejectedRows;
         if (storageCount < received || storageCount > pageSize) throw LibraryFailure.malformed;
         return (
@@ -682,7 +697,11 @@ class PairedLibrary {
 
   Future<ServerConversation> editRecording(String id, RecordingEdit edit) async {
     if (!isSignedIn) throw LibraryFailure.key;
-    if (!recordingEdits || (edit.field == 'category' && !recordingCategories)) throw RecordingEditFailure.unavailable;
+    if (!recordingEdits ||
+        (edit.field == 'category' && !recordingCategories) ||
+        (edit.field == 'archived' && !recordingArchive)) {
+      throw RecordingEditFailure.unavailable;
+    }
     _conversation(id);
     try {
       final row = await _request(
@@ -694,7 +713,7 @@ class PairedLibrary {
           if (response.statusCode != HttpStatus.ok) throw RecordingEditFailure.unavailable;
           final data = await _json(response, 24 << 20) as Map<String, dynamic>;
           final row = ServerConversation.fromJson(data['conversation'] as Map<String, dynamic>);
-          if (row.id != id) throw LibraryFailure.malformed;
+          if (row.id != id || (edit.field == 'archived' && row.archived != edit.value)) throw LibraryFailure.malformed;
           return row;
         },
         method: 'PATCH',

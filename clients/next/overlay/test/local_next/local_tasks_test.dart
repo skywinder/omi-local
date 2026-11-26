@@ -87,6 +87,7 @@ class _TaskLibrary extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async => (rows: [await detail(_recording)], consumed: 1, partial: false, more: false);
 

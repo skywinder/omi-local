@@ -424,6 +424,22 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
     }
   }
 
+  Future<void> _changeArchive(_RecordingDetail loaded) async {
+    final before = loaded.row.archived;
+    try {
+      await _save(RecordingEdit.archived(before, !before));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(pairedSettingsLabel(context, before ? 'recordingRestored' : 'recordingArchived'))),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    }
+  }
+
   Future<void> _moveFolder(_RecordingDetail loaded) async {
     final choice = await pickLocalFolder(context, widget.library, moving: true);
     if (!mounted || choice == null) return;
@@ -966,6 +982,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.offline => _download(),
                     _RecordingEditAction.title => _editText(loaded),
                     _RecordingEditAction.star => _changeStar(loaded),
+                    _RecordingEditAction.archive => _changeArchive(loaded),
                     _RecordingEditAction.transcript => _chooseLine(loaded),
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.category => _changeCategory(loaded),
@@ -1055,6 +1072,16 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                           pairedSettingsLabel(context, loaded.row.starred ? 'recordingUnstar' : 'recordingStar'),
                         ),
                       ),
+                      if (widget.library.recordingArchive)
+                        PopupMenuItem(
+                          value: _RecordingEditAction.archive,
+                          child: Text(
+                            pairedSettingsLabel(
+                              context,
+                              loaded.row.archived ? 'recordingRestoreFromArchive' : 'recordingMoveToArchive',
+                            ),
+                          ),
+                        ),
                       if (loaded.sources.isNotEmpty)
                         PopupMenuItem(
                           value: _RecordingEditAction.transcript,
@@ -1226,6 +1253,7 @@ enum _RecordingEditAction {
   copyId,
   title,
   star,
+  archive,
   transcript,
   folder,
   category,

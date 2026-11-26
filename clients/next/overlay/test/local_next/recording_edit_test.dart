@@ -23,6 +23,7 @@ class _EditableLibrary extends PairedLibrary {
   String transcript = 'Original words';
   String category = 'other';
   bool starred = false;
+  bool archived = false;
   bool conflict = false;
   String? currentFolder;
   Folder? savedFolder;
@@ -45,6 +46,7 @@ class _EditableLibrary extends PairedLibrary {
       },
     },
     'starred': starred,
+    'archived': archived,
     'folder_id': currentFolder,
     'transcript_segments': [
       {'id': 'actual-line', 'text': transcript, 'start': 4.25, 'end': 6.0, 'is_user': true},
@@ -56,10 +58,12 @@ class _EditableLibrary extends PairedLibrary {
   Future<({List<ServerConversation> rows, int consumed, bool partial, bool more})> list(
     int offset, {
     bool starredOnly = false,
+    bool archivedOnly = false,
     String? folderId,
   }) async {
     filters.add(starredOnly);
-    final rows = (!starredOnly || starred) && (folderId == null || currentFolder == folderId)
+    final rows =
+        (!archivedOnly || archived) && (!starredOnly || starred) && (folderId == null || currentFolder == folderId)
         ? [await detail(_id)]
         : <ServerConversation>[];
     return (rows: rows, consumed: rows.length, partial: false, more: false);
@@ -77,6 +81,8 @@ class _EditableLibrary extends PairedLibrary {
         transcript = edit.value as String;
       case 'starred':
         starred = edit.value as bool;
+      case 'archived':
+        archived = edit.value as bool;
       case 'folder':
         currentFolder = edit.value as String?;
       case 'category':
@@ -163,6 +169,43 @@ Future<void> _menu(WidgetTester tester, String label) async {
 }
 
 void main() {
+  testWidgets('archiving and restoring a paired conversation moves it between the two lists', (tester) async {
+    final library = _EditableLibrary()..recordingArchive = true;
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        home: LocalNextLibraryPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = find.text('Original title');
+    final archive = find.byKey(const ValueKey('archive-archived'));
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    library.conflict = true;
+    await _menu(tester, 'Archive recording');
+    expect(library.archived, isFalse);
+    library.conflict = false;
+    await _menu(tester, 'Archive recording');
+    expect(library.archived, isTrue);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(title, findsNothing);
+    await tester.tap(archive);
+    await tester.pumpAndSettle();
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    await _menu(tester, 'Restore from archive');
+    expect(library.requests.last, {'field': 'archived', 'expected': true, 'value': false});
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('No archived recordings'), findsOneWidget);
+    await tester.tap(archive);
+    await tester.pumpAndSettle();
+    expect(title, findsOneWidget);
+  });
+
   testWidgets('a read-only transcript shows the recorded diarization result and copies the complete text', (
     tester,
   ) async {

@@ -371,10 +371,10 @@ def merge_local_recording_page(conversations, recordings, *, offset, limit):
     return rows[offset:offset + limit]
 
 
-def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **filters):
+def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, archived_only=False, **filters):
     """Read one paired page with the same storage advance as the upstream list."""
     origins = {}
-    recordings = filter_local_recording_rows(
+    recordings = [] if archived_only else filter_local_recording_rows(
         local_recording_rows(uid, origins),
         statuses=filters['statuses'],
         sources=filters['sources'],
@@ -389,6 +389,7 @@ def read_local_archive_page(read_canonical, uid, limit, offset, *, budget, **fil
         limit + offset + 1 if recordings else limit + 1,
         0 if recordings else offset,
         budget=budget,
+        **({'archived_only': True} if archived_only else {}),
         **filters,
     )
     if recordings:

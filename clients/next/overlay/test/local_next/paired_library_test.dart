@@ -263,6 +263,45 @@ void main() {
       {'text': 'Hello', 'is_user': false, 'start': 1.5, 'end': 2.0},
     ],
   };
+  test('archive requests use the paired selection and keep the archived field in the cache format', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final library = PairedLibrary('http://127.0.0.1:${server.port}', key);
+    addTearDown(library.close);
+    var archives = 0;
+    server.listen((request) async {
+      expect(request.headers.value(HttpHeaders.authorizationHeader), 'Bearer $key');
+      switch (request.uri.path) {
+        case '/v1/users/profile':
+          request.response.write(
+            jsonEncode({'uid': 'alice', 'local_recording_edits_version': 1, 'local_recording_archive_version': 1}),
+          );
+        case '/v1/conversations':
+          expect(request.uri.queryParameters['archived_only'], 'true');
+          expect(request.uri.queryParameters['folder_id'], 'project-folder');
+          expect(request.uri.queryParameters['offset'], '30');
+          expect(request.uri.queryParameters['starred'], 'true');
+          request.response.headers.set('x-omi-has-more', 'false');
+          request.response.write(
+            jsonEncode([
+              {...row, 'archived': true},
+            ]),
+          );
+          archives++;
+        default:
+          request.response.statusCode = HttpStatus.notFound;
+      }
+      await request.response.close();
+    });
+    await expectLater(library.list(30, archivedOnly: true), throwsA(LibraryFailure.unavailable));
+    await library.verify();
+    final result = await library.list(30, archivedOnly: true, starredOnly: true, folderId: 'project-folder');
+    expect(result.more, isFalse);
+    expect(result.rows.single.archived, isTrue);
+    expect(result.rows.single.toJson()['archived'], isTrue);
+    expect(archives, 1);
+  });
+
   test('paired recording edits send bounded JSON and list favorites through the archive API', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));

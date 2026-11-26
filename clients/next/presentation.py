@@ -72,6 +72,13 @@ def apply_presentation(repository, revision, app):
         (UI_BARREL, imports('components/omi_filter_chip', 'omi_tokens')),
     ])
     edit(Path('lib/backend/schema/conversation.dart'), [
+        ('  bool starred;\n', '  bool starred;\n  final bool archived;\n'),
+        ('    this.starred = false,\n', '    this.starred = false,\n    this.archived = false,\n'),
+        ('        starred: starred,\n        folderId:', '        starred: starred,\n        archived: archived,\n        folderId:'),
+        ("      deleted: json['deleted'] ?? false,\n", "      deleted: json['deleted'] ?? false,\n      archived: json['archived'] == true,\n"),
+        ('    bool deleted = false,\n', '    bool deleted = false,\n    bool archived = false,\n'),
+        ('      starred: generated.starred,\n', '      starred: generated.starred,\n      archived: archived,\n'),
+        ("      'starred': starred,\n", "      'starred': starred,\n      if (archived) 'archived': true,\n"),
         # The generated wire type already decodes external_data. Keep the paired
         # archive fields when the upstream API projects it into its view model.
         ("  ConversationExternalData({required this.text});\n\n"

@@ -17,6 +17,7 @@ enum RecordingEditFailure implements Exception {
 class RecordingEdit {
   const RecordingEdit.title(String this.expected, String this.value) : field = 'title', segmentId = null;
   const RecordingEdit.starred(bool this.expected, bool this.value) : field = 'starred', segmentId = null;
+  const RecordingEdit.archived(bool this.expected, bool this.value) : field = 'archived', segmentId = null;
   const RecordingEdit.segment(String this.segmentId, String this.expected, String this.value) : field = 'segment_text';
   const RecordingEdit.folder(String? this.expected, String? this.value) : field = 'folder', segmentId = null;
   const RecordingEdit.category(String this.expected, String this.value) : field = 'category', segmentId = null;

@@ -35,7 +35,7 @@ class _ArchiveLibrary extends PairedLibrary {
   final opened = <String>[];
 
   @override
-  Future<_Page> list(int offset, {bool starredOnly = false, String? folderId}) {
+  Future<_Page> list(int offset, {bool starredOnly = false, bool archivedOnly = false, String? folderId}) {
     offsets.add(offset);
     return page(offset);
   }
@@ -77,7 +77,7 @@ class _CategoryLibrary extends _ArchiveLibrary {
   final submissions = <List<String>>[];
 
   @override
-  Future<_Page> list(int offset, {bool starredOnly = false, String? folderId}) async =>
+  Future<_Page> list(int offset, {bool starredOnly = false, bool archivedOnly = false, String? folderId}) async =>
       (rows: [submissions.isEmpty ? unclassified : classified, manual], consumed: 2, partial: false, more: false);
 
   @override

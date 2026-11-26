@@ -477,7 +477,7 @@ def upsert_conversation_with_lifecycle(uid: str, conversation_data: dict):
             # A null existing value means "never user-set" (stub docs dump None
             # fields), so only non-null values are preserved — otherwise the
             # stub's folder_id: None would revert every AI folder assignment.
-            for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
+            for field in ('starred', 'archived', 'folder_id', 'visibility', 'user_title', 'user_category'):
                 if existing.get(field) is not None:
                     write_data[field] = existing[field]
 
@@ -546,7 +546,7 @@ def persist_processing_result_with_lifecycle(
         # A null existing value means "never user-set" (stub docs dump None
         # fields), so only non-null values are preserved — otherwise the
         # stub's folder_id: None would revert every AI folder assignment.
-        for field in ('starred', 'folder_id', 'visibility', 'user_title', 'user_category'):
+        for field in ('starred', 'archived', 'folder_id', 'visibility', 'user_title', 'user_category'):
             if existing.get(field) is not None:
                 write_data[field] = existing[field]
 
@@ -763,6 +763,7 @@ def get_conversations_without_photos(
     budget: Optional[ListReadBudget] = None,
     *,
     list_fields_only: bool = False,
+    archived_only: bool = False,
 ):
     """
     Same as get_conversations but without loading photos.
@@ -806,6 +807,8 @@ def get_conversations_without_photos(
 
     if starred is not None:
         conversations_ref = conversations_ref.where(filter=FieldFilter('starred', '==', starred))
+    if archived_only:
+        conversations_ref = conversations_ref.where(filter=FieldFilter('archived', '==', True))
 
     # Apply date range filters if provided
     if start_date:
