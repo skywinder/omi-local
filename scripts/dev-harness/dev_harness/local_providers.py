@@ -138,6 +138,7 @@ def validate_profile(value, *, models=False):
     allowed = (ENGINE_FIELDS if stage == 'stt' else LIVE_FIELDS if stage == 'live' else
                SPEAKER_FIELDS if kind == 'pyannote' else
                {'base_url', 'min_speakers', 'max_speakers'} if stage == 'diarization' else
+               {'base_url', 'model', 'reasoning', 'model_source'} if stage == 'summary' else
                {'base_url', 'model', 'reasoning'})
     if set(data) - allowed:
         raise SettingsError('Параметры не соответствуют выбранному типу провайдера.')
@@ -187,6 +188,8 @@ def validate_profile(value, *, models=False):
     else:
         data['base_url'] = endpoint(data, 'base_url')
         if stage in {'summary', 'translation'}:
+            if 'model_source' in data and data['model_source'] != 'profile':
+                raise SettingsError('Выберите модель профиля.', field='model_source')
             text_field(data, 'model', required=not models, limit=256)
             if data.get('reasoning', 'default') not in {'default', 'off'}:
                 raise SettingsError('Режим рассуждений: по умолчанию или отключён.', field='reasoning')

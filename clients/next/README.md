@@ -506,18 +506,22 @@ Live drafts still represent the capture session.
 Open the processing controls from the paired library. Next shows the server's
 effective profile and the prepared choices for each supported stage. Live STT,
 final transcription and diarization are selected separately. The summary
-and translation cards show the configurations already published on the server.
+and translation cards show the configurations published on the server. On an
+updated server these cards also support editing profiles. Translation can use a
+dedicated profile or inherit the applied summary profile.
 
 Select a prepared profile and confirm while capture is idle. Confirmation
 uses the registry revision read by the screen and waits for the effective
 profile returned by the server. After a conflict or an uncertain result,
 refresh before confirming again. Next can create, edit and test drafts for
-external Live STT, OpenAI-compatible final STT and Mycelia diarization, and list
-available models for final STT. The connection test reads provider metadata.
+external Live STT, OpenAI-compatible final STT, Mycelia diarization, summary and
+translation. It can list models for final STT, summary and translation. The
+connection test reads provider metadata. A summary saved in Next uses the model
+specified in the draft once applied. Existing server-managed automatic profiles
+continue to follow the provider until an explicit profile is applied.
 Saving a draft leaves the effective profile in place. A saved credential can
 be replaced or removed without displaying its value. Editable inactive drafts
-can be deleted after confirmation. Native model paths and summary and
-translation drafts remain server-managed.
+can be deleted after confirmation. Native model paths are edited on the server.
 
 ## Updating the original
 

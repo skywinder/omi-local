@@ -513,9 +513,65 @@ def test_phone_request_guards_and_url_validation(cfg):
     assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': profile})[0] == 400
     profile['settings']['provider_url'] = 'https://stt.example/v1'
     assert http_request(cfg, '/api/processing/save', payload={'revision': 0, 'profile': profile})[0] == 403
-    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': summary()})[0] == 403
-    assert phone_request(cfg, '/activate', payload={'revision': 0, 'stage': 'summary', 'id': None})[0] == 400
+    private_fields = summary()
+    private_fields['settings']['python'] = '/synthetic/private/bin/python'
+    assert phone_request(cfg, '/save', payload={'revision': 0, 'profile': private_fields})[0] == 403
+    assert phone_request(cfg, '/activate', payload={'revision': 0, 'stage': 'unknown', 'id': None})[0] == 400
     assert not Registry(cfg).exists
+
+
+def test_phone_edits_text_profiles_and_can_restore_inherited_translation(cfg, monkeypatch):
+    from dev_harness import local_provider_http
+
+    checks = []
+
+    def metadata(client, url):
+        checks.append((url, client.headers.get('Authorization')))
+        return httpx.Response(200, json={'data': [{'id': 'synthetic-model'}, {'id': 'next-model'}]},
+                              request=httpx.Request('GET', url))
+
+    monkeypatch.setattr(local_provider_http, 'metadata_get', metadata)
+    endpoint = 'http://127.0.0.1:10373/v1'
+    card = summary(base=endpoint)
+    card['settings']['reasoning'] = 'off'
+    card['settings']['model_source'] = 'profile'
+    status, catalog = phone_request(cfg, '/models', payload={'profile': card, 'api_key': 'synthetic-summary-key'})
+    assert status == 200 and catalog['models'] == ['next-model', 'synthetic-model']
+    assert not Registry(cfg).exists
+    status, saved = phone_request(cfg, '/save', payload={
+        'revision': 0, 'profile': card, 'api_key': 'synthetic-summary-key',
+    })
+    assert status == 200 and saved['text_model_profiles_version'] == 1
+    assert saved['effective']['summary'] is None and saved['effective']['translation'] is None
+    prepared = saved['profiles'][-1]
+    assert prepared['can_edit'] and prepared['has_key'] and prepared['settings']['reasoning'] == 'off'
+    assert prepared['settings']['model_source'] == 'profile'
+    assert 'synthetic-summary-key' not in json.dumps(saved)
+    parsed = {**card, 'id': prepared['id']}
+    assert phone_request(cfg, '/probe', payload={'profile': parsed})[0] == 200
+    status, active = phone_request(cfg, '/activate', payload={
+        'revision': 1, 'stage': 'summary', 'id': prepared['id'],
+    })
+    assert status == 200 and active['effective']['summary']['id'] == prepared['id']
+    inherited = active['effective']['translation']
+    assert inherited['id'] == prepared['id'] and inherited['inherited_from'] == 'summary'
+    assert inherited['settings']['model'] == card['settings']['model']
+    assert len(checks) == 3 and all(c == (endpoint + '/models', 'Bearer synthetic-summary-key') for c in checks)
+
+    translated = {**summary('Translator', endpoint), 'stage': 'translation'}
+    status, saved_translation = phone_request(cfg, '/save', payload={'revision': 2, 'profile': translated})
+    assert status == 200 and saved_translation['effective']['translation'] == inherited
+    explicit_id = saved_translation['profiles'][-1]['id']
+    status, active_translation = phone_request(cfg, '/activate', payload={
+        'revision': 3, 'stage': 'translation', 'id': explicit_id,
+    })
+    assert status == 200 and active_translation['effective']['translation']['id'] == explicit_id
+    assert active_translation['effective']['summary'] == active['effective']['summary']
+    assert checks[-1] == (endpoint + '/models', None)
+    status, restored = phone_request(cfg, '/activate', payload={'revision': 4, 'stage': 'translation', 'id': None})
+    assert status == 200 and restored['effective']['translation'] == inherited
+    assert phone_request(cfg, f'/profiles/{explicit_id}', method='DELETE', payload={'revision': 5})[0] == 200
+    assert Registry(cfg).snapshot('summary')['id'] == prepared['id']
 
 
 def test_live_activation_indeterminate_is_distinct_from_ordinary_failure(cfg, monkeypatch):

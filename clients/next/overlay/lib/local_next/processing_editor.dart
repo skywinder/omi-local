@@ -38,6 +38,7 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
   late final _minimum = TextEditingController(text: _original?.minSpeakers?.toString());
   late final _maximum = TextEditingController(text: _original?.maxSpeakers?.toString());
   final _key = TextEditingController();
+  late bool _reasoningOff = _original?.reasoningOff ?? false;
   bool _clearKey = false;
   bool _busy = false;
   bool _needsRefresh = false;
@@ -65,12 +66,13 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
     device: _original?.device,
     minSpeakers: int.tryParse(_minimum.text.trim()),
     maxSpeakers: int.tryParse(_maximum.text.trim()),
+    reasoningOff: _reasoningOff,
   );
 
   Future<void> _submit(_Action action) async {
     if (!_enabled || !widget.isCurrentClient() || !_form.currentState!.validate()) return;
     final l = context.l10n;
-    if (_stt && action != _Action.models && _model.text.trim().isEmpty) {
+    if (widget.stage.listsModels && action != _Action.models && _model.text.trim().isEmpty) {
       setState(() => _message = l.modelRequired);
       return;
     }
@@ -179,7 +181,7 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
               Text(
                 live
                     ? 'WhisperLiveKit · WebSocket'
-                    : _stt
+                    : widget.stage.listsModels
                     ? 'OpenAI-compatible'
                     : 'Mycelia',
               ),
@@ -194,11 +196,11 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
                 validator: (_) => _draft.hasValidEndpoint ? null : l.invalidUrlError,
                 hint: live
                     ? 'wss://server.example/asr'
-                    : _stt
+                    : widget.stage.listsModels
                     ? 'https://server.example/v1'
                     : 'https://server.example',
               ),
-              if (_stt) ...[
+              if (widget.stage.listsModels) ...[
                 _field('model', l.model, _model, required: false),
                 if (_models.isNotEmpty)
                   SizedBox(
@@ -221,6 +223,8 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
                       },
                     ),
                   ),
+              ],
+              if (_stt)
                 _field(
                   'language',
                   l.language,
@@ -230,7 +234,14 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
                       ? null
                       : pairedSettingsLabel(context, 'processingLanguageCode'),
                 ),
-              ],
+              if (widget.stage.usesTextModel)
+                SwitchListTile(
+                  key: const ValueKey('next-draft-reasoning'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(pairedSettingsLabel(context, 'processingReasoningOff')),
+                  value: _reasoningOff,
+                  onChanged: _enabled ? (checked) => setState(() => _reasoningOff = checked) : null,
+                ),
               if (widget.stage == NextProcessingStage.diarization) ...[
                 _field(
                   'minimum',
@@ -273,7 +284,7 @@ class _NextProcessingEditorState extends State<NextProcessingEditor> {
               Wrap(
                 spacing: 8,
                 children: [
-                  if (_stt)
+                  if (widget.stage.listsModels)
                     OutlinedButton(
                       key: const ValueKey('next-draft-models'),
                       onPressed: _enabled ? () => _submit(_Action.models) : null,

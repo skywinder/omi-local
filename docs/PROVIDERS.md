@@ -16,6 +16,7 @@ changes the processing profiles shown on the phone.
 | Where | What to do |
 |---|---|
 | iPhone | Select a profile under Live, finished transcription, or finished diarization, then **Confirm**. **Add** creates a server profile; **Edit** changes its URL, model and optional API key. |
+| Next on an updated server | **Processing** also supports summary and translation. **Save** stores a draft and **Apply** switches the active profile. |
 | Web library | Select a stage and **Use** a saved card. **Add** supports both prepared native engines and server connections. |
 | Config / terminal | Export, edit and save profile JSON, then run `providers use`; commands below. |
 
@@ -162,6 +163,12 @@ and return an empty answer; set **Model reasoning → Off** on the card, which a
 `chat_template_kwargs: {"enable_thinking": false}` to the request. Leave the
 default for servers that reject unknown fields.
 
+Next can read the configured endpoint's model catalogue or accept a model name
+entered manually. Saving and applying a summary profile in Next records an
+explicit model selection for that profile. On a server configured to follow the
+provider's loaded model, existing automatic profiles keep that behavior until
+replaced by an explicitly applied profile.
+
 In Next, open **Processing → Summary Template** to add or edit a named prompt
 and select the default. The paired server uses the same revisioned catalog as
 the newer Omi Local client. The default is saved with each new processing job
@@ -181,9 +188,10 @@ characters. Preview-only transcripts need the full-recording path.
 
 Translation uses the connected server's active **Summarization** model by default,
 with the same endpoint, key and reasoning setting. Saved drafts and STT models
-are never selected automatically. To choose another model, open that server's web
-library → **Settings → Translation → Add → Save → Use**. Choose **Use summarization
-model** (currently **Использовать модель суммаризации**) to return to automatic selection.
+are never selected automatically. To choose another model, open **Processing →
+Translation** in Next, add or select a profile and apply it. The web library has
+the same controls under **Settings → Translation**. Choose **Use the summary
+model** and apply to restore inheritance.
 The app's translation toggle turns requests on or off. If neither stage has an
 active text model, configure either one with an OpenAI-compatible base URL ending
 in `/v1`, model and optional API key. New selections apply to new recording sessions.

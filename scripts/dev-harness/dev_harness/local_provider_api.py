@@ -67,11 +67,13 @@ class Settings:
 class Processing(Settings):
     """Paired-phone controls: select prepared engines, edit network adapters only."""
 
-    STAGES = {'live', 'stt', 'diarization'}
+    STAGES = {'live', 'stt', 'diarization', 'summary', 'translation'}
     FIELDS = {
         ('live', 'external'): {'url'},
         ('stt', 'openai-compatible'): {'provider_url', 'model', 'language', 'device', 'diarization_model'},
         ('diarization', 'mycelia'): {'base_url', 'min_speakers', 'max_speakers'},
+        ('summary', 'openai-compatible'): {'base_url', 'model', 'reasoning', 'model_source'},
+        ('translation', 'openai-compatible'): {'base_url', 'model', 'reasoning'},
     }
     PRIVATE_FIELDS = {'python', 'model_dir', 'library_path', 'assets_path', 'speaker_python'}
 
@@ -86,11 +88,13 @@ class Processing(Settings):
         fields = cls.FIELDS.get((profile.get('stage'), profile.get('kind')))
         settings = profile.get('settings', {})
         return (fields is not None and isinstance(settings, dict) and not set(settings) - fields
-                and settings.get('diarization_model', 'none') == 'none')
+                and settings.get('diarization_model', 'none') == 'none'
+                and settings.get('model_source', 'profile') == 'profile')
 
     @classmethod
     def public(cls, state):
         result = deepcopy(state)
+        result['text_model_profiles_version'] = 1
         for profile in [*result['profiles'], *result['effective'].values()]:
             if profile is None:
                 continue
@@ -143,7 +147,7 @@ class Processing(Settings):
                 raise SettingsError('Подготовленный локальный профиль доступен только для выбора.', status=403)
         elif method == 'POST' and operation == 'activate':
             if body.get('stage') not in self.STAGES:
-                raise SettingsError('Выберите этап распознавания или диаризации.')
+                raise SettingsError('Выберите этап обработки.')
         elif method == 'DELETE' and re.fullmatch(r'profiles/[A-Za-z0-9_-]{1,64}', operation):
             previous = next((p for p in self.registry.read()['profiles'] if p['id'] == operation.rsplit('/', 1)[-1]), None)
             if previous and not self.can_edit(previous):
