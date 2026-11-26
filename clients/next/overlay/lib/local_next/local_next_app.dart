@@ -208,7 +208,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
     final state = WidgetsBinding.instance.lifecycleState;
     if (state != null && state != AppLifecycleState.resumed) return;
     final paired = widget.library;
-    Future<void> check() async {
+    Future<void> check({required bool periodic}) async {
       try {
         await paired.verify();
       } catch (_) {
@@ -219,11 +219,11 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
         final title = pairedSettingsLabel(context, 'localReminderTitle');
         unawaited(reminders.sync(paired, title));
       }
-      if (_canRefreshRecordings()) await _archive.recoverAfterServerCheck();
+      if (_canRefreshRecordings()) await _archive.refreshAfterServerCheck(periodic: periodic);
     }
 
-    unawaited(check());
-    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(check()));
+    unawaited(check(periodic: false));
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => unawaited(check(periodic: true)));
   }
 
   @override

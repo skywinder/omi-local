@@ -485,7 +485,7 @@ void main() {
     expect(other.entries, isEmpty);
     offline = false;
     rows = [];
-    await cold.recoverAfterServerCheck();
+    await cold.refreshAfterServerCheck(periodic: true);
     expect(cold.showingCached, isFalse);
     offline = true;
     await cold.refresh();
@@ -506,8 +506,9 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
     await tester.pump();
     expect(find.text('Available again'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 30));
     expect(library.offsets, [0]);
+    await tester.pump(const Duration(seconds: 30));
+    expect(library.offsets, [0, 0]);
     await tester.pumpWidget(const SizedBox());
     library.close();
   });
@@ -527,8 +528,8 @@ void main() {
     online = false;
     await archive.loadMore();
     online = true;
-    await Future.wait([archive.recoverAfterServerCheck(), archive.recoverAfterServerCheck()]);
-    await archive.recoverAfterServerCheck();
+    await Future.wait([archive.refreshAfterServerCheck(periodic: true), archive.refreshAfterServerCheck(periodic: true)]);
+    await archive.refreshAfterServerCheck(periodic: true);
     expect(library.offsets, [0, 1, 1]);
     expect(archive.rowById(_firstId), row);
     expect(archive.rowById(_secondId), older);
@@ -655,6 +656,36 @@ void main() {
       archive.dispose();
       library.close();
     }
+  });
+
+  testWidgets('visible feed picks up a late publication and another phone after a successful unchanged read', (
+    tester,
+  ) async {
+    final time = DateTime.utc(2026);
+    final existing = _row(_firstId, 'Existing', time);
+    final published = _row(_secondId, 'Published after receipt', time);
+    var rows = [existing];
+    final library = _ArchiveLibrary(
+      (_) async => (rows: rows, consumed: rows.length, partial: false, more: false),
+      existing,
+    );
+    final archive = PairedArchiveProvider(library, canRefreshRecordings: () => true);
+    addTearDown(archive.dispose);
+    addTearDown(library.close);
+    await archive.refresh();
+    await archive.refreshAfterServerCheck(periodic: false);
+    archive.refreshAfterRecording();
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(library.offsets, [0, 0]);
+    expect(archive.rowById(_secondId), isNull);
+
+    rows = [published, existing];
+    await archive.refreshAfterServerCheck(periodic: true);
+    expect(archive.rowById(_secondId), published);
+    final edited = _row(_secondId, 'Updated on another phone', time);
+    rows = [edited, existing];
+    await archive.refreshAfterServerCheck(periodic: true);
+    expect(archive.rowById(_secondId), edited);
   });
 
   testWidgets('scrubbing a paired WAV moves the transcript and clears the highlight in silence', (tester) async {

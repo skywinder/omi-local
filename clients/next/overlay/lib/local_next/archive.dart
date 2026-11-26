@@ -89,9 +89,13 @@ class PairedArchiveProvider extends ChangeNotifier {
   Future<void> loadMore() => _load(append: true);
   Future<void> retry() => _load(append: _retryAppend);
 
-  Future<void> recoverAfterServerCheck() async {
-    if (!_isConnectionFailure(failure)) return;
-    await _load(append: _retryAppend, automatic: true);
+  Future<void> refreshAfterServerCheck({required bool periodic}) async {
+    if (_isConnectionFailure(failure)) {
+      await _load(append: _retryAppend, automatic: true);
+    } else if (periodic && failure == null && !_paged && _localRefresh == null) {
+      // A receipt may precede publication. Another phone's delivery has no local receipt at all.
+      await _load(append: false, automatic: true);
+    }
   }
 
   static bool _isConnectionFailure(Object? error) =>
