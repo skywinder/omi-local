@@ -1,8 +1,9 @@
 # Omi Local Next
 
 Omi Local Next is the primary development client for the paired Omi Local server on `sky-dev`.
-Its iOS application identifier is `org.omilocal.next`. Pair it with the server's
-app key in its own Keychain. The existing app owns its pending phone recordings.
+The iOS and Android launchers show **Omi Next** with a teal N icon. The application
+identifier is `org.omilocal.next`. Pair it with the server's app key in its own
+Keychain. The existing app owns its pending phone recordings.
 
 The build starts from the complete Flutter app tree at the Git revision in
 [upstream.json](upstream.json). The self-hosted Flutter entry point is
@@ -144,7 +145,8 @@ The archive and Live titles show the CV1 battery icon and percentage. Each
 new link requests an initial battery reading even when capture resumes immediately.
 Until that link reports a value the header shows a dash.
 The signal chart refreshes every three seconds while visible, including during
-capture. Battery notifications update both the status and history on supported
+capture. During CV1 capture, Transfer speed shows incoming Bluetooth audio in
+kbit/s using the raw notification bytes and elapsed sampling time. Battery notifications update both the status and history on supported
 firmware. The day and week charts and connection journal retain observations
 on this phone for seven days. RSSI samples in the graph cover the last ten
 minutes. Connection events can be copied with timestamps, reason codes, last

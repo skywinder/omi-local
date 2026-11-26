@@ -294,6 +294,12 @@ class Cv1Connection extends ChangeNotifier {
   int? _nativeSubscription;
   int _subscriptionSerial = 0;
   bool _wantsAudio = false;
+  int _audioBytesReceived = 0;
+
+  /// Raw audio notification bytes for the current subscription, including the CV1 header.
+  ({int subscription, int bytes})? get audioTraffic =>
+      !_wantsAudio || calibrating ? null : (subscription: _subscriptionSerial, bytes: _audioBytesReceived);
+
   ValueChanged<Uint8List>? _calibration;
   bool get calibrating => _calibration != null;
 
@@ -501,6 +507,7 @@ class Cv1Connection extends ChangeNotifier {
           if (calibration != null) {
             calibration(event.bytes);
           } else {
+            _audioBytesReceived += event.bytes.length;
             _capture.handle(Cv1Audio(event.generation, event.bytes));
           }
         }
@@ -520,6 +527,7 @@ class Cv1Connection extends ChangeNotifier {
       _wantsAudio = wants;
       if (wants) {
         _subscriptionSerial++;
+        _audioBytesReceived = 0;
         audioFailed = false;
       }
     }

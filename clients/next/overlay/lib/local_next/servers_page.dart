@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
+import 'app_identity.dart';
 import 'paired_library.dart';
 import 'processing_page.dart';
 import 'server_catalog.dart';
@@ -142,7 +143,7 @@ class _ServersPageState extends State<NextServersPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.manager ? title : 'Omi Local Next')),
+      appBar: AppBar(title: Text(widget.manager ? title : nextAppName)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),

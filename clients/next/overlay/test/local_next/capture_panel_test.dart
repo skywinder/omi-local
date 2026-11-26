@@ -492,14 +492,19 @@ void main() {
     );
     final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
     final radio = _Wire();
-    final connection = Cv1Connection(radio, capture);
+    var now = DateTime.utc(2026, 11, 26);
+    final connection = Cv1Connection(radio, capture, history: Cv1History(now: () => now));
     final busy = ValueNotifier(false);
     try {
       await tester.pumpWidget(
         MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: NextDeviceDiagnosticsPage(link: connection, capture: busy, captureBusy: () => busy.value),
+          home: NextDeviceDiagnosticsPage(
+            link: connection,
+            capture: Listenable.merge([capture, busy]),
+            captureBusy: () => busy.value,
+          ),
         ),
       );
       expect(find.textContaining('Connect an Omi CV1'), findsOneWidget);
@@ -557,6 +562,26 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
       expect(radio.signalReads, greaterThan(reads));
       expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'LED Brightness')).onTap, isNull);
+      expect(find.text('Transfer speed'), findsNothing);
+      capture.start();
+      await tester.pump();
+      expect(find.text('Transfer speed'), findsOneWidget);
+      now = now.add(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      for (var i = 0; i < 30; i++) {
+        // A notification with no start fragment still counts towards BLE traffic.
+        final bytes = Uint8List(100)..[2] = 1;
+        radio.emit(Cv1RawAudio(1, 1, bytes));
+        radio.emit(Cv1RawAudio(0, 1, bytes));
+        radio.emit(Cv1RawAudio(1, 2, bytes));
+      }
+      now = now.add(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('8.0 kbps'), findsOneWidget);
+      now = now.add(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('0.0 kbps'), findsOneWidget);
+
       radio.emit(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2, reason: Cv1LinkReason.dropped, code: 8));
       await tester.pump();
       expect(find.text('Bluetooth connection lost'), findsOneWidget);
@@ -564,6 +589,7 @@ void main() {
       expect(find.textContaining('-66 dBm'), findsWidgets);
       expect(find.text('fixture firmware'), findsNothing);
       expect(find.text('LED Brightness'), findsNothing);
+      expect(find.text('Transfer speed'), findsNothing);
       expect(find.textContaining('Connect an Omi CV1'), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());

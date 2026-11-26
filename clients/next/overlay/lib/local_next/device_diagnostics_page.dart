@@ -48,27 +48,59 @@ class NextDeviceDiagnosticsPage extends StatefulWidget {
   State<NextDeviceDiagnosticsPage> createState() => _DeviceDiagnosticsState();
 }
 
-class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
+class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> with WidgetsBindingObserver {
   Timer? _poll;
   bool _writing = false;
   bool _week = false;
   bool _issuesOnly = false;
   int _eventLimit = 12;
   DateTime? _fullRefresh;
+  bool _routeCurrent = false;
+  ({int subscription, int bytes, DateTime at})? _lastTraffic;
+  ({int subscription, double kbps})? _receiveRate;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addObserver(this);
     _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = ModalRoute.isCurrentOf(context) == true;
+    if (_routeCurrent == current) return;
+    _routeCurrent = current;
+    _lastTraffic = null;
+    _receiveRate = null;
+    if (current) WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastTraffic = null;
+    _receiveRate = null;
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  void _sampleAudioTraffic(DateTime now) {
+    final traffic = widget.link.audioTraffic;
+    final previous = _lastTraffic;
+    _lastTraffic = traffic == null ? null : (subscription: traffic.subscription, bytes: traffic.bytes, at: now);
+    _receiveRate = null;
+    if (traffic == null || previous == null || previous.subscription != traffic.subscription) return;
+    final elapsedMs = now.difference(previous.at).inMicroseconds / 1000;
+    if (elapsedMs > 0) {
+      _receiveRate = (subscription: traffic.subscription, kbps: (traffic.bytes - previous.bytes) * 8 / elapsedMs);
+    }
   }
 
   void _refresh({bool force = false}) {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (mounted &&
-        ModalRoute.isCurrentOf(context) == true &&
-        (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
+    if (mounted && _routeCurrent && (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
       final now = widget.link.history.now();
+      if (!force) _sampleAudioTraffic(now);
       unawaited(widget.link.sampleSignal());
       if (widget.link.phase == Cv1LinkPhase.ready &&
           !widget.captureBusy() &&
@@ -83,6 +115,7 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
   @override
   void dispose() {
     _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -190,6 +223,8 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
         final ready = link.phase == Cv1LinkPhase.ready;
         final now = link.history.now();
         final battery = data?.battery;
+        final traffic = link.audioTraffic;
+        final receiveRate = _receiveRate;
         final signalAt = link.signalMeasuredAt;
         final signal = signalAt != null && now.difference(signalAt) < const Duration(seconds: 12) ? data?.rssi : null;
         final oldest = now.subtract(Cv1History.retention);
@@ -254,6 +289,14 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                                 ].join(' · '),
                           color: signal == null ? null : _signalColor(signal),
                         ),
+                        if (traffic != null)
+                          _Reading(
+                            title: l.syncDetailsTransferSpeed,
+                            value: receiveRate != null && receiveRate.subscription == traffic.subscription
+                                ? l.dataRateKbps(receiveRate.kbps.toStringAsFixed(1))
+                                : '—',
+                            detail: l.bluetooth,
+                          ),
                         if (link.connectedAt case final at?)
                           _Reading(title: l.connectionUptime, value: _duration(now.difference(at)), detail: ''),
                       ],
