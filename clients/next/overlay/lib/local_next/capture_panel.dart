@@ -360,40 +360,81 @@ class NextCaptureInputs extends ChangeNotifier {
     });
   }
 
-  Future<void> importOldest(Cv1StorageTarget target) async {
+  int importWindows = 0;
+  int importWindowsDone = 0;
+  bool stoppingImport = false;
+
+  void stopImport() {
+    if (importWindows == 0 || stoppingImport) return;
+    stoppingImport = true;
+    notifyListeners();
+  }
+
+  Future<void> importOldest(Cv1StorageTarget target, {required int windows}) async {
     if (hasCaptureInProgress || !permitsNewRecording || connection.importTarget != target) return;
     final codec = connection.codec!;
     final journal = phone.journal;
+    final unread = connection.diagnostics!.storageInfo!.unreadPackets;
+    final limit = windows.clamp(1, (unread / Cv1Archive.maxRecords).ceil().clamp(1, Cv1Archive.maxWindows));
     await _change(() async {
+      final archive = Cv1Archive(journal, phone.owner);
+      if (archive.staged.isNotEmpty) {
+        archiveMessage = 'nextImportRetained';
+        return;
+      }
+      // Account for the final envelope, including Opus packet lengths, and the raw series.
+      if (journal.pendingBytes + limit * 65536 > journal.maxStorageBytes) {
+        archiveMessage = 'nextImportCapacity';
+        return;
+      }
       archiveMessage = 'nextImportProgress';
       importedAudio = null;
+      importWindows = limit;
+      importWindowsDone = 0;
+      stoppingImport = false;
       if (!_closed) notifyListeners();
-      final archive = Cv1Archive(journal, phone.owner);
       try {
-        if (archive.staged.isNotEmpty) {
-          archiveMessage = 'nextImportRetained';
-          return;
+        await connection.readArchive(
+          target,
+          windows: limit,
+          shouldStop: () => stoppingImport || _closed,
+          persist: (batch) async {
+            if (batch.bytes.isNotEmpty) {
+              final micros = await archive.append(batch.bytes, target.deviceId, batch.start, codec);
+              importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
+              importWindowsDone++;
+              if (!_closed) notifyListeners();
+            }
+            if (!batch.complete || batch.bytes.isEmpty) {
+              archiveMessage = archive.records > 0 ? 'nextImportPartial' : 'nextImportInterrupted';
+            }
+          },
+        );
+        if (archiveMessage == 'nextImportProgress') {
+          if (stoppingImport) {
+            archiveMessage = 'nextImportStopped';
+          } else {
+            archiveMessage = archive.records > 0 ? 'nextImportSaved' : 'nextImportAlreadySaved';
+          }
         }
-        // Reserve room for the raw window and immutable audio before a consuming legacy read.
-        if (journal.pendingBytes + 65536 > journal.maxStorageBytes) {
-          archiveMessage = 'nextImportCapacity';
-          return;
-        }
-        final batch = await connection.readOldest(target);
-        if (batch.bytes.isEmpty) {
-          archiveMessage = 'nextImportInterrupted';
-          return;
-        }
-        importedAudio = Duration(microseconds: await archive.save(batch.bytes, target.deviceId, batch.start, codec));
-        archiveMessage = batch.complete ? 'nextImportSaved' : 'nextImportPartial';
       } on PlatformException catch (error) {
         archiveMessage = switch (error.code) {
+          'cursor_changed' => 'nextImportMoved',
           'storage_busy' => 'nextImportBusy',
           'phone_full' => 'nextImportCapacity',
-          _ => 'nextImportInterrupted',
+          _ => archive.records > 0 ? 'nextImportPartial' : 'nextImportInterrupted',
         };
       } catch (_) {
-        archiveMessage = archive.staged.isNotEmpty ? 'nextImportRetained' : 'nextImportFailed';
+        archiveMessage = 'nextImportFailed';
+      } finally {
+        try {
+          if (archive.records > 0) importedAudio = Duration(microseconds: await archive.finish());
+        } catch (_) {
+          archiveMessage = 'nextImportFailed';
+        }
+        if (archive.staged.isNotEmpty) archiveMessage = 'nextImportRetained';
+        importWindows = 0;
+        stoppingImport = false;
       }
     });
   }
@@ -549,18 +590,22 @@ class LocalNextCaptureControls extends StatelessWidget {
     final target = link.importTarget;
     if (target == null) return;
     String label(String key) => pairedSettingsLabel(context, key);
-    final confirmed = await showDialog<bool>(
+    final windows = await showDialog<int>(
       context: context,
       builder: (dialog) => AlertDialog(
         title: Text(label('nextImportAction')),
         content: Text('CV1 · ${_shortCv1Id(target.deviceId)}\n\n${label('nextImportHint')}'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(context.l10n.cancel)),
-          TextButton(onPressed: () => Navigator.pop(dialog, true), child: Text(label('nextImportConfirm'))),
+          TextButton(onPressed: () => Navigator.pop(dialog), child: Text(context.l10n.cancel)),
+          TextButton(onPressed: () => Navigator.pop(dialog, 1), child: Text(label('nextImportConfirm'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, Cv1Archive.maxWindows),
+            child: Text(label('nextImportSeries')),
+          ),
         ],
       ),
     );
-    if (confirmed == true && context.mounted) await inputs.importOldest(target);
+    if (windows != null && context.mounted) await inputs.importOldest(target, windows: windows);
   }
 
   Future<void> _clearPendant(BuildContext context, Cv1Connection link) async {
@@ -737,13 +782,28 @@ class LocalNextCaptureControls extends StatelessWidget {
                             : Text(
                                 [
                                   pairedSettingsLabel(context, inputs.archiveMessage!),
+                                  if (inputs.importWindows > 0) '${inputs.importWindowsDone} / ${inputs.importWindows}',
                                   if (inputs.importedAudio case final duration?)
                                     '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
                                 ].join(' · '),
                               ),
+                        trailing: inputs.importWindows > 1
+                            ? TextButton(
+                                onPressed: inputs.stoppingImport ? null : inputs.stopImport,
+                                child: Text(
+                                  pairedSettingsLabel(
+                                    context,
+                                    inputs.stoppingImport ? 'nextImportStopping' : 'nextImportStop',
+                                  ),
+                                ),
+                              )
+                            : null,
                         enabled:
-                            !inputs.hasCaptureInProgress && (inputs.hasRetainedArchive || link.importTarget != null),
-                        onTap: inputs.hasRetainedArchive
+                            inputs.importWindows > 1 ||
+                            (!inputs.hasCaptureInProgress && (inputs.hasRetainedArchive || link.importTarget != null)),
+                        onTap: inputs.importWindows > 0
+                            ? null
+                            : inputs.hasRetainedArchive
                             ? inputs.retryStagedArchive
                             : () => _importPendant(context, link),
                       ),

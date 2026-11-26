@@ -2,8 +2,9 @@
 
 Next on Android and iOS supports manual extraction of a short interval from a legacy CV1.
 Open Settings and diagnostics → Import oldest CV1 audio after stopping capture.
-Each confirmation requests up to 32 records (14,208 bytes) from the oldest
-unread position. Firmware 3.0.21 releases records during transfer. A disconnect
+Choose one fragment (up to 32 records or 14,208 bytes), or a series of up to
+32 fragments. Stop finishes the current Bluetooth request and saves the received
+audio. The series shows completed fragments and the duration saved on the phone. Firmware 3.0.21 releases records during transfer. A disconnect
 or app termination before phone storage can lose some of the requested audio.
 
 ## Verified boundaries
@@ -72,12 +73,22 @@ boundary check, not a physical transfer test.
 The manual transfer checks the current connection, legacy INFO, acknowledged
 read window, complete record boundaries and closing cursor. On interruption it
 keeps whole records received after a matching READ_BEGIN. The phone flushes the
-raw fragment to the selected server's private directory, validates the stored
+raw fragment to the selected pairing's directory on the phone, validates the stored
 clock, splits across timestamp gaps and queues immutable Opus audio with the
 stored UTC time. A restart replays the raw fragment with stable part IDs. Invalid
 raw data stays on the phone for inspection. The retry action reprocesses the
 same fragment without starting another Bluetooth read. A matching server receipt
 releases each phone part. Live capture and ring import run separately.
+
+A series always requests the current oldest cursor. Consecutive reads may
+overlap on legacy firmware. Next compares the SHA-256 of each repeated record at its original sequence before appending fresh records. The last 32 record hashes and
+their ending sequence are checkpointed per paired server, codec and pendant
+after publication to the phone outbox. These verify the boundary when another
+manual import starts. A forward jump beyond the saved range stops the series.
+After a restart the phone publishes the complete staged records with their
+original times; starting another Bluetooth read requires the user's action.
+Continuous audio is combined across windows; a clock jump or a part limit
+starts a new archive entry.
 
 ## Deferred implementation order
 
@@ -110,5 +121,7 @@ releases each phone part. Live capture and ring import run separately.
    every phrase is recovered.
 
 Android has physical CV1-to-Bastion evidence for the legacy manual transfer, including
-an offline phone. On iOS, device acceptance still needs a disposable legacy window.
+an offline phone. On Pixel with firmware 3.0.21, stopping a series saved 5.18 s.
+The next series began at the first unsaved record and delivered 35.28 s.
+Bastion confirmed both parts (259 and 1,764 Opus frames, zero decoding errors). On iOS, device acceptance still needs a disposable legacy window.
 Both platforms require separate work for receiver-acknowledged bulk recovery.

@@ -128,6 +128,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
             audioQueue.isEmpty, audioChar?.isNotifying != true, codec == 20 || codec == 21,
             let info = metrics["storageInfo"] as? FlutterStandardTypedData, let read = CV1LegacyRead(info: info.data)
       else { return result(problem("storage_busy")) }
+      guard let expected = args?["expectedStart"] as? NSNumber, expected.int64Value == Int64(read.start) else {
+        return result(problem("cursor_changed"))
+      }
       let volume = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
       guard let free = volume?[.systemFreeSize] as? NSNumber, free.int64Value >= 65536 else {
         return result(problem("phone_full"))

@@ -59,7 +59,7 @@ typedef Cv1StorageStatus = ({int unreadBytes, int freeBytes, bool clockValid});
 
 enum Cv1StorageProtocol { legacy, receiverAcknowledgement, unconfirmed }
 
-typedef Cv1StorageInfo = ({int unreadPackets, int overwrittenPackets, Cv1StorageProtocol protocol});
+typedef Cv1StorageInfo = ({int oldest, int unreadPackets, int overwrittenPackets, Cv1StorageProtocol protocol});
 
 extension Cv1StorageCapacity on Cv1StorageStatus {
   bool get almostFull => freeBytes * 100 <= unreadBytes + freeBytes;
@@ -123,7 +123,12 @@ class Cv1Diagnostics {
       final supported = info.capAppAckReclaim && info.capAdvanceIdempotent && info.capRingId;
       protocol = supported ? Cv1StorageProtocol.receiverAcknowledgement : Cv1StorageProtocol.unconfirmed;
     }
-    return (unreadPackets: info.unreadPackets, overwrittenPackets: info.droppedPackets, protocol: protocol);
+    return (
+      oldest: info.readSeq,
+      unreadPackets: info.unreadPackets,
+      overwrittenPackets: info.droppedPackets,
+      protocol: protocol,
+    );
   }
 
   factory Cv1Diagnostics.fromWire(Map values) {
@@ -213,7 +218,7 @@ enum Cv1ClearResult { empty, unavailable, unconfirmed }
 typedef Cv1ArchiveBatch = ({Uint8List bytes, int start, bool complete});
 
 abstract interface class Cv1ArchiveTransport {
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target);
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart);
 }
 
 abstract interface class Cv1StorageTransport {
@@ -259,8 +264,9 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
 
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) async {
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart) async {
     final reply = await _methods.invokeMapMethod<String, dynamic>('readOldest', {
+      'expectedStart': expectedStart,
       'generation': target.generation,
       'deviceId': target.deviceId,
     });
@@ -438,12 +444,63 @@ class Cv1Connection extends ChangeNotifier {
       ? storageTarget
       : null;
 
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) async {
-    if (target != importTarget) throw PlatformException(code: 'storage_busy');
+  /// One confirmed run owns the idle link. Every additional consuming request
+  /// must start immediately after the last window the caller flushed to disk.
+  Future<void> readArchive(
+    Cv1StorageTarget target, {
+    required int windows,
+    required bool Function() shouldStop,
+    required Future<void> Function(Cv1ArchiveBatch) persist,
+  }) async {
+    if (target != importTarget || windows < 1 || windows > 32) throw PlatformException(code: 'storage_busy');
+    var next = diagnostics!.storageInfo!.oldest;
+    final availableThrough = next + diagnostics!.storageInfo!.unreadPackets;
+    int? previousStart;
     importingStorage = true;
     notifyListeners();
     try {
-      return await (_transport as Cv1ArchiveTransport).readOldest(target);
+      for (var i = 0; i < windows && next < availableThrough && !shouldStop(); i++) {
+        final wait = Stopwatch()..start();
+        var refreshAt = 1000;
+        while (true) {
+          if (shouldStop()) return;
+          if (_closing ||
+              phase != Cv1LinkPhase.ready ||
+              _generation != target.generation ||
+              linkedDeviceId != target.deviceId) {
+            throw PlatformException(code: 'link_changed');
+          }
+          final info = diagnostics?.storageInfo;
+          if (info != null && (info.oldest > next || info.protocol != Cv1StorageProtocol.legacy)) {
+            throw PlatformException(code: 'cursor_changed');
+          }
+          // Some legacy firmware sends DONE before its final transmit callbacks
+          // advance the persisted cursor. Re-read only from the observed oldest record.
+          if (info != null && info.oldest <= next && (previousStart == null || info.oldest > previousStart)) {
+            Cv1ArchiveBatch? batch;
+            try {
+              batch = await (_transport as Cv1ArchiveTransport).readOldest(target, info.oldest);
+            } on PlatformException catch (error) {
+              // Only storage_busy guarantees the native side never issued READ.
+              if (error.code != 'storage_busy') rethrow;
+            }
+            if (batch != null) {
+              await persist(batch);
+              if (!batch.complete || batch.bytes.isEmpty) return;
+              previousStart = batch.start;
+              next = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
+              break;
+            }
+          }
+          if (wait.elapsed >= const Duration(seconds: 6)) throw PlatformException(code: 'storage_busy');
+          if (wait.elapsedMilliseconds >= refreshAt) {
+            refreshAt += 1000;
+            await sampleDiagnostics();
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+        if (i + 1 < windows && next < availableThrough && !shouldStop()) await sampleDiagnostics();
+      }
     } finally {
       importingStorage = false;
       if (!_closing) {

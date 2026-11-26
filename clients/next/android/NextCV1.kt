@@ -549,6 +549,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         if (context.filesDir.usableSpace < 65536) return reply.error("phone_full", null, null)
         val header = ByteBuffer.wrap(info)
         val start = header.getLong(1)
+        val expected = call.argument<Number>("expectedStart")?.toLong()
+        if (expected != start) return reply.error("cursor_changed", null, null)
         val end = header.getLong(9)
         if (start < 0 || end <= start || end - start > header.getInt(17).toLong() ||
             header.getShort(29).toInt() != 444) return reply.error("storage_busy", null, null)

@@ -38,11 +38,12 @@ class _Radio implements Cv1Transport {
 
 class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1DiagnosticsTransport, Cv1ArchiveTransport {
   final read = Completer<Cv1ArchiveBatch>();
+  Cv1ArchiveBatch Function(int start)? onRead;
   final reads = <Cv1StorageTarget>[];
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) {
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart) {
     reads.add(target);
-    return read.future;
+    return onRead == null ? read.future : Future.value(onRead!(expectedStart));
   }
 
   final clears = <Cv1StorageTarget>[];
@@ -138,8 +139,14 @@ void main() {
     }
 
     Cv1StorageInfo? decode(Uint8List bytes) => Cv1Diagnostics.fromWire({'storageInfo': bytes}).storageInfo;
-    expect(decode(info(31)), (unreadPackets: 2, overwrittenPackets: 7, protocol: Cv1StorageProtocol.legacy));
+    expect(decode(info(31)), (
+      oldest: 10,
+      unreadPackets: 2,
+      overwrittenPackets: 7,
+      protocol: Cv1StorageProtocol.legacy,
+    ));
     expect(decode(info(41)), (
+      oldest: 10,
       unreadPackets: 2,
       overwrittenPackets: 7,
       protocol: Cv1StorageProtocol.receiverAcknowledgement,
@@ -212,7 +219,7 @@ void main() {
           1,
           Cv1Diagnostics(
             storage: (unreadBytes: 888, freeBytes: 4440, clockValid: true),
-            storageInfo: (unreadPackets: 2, overwrittenPackets: 0, protocol: protocol),
+            storageInfo: (oldest: 17, unreadPackets: 2, overwrittenPackets: 0, protocol: protocol),
           ),
         ),
       );
@@ -224,17 +231,86 @@ void main() {
       expect(link.importTarget, isNull);
       report(Cv1StorageProtocol.legacy);
       final target = link.importTarget!;
-      final operation = link.readOldest(target);
+      Cv1ArchiveBatch? received;
+      Future<void> run() => link.readArchive(
+        target,
+        windows: 1,
+        shouldStop: () => false,
+        persist: (batch) async {
+          received = batch;
+        },
+      );
+      final operation = run();
       expect(link.importTarget, isNull);
       expect(await link.clearStorage(target), Cv1ClearResult.unavailable);
       radio.stream.add(const Cv1TransportState(Cv1LinkPhase.reconnecting, 2));
       // The old link can still return records already received into its own transfer.
       radio.read.complete((bytes: Uint8List(444), start: 17, complete: false));
-      final result = await operation;
+      await operation;
+      final result = received!;
       expect(result.bytes.length, 444);
       expect(result.complete, isFalse);
-      await expectLater(link.readOldest(target), throwsA(isA<PlatformException>()));
+      await expectLater(run(), throwsA(isA<PlatformException>()));
       expect(radio.reads, [target]);
+    } finally {
+      await link.close();
+      link.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
+
+  test('series flushes the in-flight window on stop and rejects a moved cursor before another read', () async {
+    final folder = await Directory.systemTemp.createTemp('next-archive-series-');
+    final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});
+    final capture = NextCv1Capture(journal, 'fixture-owner', canStart: () => true);
+    final radio = _StorageRadio();
+    final link = Cv1Connection(radio, capture);
+    var cursor = 11;
+    void report() => radio.stream.add(
+      Cv1DiagnosticsEvent(
+        1,
+        Cv1Diagnostics(
+          storage: (unreadBytes: 128 * 444, freeBytes: 444, clockValid: true),
+          storageInfo: (oldest: cursor, unreadPackets: 128, overwrittenPackets: 0, protocol: Cv1StorageProtocol.legacy),
+        ),
+      ),
+    );
+    final starts = <int>[];
+    radio.onRead = (start) {
+      starts.add(start);
+      return (start: start, complete: true, bytes: Uint8List(32 * 444));
+    };
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: 'fixture'));
+      report();
+      radio.sample = report;
+      var stop = false;
+      final target = link.importTarget!;
+      await link.readArchive(
+        target,
+        windows: 32,
+        shouldStop: () => stop,
+        persist: (batch) async {
+          cursor = batch.start + 32;
+          stop = starts.length >= 2;
+        },
+      );
+      expect(starts, [11, 43]);
+      await expectLater(
+        link.readArchive(
+          target,
+          windows: 32,
+          shouldStop: () => false,
+          persist: (batch) async {
+            cursor = batch.start + 33;
+          },
+        ),
+        throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'cursor_changed')),
+      );
+      expect(starts, [11, 43, 75]);
     } finally {
       await link.close();
       link.dispose();
@@ -256,7 +332,12 @@ void main() {
         generation,
         Cv1Diagnostics(
           storage: (unreadBytes: bytes, freeBytes: 4440 - bytes, clockValid: true),
-          storageInfo: (unreadPackets: bytes ~/ 444, overwrittenPackets: 0, protocol: Cv1StorageProtocol.legacy),
+          storageInfo: (
+            oldest: 17,
+            unreadPackets: bytes ~/ 444,
+            overwrittenPackets: 0,
+            protocol: Cv1StorageProtocol.legacy,
+          ),
         ),
       ),
     );
