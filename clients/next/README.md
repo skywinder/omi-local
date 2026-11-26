@@ -376,8 +376,9 @@ icon to choose a day at 09:00 in the phone's current time zone or an exact time.
 Enable **Task reminders on this phone** on each device that should notify you.
 Notifications are scheduled on the phone after it syncs with the paired server.
 Changes made on another device take effect when this phone next syncs in the
-foreground. The Android system can defer reminders when precise alarms are
-unavailable. Completing a task cancels its pending notification on sync.
+foreground. Android may defer notifications for a calendar day. An exact-time
+reminder uses a precise alarm when the phone allows it. Completing a task cancels
+its pending notification on sync.
 Legacy deadlines require an explicit reminder choice before the phone schedules them.
 
 ## Recording from the phone microphone
