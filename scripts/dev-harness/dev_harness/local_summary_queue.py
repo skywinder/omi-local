@@ -19,6 +19,7 @@ from .local_providers import SettingsError, read_json
 from .local_stt import atomic_json
 
 INFERENCE_BUDGET_SECONDS = 6 * 3600
+PROGRESS_PHASES = ('waiting', 'reading', 'sections', 'combining', 'saving')
 
 
 def backend(cfg, operation, **body):
@@ -78,7 +79,7 @@ class SummaryJobs:
 
     @staticmethod
     def public(job):
-        return {key: job[key] for key in ('request_id', 'state', 'error', 'model', 'template_name') if key in job}
+        return {key: job[key] for key in ('request_id', 'state', 'error', 'model', 'template_name', 'progress') if key in job}
 
     def status(self, body):
         job = read_json(self.file(body))
@@ -120,7 +121,8 @@ class SummaryJobs:
             snapshot = local_summary_regeneration.prepare(self.registry, request)
             # Persist the selected model and credential reference, never the key or transcript.
             job = {k: request[k] for k in ('scope', 'recording_id', 'request_id', 'source_revision')}
-            job.update(state='queued', fingerprint=fingerprint, snapshot=snapshot, created_at=time_ns(),
+            job.update(state='queued', progress={'phase': 'waiting'}, fingerprint=fingerprint,
+                       snapshot=snapshot, created_at=time_ns(),
                        model=snapshot['settings']['model'], template_name=snapshot['template']['name'])
             file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             atomic_json(file, job)
@@ -132,6 +134,21 @@ class SummaryJobs:
             self.scheduled.add(file)
             self.worker.submit(self.process, file)
 
+    @staticmethod
+    def update_progress(file, job, phase, completed=None, total=None):
+        # After a restart the model revalidates existing chunks before continuing.
+        # Keep the last durable count visible while those checkpoints are reopened.
+        current = job.get('progress') or {'phase': 'waiting'}
+        if (PROGRESS_PHASES.index(phase) < PROGRESS_PHASES.index(current['phase'])
+                or (phase == current['phase'] == 'sections' and completed < current['completed'])):
+            return
+        progress = {'phase': phase}
+        if completed is not None and total is not None:
+            progress.update(completed=completed, total=total)
+        if progress != current:
+            job['progress'] = progress
+            atomic_json(file, job)
+
     def process(self, file):
         job = {}
         try:
@@ -140,14 +157,17 @@ class SummaryJobs:
                 return
             source_args = dict(recording_id=job['recording_id'], scope=job['scope'], revision=job['source_revision'])
             if 'candidate' not in job:
+                self.update_progress(file, job, 'reading')
                 source = backend(self.cfg, 'source', **source_args)
                 snapshot = job['snapshot']
                 candidate = local_pipeline.summarize_text(
                     snapshot, self.registry.key(snapshot), source['transcript'], file.parent, atomic_json, sourced=True,
                     deadline=monotonic() + INFERENCE_BUDGET_SECONDS,
+                    progress=lambda phase, *counts: self.update_progress(file, job, phase, *counts),
                 )
                 job['candidate'] = {**candidate, 'model': job['model'], 'template_name': job['template_name']}
                 atomic_json(file, job)
+            self.update_progress(file, job, 'saving')
             publication = {k: job[k] for k in ('request_id', 'fingerprint', 'model', 'template_name')}
             for attempt in range(2):
                 try:
@@ -160,7 +180,7 @@ class SummaryJobs:
         except SettingsError as error:
             job.update(state='failed', error=error.diagnostic_code or 'summary_unavailable')
         except local_pipeline.PipelineError as error:
-            job.update(state='failed', error=error.diagnostic_code or 'summary_unavailable')
+            job.update(state='failed', error=local_pipeline.failure_code(error))
         except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError):
             job.update(state='failed', error='summary_unavailable')
         finally:
@@ -168,6 +188,7 @@ class SummaryJobs:
                 if job.get('request_id') and job['state'] in {'ready', 'failed'}:
                     job.pop('snapshot', None)
                     job.pop('candidate', None)
+                    job.pop('progress', None)
                     cache = file.parent / 'summaries'
                     if cache.is_dir():
                         shutil.rmtree(cache)

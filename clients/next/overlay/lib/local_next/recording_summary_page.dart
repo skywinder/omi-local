@@ -147,6 +147,21 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
     final provider = _provider;
     final template = _template;
     final blocked = _busy || _error == RecordingSummaryFailure.conflict;
+    final progress = _job?.progress;
+    final sectionCount = switch (progress) {
+      (phase: 'sections', completed: final completed?, total: final total?)
+          when total > 0 && completed >= 0 && completed <= total =>
+        (completed: completed, total: total),
+      _ => null,
+    };
+    final phaseLabel = switch (progress?.phase) {
+      'waiting' => 'summaryPhaseWaiting',
+      'reading' => 'summaryPhaseReading',
+      'sections' => 'summaryPhaseSections',
+      'combining' => 'summaryPhaseCombining',
+      'saving' => 'summaryPhaseSaving',
+      _ => null,
+    };
     final error = switch (_error) {
       LibraryFailure.key => l.invalidKey,
       RecordingSummaryFailure.conflict => pairedSettingsLabel(context, 'summaryRegenerateChanged'),
@@ -163,13 +178,31 @@ class _RecordingSummaryPageState extends State<RecordingSummaryPage> {
       body: ListView(
         padding: const EdgeInsets.all(OmiSpacing.md),
         children: [
-          if (_busy) const LinearProgressIndicator(),
+          if (_busy)
+            LinearProgressIndicator(value: sectionCount == null ? null : sectionCount.completed / sectionCount.total),
           if (_job?.state == 'queued' && error == null) Text(pairedSettingsLabel(context, 'summaryRegenerateQueued')),
+          if (_job?.state == 'queued' && error == null && phaseLabel != null)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                sectionCount != null
+                    ? '${pairedSettingsLabel(context, phaseLabel)} · ${sectionCount.completed}/${sectionCount.total}'
+                    : pairedSettingsLabel(context, phaseLabel),
+              ),
+            ),
           if (_job?.state == 'failed' && error == null)
             Text(
               pairedSettingsLabel(context, switch (_job?.error) {
                 'recording_changed' => 'summaryRegenerateChanged',
                 'recording_too_large' => 'summaryRegenerateTooLong',
+                'connection' || 'timeout' => 'summaryFailureConnection',
+                'http_401' || 'http_403' || 'credential_missing' => 'summaryFailureCredential',
+                'http_429' || 'http_503' => 'summaryFailureBusy',
+                'http_404' || 'configuration' => 'summaryFailureModel',
+                'invalid_json' ||
+                'invalid_summary' ||
+                'invalid_provider_response' ||
+                'output_limit' => 'summaryFailureFormat',
                 _ => 'summaryRegenerateFailed',
               }),
             ),

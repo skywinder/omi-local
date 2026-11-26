@@ -66,6 +66,10 @@ work privately and reuses completed chunks or a saved candidate after restart.
 The worker can load verified file-backed transcripts and accepts up to two
 million formatted characters. It rechecks the source at publication. The old
 `regenerate-summary` endpoint retains its synchronous response for older apps.
+Queued replies expose the worker phase and the number of completed source
+chunks when known. This is a chunk count. Combining and publication are
+separate phases. Resuming after a restart keeps the last saved count visible.
+Failures expose bounded diagnostic codes without provider response bodies.
 
 ## Paired task reminders
 

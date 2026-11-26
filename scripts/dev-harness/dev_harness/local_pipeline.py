@@ -243,7 +243,7 @@ def summarize(snapshot, key, raw, folder, write):
     return summarize_text(snapshot, key, numbered_summary_text(raw), folder, write, sourced=True)
 
 
-def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced=False):
+def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced=False, progress=None):
     settings = snapshot['settings']
     endpoint = transport.validate_url(settings['base_url']) + '/chat/completions'
     model = settings['model']
@@ -322,12 +322,23 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced
                 result = complete(
                     system + '\nRewrite concisely. Use at most 100 characters for the title and 1800 for the overview.',
                 )
-        except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, IndexError):
-            raise PipelineError('Summary request failed; transcription retained') from None
+        except PipelineError:
+            raise
+        except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, IndexError) as error:
+            raise PipelineError('Summary request failed; transcription retained', code=failure_code(error)) from None
         write(path, result)
         return result
 
-    summaries = [request(chunk, reduction=False) for chunk in text_chunks(text)]
+    chunks = text_chunks(text)
+    if progress and chunks:
+        progress('sections', 0, len(chunks))
+    summaries = []
+    for completed, chunk in enumerate(chunks, 1):
+        summaries.append(request(chunk, reduction=False))
+        if progress:
+            progress('sections', completed, len(chunks))
+    if progress and len(summaries) > 1:
+        progress('combining')
     while len(summaries) > 1:
         summaries = [request(chunk, reduction=True) for chunk in text_chunks(summary_reduction_text(summaries, sourced))]
     if not summaries:

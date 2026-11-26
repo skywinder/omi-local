@@ -4,10 +4,24 @@ enum RecordingSummaryFailure implements Exception { conflict, tooLarge, noTransc
 
 typedef SummaryProvider = ({String name, RecordingChatProvider endpoint});
 typedef SummaryTemplate = ({String id, String name, String prompt, String digest});
-typedef SummaryJob = ({String requestId, String state, String? error});
+typedef SummaryProgress = ({String phase, int? completed, int? total});
+typedef SummaryJob = ({String requestId, String state, String? error, SummaryProgress? progress});
 
-SummaryJob decodeSummaryJob(Map<String, dynamic> row) =>
-    (requestId: row['request_id'] as String, state: row['state'] as String, error: row['error'] as String?);
+SummaryJob decodeSummaryJob(Map<String, dynamic> row) {
+  final progress = row['progress'];
+  return (
+    requestId: row['request_id'] as String,
+    state: row['state'] as String,
+    error: row['error'] as String?,
+    progress: progress is Map<String, dynamic>
+        ? (
+            phase: progress['phase'] as String,
+            completed: progress['completed'] as int?,
+            total: progress['total'] as int?,
+          )
+        : null,
+  );
+}
 
 class RecordingSummaryOptions {
   const RecordingSummaryOptions({

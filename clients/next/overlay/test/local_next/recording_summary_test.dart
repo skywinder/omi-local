@@ -53,7 +53,7 @@ class _SummaryLibrary extends PairedLibrary {
   Future<SummaryJob> readSummaryJob(String id, String requestId) async {
     expect(requestId, pendingJob?.requestId);
     overview = 'Published in background';
-    return (requestId: requestId, state: 'ready', error: null);
+    return (requestId: requestId, state: 'ready', error: null, progress: null);
   }
 
   @override
@@ -65,10 +65,36 @@ class _SummaryLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('a failed background recap tells the owner where to fix the model key', (tester) async {
+    final library = _SummaryLibrary()
+      ..summaryJobsAvailable = true
+      ..pendingJob = (requestId: 'existing-request', state: 'failed', error: 'http_401', progress: null);
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingPage(id: _id, library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((widget) => widget is PopupMenuButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Regenerate Recap'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Check the provider key on your Local server'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Regenerate Recap')).onPressed, isNotNull);
+  });
+
   testWidgets('opening the background recap resumes an already submitted job', (tester) async {
     final library = _SummaryLibrary()
       ..summaryJobsAvailable = true
-      ..pendingJob = (requestId: 'existing-request', state: 'queued', error: null);
+      ..pendingJob = (
+        requestId: 'existing-request',
+        state: 'queued',
+        error: null,
+        progress: (phase: 'sections', completed: 2, total: 8),
+      );
     addTearDown(library.close);
     await tester.pumpWidget(
       MaterialApp(
@@ -84,6 +110,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('The server is preparing the recap'), findsOneWidget);
+    expect(find.text('Summarizing transcript sections · 2/8'), findsOneWidget);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, 0.25);
     expect(library.requests, isEmpty);
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();

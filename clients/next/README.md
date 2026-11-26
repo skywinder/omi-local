@@ -245,6 +245,10 @@ refresh. On servers that support background summary jobs, the same queue
 handles requests from Next and the web library. You can close and reopen the
 summary screen while the server works. The queue can load verified full
 transcripts when the archive initially displays a preview.
+During processing, Next shows the current server phase and how many transcript
+chunks have finished. The counter keeps its last saved value after a worker
+restart. The final combine and save phases have their own status. Model access,
+availability and response errors include instructions for retrying.
 
 ## Daily recaps
 

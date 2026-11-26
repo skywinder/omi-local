@@ -57,7 +57,7 @@ def test_summary_queue_recovers_long_input_and_candidate_without_repeating_infer
             raise Interrupted()
         return {'publication': payload['publication']}
 
-    def generate(snapshot, key, text, folder: Path, write, *, sourced, deadline):
+    def generate(snapshot, key, text, folder: Path, write, *, sourced, deadline, progress):
         assert key == 'fixture-key' and text == transcript and sourced
         assert deadline > module.monotonic()
         calls.append('inference')
@@ -110,3 +110,35 @@ def test_web_and_next_share_active_summary_and_reject_stale_input(summary, monke
     result = jobs.status(body)
     assert result['state'] == 'failed' and result['error'] == 'recording_changed'
     assert jobs.web(body['recording_id'])['job'] == result
+
+
+def test_resuming_summary_keeps_the_last_progress_visible(summary, monkeypatch):
+    cfg, registry, body = summary
+    monkeypatch.setattr(module, 'backend', lambda cfg, operation, **payload: {'transcript': 'Synthetic transcript.'})
+    first = module.SummaryJobs(cfg, registry)
+    assert first.submit(body)['progress'] == {'phase': 'waiting'}
+
+    def interrupt(*args, progress, **kwargs):
+        progress('sections', 0, 4)
+        progress('sections', 2, 4)
+        raise Interrupted()
+
+    monkeypatch.setattr(module.local_pipeline, 'summarize_text', interrupt)
+    with pytest.raises(Interrupted):
+        first.worker.step()
+    assert first.status(body)['progress'] == {'phase': 'sections', 'completed': 2, 'total': 4}
+
+    resumed = module.SummaryJobs(cfg, registry)
+
+    def complete(*args, progress, **kwargs):
+        progress('sections', 0, 4)
+        assert resumed.status(body)['progress']['completed'] == 2
+        progress('sections', 4, 4)
+        progress('combining')
+        assert resumed.status(body)['progress'] == {'phase': 'combining'}
+        return {'title': 'Recap', 'overview': 'Saved.'}
+
+    monkeypatch.setattr(module.local_pipeline, 'summarize_text', complete)
+    resumed.worker.step()
+    assert resumed.status(body)['state'] == 'ready'
+    assert 'progress' not in resumed.status(body)

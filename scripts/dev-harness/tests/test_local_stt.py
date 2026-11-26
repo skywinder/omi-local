@@ -715,8 +715,9 @@ def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, mo
     factory = httpx.Client
     monkeypatch.setattr(local_provider_http.httpx, 'Client', lambda **kwargs:
                         factory(transport=httpx.MockTransport(respond), **kwargs))
-    with pytest.raises(local_pipeline.PipelineError):
+    with pytest.raises(local_pipeline.PipelineError) as failure:
         local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
+    assert failure.value.diagnostic_code == 'http_503'
     result = local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
     assert result['title'] == 'Synthetic'
     assert result['category'] == 'work' and result['emoji'] == '💼'
@@ -781,8 +782,11 @@ def test_structured_summary_reduces_only_sources_supplied_to_each_model_call(tmp
         {'start': 9, 'text': 'Next step. ' + 'b' * 7000},
     ]}
     snapshot = {'settings': {'base_url': 'https://summary.example/v1', 'model': 'fixture'}}
-    summary = local_pipeline.summarize(snapshot, '', raw, tmp_path, local_stt.atomic_json)
+    progress = []
+    summary = local_pipeline.summarize_text(snapshot, '', local_pipeline.numbered_summary_text(raw), tmp_path,
+                                          local_stt.atomic_json, sourced=True, progress=lambda *args: progress.append(args))
     assert len(calls) == 3
+    assert progress == [('sections', 0, 2), ('sections', 1, 2), ('sections', 2, 2), ('combining',)]
     assert [(s['heading'], s['source_refs']) for s in summary['sections']] == [('Consolidated decision', [2, 1])]
 
 

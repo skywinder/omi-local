@@ -53,12 +53,19 @@ class Regenerated(BaseModel):
     template_name: str
 
 
+class SummaryJobProgress(BaseModel):
+    phase: Literal['waiting', 'reading', 'sections', 'combining', 'saving']
+    completed: int | None = Field(default=None, ge=0)
+    total: int | None = Field(default=None, gt=0)
+
+
 class SummaryJob(BaseModel):
     request_id: str = Field(pattern=_UUID)
     state: Literal['queued', 'ready', 'failed', 'missing']
     model: str | None = None
     template_name: str | None = None
     error: str | None = None
+    progress: SummaryJobProgress | None = None
 
 
 class QueuedSummaryOptions(SummaryOptions):

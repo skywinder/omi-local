@@ -137,11 +137,23 @@ function drawSummaryOptions(id, options, {preserve = false} = {}) {
   if (!$('summary-dialog').open || summaryDialog?.id !== id) return;
   summaryDialog.options = options;
   syncRecap(id, options);
-  const state = options.job?.state;
+  const job = options.job;
+  const state = job?.state;
   if (state === 'failed') summaryDialog.signature = null;
-  $('summary-status').textContent = state === 'queued' ? 'Сервер готовит итоги. Можно закрыть окно.'
+  const phases = {waiting: 'Итоги в очереди.', reading: 'Проверяется сохранённая расшифровка.',
+    sections: 'Обрабатываются части расшифровки.', combining: 'Части объединяются в общий итог.',
+    saving: 'Итог сохраняется в архиве.'};
+  const failures = {recording_changed: 'Запись изменилась. Обновите данные и повторите.',
+    connection: 'Модель не ответила. Проверьте провайдера и повторите.',
+    timeout: 'Модель не успела ответить. Проверьте провайдера и повторите.',
+    http_429: 'Модель занята. Повторите чуть позже.',
+    credential_missing: 'Ключ модели недоступен. Проверьте настройки провайдера.'};
+  const progress = job?.progress;
+  const count = progress?.phase === 'sections' && Number.isInteger(progress.completed) && Number.isInteger(progress.total)
+    ? ` ${progress.completed}/${progress.total}.` : '';
+  $('summary-status').textContent = state === 'queued' ? `${phases[progress?.phase] || 'Сервер готовит итоги.'}${count} Можно закрыть окно.`
     : state === 'ready' ? 'Итоги готовы.'
-    : state === 'failed' ? 'Не удалось обновить итоги. Проверьте запись и настройки модели.' : '';
+    : state === 'failed' ? failures[job.error] || 'Не удалось обновить итоги. Проверьте запись и настройки модели.' : '';
   if (!preserve) {
     $('summary-provider').replaceChildren(...options.providers.map(row => new Option(`${row.name} · ${row.model} · ${row.host}`, row.binding)));
     $('summary-template').replaceChildren(...options.templates.map(row => new Option(row.name, row.id)));
