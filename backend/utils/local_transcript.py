@@ -27,7 +27,7 @@ def _time(value: object, duration: float) -> float:
 
 
 def normalize_segments(raw: dict, duration: float, conversation_id: str,
-                       provider: str = 'whisperx-local') -> list[TranscriptSegment]:
+                       provider: str = 'whisperx-local', *, summary_sources=None) -> list[TranscriptSegment]:
     """Preserve sentence boundaries/case; split only actual word-speaker changes.
 
     Untimed words remain in the original sentence. A mixed-speaker sentence
@@ -38,6 +38,7 @@ def normalize_segments(raw: dict, duration: float, conversation_id: str,
         raise ValueError('No transcript segments; no conversation was created')
     result = []
     for segment in segments:
+        first_part = len(result)
         if not isinstance(segment, dict) or not isinstance(segment.get('text'), str) or not segment['text'].strip():
             raise ValueError('Invalid transcript text')
         parts = [segment]
@@ -74,6 +75,8 @@ def normalize_segments(raw: dict, duration: float, conversation_id: str,
                 is_user=False, speaker_identity_status='unknown',
                 speaker_id_scope=conversation_id, stt_provider=provider,
             ))
+        if summary_sources is not None:
+            summary_sources.append(tuple(part.id for part in result[first_part:]))
     return result
 
 
@@ -120,6 +123,38 @@ def summary_labels(summary: dict, *, user_category: str | None = None) -> dict:
     return labels
 
 
+def summary_note_fields(summary, sources):
+    """Resolve provider-local source numbers to canonical transcript segment IDs."""
+    fields = {'overview': summary['overview'].strip(), 'sections': []}
+    rows = summary.get('sections')
+    if not isinstance(rows, list):
+        return fields
+    sections = []
+    # Section prose must not cause remote images or links to load in a paired client.
+    literal_markup = str.maketrans({'\\': '\\\\', '[': '\\[', '<': '\\<'})
+    for row in rows[:5]:
+        if not isinstance(row, dict):
+            continue
+        heading, body, refs = (row.get(key) for key in ('heading', 'body_markdown', 'source_refs'))
+        if not isinstance(heading, str) or not isinstance(body, str) or not isinstance(refs, list):
+            continue
+        heading, body = ' '.join(heading.split()).translate(literal_markup), body.strip().translate(literal_markup)
+        if not 0 < len(heading) <= 96 or not 0 < len(body) <= 625:
+            continue
+        ids = list(dict.fromkeys(
+            identifier for ref in refs[:8] if type(ref) is int and 0 < ref <= len(sources)
+            for identifier in sources[ref - 1]
+        ))[:8]
+        if ids:
+            sections.append({'heading': heading, 'body_markdown': body, 'source_segment_ids': ids})
+    fields['sections'] = sections
+    if sections:
+        # Match Omi's first-party Markdown projection so both older readers and
+        # the section-and-source view render the same current recap.
+        fields['overview'] = '\n\n'.join(f"## {row['heading']}\n\n{row['body_markdown']}" for row in sections)
+    return fields
+
+
 def build_conversation(raw: dict, manifest: dict) -> Conversation:
     digest = manifest['audio_sha256']
     if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
@@ -138,7 +173,8 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 'whisperkit': 'whisperkit-local', 'openai-compatible': 'openai-compatible-local'}[manifest['profile']['engine']]
     if manifest['profile'].get('pipeline') and manifest['profile']['engine'] == 'openai-compatible':
         provider = 'openai-compatible'
-    segments = normalize_segments(raw, duration, conversation_id, provider)
+    summary_sources = [] if isinstance(raw.get('structured'), dict) and 'sections' in raw['structured'] else None
+    segments = normalize_segments(raw, duration, conversation_id, provider, summary_sources=summary_sources)
     structured = {'title': 'Локальная запись', 'overview': ''}
     if 'structured' in raw:
         summary = raw['structured']
@@ -146,7 +182,7 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
                 or not isinstance(summary.get('overview'), str) or not summary['title'].strip()
                 or not summary['overview'].strip() or len(summary['title']) > 300 or len(summary['overview']) > 4000):
             raise ValueError('Invalid local recording summary')
-        structured = {'title': summary['title'].strip(), 'overview': summary['overview'].strip()}
+        structured = {'title': summary['title'].strip(), **summary_note_fields(summary, summary_sources or [])}
         structured.update(summary_labels(summary))
     return Conversation(
         id=conversation_id, created_at=started, started_at=started,

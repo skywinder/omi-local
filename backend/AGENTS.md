@@ -102,6 +102,9 @@ The backend only forwards the catalog to the configured loopback library.
 Paired summary regeneration sends the canonical transcript to that same
 loopback service. Publication compares transcript and summary revisions in
 one transaction, preserving user titles and unrelated recording data.
+Resolve numbered summary sources to canonical segment IDs within that
+publication. Keep Omi's Markdown projection aligned with the stored sections.
+Generated next steps stay in notes until the owner creates a task.
 Paired daily recaps use the canonical daily summary collection. Start/end
 are the phone's local calendar midnights converted to UTC. The archive
 snapshot is checked again before publication, including additions to that day.

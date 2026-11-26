@@ -51,9 +51,16 @@ def test_word_speaker_change_splits_sentence_without_losing_text():
             {'word': 'API', 'start': 1, 'end': 1.8, 'speaker': 'SPEAKER_01'},
             {'word': 'работает.', 'start': 2, 'end': 3, 'speaker': 'SPEAKER_01'},
         ]}]}
+    data['structured'] = {'title': 'API', 'overview': 'Fallback', 'sections': [
+        {'heading': 'Decision', 'body_markdown': 'API works.', 'source_refs': [1, 91]},
+        {'heading': 'Unknown', 'body_markdown': 'Unsupported.', 'source_refs': [91]},
+    ]}
     conversation = build_conversation(data, manifest())
     assert [s.text for s in conversation.transcript_segments] == ['Да.', 'API работает.']
     assert [s.speaker_id for s in conversation.transcript_segments] == [0, 1]
+    section, = conversation.structured.sections
+    assert section.source_segment_ids == [line.id for line in conversation.transcript_segments]
+    assert conversation.structured.overview == '## Decision\n\nAPI works.'
     del data['segments'][0]['words'][1]['start']
     with pytest.raises(ValueError):
         build_conversation(data, manifest())

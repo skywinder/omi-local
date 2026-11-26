@@ -45,6 +45,19 @@ skips both stored transcript fields. Next opens the full detail by ID.
 The existing Local app still receives the full list. Older paired servers
 accept the extra query parameter and serve their existing response.
 
+## Structured recording notes
+
+The summary provider receives numbered transcript lines. Each generated
+section can cite those numbers. During import or regeneration the paired
+backend resolves them to the real transcript segments. Mixed-speaker lines
+can map to several canonical segments. The stored `structured.sections` and
+its Markdown projection use Omi's existing Conversation fields.
+
+Regeneration checks the transcript, segment identities, prior notes and
+request ID before publication. Provider responses with only an overview
+remain readable. Source links use the local archive. Decisions and next
+steps appear in the summary, ready for review before any task is created.
+
 ## Paired task reminders
 
 The paired profile advertises `local_task_reminders_version: 1`. The existing task

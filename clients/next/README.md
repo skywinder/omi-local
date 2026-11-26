@@ -366,6 +366,14 @@ to the matching speaker group within this recording. Names use the paired
 server's existing people collection. Assignments preserve segment text and
 timestamps. Automatic recognition and voice samples are tracked separately.
 
+## Notes with transcript sources
+
+New summaries and regenerated summaries can include section headings with
+supporting transcript excerpts. Tap a section's sources control and choose
+an excerpt to jump to that moment. Next displays the same notes whether
+the server composed them with its default template or a selected template.
+Existing overviews stay available in the archive until regenerated.
+
 ## Tasks
 
 Open **Tasks** in the archive to create, edit, complete or reopen a task.

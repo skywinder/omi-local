@@ -18,6 +18,7 @@ class _SummaryLibrary extends PairedLibrary {
 
   final requests = <SummaryRegeneration>[];
   String overview = 'Old recap';
+  List<Map<String, dynamic>> sections = const [];
 
   @override
   Future<ServerConversation> detail(String id) async => ServerConversation.fromJson({
@@ -26,7 +27,7 @@ class _SummaryLibrary extends PairedLibrary {
     'started_at': '2026-01-02T11:00:00Z',
     'finished_at': '2026-01-02T11:01:00Z',
     'status': 'completed',
-    'structured': {'title': 'My title', 'overview': overview},
+    'structured': {'title': 'My title', 'overview': overview, 'sections': sections},
     'transcript_segments': [
       {'id': 'line', 'text': 'Edited transcript', 'start': 5.0, 'end': 7.0, 'is_user': true},
     ],
@@ -55,6 +56,37 @@ class _SummaryLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('a generated note section opens its source in the transcript', (tester) async {
+    final library = _SummaryLibrary()
+      ..overview = '## Decision\n\nWe will keep a local archive.'
+      ..sections = [
+        {
+          'heading': 'Decision',
+          'body_markdown': 'We will keep a local archive.',
+          'source_segment_ids': ['line'],
+        },
+      ];
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingPage(id: _id, library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Decision'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('section-sources')));
+    await tester.pumpAndSettle();
+    final source = find.byKey(const ValueKey('section-source-line'));
+    expect(source, findsOneWidget);
+    expect(find.descendant(of: source, matching: find.text('0:05')), findsOneWidget);
+    await tester.tap(source);
+    await tester.pumpAndSettle();
+    expect(source, findsNothing);
+    expect(find.textContaining('Edited transcript', findRichText: true), findsOneWidget);
+  });
+
   testWidgets('regeneration requires consent and retries the original request before refreshing the recap', (
     tester,
   ) async {

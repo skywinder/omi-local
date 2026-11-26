@@ -3,12 +3,14 @@
 import hashlib
 import json
 import math
+from collections import Counter
+from typing import NamedTuple
 
 from google.cloud import firestore
 
 from database import conversations
 from database._client import db, run_transactional
-from utils.local_transcript import summary_labels
+from utils.local_transcript import summary_labels, summary_note_fields
 
 
 class SummaryUnavailable(ValueError):
@@ -21,6 +23,12 @@ class SummaryChanged(ValueError):
 
 class SummaryTooLarge(ValueError):
     pass
+
+
+class SummarySource(NamedTuple):
+    transcript: str
+    revision: str
+    segment_ids: list[tuple[str, ...]]
 
 
 def _ref(uid, conversation_id):
@@ -42,8 +50,8 @@ def _transcript(raw, uid):
     row = conversations._prepare_conversation_for_read(raw, uid)
     segments = row.get('transcript_segments')
     if not isinstance(segments, list):
-        return ''
-    lines, length = [], 0
+        return '', []
+    lines, ids, length = [], [], 0
     for segment in segments:
         if not isinstance(segment, dict):
             continue
@@ -55,21 +63,25 @@ def _transcript(raw, uid):
         speaker = segment.get('speaker')
         if not isinstance(speaker, str) or len(speaker) > 60:
             speaker = ''
-        prefix = f'{speaker}: ' if speaker else ''
-        line = time + prefix + text
+        prefix = f"{' '.join(speaker.splitlines())}: " if speaker else ''
+        content = (prefix + ' '.join(text.splitlines())).replace('[src:', '[source:')
+        line = f'[src:{len(lines) + 1}] ' + time + content
         length += len(line) + 1
         if length > 120_000:
             raise SummaryTooLarge()
         lines.append(line)
-    return '\n'.join(lines)
+        identifier = segment.get('id')
+        ids.append(identifier if isinstance(identifier, str) and identifier else None)
+    counts = Counter(ids)
+    return '\n'.join(lines), [(identifier,) if identifier and counts[identifier] == 1 else () for identifier in ids]
 
 
-def _revision(raw, transcript):
+def _revision(raw, transcript, segment_ids):
     structured = raw.get('structured')
     structured = structured if isinstance(structured, dict) else {}
     previous = (raw.get('local_summary_publication') or {}).get('request_id')
     return hashlib.sha256(json.dumps(
-        [transcript, structured.get('overview'), structured.get('sections'), previous],
+        [transcript, segment_ids, structured.get('overview'), structured.get('sections'), previous],
         ensure_ascii=False, sort_keys=True,
     ).encode()).hexdigest()
 
@@ -80,9 +92,9 @@ def recording(uid, conversation_id):
     return raw
 
 
-def source(raw, uid):
-    transcript = _transcript(raw, uid)
-    return transcript, _revision(raw, transcript)
+def source(raw, uid) -> SummarySource:
+    transcript, segment_ids = _transcript(raw, uid)
+    return SummarySource(transcript, _revision(raw, transcript, segment_ids), segment_ids)
 
 
 def replay(raw, request_id, fingerprint):
@@ -102,19 +114,19 @@ def _publish(transaction, uid, conversation_id, revision, candidate, publication
     previous = replay(raw, publication['request_id'], publication['fingerprint'])
     if previous is not None:
         return previous
-    _, current = source(raw, uid)
-    if current != revision:
+    snapshot = source(raw, uid)
+    if snapshot.revision != revision:
         raise SummaryChanged()
     structured = raw.get('structured')
     labels = summary_labels(candidate, user_category=raw.get('user_category'))
+    notes = summary_note_fields(candidate, snapshot.segment_ids)
     if isinstance(structured, dict):
-        patch = {f'structured.{key}': value for key, value in labels.items()}
-        patch['structured.overview'] = candidate['overview']
+        patch = {f'structured.{key}': value for key, value in {**labels, **notes}.items()}
         if 'user_title' not in raw or not isinstance(raw['user_title'], str):
             patch['structured.title'] = candidate['title']
     else:
         patch = {'structured': {
-            **labels, 'title': raw.get('user_title') or candidate['title'], 'overview': candidate['overview'],
+            **labels, **notes, 'title': raw.get('user_title') or candidate['title'],
         }}
         if raw.get('user_category'):
             patch['structured']['category'] = raw['user_category']

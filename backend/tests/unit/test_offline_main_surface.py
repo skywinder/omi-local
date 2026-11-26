@@ -455,12 +455,16 @@ summary_path = '/v1/local/conversations/' + documents[-1].id + '/regenerate-summ
 assert client.get(summary_path).status_code == 401
 assert client.post(summary_path, json={}).status_code == 401
 raw = {'status': 'completed', 'user_title': 'Mine',
-       'structured': {'title': 'Mine', 'overview': 'Previous'},
-       'transcript_segments': [{'text': 'Corrected transcript.', 'start': 1}]}
+       'structured': {'title': 'Mine', 'overview': 'Previous', 'sections': [
+           {'heading': 'Previous', 'body_markdown': 'Stale source.', 'source_segment_ids': ['line']},
+       ]},
+       'transcript_segments': [{'id': 'line', 'text': 'Corrected transcript.', 'start': 1}]}
 reference, transaction = MagicMock(), MagicMock()
 summary_db._ref = lambda *_: reference
 reference.get.return_value.to_dict.return_value = raw
-_, revision = summary_db.source(raw, 'fixture-owner')
+snapshot = summary_db.source(raw, 'fixture-owner')
+assert snapshot.transcript == '[src:1] [1.0] Corrected transcript.'
+revision = snapshot.revision
 publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
 candidate = {'title': 'Generated title', 'overview': 'New recap', 'category': 'education', 'emoji': '📚'}
 reply = summary_db._publish.to_wrap(
@@ -469,13 +473,21 @@ reply = summary_db._publish.to_wrap(
 assert reply == publication
 transaction.update.assert_called_once_with(reference, {
     'structured.overview': 'New recap', 'structured.category': 'education', 'structured.emoji': '📚',
+    'structured.sections': [],
     'local_summary_publication': publication,
 })
 transaction.reset_mock()
 raw['user_category'] = 'family'
-summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, candidate, publication)
+rich = {**candidate, 'sections': [
+    {'heading': 'Decision', 'body_markdown': 'We chose the API. ![img](https://untrusted.example/)', 'source_refs': [1, 999]},
+]}
+summary_db._publish.to_wrap(transaction, 'fixture-owner', documents[-1].id, revision, rich, publication)
 assert 'structured.category' not in transaction.update.call_args.args[1]
 assert transaction.update.call_args.args[1]['structured.emoji'] == '📚'
+section, = transaction.update.call_args.args[1]['structured.sections']
+assert section['source_segment_ids'] == ['line']
+assert '!' + chr(92) + '[img]' in section['body_markdown']
+assert transaction.update.call_args.args[1]['structured.overview'] == '## Decision' + chr(10) * 2 + section['body_markdown']
 transaction.reset_mock()
 raw['transcript_segments'][0]['text'] = 'New edit.'
 try:

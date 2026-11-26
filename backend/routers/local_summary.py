@@ -57,6 +57,7 @@ class Candidate(BaseModel):
     emoji: str | None = None
     title: str = Field(min_length=1, max_length=300)
     overview: str = Field(min_length=1, max_length=4000)
+    sections: list[dict] | None = Field(default=None, max_length=5)
     model: str = Field(min_length=1, max_length=300)
     template_name: str = Field(min_length=1, max_length=100)
 
@@ -66,16 +67,16 @@ def _request(body=None):
 
 
 def _source(raw, uid):
-    transcript, revision = summaries.source(raw, uid)
-    if not transcript:
+    source = summaries.source(raw, uid)
+    if not source.transcript:
         raise HTTPException(422, 'local_summary_transcript_unavailable')
-    return transcript, revision
+    return source
 
 
 @router.get('/v1/local/conversations/{conversation_id}/regenerate-summary', response_model=SummaryOptions)
 def options(conversation_id: RecordingId, response: Response, uid: str = Depends(require_paired_owner)):
     try:
-        _, revision = _source(summaries.recording(uid, conversation_id), uid)
+        revision = _source(summaries.recording(uid, conversation_id), uid).revision
     except summaries.SummaryUnavailable:
         raise HTTPException(404, 'local_summary_recording_unavailable') from None
     except summaries.SummaryTooLarge:
@@ -98,17 +99,19 @@ def regenerate(conversation_id: RecordingId, body: Regenerate, response: Respons
         previous = summaries.replay(raw, body.request_id, fingerprint)
         if previous is not None:
             return previous
-        transcript, revision = _source(raw, uid)
-        if revision != body.source_revision:
+        source = _source(raw, uid)
+        if source.revision != body.source_revision:
             raise summaries.SummaryChanged()
-        generated = Candidate.model_validate_json(_request({**supplied, 'transcript': transcript}))
+        generated = Candidate.model_validate_json(_request({
+            **supplied, 'transcript': source.transcript, 'numbered_sources': True,
+        }))
         if not generated.title.strip() or not generated.overview.strip():
             raise ValueError()
         publication = {
             'request_id': body.request_id, 'fingerprint': fingerprint, 'model': generated.model,
             'template_name': generated.template_name,
         }
-        return summaries.publish(uid, conversation_id, revision, generated.model_dump(), publication)
+        return summaries.publish(uid, conversation_id, source.revision, generated.model_dump(), publication)
     except summaries.SummaryUnavailable:
         raise HTTPException(404, 'local_summary_recording_unavailable') from None
     except summaries.SummaryTooLarge:

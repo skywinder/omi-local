@@ -55,7 +55,7 @@ def regenerate(registry, body):
         with TemporaryDirectory(prefix='summary-', dir=registry.root) as temp:
             summary = local_pipeline.summarize_text(
                 {**profile, 'template': template}, registry.key(profile), transcript,
-                Path(temp), atomic_json, deadline=monotonic() + 205,
+                Path(temp), atomic_json, deadline=monotonic() + 205, sourced=body.get('numbered_sources') is True,
             )
     except (OSError, ValueError):
         raise SettingsError('Summary inference failed.', status=503) from None
