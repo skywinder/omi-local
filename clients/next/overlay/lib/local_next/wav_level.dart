@@ -6,6 +6,30 @@ import 'dart:typed_data';
 const gainSampleBytes = 10 * 16000 * 2;
 const gainHeaderLimit = 65536;
 
+class PcmLevelMeter {
+  int _count = 0;
+  double _energy = 0;
+  int _maximum = 0;
+  int _atLimit = 0;
+
+  void add(int sample) {
+    _count++;
+    _maximum = math.max(_maximum, sample.abs());
+    _energy += sample * sample;
+    if (sample == -32768 || sample == 32767) _atLimit++;
+  }
+
+  WavLevel get level {
+    double db(double amplitude) => 20 * math.log(amplitude / 32768) / math.ln10;
+    return WavLevel(
+      _count / 16000,
+      db(_count == 0 ? 0 : math.sqrt(_energy / _count)),
+      db(_maximum.toDouble()),
+      _atLimit,
+    );
+  }
+}
+
 class WavLevel {
   const WavLevel(this.seconds, this.rms, this.peak, this.atLimit);
   final double seconds;
@@ -32,18 +56,11 @@ class WavLevel {
       if (chunk == 'data') {
         final take = math.min(length, gainSampleBytes);
         if (!pcm || take < 2 || take.isOdd || at + take > bytes.length) invalid();
-        var energy = 0.0;
-        var maximum = 0;
-        var atLimit = 0;
+        final meter = PcmLevelMeter();
         for (var pos = at; pos < at + take; pos += 2) {
-          final value = data.getInt16(pos, Endian.little);
-          maximum = math.max(maximum, value.abs());
-          energy += value * value;
-          if (value == -32768 || value == 32767) atLimit++;
+          meter.add(data.getInt16(pos, Endian.little));
         }
-        final count = take ~/ 2;
-        double db(double amplitude) => 20 * math.log(amplitude / 32768) / math.ln10;
-        return WavLevel(count / 16000, db(math.sqrt(energy / count)), db(maximum.toDouble()), atLimit);
+        return meter.level;
       }
       at += length + (length.isOdd ? 1 : 0);
     }

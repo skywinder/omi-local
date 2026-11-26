@@ -10,6 +10,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 
 import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
 
+import 'cv1_gain_calibration_card.dart';
 import 'cv1_transport.dart';
 import 'gain_samples.dart';
 import 'paired_library.dart';
@@ -256,9 +257,15 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                       trailing: const Icon(Icons.tune),
                       onTap: widget.captureBusy() || _writing ? null : () => _edit('gain', l.micGain, gain, 8),
                     ),
-                    if (widget.captureBusy()) Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
+                    if (widget.captureBusy() && !link.calibrating)
+                      Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
+                    Cv1GainCalibrationCard(link: link, gain: gain, busy: () => _writing || widget.captureBusy()),
                     if (widget.library case final library? when library.audioPlayback)
-                      GainSamples(key: ObjectKey(library), library: library),
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Text(pairedSettingsLabel(context, 'gainArchive')),
+                        children: [GainSamples(key: ObjectKey(library), library: library)],
+                      ),
                   ],
                 ),
               _History(

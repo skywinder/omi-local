@@ -269,8 +269,8 @@ class NextCaptureInputs extends ChangeNotifier {
   Future<void>? _transition;
   bool get switching => _transition != null;
   bool get isRecording => phone.active || phone.busy || cv1.active;
-  bool get hasCaptureInProgress => switching || isRecording || cv1.sealing;
-  bool get permitsNewRecording => !_closed && (ownerChange?.permitsCapture ?? true);
+  bool get hasCaptureInProgress => switching || isRecording || cv1.sealing || connection.calibrating;
+  bool get permitsNewRecording => !_closed && !connection.calibrating && (ownerChange?.permitsCapture ?? true);
   NextLivePreview? get preview => phone.preview;
 
   Future<void> _change(Future<void> Function() operation) {

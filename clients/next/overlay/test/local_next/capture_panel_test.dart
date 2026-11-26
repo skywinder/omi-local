@@ -8,6 +8,8 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/capture.dart';
 import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_capture.dart';
+import 'package:omi/local_next/cv1_gain_calibration.dart';
+import 'package:omi/local_next/cv1_gain_calibration_card.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/live_preview.dart';
@@ -98,9 +100,12 @@ class _Journal extends LocalAudioJournal {
   _Journal({super.clock})
     : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
   final seal = Completer<void>();
+  int recordings = 0;
   @override
-  LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) =>
-      _Recording(seal.future);
+  LocalAudioRecording beginForServer({required String source, required String codec, required String serverId}) {
+    recordings++;
+    return _Recording(seal.future);
+  }
 }
 
 class _Recording extends Fake implements LocalAudioRecording {
@@ -127,7 +132,102 @@ class _Microphone implements NextPhoneMicrophone {
   Future<void> stop() async => recording = false;
 }
 
+class _GainDecoder implements Cv1GainDecoder {
+  int sample = 120;
+  bool closed = false;
+
+  @override
+  Int16List decode(Uint8List packet) => Int16List.fromList(List.filled(320, sample));
+
+  @override
+  void close() => closed = true;
+}
+
 void main() {
+  testWidgets('CV1 calibration measures speech locally and releases audio on failure and finish', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', _Microphone()), wire);
+    final link = inputs.connection;
+    final decoders = <_GainDecoder>[];
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Cv1GainCalibrationCard(
+              link: link,
+              gain: 6,
+              busy: () => inputs.hasCaptureInProgress,
+              openDecoder: () async {
+                final decoder = _GainDecoder();
+                decoders.add(decoder);
+                return decoder;
+              },
+            ),
+          ),
+        ),
+      );
+      wire.ready();
+      final start = find.text('Test CV1 microphone');
+      await tester.tap(start);
+      await tester.pump();
+      expect(link.calibrating, isTrue);
+      expect(wire.subscriptions, [true]);
+      await tester.pump(const Duration(seconds: 8));
+      expect(find.textContaining('No audio reached'), findsOneWidget);
+      expect(wire.subscriptions, [true, false]);
+      expect(decoders.first.closed, isTrue);
+
+      await tester.tap(start);
+      await tester.pump();
+      wire.emit(const Cv1RawButton(1, 1));
+      await inputs.startCv1();
+      await inputs.togglePhone();
+      expect(inputs.isRecording, isFalse);
+      void packet(int counter, int subscription) =>
+          wire.emit(Cv1RawAudio(1, subscription, Uint8List.fromList([counter & 255, counter >> 8, 0, 0xf8])));
+      packet(0, 1);
+      packet(1, 1);
+      await tester.pump();
+      expect(find.textContaining('Waiting for audio'), findsOneWidget);
+      decoders.last.sample = 32767;
+      packet(0, 2);
+      packet(1, 2);
+      await tester.pump(const Duration(seconds: 1));
+      decoders.last.sample = 120;
+      for (var counter = 2; counter <= 101; counter++) {
+        packet(counter, 2);
+      }
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text('Speak or play the phrase now'), findsOneWidget);
+      decoders.last.sample = 8000;
+      for (var counter = 102; counter <= 351; counter++) {
+        packet(counter, 2);
+      }
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.textContaining('The phrase rose above'), findsOneWidget);
+      expect(find.textContaining('−∞'), findsNothing);
+      expect(link.calibrating, isFalse);
+      expect(journal.recordings, 0);
+      expect(decoders.every((decoder) => decoder.closed), isTrue);
+
+      await tester.tap(start);
+      await tester.pump();
+      wire.reconnect();
+      await tester.pump();
+      expect(find.textContaining('CV1 disconnected during'), findsOneWidget);
+      expect(link.calibrating, isFalse);
+      expect(decoders.last.closed, isTrue);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
+    }
+  });
+
   testWidgets('header follows the live CV1 battery and clears it between connections', (tester) async {
     final journal = _Journal();
     final wire = _Wire();

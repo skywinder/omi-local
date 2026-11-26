@@ -278,8 +278,25 @@ class Cv1Connection extends ChangeNotifier {
   int? _nativeSubscription;
   int _subscriptionSerial = 0;
   bool _wantsAudio = false;
+  ValueChanged<Uint8List>? _calibration;
+  bool get calibrating => _calibration != null;
 
   List<Cv1DeviceFound> get devices => List.unmodifiable(_devices.values);
+
+  bool beginCalibration(ValueChanged<Uint8List> accept) {
+    if (_closing || phase != Cv1LinkPhase.ready || _capture.active || _capture.sealing || calibrating) return false;
+    _calibration = accept;
+    _demandChanged();
+    notifyListeners();
+    return true;
+  }
+
+  void endCalibration(ValueChanged<Uint8List> accept) {
+    if (_closing || !identical(accept, _calibration)) return;
+    _calibration = null;
+    _demandChanged();
+    notifyListeners();
+  }
 
   Future<void> scan() => _command(() {
     _cancelPairRetry();
@@ -311,7 +328,7 @@ class Cv1Connection extends ChangeNotifier {
 
   Future<bool> writeSetting(String field, int value) async {
     final transport = _transport;
-    if (_closing || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return false;
+    if (_closing || calibrating || phase != Cv1LinkPhase.ready || transport is! Cv1DiagnosticsTransport) return false;
     final generation = _generation;
     try {
       await (transport as Cv1DiagnosticsTransport).writeSetting(generation, field, value);
@@ -406,6 +423,7 @@ class Cv1Connection extends ChangeNotifier {
           _cancelPairRetry();
         }
         final wasReady = phase == Cv1LinkPhase.ready && event.generation == _generation;
+        if (!wasReady || event.phase != Cv1LinkPhase.ready || codec != event.codec) _calibration = null;
         if (phase != event.phase || event.reason != null || (phase == Cv1LinkPhase.ready && !wasReady)) {
           _recordEvent(event.phase, reason: event.reason, code: event.code);
         }
@@ -463,10 +481,15 @@ class Cv1Connection extends ChangeNotifier {
         if (phase == Cv1LinkPhase.ready &&
             event.generation == _generation &&
             event.subscription == _desiredSubscription) {
-          _capture.handle(Cv1Audio(event.generation, event.bytes));
+          final calibration = _calibration;
+          if (calibration != null) {
+            calibration(event.bytes);
+          } else {
+            _capture.handle(Cv1Audio(event.generation, event.bytes));
+          }
         }
       case Cv1RawButton():
-        if (phase == Cv1LinkPhase.ready && event.generation == _generation) {
+        if (phase == Cv1LinkPhase.ready && !calibrating && event.generation == _generation) {
           _capture.handle(Cv1Button(event.generation, event.code));
         }
     }
@@ -476,10 +499,13 @@ class Cv1Connection extends ChangeNotifier {
 
   void _demandChanged() {
     if (_closing) return;
-    final wants = phase == Cv1LinkPhase.ready && _capture.wantsAudio;
+    final wants = phase == Cv1LinkPhase.ready && (_capture.wantsAudio || calibrating);
     if (wants != _wantsAudio) {
       _wantsAudio = wants;
-      if (wants) _subscriptionSerial++;
+      if (wants) {
+        _subscriptionSerial++;
+        audioFailed = false;
+      }
     }
     if (!_updatingAudio && phase == Cv1LinkPhase.ready && _nativeSubscription != _desiredSubscription) {
       unawaited(_updateAudio());
@@ -518,6 +544,7 @@ class Cv1Connection extends ChangeNotifier {
 
   Future<void> _shutdown() async {
     _closing = true;
+    _calibration = null;
     _cancelPairRetry();
     _capture.removeListener(_demandChanged);
     try {

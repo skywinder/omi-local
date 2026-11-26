@@ -62,6 +62,9 @@ def attest(app, simulator, phone=None):
     executable = app / info['CFBundleExecutable']
     if executable.parent != app or executable.is_symlink():
         raise ValueError('Invalid app executable')
+    opus = app / 'Frameworks/OpusKit.framework/OpusKit'
+    if not opus.is_file() or b'OpusKit.framework/OpusKit' not in output(['otool', '-L', executable]):
+        raise ValueError('iOS app is missing the linked CV1 calibration decoder')
     output(['codesign', '--verify', '--deep', '--strict', app])
     raw = output(['codesign', '-d', '--entitlements', ':-', app])
     rights = plistlib.loads(raw) if raw.strip() else {}

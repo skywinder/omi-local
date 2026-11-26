@@ -7,12 +7,13 @@ import re
 import shutil
 import subprocess
 import sys
+from zipfile import ZipFile
 
 from cv1_protocol import cv1_feature_masks, cv1_uuids
 from prepare import HERE, PIN
 
 PLUGINS = {
-    'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio',
+    'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio', 'opus_flutter_android',
     'path_provider_android', 'permission_handler_android', 'quick_actions_android', 'share_plus', 'shared_preferences_android',
 }
 
@@ -101,6 +102,9 @@ def main():
     apk = app / 'build/app/outputs/apk/debug/app-debug.apk'
     if not apk.is_file():
         raise ValueError('Android APK was not generated')
+    with ZipFile(apk) as packaged:
+        if 'lib/arm64-v8a/libopus.so' not in packaged.namelist():
+            raise ValueError('Android APK is missing the CV1 calibration decoder')
     print(apk)
 
 
