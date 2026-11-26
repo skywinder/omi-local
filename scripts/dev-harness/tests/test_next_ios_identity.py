@@ -202,11 +202,19 @@ def test_scheme_builds_the_runner_it_launches(tmp_path):
 @pytest.mark.skipif(sys.platform != 'darwin', reason='macOS signing tools')
 def test_signed_simulator_artifact_and_sealed_content(tmp_path):
     app = package(tmp_path, iphone.BUNDLE)
-    shutil.copyfile('/usr/bin/true', app / 'Runner')
-    (app / 'Runner').chmod(0o755)
+    framework = app / 'Frameworks' / 'OpusKit.framework'
+    framework.mkdir(parents=True)
+    decoder = tmp_path / 'decoder.c'
+    decoder.write_text('int decoder_fixture(void) { return 0; }\n')
+    main = tmp_path / 'main.c'
+    main.write_text('int decoder_fixture(void); int main(void) { return decoder_fixture(); }\n')
+    subprocess.run(['xcrun', 'clang', '-dynamiclib', '-install_name', '@rpath/OpusKit.framework/OpusKit',
+                    decoder, '-o', framework / 'OpusKit'], check=True, capture_output=True)
+    subprocess.run(['xcrun', 'clang', main, framework / 'OpusKit', '-o', app / 'Runner'],
+                   check=True, capture_output=True)
     asset = app / 'Note.txt'
     asset.write_text('fixture')
-    subprocess.run(['codesign', '--force', '--sign', '-', app], check=True, capture_output=True)
+    subprocess.run(['codesign', '--force', '--deep', '--sign', '-', app], check=True, capture_output=True)
     proof = iphone.attest(app, simulator=True)
     assert proof['bundle'] == 'org.omilocal.next'
     assert proof['signature'] == 'passed'
