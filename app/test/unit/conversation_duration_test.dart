@@ -21,6 +21,7 @@ ServerConversation _conversation({
   List<TranscriptSegment> segments = const [],
   DateTime? startedAt,
   DateTime? finishedAt,
+  Map<String, dynamic>? localTranscript,
 }) {
   return ServerConversation(
     id: 'test-id',
@@ -29,11 +30,42 @@ ServerConversation _conversation({
     transcriptSegments: segments,
     startedAt: startedAt,
     finishedAt: finishedAt,
+    externalIntegration: localTranscript == null
+        ? null
+        : ConversationExternalData(text: '', localTranscript: localTranscript),
   );
 }
 
 void main() {
   group('ServerConversation.getDurationInSeconds()', () {
+    test('local WAV duration survives the list preview and full transcript load', () {
+      final start = DateTime.utc(2026, 11, 20, 16, 9);
+      for (final preview in [true, false]) {
+        final conversation = _conversation(
+          startedAt: start,
+          finishedAt: start.add(const Duration(minutes: 76, seconds: 45, milliseconds: 700)),
+          segments: [_segment(start: 0, end: 14), if (!preview) _segment(start: 4580, end: 4590)],
+          localTranscript: {'segment_storage': 'result-file', 'segment_preview': preview},
+        );
+        expect(conversation.getDurationInSeconds(), 4606);
+      }
+    });
+
+    test('a local import without a valid recording interval uses the available transcript', () {
+      final start = DateTime.utc(2026, 11, 20);
+      for (final end in [null, start.subtract(const Duration(seconds: 1))]) {
+        expect(
+          _conversation(
+            startedAt: start,
+            finishedAt: end,
+            segments: [_segment(start: 0, end: 14)],
+            localTranscript: {'version': 1},
+          ).getDurationInSeconds(),
+          14,
+        );
+      }
+    });
+
     test('uses transcript span when segments exist, not the inflated session timestamp delta', () {
       // started_at is the streaming-session origin: finishedAt - startedAt is 600s,
       // but only 12s of speech was transcribed. Duration should reflect the speech.
