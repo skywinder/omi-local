@@ -8,6 +8,7 @@ import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
 import 'archive.dart';
+import 'category_backfill.dart';
 import 'server_connection_indicator.dart';
 import 'conversation_categories.dart';
 import 'daily_recaps_page.dart';
@@ -93,6 +94,8 @@ ThemeData _nextTheme(Brightness brightness) {
 }
 
 enum _ArchiveAction { refresh, offline, tasks, recaps, goals, select }
+
+enum _ArchiveSelectionActivity { move, classify }
 
 class _Pairing extends StatefulWidget {
   const _Pairing({this.session, this.shortcuts});
@@ -204,34 +207,55 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
 
   late PairedArchiveProvider _archive;
   Map<String, String?>? _selection;
-  bool _moving = false;
+  _ArchiveSelectionActivity? _selectionActivity;
+  bool get _selectionBusy => _selectionActivity != null;
 
   Future<void> _moveSelected() async {
     final library = widget.library;
     final archive = _archive;
     final selected = _selection;
-    if (_moving || selected == null || selected.isEmpty) return;
-    setState(() => _moving = true);
+    if (_selectionBusy || selected == null || selected.isEmpty) return;
+    setState(() => _selectionActivity = _ArchiveSelectionActivity.move);
     try {
       final destination = await pickLocalFolder(context, library, moving: true);
       if (!mounted || widget.library != library || destination == null) return;
       await library.bulkMoveFolders(selected, destination.folder?.id);
       if (!mounted || widget.library != library) return;
       setState(() => _selection = null);
-      archive.refreshAfterFolderChange();
+      archive.refreshAfterArchiveEdit();
     } catch (error) {
       if (mounted && widget.library == library) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
       }
     } finally {
-      if (mounted && widget.library == library) setState(() => _moving = false);
+      if (mounted && widget.library == library) setState(() => _selectionActivity = null);
+    }
+  }
+
+  Future<void> _classifySelected() async {
+    final library = widget.library;
+    final selected = _selection;
+    if (_selectionBusy || selected == null || selected.isEmpty || selected.length > 8) return;
+    setState(() => _selectionActivity = _ArchiveSelectionActivity.classify);
+    try {
+      final submitted = await runCategoryBackfill(context, library, selected.keys.toList());
+      if (mounted && widget.library == library && submitted) {
+        setState(() => _selection = null);
+        _archive.refreshAfterArchiveEdit();
+      }
+    } finally {
+      if (mounted && widget.library == library) setState(() => _selectionActivity = null);
     }
   }
 
   void _select(String id) {
     final selection = _selection;
     final row = _archive.rowById(id);
-    if (_moving || selection == null || row == null || row.status != ConversationStatus.completed || row.isLocked) {
+    if (_selectionBusy ||
+        selection == null ||
+        row == null ||
+        row.status != ConversationStatus.completed ||
+        row.isLocked) {
       return;
     }
     setState(() {
@@ -322,7 +346,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
       _inputs = null;
       _panel = GlobalKey<NextCapturePanelState>();
       _selection = null;
-      _moving = false;
+      _selectionActivity = null;
       _archive.dispose();
       _attach();
     }
@@ -415,7 +439,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               if (library.tasksAvailable) PopupMenuItem(value: _ArchiveAction.tasks, child: Text(l.tasks)),
               if (library.dailyRecapsAvailable) PopupMenuItem(value: _ArchiveAction.recaps, child: Text(l.dailyRecaps)),
               if (library.goalsAvailable) PopupMenuItem(value: _ArchiveAction.goals, child: Text(l.goals)),
-              if (library.folderManagementAvailable && selection == null)
+              if ((library.folderManagementAvailable || library.categoryBackfill) && selection == null)
                 PopupMenuItem(
                   value: _ArchiveAction.select,
                   child: Text(pairedSettingsLabel(context, 'localFolderSelect')),
@@ -445,12 +469,22 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                     ? [
                         ActionChip(
                           label: Text(l.cancel),
-                          onPressed: _moving ? null : () => setState(() => _selection = null),
+                          onPressed: _selectionBusy ? null : () => setState(() => _selection = null),
                         ),
-                        ActionChip(
-                          label: Text('${l.moveToFolder} · ${selection.length}/100'),
-                          onPressed: selection.isEmpty || _moving ? null : _moveSelected,
-                        ),
+                        if (library.folderManagementAvailable)
+                          ActionChip(
+                            label: Text('${l.moveToFolder} · ${selection.length}/100'),
+                            onPressed: selection.isEmpty || _selectionBusy ? null : _moveSelected,
+                          ),
+                        if (library.categoryBackfill)
+                          ActionChip(
+                            label: Text(
+                              '${pairedSettingsLabel(context, 'categoryBackfillAction')} · ${selection.length}/8',
+                            ),
+                            onPressed: selection.isEmpty || selection.length > 8 || _selectionBusy
+                                ? null
+                                : _classifySelected,
+                          ),
                       ]
                     : [
                         FilterChip(
@@ -493,7 +527,7 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                                       library,
                                       moving: false,
                                       onRename: archive.renameFolder,
-                                      onDelete: (id) => archive.refreshAfterFolderChange(deletedId: id),
+                                      onDelete: (id) => archive.refreshAfterArchiveEdit(deletedFolderId: id),
                                     );
                                     if (choice != null) await archive.filterFolder(choice.folder);
                                   },
@@ -502,6 +536,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               ),
             ),
           ),
+          if (_selectionActivity == _ArchiveSelectionActivity.classify && selection != null)
+            const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: PairedArchiveFeed(
               archive: _archive,

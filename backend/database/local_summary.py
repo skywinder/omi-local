@@ -10,6 +10,7 @@ from google.cloud import firestore
 
 from database import conversations
 from database._client import db, run_transactional
+from models.conversation_enums import CategoryEnum
 from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root, summary_labels, summary_note_fields
 
 SUMMARY_SHORT_LIMIT = 120_000
@@ -151,3 +152,80 @@ def _publish(transaction, uid, conversation_id, revision, candidate, publication
 
 def publish(uid, conversation_id, revision, candidate, publication, *, background=False):
     return run_transactional(db, _publish, uid, conversation_id, revision, candidate, publication, background)
+
+
+def _classification_status(raw):
+    try:
+        _check(raw)
+    except SummaryUnavailable:
+        return 'unavailable'
+    if raw.get('user_category'):
+        return 'already_classified'
+    structured = raw.get('structured')
+    if structured is None:
+        return 'pending'
+    if not isinstance(structured, dict):
+        return 'unavailable'
+    category = structured.get('category')
+    if isinstance(category, str) and category != CategoryEnum.other.value and category in CategoryEnum._value2member_map_:
+        return 'already_classified'
+    return 'pending'
+
+
+def category_input(uid, conversation_id):
+    document = _ref(uid, conversation_id).get(retry=None, timeout=6)
+    raw = document.to_dict()
+    state = _classification_status(raw)
+    if state != 'pending':
+        return state, None, None
+    row = conversations._prepare_conversation_for_read(raw, uid)
+    if row is None:
+        return 'unavailable', None, None
+    row['id'] = conversation_id
+    structured = row.get('structured') or {}
+    overview = structured.get('overview')
+    if isinstance(overview, str) and overview.strip():
+        excerpt = overview.strip()[:1400]
+    else:
+        try:
+            row = hydrate_grouped_transcript(row, local_transcript_root(), uid)
+        except (OSError, ValueError, KeyError, TypeError):
+            return 'unavailable', None, None
+        if ((row.get('external_data') or {}).get('local_transcript') or {}).get('segment_preview'):
+            return 'unavailable', None, None
+        segments = row.get('transcript_segments')
+        if not isinstance(segments, list):
+            return 'unavailable', None, None
+        lines = [segment['text'].strip() for segment in segments
+                 if isinstance(segment, dict) and isinstance(segment.get('text'), str) and segment['text'].strip()]
+        if len(lines) > 6:
+            lines = [lines[i * (len(lines) - 1) // 5] for i in range(6)]
+        excerpt = '\n'.join(line[:220] for line in lines)
+    if not excerpt:
+        return 'unavailable', None, None
+    title = structured.get('title')
+    text = '\n'.join(value for value in (title.strip()[:120] if isinstance(title, str) else '', excerpt) if value)
+    return 'pending', text, document.update_time
+
+
+@firestore.transactional
+def _publish_category(transaction, uid, conversation_id, revision, category):
+    ref = _ref(uid, conversation_id)
+    current = ref.get(transaction=transaction, timeout=6)
+    raw = current.to_dict()
+    state = _classification_status(raw)
+    if state != 'pending':
+        return state
+    if current.update_time != revision:
+        return 'changed'
+    if category == CategoryEnum.other:
+        return 'unclassified'
+    patch = {'structured.category': category.value} if isinstance(raw.get('structured'), dict) else {
+        'structured': {'category': category.value},
+    }
+    transaction.update(ref, patch)
+    return 'updated'
+
+
+def publish_category(uid, conversation_id, revision, category):
+    return run_transactional(db, _publish_category, uid, conversation_id, revision, category)

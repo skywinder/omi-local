@@ -96,9 +96,9 @@ class PairedArchiveProvider extends ChangeNotifier {
     });
   }
 
-  void refreshAfterFolderChange({String? deletedId}) {
+  void refreshAfterArchiveEdit({String? deletedFolderId}) {
     if (_disposed) return;
-    if (deletedId != null && folder?.id == deletedId) folder = null;
+    if (deletedFolderId != null && folder?.id == deletedFolderId) folder = null;
     if (busy) {
       _refreshAfterRead = true;
     } else {

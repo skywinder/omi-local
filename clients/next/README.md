@@ -367,7 +367,13 @@ On servers that advertise `local_recording_categories_version=1`, open a complet
 choose **Change category**. The saved category applies wherever the recording
 appears in Next, and later server processing preserves the owner's choice.
 New local summaries can assign a category and subject emoji using the selected
-summary model. Existing older recordings can keep their original metadata.
+summary model. To categorize older recordings, open the archive menu, choose
+**Select recordings**, select up to eight completed recordings, and tap
+**Assign categories**. The same action is available on a completed recording
+whose category is Other. Confirm the model before sending saved overviews or
+short transcript excerpts. The result shows how many categories were assigned
+and which recordings were skipped. Manual categories, existing named categories,
+summaries and subject emojis are preserved.
 
 Tap **Folders** in the archive to create or rename a folder or filter the
 archive. A folder filter can be combined with **Starred**. In a finished

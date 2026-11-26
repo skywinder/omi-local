@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from database import local_summary as summaries
+from models.conversation_enums import CategoryEnum
 from routers.local_recording_chat import ChatProvider, RecordingId, _UUID, library_request
 from utils.local_transport_auth import require_paired_owner
 
@@ -80,6 +81,70 @@ class Candidate(BaseModel):
     sections: list[dict] | None = Field(default=None, max_length=5)
     model: str = Field(min_length=1, max_length=300)
     template_name: str = Field(min_length=1, max_length=100)
+
+
+class CategoryOptions(BaseModel):
+    provider: ChatProvider | None
+
+
+class ClassifyCategories(BaseModel):
+    recording_ids: list[Annotated[str, Field(pattern=_UUID)]] = Field(min_length=1, max_length=8)
+    provider_binding: str = Field(pattern=_DIGEST)
+
+
+class ClassifiedCategory(BaseModel):
+    number: Annotated[int, Field(strict=True, ge=1, le=8)]
+    category: CategoryEnum
+
+
+class CategoryModelResult(BaseModel):
+    items: list[ClassifiedCategory] = Field(max_length=8)
+
+
+class CategoryUpdate(BaseModel):
+    id: str
+    state: Literal['updated', 'already_classified', 'unavailable', 'unclassified', 'changed']
+
+
+def _category_request(body=None):
+    return library_request('classify-categories', body, timeout=72, size_limit=16 * 1024,
+                           error_prefix='local_category')
+
+
+@router.get('/v1/local/conversations/classify-categories', response_model=CategoryOptions)
+def category_options(response: Response, _uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return CategoryOptions.model_validate_json(_category_request())
+    except ValidationError:
+        raise HTTPException(503, 'local_category_provider_unavailable') from None
+
+
+@router.post('/v1/local/conversations/classify-categories', response_model=list[CategoryUpdate])
+def classify_categories(batch: ClassifyCategories, response: Response, uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    if len(set(batch.recording_ids)) != len(batch.recording_ids):
+        raise HTTPException(400, 'local_category_duplicate_recordings')
+    states, pending = {}, []
+    for identifier in batch.recording_ids:
+        state, excerpt, revision = summaries.category_input(uid, identifier)
+        states[identifier] = state
+        if state == 'pending':
+            pending.append((identifier, excerpt, revision))
+    if pending:
+        excerpts = [{'number': i, 'text': text} for i, (_, text, _) in enumerate(pending, 1)]
+        try:
+            result = CategoryModelResult.model_validate_json(_category_request({
+                'binding': batch.provider_binding, 'excerpts': excerpts,
+            }))
+            labels = {item.number: item.category for item in result.items}
+            if len(result.items) != len(pending) or labels.keys() != set(range(1, len(pending) + 1)):
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(502, 'local_category_invalid_result') from None
+        for i, (identifier, _, revision) in enumerate(pending, 1):
+            states[identifier] = summaries.publish_category(uid, identifier, revision, labels[i])
+    return [{'id': identifier, 'state': state} for identifier, state in states.items()]
 
 
 def _request(body=None):

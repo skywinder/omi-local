@@ -68,6 +68,7 @@ assert profile['local_transcription']['final']['status'] == 'unavailable'
 assert main.users.UserProfileResponse.model_validate(profile).model_dump()['local_transcription'] == profile['local_transcription']
 assert profile['local_recording_edits_version'] == 1
 assert profile['local_recording_categories_version'] == 1
+assert profile['local_category_backfill_version'] == 1
 assert profile['local_conversation_group_version'] == 1
 assert profile['local_task_reminders_version'] == 1
 
@@ -679,6 +680,62 @@ grouped_db.db = old_db
 
 from routers import local_summary
 from database import local_summary as summary_db
+from models.conversation_enums import CategoryEnum
+
+category_path = '/v1/local/conversations/classify-categories'
+category_ids = [str(uuid.uuid4()) for _ in range(3)]
+category_prompt = {'recording_ids': category_ids, 'provider_binding': 'a' * 64}
+assert client.get(category_path).status_code == 401
+assert client.post(category_path, json=category_prompt).status_code == 401
+with ExitStack() as categories:
+    read = categories.enter_context(replace_for_chat.object(summary_db, 'category_input', side_effect=[
+        ('pending','Saved synopsis about a software compiler.','current-a'),
+        ('already_classified',None,None), ('pending','Saved synopsis about a hiking trip.','current-b'),
+    ]))
+    publish_category = categories.enter_context(replace_for_chat.object(summary_db, 'publish_category',
+                                                                       side_effect=['updated','changed']))
+    provider = categories.enter_context(replace_for_chat.object(local_summary, '_category_request', return_value=json.dumps({
+        'items': [{'number':2,'category':'travel'}, {'number':1,'category':'technology'}],
+    })))
+    duplicates = client.post(category_path,headers=headers,json={**category_prompt,'recording_ids':[category_ids[0]]*2})
+    assert duplicates.status_code == 400
+    read.assert_not_called()
+    category_result = client.post(category_path, headers=headers, json=category_prompt)
+    assert category_result.status_code == 200, category_result.text
+    assert [row['state'] for row in category_result.json()] == ['updated','already_classified','changed']
+    assert [row['id'] for row in category_result.json()] == category_ids
+    assert category_result.headers['cache-control'] == 'no-store'
+    assert [item['text'] for item in provider.call_args.args[0]['excerpts']] == [
+        'Saved synopsis about a software compiler.', 'Saved synopsis about a hiking trip.',
+    ]
+    assert all(identifier not in json.dumps(provider.call_args.args) for identifier in category_ids)
+    assert publish_category.call_args_list[0].args == (fixture_uid,category_ids[0],'current-a',CategoryEnum.technology)
+    publish_category.reset_mock()
+    read.side_effect = [('pending','Available excerpt','rev')]
+    provider.return_value = json.dumps({'items':[]})
+    malformed_category = client.post(category_path, headers=headers, json={**category_prompt,'recording_ids':category_ids[:1]})
+    assert malformed_category.status_code == 502
+    publish_category.assert_not_called()
+
+classification_ref, classification_tx = MagicMock(), MagicMock()
+classification_doc = classification_ref.get.return_value
+classification_doc.update_time = 'fresh'
+classification_raw = {'status':'completed','user_title':'My title','starred':True,'structured':{
+    'title':'Model title','overview':'Saved analysis of compilers.','category':'other','emoji':'💾','sections':[{'heading':'Notes'}],
+}}
+classification_doc.to_dict.return_value = classification_raw
+with replace_for_chat.object(summary_db, '_ref', return_value=classification_ref):
+    status, excerpt, revision = summary_db.category_input(fixture_uid, category_ids[0])
+    assert (status, excerpt, revision) == ('pending','My title\\nSaved analysis of compilers.','fresh')
+    publish = summary_db._publish_category.to_wrap
+    assert publish(classification_tx,fixture_uid,category_ids[0],'fresh',CategoryEnum.other) == 'unclassified'
+    assert publish(classification_tx,fixture_uid,category_ids[0],'old',CategoryEnum.technology) == 'changed'
+    classification_raw['user_category'] = 'other'
+    assert publish(classification_tx,fixture_uid,category_ids[0],'fresh',CategoryEnum.technology) == 'already_classified'
+    classification_tx.update.assert_not_called()
+    del classification_raw['user_category']
+    assert publish(classification_tx,fixture_uid,category_ids[0],'fresh',CategoryEnum.technology) == 'updated'
+    classification_tx.update.assert_called_once_with(classification_ref,{'structured.category':'technology'})
 
 summary_path = '/v1/local/conversations/' + documents[-1].id + '/regenerate-summary'
 assert client.get(summary_path).status_code == 401
@@ -800,6 +857,7 @@ print(json.dumps({
         '/v1/local/audio/parts',
         '/v1/local/conversations/{conversation_id}/audio',
         '/v1/local/conversations/search',
+        '/v1/local/conversations/classify-categories',
         '/v1/local/conversations/semantic-search',
         '/v1/local/conversations/chat',
         '/v1/local/conversations/{conversation_id}/chat',

@@ -9,6 +9,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/archive.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
+import 'package:omi/local_next/recording_chat.dart';
 import 'package:omi/local_next/recording_edit.dart';
 import 'package:omi/local_next/recording_page.dart';
 import 'package:omi/pages/conversations/widgets/conversation_state_tile.dart';
@@ -59,6 +60,35 @@ class _RecoveringLibrary extends _ArchiveLibrary {
   Future<void> verify() async {
     if (!online) throw LibraryFailure.unavailable;
     verified = true;
+  }
+}
+
+class _CategoryLibrary extends _ArchiveLibrary {
+  _CategoryLibrary(this.unclassified, this.classified, this.manual)
+    : super((_) async => throw StateError('Unexpected default archive page'), unclassified) {
+    recordingEdits = true;
+    recordingCategories = true;
+    categoryBackfill = true;
+  }
+
+  final ServerConversation unclassified;
+  final ServerConversation classified;
+  final ServerConversation manual;
+  final submissions = <List<String>>[];
+
+  @override
+  Future<_Page> list(int offset, {bool starredOnly = false, String? folderId}) async =>
+      (rows: [submissions.isEmpty ? unclassified : classified, manual], consumed: 2, partial: false, more: false);
+
+  @override
+  Future<RecordingChatProvider?> categoryBackfillProvider() async =>
+      const RecordingChatProvider(binding: 'test', host: 'summary.internal', model: 'topic-model');
+
+  @override
+  Future<List<CategoryBackfillState>> classifyRecordingCategories(List<String> ids, String binding) async {
+    expect(binding, 'test');
+    submissions.add(ids);
+    return [CategoryBackfillState.updated, CategoryBackfillState.alreadyClassified];
   }
 }
 
@@ -505,6 +535,38 @@ void main() {
     expect(library.offsets, [0, 0, 1]);
     expect(find.text('Older personal recording'), findsOneWidget);
     expect(find.text('👤'), findsOneWidget);
+  });
+
+  testWidgets('selected archive records get categories after confirming the model', (tester) async {
+    final time = DateTime.utc(2026, 1, 2);
+    final original = _row(_firstId, 'Compiler discussion', time, emoji: '💾');
+    final updated = _row(_firstId, 'Compiler discussion', time, category: 'technology', emoji: '💾');
+    final manual = _row(_secondId, 'Manually filed conversation', time, category: 'personal');
+    final library = _CategoryLibrary(original, updated, manual);
+    addTearDown(library.close);
+    await _show(tester, library);
+    final labels = AppLocalizations.of(tester.element(find.byType(LocalNextLibraryPage)));
+    await tester.tap(find.byTooltip(labels.moreOptions));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select recordings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Compiler discussion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manually filed conversation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assign categories · 2/8'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.textContaining('summary.internal'), findsOneWidget);
+    expect(library.submissions, isEmpty);
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)));
+    await tester.pumpAndSettle();
+    expect(library.submissions, [
+      [_firstId, _secondId],
+    ]);
+    expect(find.textContaining('Assigned 1 · Already categorized 1'), findsOneWidget);
+    expect(find.textContaining('· Technology'), findsOneWidget);
+    expect(find.text('💾'), findsOneWidget);
   });
 
   testWidgets('a durable delivery refreshes the archive and follows local processing to its result', (tester) async {

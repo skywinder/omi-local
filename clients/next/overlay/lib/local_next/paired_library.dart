@@ -37,6 +37,10 @@ enum NextServerConnection { checking, connected, unreachable, rejected, invalid 
 
 enum LibraryFailure implements Exception { address, key, unavailable, malformed, storage }
 
+enum CategoryBackfillFailure implements Exception { unavailable, providerChanged, invalidResult }
+
+enum CategoryBackfillState { updated, alreadyClassified, unclassified, unavailable, changed }
+
 typedef PlaybackRead = ({int status, int length, int? totalLength, String? contentRange, Stream<List<int>> bytes});
 
 typedef ArchiveSearchHit = ({String id, String title, DateTime startedAt, List<TranscriptMatchSnippet> snippets});
@@ -93,6 +97,7 @@ class PairedLibrary {
   bool conversationGroups = false;
   bool recordingEdits = false;
   bool recordingCategories = false;
+  bool categoryBackfill = false;
   bool processingRetryAvailable = false;
   bool speakerLabelsAvailable = false;
   bool tasksAvailable = false;
@@ -135,6 +140,7 @@ class PairedLibrary {
     audioPlayback = false;
     recordingEdits = false;
     recordingCategories = false;
+    categoryBackfill = false;
     processingRetryAvailable = false;
     speakerLabelsAvailable = false;
     tasksAvailable = false;
@@ -508,6 +514,7 @@ class PairedLibrary {
     audioPlayback = data['local_audio_playback_version'] == 1;
     recordingEdits = data['local_recording_edits_version'] == 1;
     recordingCategories = recordingEdits && data['local_recording_categories_version'] == 1;
+    categoryBackfill = recordingCategories && data['local_category_backfill_version'] == 1;
     processingRetryAvailable = data['local_processing_retry_version'] == 1;
     speakerLabelsAvailable = data['local_speaker_labels_version'] == 1;
     tasksAvailable = data['local_tasks_version'] == 1;
@@ -703,6 +710,54 @@ class PairedLibrary {
     } on FormatException {
       throw LibraryFailure.malformed;
     }
+  }
+
+  Future<RecordingChatProvider?> categoryBackfillProvider() async {
+    final data = await _categoryBackfillRequest();
+    if (data is! Map<String, dynamic> || !data.containsKey('provider')) throw CategoryBackfillFailure.invalidResult;
+    final provider = data['provider'];
+    return provider == null ? null : RecordingChatProvider.fromJson(provider as Map<String, dynamic>);
+  }
+
+  Future<List<CategoryBackfillState>> classifyRecordingCategories(List<String> ids, String binding) async {
+    if (ids.isEmpty || ids.length > 8 || ids.toSet().length != ids.length) throw LibraryFailure.malformed;
+    ids.forEach(_conversation);
+    final data = await _categoryBackfillRequest({'recording_ids': ids, 'provider_binding': binding});
+    if (data is! List || data.length != ids.length) throw CategoryBackfillFailure.invalidResult;
+    final results = <CategoryBackfillState>[];
+    for (var i = 0; i < ids.length; i++) {
+      final item = data[i];
+      if (item is! Map || item['id'] != ids[i]) throw CategoryBackfillFailure.invalidResult;
+      results.add(switch (item['state']) {
+        'updated' => CategoryBackfillState.updated,
+        'already_classified' => CategoryBackfillState.alreadyClassified,
+        'unclassified' => CategoryBackfillState.unclassified,
+        'unavailable' => CategoryBackfillState.unavailable,
+        'changed' => CategoryBackfillState.changed,
+        _ => throw CategoryBackfillFailure.invalidResult,
+      });
+    }
+    return results;
+  }
+
+  Future<dynamic> _categoryBackfillRequest([Map<String, dynamic>? body]) async {
+    if (!isSignedIn) throw LibraryFailure.key;
+    if (!categoryBackfill) throw CategoryBackfillFailure.unavailable;
+    final data = await _request(
+      '/v1/local/conversations/classify-categories',
+      (response) async {
+        if (response.statusCode == HttpStatus.conflict) throw CategoryBackfillFailure.providerChanged;
+        if (response.statusCode == HttpStatus.badGateway) throw CategoryBackfillFailure.invalidResult;
+        if (response.statusCode != HttpStatus.ok) throw CategoryBackfillFailure.unavailable;
+        return _json(response, 32 << 10);
+      },
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: body == null ? null : ContentType.json,
+      readHttpErrors: true,
+      overallTimeout: Duration(seconds: body == null ? 15 : 105),
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return data;
   }
 
   static final _folderId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');

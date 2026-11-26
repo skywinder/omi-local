@@ -168,6 +168,13 @@ confirmed the new category. Repeating the same update preserved the revision,
 a stale edit returned 409, an invalid category returned 422, and an unsigned
 request returned 401. The probe removed only its own fixture.
 
+Paired category backfill has a separate capability and accepts up to eight
+owner-selected completed recording IDs. The loopback provider gets numbered,
+bounded excerpts after the client confirms the model. The backend validates a
+complete result before writing and compares each recording's Firestore revision.
+It updates only its category when no explicit manual or known category exists.
+An unclear result leaves the previous label available for manual editing.
+
 The Local storage contract from `625034a` now covers large grouped recordings
 in Next's backend. The detail and edit responses expand the preview from the
 checksummed transcript. Segment text and speaker changes compare against the

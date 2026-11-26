@@ -28,6 +28,7 @@ import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_export.dart';
 import 'conversation_categories.dart';
+import 'category_backfill.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
 import 'recording_player_bar.dart';
@@ -324,13 +325,31 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
   Future<void> _changeCategory(_RecordingDetail loaded) async {
     final current = conversationCategoryKey(loaded.row.structured.category);
     final choice = await pickConversationCategory(context, current: current);
-    if (!mounted || choice == null || choice == current) return;
+    if (!mounted || choice == null) return;
     try {
       await _save(RecordingEdit.category(current, choice));
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
       }
+    }
+  }
+
+  Future<void> _classifyCategory() async {
+    if (opening || _editing) return;
+    setState(() => _editing = true);
+    try {
+      if (!await runCategoryBackfill(context, widget.library, [_id]) || !mounted) return;
+      final row = await widget.library.detail(_id);
+      if (!mounted) return;
+      setState(() => detail = SynchronousFuture(_readDetail(row)));
+      widget.onEdited?.call(row);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(recordingEditError(context, error))));
+      }
+    } finally {
+      if (mounted) setState(() => _editing = false);
     }
   }
 
@@ -950,6 +969,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.transcript => _chooseLine(loaded),
                     _RecordingEditAction.folder => _moveFolder(loaded),
                     _RecordingEditAction.category => _changeCategory(loaded),
+                    _RecordingEditAction.classifyCategory => _classifyCategory(),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
                     _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
@@ -1018,6 +1038,12 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         PopupMenuItem(
                           value: _RecordingEditAction.category,
                           child: Text(pairedSettingsLabel(context, 'recordingEditCategory')),
+                        ),
+                      if (widget.library.categoryBackfill &&
+                          conversationCategoryKey(loaded.row.structured.category) == 'other')
+                        PopupMenuItem(
+                          value: _RecordingEditAction.classifyCategory,
+                          child: Text(pairedSettingsLabel(context, 'categoryBackfillAction')),
                         ),
                       PopupMenuItem(
                         value: _RecordingEditAction.title,
@@ -1203,6 +1229,7 @@ enum _RecordingEditAction {
   transcript,
   folder,
   category,
+  classifyCategory,
   task,
   taskFromLine,
   taskSuggestions,

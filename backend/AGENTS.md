@@ -91,6 +91,10 @@ checking or editing a segment. Store bounded encrypted edits in the conversation
 transaction and apply them during hydration. Keep the first preview consistent
 and preserve the file checksum, segment IDs and timestamps. The trusted-host
 importer preserves edits on replay through create-if-absent.
+Older recordings can be categorized in owner-confirmed batches. Use the saved
+overview or bounded excerpts from the checked transcript. Only send numbered
+excerpts to the selected model. A category publication checks the document
+revision and updates only the category. Respect manual values, including Other.
 Paired folder management shares the Omi folder collection. A recording move
 checks the destination within the recording mutation transaction and marks the
 assignment as user-owned, including when the user removes the folder.
