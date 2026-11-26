@@ -62,6 +62,7 @@ void main() {
   late Directory directory;
   final received = <Uint8List>[];
   late LocalAudioOutbox outbox;
+  late Completer<void> firstUpload;
 
   Map<String, dynamic> receipt(Uint8List bytes) {
     final size = ByteData.sublistView(bytes, 8, 12).getUint32(0, Endian.big);
@@ -86,10 +87,12 @@ void main() {
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('local-audio-outbox-');
     received.clear();
+    firstUpload = Completer<void>();
     outbox = LocalAudioOutbox(
       directory: directory,
       upload: (body, serverId) async {
         received.add(body);
+        if (!firstUpload.isCompleted) firstUpload.complete();
         return receipt(body);
       },
     );
@@ -332,8 +335,8 @@ void main() {
       await recording.add([0x78, i]);
     }
     outbox.didChangeAppLifecycleState(AppLifecycleState.resumed);
-    await outbox.flushPendingWrites();
-    await pumpEventQueue();
+    await firstUpload.future;
+    await outbox.drain();
     expect(received, hasLength(1));
     expect(outbox.activeRecordings, 1);
     await recording.add([0x78, 6]);

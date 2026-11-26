@@ -1,7 +1,7 @@
 # Omi Local backend compatibility
 
 The initial comparison used the original [Omi revision ba4d7ac](https://github.com/BasedHardware/omi/tree/ba4d7ac0a2aa6c64f1c9a95ac0535dd4198cf593). Next now pins [782a793](https://github.com/BasedHardware/omi/commit/782a7937650c8e0f71455ebc0aae182eb86ab28b). The existing Local client and the Next client can use
-the same paired deployment. Bastion has its own deployed revision and is
+the same paired deployment. The test server has its own deployed revision and is
 checked separately from this worktree.
 
 ## What can track the original
@@ -71,14 +71,14 @@ chunks when known. This is a chunk count. Combining and publication are
 separate phases. Resuming after a restart keeps the last saved count visible.
 Failures expose bounded diagnostic codes without provider response bodies.
 
-Earlier Bastion web releases kept a published summary in
+Earlier test server web releases kept a published summary in
 `local-transcripts/<result>/summary-job.json`. The web library reads its title,
 overview and model attribution for imported recordings, including while a later
 attempt is pending. It leaves that history on disk. New requests from the web
 and Next both use the shared `summary-jobs` queue. Before replacing an older
 deployment, verify that its historical jobs have finished. On November 26 the
 installed legacy worker still called the importer with `--summary-update`.
-The shared queue publishes through `scripts.local_summary_worker`. Bastion now runs
+The shared queue publishes through `scripts.local_summary_worker`. the test server now runs
 the shared image `6ecd352` after a private restore rehearsal and a successful
 production archive comparison (see [Docker verification](DOCKER.md)). The legacy import also writes `summary-initial.json` beside
 the full transcript. A local Firestore emulator rehearsal imported a synthetic
@@ -147,7 +147,7 @@ Their assignments compare the prior label on stable transcript segment IDs.
 Task suggestions use the configured summary model after consent and include a
 transcript citation. Only accepting a suggestion creates a task.
 
-On November 26 Bastion enabled all three capabilities. An isolated owner
+On November 26 the test server enabled all three capabilities. An isolated owner
 verified folder moves, stale-write rejection, deletion that preserved the
 recording, manual speaker assignment and suggestions from the selected model
 with transcript timestamps. Requests without a paired key were rejected.
@@ -167,7 +167,7 @@ can add a goal and append a manual progress event with an optional metric and
 recording link. Replays return the same event. A conflicting revision or an
 unavailable source is rejected before changing the goal.
 
-Bastion enabled both capabilities on November 26. An isolated owner verified
+The test server enabled both capabilities on November 26. An isolated owner verified
 generation through the applied model, listing the saved recap, creating a
 goal, and checking a replayed progress event with a recording reference.
 In Next, open **Daily Recaps** or **Goals** from the archive menu. Open
@@ -239,14 +239,14 @@ Deletion clears a named conversation's messages and title in a transaction.
 It keeps the empty ID as a fence against replaying creation or publishing an
 in-flight reply. There can be up to 40 active named conversations, each with
 up to 250 replies, so a complete thread fits in a single deletion transaction.
-The Bastion acceptance used two paired clients and an isolated owner to check
+The test server acceptance used two paired clients and an isolated owner to check
 independent follow-ups, access from another owner, and deletion during inference.
 Deletion applies to the live database. Existing backup snapshots retain their
 own lifecycle.
 
-## Bastion acceptance, November 25
+## Paired server acceptance, November 25
 
-Bastion now serves page metadata, projected cards and authenticated WAV ranges.
+The test server now serves page metadata, projected cards and authenticated WAV ranges.
 A ten-row page measured 118,001 bytes for the existing client and 54,991 bytes
 for Next, with matching IDs and summaries. The next ten rows had distinct
 IDs. Opening a saved recording returned its original transcript. Its first 44
@@ -282,9 +282,9 @@ bounded encrypted edits and a current first-line preview. Detail, search, summar
 generation, chat and task suggestions read the same edited segments. Chat uses
 only checked files for evidence and keeps its deadline when scanning the archive.
 Returning a segment to its original text or speaker removes its override.
-Older Bastion images need the paired chat router, its offline allowlist and
+Older test server images need the paired chat router, its offline allowlist and
 the loopback library's chat provider module in the same release. Verify that
-the library imports the provider before restarting the app. Each Bastion release
+the library imports the provider before restarting the app. Each test server release
 keeps its previous Compose file list for rollback, including the original
 provider and capture adjustments.
 
@@ -309,7 +309,7 @@ link points to the group's results and also checks the original sample boundary.
 For multiple passes over one ungrouped capture, it points to that capture's
 results. Next uses the same opt-in detail route to open the list.
 
-The paired archive search on Bastion returned a snippet from a real file-backed
+The paired archive search on the test server returned a snippet from a real file-backed
 recording. Its segment identifier and millisecond timestamp matched the paired
 detail response. The same check verified pagination was available, authentication
 was required and an empty query was rejected. The isolated HTTP regression also

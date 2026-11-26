@@ -87,7 +87,7 @@ Firmware tags 3.0.23 and 3.0.24 implement ring identity and explicit cursor ackn
 See the [CV1 3.0.23 transfer commands](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.23/omi/firmware/omi/src/lib/core/storage.c) and the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
 
 The Local Mac card includes the number and size of parts retained on the phone.
-Its header names the authenticated saved server (for example, `faeon`), not the
+Its header names the authenticated saved server (for example, `Demo server`), not the
 currently edited draft. During a network outage it shows recording on the phone,
 offline state and pending parts. Expanding details preserves that summary.
 Authentication or local storage failure remains an explicit error; unavailable

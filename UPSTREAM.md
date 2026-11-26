@@ -1,5 +1,7 @@
 # Origin
 
+Omi Local is developed independently at [skywinder/omi-local](https://github.com/skywinder/omi-local). Next builds from the Omi Flutter revision pinned in [clients/next/upstream.json](clients/next/upstream.json). Third-party dependencies and original license notices remain part of the project.
+
 Original project: [BasedHardware/omi](https://github.com/BasedHardware/omi).
 Upstream baseline: `2ce52f13f4724eee989158da6318dc6f27aa744e`.
 

@@ -16,7 +16,7 @@ The Mac must stay awake while receiving audio. Initial preparation needs
 internet access and at least 4 GiB free for managed models.
 
 ```bash
-git clone https://github.com/vquaron/omi-local.git omiloc
+git clone https://github.com/skywinder/omi-local.git omiloc
 cd omiloc
 ./omiloc bootstrap
 ./omiloc up
