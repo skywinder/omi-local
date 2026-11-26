@@ -136,6 +136,37 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+def test_waiting_upload_is_listed_without_media_until_the_group_is_finished(library):
+    groups = library.captures.parent / 'grouped-recordings'
+    folder = groups / 'private-group'
+    folder.mkdir(parents=True)
+    row = {'source': 'phone', 'started_at': '2026-09-08T07:05:00-02:00', 'duration_seconds': 4,
+           'origin': {'phone_platform': 'android', 'phone_model': 'Fixture'}}
+    progress = folder / 'progress.json'
+    progress.write_text(json.dumps({'waiting_for_parts': True, 'waiting_row': row}))
+    status, _, body = request(library, '/api/recordings')
+    assert status == 200 and b'private-group' not in body
+    waiting, saved = json.loads(body)['recordings']
+    assert waiting['status'] == 'waiting_for_parts' and waiting['has_audio'] is False
+    assert waiting['phone'] == 'Android · Fixture' and waiting['duration'] == 4
+    assert library.scan()[0]['id'] == waiting['id']
+    for path in ('', '/audio'):
+        assert request(library, '/api/recordings/' + waiting['id'] + path)[0] == 404
+    # A stale waiting_row is ignored once the producer clears the flag.
+    progress.write_text(json.dumps({'waiting_for_parts': False, 'waiting_row': row}))
+    assert library.scan() == [saved]
+
+
+@pytest.mark.parametrize('override', [{'duration_seconds': -1}, {'started_at': 'invalid'}, {'source': []}])
+def test_bad_waiting_manifest_keeps_completed_recordings_available(library, override):
+    folder = library.captures.parent / 'grouped-recordings' / 'bad-fixture'
+    folder.mkdir(parents=True)
+    row = {'source': 'omi', 'started_at': '2026-09-08T08:00:00Z', 'duration_seconds': 2, **override}
+    (folder / 'progress.json').write_text(json.dumps({'waiting_for_parts': True, 'waiting_row': row}))
+    saved, = library.scan()
+    assert saved['status'] == 'ready'
+
+
 def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(library):
     from dev_harness.local_library_notes import NoteConflict
 

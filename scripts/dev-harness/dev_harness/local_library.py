@@ -348,7 +348,32 @@ class Library:
             self.records = records
             self.digests = {p: value for p, value in self.digests.items() if p in {r['audio'] for r in records.values()}}
             self.tokens = {p: token for p, token in self.tokens.items() if token in records}
-            return [self.public(r, detail=False) for r in sorted(records.values(), key=lambda r: r['started_at'], reverse=True)]
+            rows = [self.public(r, detail=False) for r in records.values()]
+            rows.extend(self.waiting_rows())
+            return sorted(rows, key=lambda r: datetime.fromisoformat(r['started_at']), reverse=True)
+
+    def waiting_rows(self):
+        groups = self.captures.parent / 'grouped-recordings'
+        if groups.is_symlink():
+            return
+        for path in groups.glob('*/progress.json'):
+            if path.parent.is_symlink() or not safe_file(path, groups):
+                continue
+            try:
+                progress = read_json(path)
+                if not isinstance(progress, dict) or progress.get('waiting_for_parts') is not True:
+                    continue
+                row = progress['waiting_row']
+                started = datetime.fromisoformat(row['started_at'])
+                duration = row['duration_seconds']
+                if (started.tzinfo is None or row['source'] not in {'phone', 'omi'}
+                        or type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0):
+                    continue
+                yield {'id': 'waiting-' + hashlib.sha256(path.parent.name.encode()).hexdigest(),
+                       'started_at': started.isoformat(), 'duration': duration, **recording_origin_labels(row),
+                       'has_audio': False, 'status': 'waiting_for_parts', 'preview': ''}
+            except (OSError, ValueError, KeyError, TypeError, OverflowError):
+                continue
 
     @staticmethod
     def public(record, *, detail):

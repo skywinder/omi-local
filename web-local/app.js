@@ -28,7 +28,7 @@ function showSettingsSection(section, {focus = false} = {}) {
   if (templates) summaryTemplates.show();
   else providerSettings.show();
 }
-const state = {records: [], selected: null, detail: null, view: settingsSection === 'templates' ? 'settings' : 'live', archived: false, favorites: false, ready: false, category: '', noteWrite: false,
+const state = {records: [], selected: null, detail: null, view: settingsSection === 'templates' ? 'settings' : 'live', archived: false, favorites: false, ready: false, category: '', noteWrite: false, detailFailed: false,
   noteVersion: 0, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
 const defaultVisibility = {minimumSeconds: 0, hideWithoutAudio: false, hideNoSpeech: false};
 const visibilityKey = 'omiloc.library.visibility';
@@ -45,7 +45,7 @@ function readVisibility() {
 let visibility = readVisibility();
 
 const statuses = {ready: 'Transcript ready', pending: 'Queued', processing: 'Processing',
-  no_speech: 'No speech detected', failed: 'Processing failed', unavailable: 'No transcript'};
+  waiting_for_parts: 'Waiting for upload', no_speech: 'No speech detected', failed: 'Processing failed', unavailable: 'No transcript'};
 const dayFormat = new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'long', year: 'numeric'});
 const cardDate = new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
 const detailDate = new Intl.DateTimeFormat('en-GB', {weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
@@ -84,6 +84,24 @@ function showView(view = state.view) {
   $('active-recordings').setAttribute('aria-pressed', String(live));
   $('settings-workspace').hidden = view !== 'settings';
   $('welcome').hidden = !recording || !!state.detail;
+  if (recording && !state.detail) {
+    const waiting = state.records.some(r => r.id === state.selected && r.status === 'waiting_for_parts');
+    let title = 'Select a recording';
+    let description = 'Open a recording to play its audio and read the transcript.';
+    if (waiting) {
+      title = statuses.waiting_for_parts;
+      description = 'Audio and transcript will appear when the remaining parts arrive.';
+    } else if (state.detailFailed) {
+      title = 'Could not open the recording';
+      description = 'Check your connection and try again.';
+    } else if (state.selected) {
+      title = 'Loading recording…';
+      description = '';
+    }
+    $('welcome-title').textContent = title;
+    $('welcome-description').textContent = description;
+    $('retry-recording').hidden = !state.detailFailed;
+  }
   $('recording-detail').hidden = !recording || !state.detail;
   $('player').hidden = !recording || !state.detail;
   for (const mode of ['live', 'recording', 'settings']) {
@@ -305,12 +323,14 @@ async function select(id, open = true) {
   audio.removeAttribute('src');
   audio.load();
   state.selected = id;
+  state.detailFailed = false;
   canonicalRecap = null;
   state.detail = null;
   noteFeedback();
   showView(open ? 'recording' : state.view);
   message();
   renderList();
+  if (state.records.some(r => r.id === id && r.status === 'waiting_for_parts')) return;
   try {
     const record = await get(`/api/recordings/${id}`);
     if (request !== state.request) return;
@@ -331,8 +351,9 @@ async function select(id, open = true) {
     summaryControls.open(record.summary_editable ? id : null);
   } catch {
     if (request !== state.request) return;
-    $('connection').textContent = 'Не удалось открыть запись. Обновите список и попробуйте ещё раз.';
-    $('connection').hidden = false;
+    state.detail = null;
+    state.detailFailed = true;
+    showView();
   }
 }
 
@@ -373,7 +394,7 @@ async function refresh() {
     state.records = recordings;
     $('connection').hidden = true;
     if (state.selected && !recordings.some(r => r.id === state.selected)) {
-      audio.pause(); state.selected = null; state.detail = null; ++state.request;
+      audio.pause(); state.selected = null; state.detail = null; state.detailFailed = false; ++state.request;
       summaryControls.open(null);
       showView();
     }
@@ -420,6 +441,7 @@ $('seek').addEventListener('input', () => { if (state.detail) { seekTo(audio, Nu
 $('speed').addEventListener('change', () => { audio.playbackRate = Number($('speed').value); });
 for (const event of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'seeked']) audio.addEventListener(event, syncPlayer);
 audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Could not load audio. Refresh the recording and try again.'); });
+$('retry-recording').addEventListener('click', () => { if (state.selected) select(state.selected); });
 $('refresh').addEventListener('click', refresh);
 for (const button of document.querySelectorAll('[data-folder]')) button.addEventListener('click', async () => {
   const buttons = document.querySelectorAll('[data-folder]');
