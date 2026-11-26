@@ -71,6 +71,13 @@ chunks when known. This is a chunk count. Combining and publication are
 separate phases. Resuming after a restart keeps the last saved count visible.
 Failures expose bounded diagnostic codes without provider response bodies.
 
+Earlier Bastion web releases kept a published summary in
+`local-transcripts/<result>/summary-job.json`. The web library reads its title,
+overview and model attribution for imported recordings, including while a later
+attempt is pending. It leaves that history on disk. New requests from the web
+and Next both use the shared `summary-jobs` queue. Before replacing an older
+deployment, verify that its historical jobs have finished.
+
 ## Paired task reminders
 
 The paired profile advertises `local_task_reminders_version: 1`. The existing task

@@ -91,6 +91,30 @@ def test_web_summary_uses_the_imported_recording_and_same_origin(library):
     assert seen == [(expected, None), (expected, {})]
 
 
+def test_imported_web_card_keeps_last_legacy_publication_during_another_attempt(library):
+    folder = (library.transcripts / 'result').rename(library.transcripts / ('a' * 64))
+    audio = folder / 'audio.json'
+    source = json.loads(audio.read_text())
+    source['structured'] = {'title': 'Original', 'overview': 'First run'}
+    audio.write_text(json.dumps(source))
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    history = folder / 'summary-job.json'
+    saved = {'title': 'Published', 'overview': 'Corrected overview'}
+    history.write_text(json.dumps({'state': 'processing', 'candidate': {'structured': {'title': 'Unpublished'}},
+                                   'published': {'structured': {**saved, 'extra': 'private-field'},
+                                                 'provenance': {'model': 'fixture', 'prompt': 'private-field'}}}))
+    row, = json.loads(request(library, '/api/recordings')[2])['recordings']
+    assert row['summary'] == saved
+    detail = json.loads(request(library, '/api/recordings/' + row['id'])[2])
+    assert detail['summary'] == saved
+    assert detail['processing']['summary'] == {'status': 'ready', 'model': 'fixture'}
+    assert 'private-field' not in str(detail) and detail['segments']
+    for damaged in ['{', '{"state":"processing","candidate":{"structured":{"title":"Draft","overview":"Draft"}}}']:
+        history.write_text(damaged)
+        row, = library.scan()
+        assert row['status'] == 'ready' and row['summary'] == source['structured']
+
+
 def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     before = {p: p.read_bytes() for p in library.captures.parent.parent.rglob('*') if p.is_file()}
     status, headers, body = request(library, '/api/recordings')

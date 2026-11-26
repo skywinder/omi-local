@@ -149,6 +149,36 @@ def safe_file(path, root):
     return path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root.resolve())
 
 
+def card_summary(structured):
+    if (isinstance(structured, dict)
+            and isinstance(structured.get('title'), str) and len(structured['title']) <= 500
+            and isinstance(structured.get('overview'), str) and len(structured['overview']) <= 20000):
+        return {key: structured[key] for key in ('title', 'overview')}
+    return None
+
+
+def retained_publication(folder, root):
+    # Earlier web clients wrote their last published summary beside the imported transcript.
+    # A later attempt may also have a candidate; only published content belongs on a card.
+    path = folder / 'summary-job.json'
+    try:
+        if safe_file(path, root):
+            job = read_json(path)
+            published = job.get('published') if isinstance(job, dict) else None
+            if isinstance(published, dict) and (summary := card_summary(published.get('structured'))) is not None:
+                provenance = published.get('provenance')
+                stage = {'status': 'ready'}
+                if isinstance(provenance, dict):
+                    for key in ('model', 'provider_name'):
+                        value = provenance.get(key)
+                        if isinstance(value, str) and 0 < len(value) <= 256:
+                            stage[key] = value
+                return summary, stage
+    except (OSError, ValueError):
+        pass  # The imported transcript remains readable if optional history is damaged.
+    return None
+
+
 def recording_origin_labels(metadata):
     origin = metadata.get('origin')
     origin = origin if isinstance(origin, dict) else {}
@@ -279,17 +309,17 @@ class Library:
                                 state = 'failed' if 'failed' in states else 'processing' if 'processing' in states else 'pending'
                             if not segments and transcript.get('outcome') == 'no_speech' and transcript.get('segments') == []:
                                 state = 'no_speech'
-                            structured = transcript.get('structured')
-                            if (raw_path and raw_path.name == 'audio.json' and isinstance(structured, dict)
-                                    and isinstance(structured.get('title'), str) and len(structured['title']) <= 500
-                                    and isinstance(structured.get('overview'), str) and len(structured['overview']) <= 20000):
-                                summary = {key: structured[key] for key in ('title', 'overview')}
-                            if (raw_path and raw_path.name == 'audio.json' and segments
+                            if raw_path and raw_path.name == 'audio.json':
+                                summary = card_summary(transcript.get('structured'))
+                            if (raw_path and raw_path.name == 'audio.json'
                                     and re.fullmatch(r'[a-f0-9]{64}', raw_path.parent.name)
                                     and safe_file(raw_path.parent / 'import.json', self.transcripts)
                                     and read_json(raw_path.parent / 'import.json').get('import') == 'passed'):
-                                note_key = raw_path.parent.name
-                                summary_recording = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + note_key))
+                                if retained := retained_publication(raw_path.parent, self.transcripts):
+                                    summary, processing['summary'] = retained
+                                if segments:
+                                    note_key = raw_path.parent.name
+                                    summary_recording = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + note_key))
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
