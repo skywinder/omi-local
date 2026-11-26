@@ -216,3 +216,22 @@ test('sidebar and service badges share monitor observations and discard expired 
   assert.match(ui.root.textContent, /Модель итогов · нет данных/);
   assert.deepEqual(observations[2].labels, []);
 });
+
+test('an idle iPhone remains in its own stream while the headline identifies audio from Pixel', async t => {
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const observations = [];
+  const ui = monitor(t, {onSources: (labels, activity) => observations.push({labels, activity})});
+  const iphone = {source: 'omi', preview_id: 'fixture-a', frames_received: 0, origin: {phone_model: 'iPhone Air'}};
+  const pixel = {source: 'phone', preview_id: 'fixture-b', frames_received: 2, origin: {phone_model: 'Pixel 5a'}};
+  ui.requests[0].reply('', {}, [iphone, pixel]);
+  await settle();
+  assert.equal(observations.at(-1).activity.label, 'Connected inputs');
+  ui.tick();
+  now += 1000;
+  ui.requests[1].reply('', {}, [iphone, {...pixel, frames_received: 5}]);
+  await settle();
+  assert.deepEqual(observations.at(-1), {labels: ['Pixel 5a · Встроенный микрофон'],
+    activity: {label: 'Receiving audio', tone: 'active'}});
+  assert.match(ui.root.textContent, /iPhone Air · Omi CV1.*Ждём первые кадры/);
+});
