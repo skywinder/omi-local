@@ -441,11 +441,97 @@ old_db = grouped_db.db
 grouped_db.db = MagicMock()
 grouped_db.db.collection.return_value.document.return_value.collection.return_value.document.return_value = grouped_ref
 for field in ('speaker', 'segment_text'):
-    assert grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', field, '', '', None)[0] == 'segment_unavailable'
+    assert grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', field, '', '', None)[0] == 'transcript_unavailable'
 grouped_tx.update.assert_not_called()
 outcome, _ = grouped_db._patch_local_recording.to_wrap(grouped_tx, 'fixture-owner', 'stored', 'category', 'education', 'work', None)
 assert outcome == 'ok'
 grouped_tx.update.assert_called_once_with(grouped_ref, {'user_category': 'work', 'structured.category': 'work'})
+grouped_tx.reset_mock()
+
+# Exercise paired PATCH on the later segment of the checked file, which the stored preview omits.
+from database import local_summary as grouped_summaries
+from google.cloud import firestore as grouped_firestore
+fixture_uid = 'fixture-owner'
+file.write_text(json.dumps(source))
+original_bytes = file.read_bytes()
+persisted = grouped_db.encode_conversation_for_write(fixture_uid, card, 'enhanced')
+persisted['data_protection_level'] = 'enhanced'
+grouped_ref.get.return_value.to_dict.return_value = persisted
+preview = persisted['transcript_segments']
+original_revision = grouped_summaries.source(persisted, fixture_uid, background=True).revision
+
+def apply_grouped_patch(ref, patch):
+    assert ref is grouped_ref
+    for key, value in patch.items():
+        if value is grouped_firestore.DELETE_FIELD:
+            persisted.pop(key, None)
+        else:
+            persisted[key] = value
+
+grouped_tx.update.side_effect = apply_grouped_patch
+original_patch = grouped_db.patch_local_recording
+grouped_db.patch_local_recording = lambda *args: grouped_db._patch_local_recording.to_wrap(grouped_tx, *args)
+later = conversation.transcript_segments[1]
+path = '/v1/local/conversations/' + conversation.id + '/edit'
+digest = lambda value: hashlib.sha256(value.encode()).hexdigest()
+edit = {'field': 'segment_text', 'segment_id': later.id, 'expected': digest(later.text), 'value': 'Corrected late-marker.'}
+budget = local_transcript.GROUPED_TRANSCRIPT_EDIT_BYTES
+local_transcript.GROUPED_TRANSCRIPT_EDIT_BYTES = 1
+limit = client.patch(path, json=edit, headers=headers)
+assert limit.status_code == 413 and limit.json()['detail'] == 'local_recording_transcript_edit_limit'
+grouped_tx.update.assert_not_called()
+local_transcript.GROUPED_TRANSCRIPT_EDIT_BYTES = budget
+result = client.patch(path, json=edit, headers=headers)
+assert result.status_code == 200, result.text
+assert result.json()['conversation']['transcript_segments'][1]['id'] == later.id
+assert result.json()['conversation']['transcript_segments'][1]['text'] == edit['value']
+assert 'local_transcript_edits' not in result.json()['conversation']
+assert edit['value'] not in persisted['local_transcript_edits']
+assert persisted['transcript_segments'] == preview and file.read_bytes() == original_bytes
+revision = grouped_summaries.source(persisted, fixture_uid, background=True)
+assert revision.revision != original_revision and edit['value'] in revision.transcript
+assert client.patch(path, json=edit, headers=headers).status_code == 200
+assert grouped_tx.update.call_count == 1
+assert client.patch(path, json={**edit, 'value': 'Stale overwrite.'}, headers=headers).status_code == 409
+
+speaker_before = {'person_id': None, 'is_user': False}
+speaker_after = {'person_id': None, 'is_user': True}
+label = {'field': 'speaker', 'expected': {later.id: speaker_before}, 'value': speaker_after}
+reply = client.patch(path, json=label, headers=headers)
+assert reply.status_code == 200, reply.text
+assert reply.json()['conversation']['transcript_segments'][1]['is_user'] is True
+assert reply.json()['conversation']['transcript_segments'][1]['text'] == edit['value']
+assert persisted['transcript_segments'] == preview
+
+grouped_db.db = old_db
+grouped_doc.to_dict.return_value = persisted
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter([grouped_doc])
+reply = client.post(search_url, json={'query': 'late-marker'}, headers=headers)
+assert reply.status_code == 200, reply.text
+match, = reply.json()['items'][0]['match_snippets']
+assert match['segment_id'] == later.id and match['start_ms'] == 12500
+assert client.post(search_url, json={'query': 'needle'}, headers=headers).json()['items'] == []
+query.limit.return_value.stream.side_effect = lambda **kwargs: iter(documents)
+
+grouped_db.db = MagicMock()
+grouped_db.db.collection.return_value.document.return_value.collection.return_value.document.return_value = grouped_ref
+restore = {**edit, 'expected': digest(edit['value']), 'value': later.text}
+assert client.patch(path, json=restore, headers=headers).status_code == 200
+assert client.patch(path, json={**label, 'expected': {later.id: speaker_after}, 'value': speaker_before},
+                    headers=headers).status_code == 200
+assert 'local_transcript_edits' not in persisted and file.read_bytes() == original_bytes
+first_line = conversation.transcript_segments[0]
+preview_edit = {'field': 'segment_text', 'segment_id': first_line.id, 'expected': digest(first_line.text),
+                'value': 'Corrected preview ' * 30}
+assert client.patch(path, json=preview_edit, headers=headers).status_code == 200
+preview_rows = grouped_db._prepare_conversation_for_read(persisted, fixture_uid)['transcript_segments']
+assert len(preview_rows) == 1 and preview_rows[0]['text'] == preview_edit['value'][:180]
+assert file.read_bytes() == original_bytes
+file.write_text('{}')
+corrupt = client.patch(path, json=edit, headers=headers)
+assert corrupt.status_code == 503 and corrupt.json()['detail'] == 'local_recording_transcript_unavailable'
+file.write_bytes(original_bytes)
+grouped_db.patch_local_recording = original_patch
 grouped_db.db = old_db
 
 from routers import local_summary

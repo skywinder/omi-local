@@ -349,7 +349,8 @@ def _prepare_conversation_for_read(conversation_data: Optional[Dict[str, Any]], 
 
 _LOCAL_SEARCH_FIELDS = [
     'created_at', 'started_at', 'is_locked', 'local_chat_deleting', 'structured', 'user_title', 'data_protection_level',
-    'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'deleted',
+    'transcript_segments', 'transcript_segments_compressed', 'external_data.local_transcript', 'local_transcript_edits',
+    'deleted',
 ]
 
 
@@ -1097,6 +1098,34 @@ def update_conversation_title(uid: str, conversation_id: str, title: str):
     conversation_ref.update({'structured.title': title, 'user_title': title})
 
 
+def _local_transcript_edit_patch(raw, row, uid, changed, fields, original_segments):
+    level = row.get('data_protection_level') or 'standard'
+    segments = row['transcript_segments']
+    local = (raw.get('external_data') or {}).get('local_transcript') or {}
+    if local.get('segment_storage') != 'result-file':
+        return _prepare_conversation_for_write({'transcript_segments': segments}, uid, level)
+
+    from utils.local_transcript import encode_grouped_transcript_edits, read_grouped_transcript_edits
+
+    edits = read_grouped_transcript_edits(raw, uid)
+    for segment in changed:
+        identifier = segment['id']
+        edit = edits.setdefault(identifier, {})
+        original = original_segments[identifier]
+        if all(original[field] == segment[field] for field in fields):
+            for field in fields:
+                edit.pop(field, None)
+        else:
+            edit.update({field: segment[field] for field in fields})
+        if not edit:
+            edits.pop(identifier)
+    patch = {'local_transcript_edits': encode_grouped_transcript_edits(edits, uid) if edits else firestore.DELETE_FIELD}
+    if segments[0] in changed:
+        preview = {**segments[0], 'text': segments[0]['text'][:180]}
+        patch.update(_prepare_conversation_for_write({'transcript_segments': [preview]}, uid, level))
+    return patch
+
+
 @firestore.transactional
 def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
     owner = db.collection('users').document(uid)
@@ -1108,13 +1137,29 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     if raw.get('status') not in {None, 'completed'}:
         return 'not_ready', None
     storage = (raw.get('external_data') or {}).get('local_transcript') or {}
-    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
-        # Firestore contains only a preview. Transcript edits need the file-backed source.
-        return 'segment_unavailable', None
     row = _prepare_conversation_for_read(raw, uid)
     if row is None:
         return 'not_found', None
     row['id'] = conversation_id
+    original_segments = {}
+    if field in {'segment_text', 'speaker'} and storage.get('segment_storage') == 'result-file':
+        from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
+
+        original_segments = dict.fromkeys(expected if field == 'speaker' else [segment_id])
+        try:
+            row = hydrate_grouped_transcript(row, local_transcript_root(), uid, original_segments=original_segments)
+        except (OSError, ValueError, KeyError, TypeError):
+            return 'transcript_unavailable', None
+
+    def save_segments(changed, fields):
+        from utils.local_transcript import TranscriptEditLimit
+
+        try:
+            patch = _local_transcript_edit_patch(raw, row, uid, changed, fields, original_segments)
+        except TranscriptEditLimit:
+            return 'transcript_edit_limit', None
+        transaction.update(ref, patch)
+        return 'ok', row
 
     def matches_original(current):
         if field in {'title', 'segment_text'} and isinstance(current, str):
@@ -1187,9 +1232,7 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         if changed:
             for segment in changed:
                 segment.update(value, speaker_identity_status='user' if value['is_user'] else 'unknown')
-            transaction.update(ref, _prepare_conversation_for_write(
-                {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
-            ))
+            return save_segments(changed, ('person_id', 'is_user'))
         return 'ok', row
     elif field == 'segment_text':
         segments = row.get('transcript_segments')
@@ -1205,9 +1248,7 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         if not matches_original(current):
             return 'conflict', None
         segment['text'] = value
-        patch = _prepare_conversation_for_write(
-            {'transcript_segments': segments}, uid, row.get('data_protection_level') or 'standard',
-        )
+        return save_segments([segment], ('text',))
     else:
         raise ValueError('Unsupported local recording edit')
 

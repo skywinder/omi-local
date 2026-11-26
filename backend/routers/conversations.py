@@ -1,7 +1,5 @@
 import asyncio
 import hashlib
-import os
-from pathlib import Path
 import re
 import uuid
 from unicodedata import normalize
@@ -305,14 +303,15 @@ def _paired_detail(row: dict, uid: str) -> dict:
     local = (row.get('external_data') or {}).get('local_transcript') or {}
     if local.get('segment_storage') != 'result-file':
         return row
-    from utils.local_transcript import hydrate_grouped_transcript
+    from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
     from utils.local_transport_auth import load_pairing, local_tunnel_enabled
 
     if not local_tunnel_enabled() or load_pairing()['owner_uid'] != uid or row.get('is_locked'):
         raise HTTPException(404, 'Local recording unavailable')
+    if local.get('segment_preview') is False and len(row.get('transcript_segments') or []) == local.get('segment_count'):
+        return row
     try:
-        root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
-        return hydrate_grouped_transcript(row, root)
+        return hydrate_grouped_transcript(row, local_transcript_root(), uid)
     except (ValueError, OSError, KeyError, TypeError):
         raise HTTPException(503, 'Full local transcript unavailable') from None
 
@@ -414,6 +413,10 @@ def patch_local_recording(
     )
     if status == 'not_found':
         raise HTTPException(404, 'local_recording_unavailable')
+    if status == 'transcript_unavailable':
+        raise HTTPException(503, 'local_recording_transcript_unavailable')
+    if status == 'transcript_edit_limit':
+        raise HTTPException(413, 'local_recording_transcript_edit_limit')
     if status != 'ok':
         raise HTTPException(409, 'local_recording_edit_conflict')
     response.headers['Cache-Control'] = 'no-store'

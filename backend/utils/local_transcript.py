@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 from unicodedata import category as unicode_category
@@ -199,6 +200,47 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
 
 # Reserve Firestore document space for summary metadata and subsequent user edits.
 GROUPED_INLINE_TRANSCRIPT_BYTES = 512 * 1024
+GROUPED_TRANSCRIPT_EDIT_BYTES = 192 * 1024
+
+
+class TranscriptEditLimit(ValueError):
+    pass
+
+
+def local_transcript_root() -> Path:
+    return Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
+
+
+def read_grouped_transcript_edits(document: dict, uid: str) -> dict:
+    if 'local_transcript_edits' not in document:
+        return {}
+    from utils import encryption
+
+    payload = document['local_transcript_edits']
+    if not isinstance(payload, str) or len(payload) > 4 * ((GROUPED_TRANSCRIPT_EDIT_BYTES + 30) // 3):
+        raise ValueError('Invalid transcript edits')
+    edits = json.loads(encryption.decrypt(payload, uid))
+    if not isinstance(edits, dict):
+        raise ValueError('Invalid transcript edits')
+    for patch in edits.values():
+        if not isinstance(patch, dict) or not patch or patch.keys() - {'text', 'person_id', 'is_user'}:
+            raise ValueError('Invalid transcript edit')
+        if 'text' in patch and (not isinstance(patch['text'], str) or not patch['text'].strip()):
+            raise ValueError('Invalid edited text')
+        if 'is_user' in patch or 'person_id' in patch:
+            if (type(patch.get('is_user')) is not bool or 'person_id' not in patch
+                    or (patch['person_id'] is not None and (patch['is_user'] or not isinstance(patch['person_id'], str)))):
+                raise ValueError('Invalid edited speaker')
+    return edits
+
+
+def encode_grouped_transcript_edits(edits: dict, uid: str) -> str:
+    from utils import encryption
+
+    payload = json.dumps(edits, ensure_ascii=False, separators=(',', ':'))
+    if len(payload.encode('utf-8')) > GROUPED_TRANSCRIPT_EDIT_BYTES:
+        raise TranscriptEditLimit('Recording exceeds its stored transcript edit budget')
+    return encryption.encrypt(payload, uid)
 
 
 def grouped_import_document(conversation: Conversation, manifest: dict, raw_path: Path) -> dict:
@@ -220,7 +262,7 @@ def grouped_import_document(conversation: Conversation, manifest: dict, raw_path
     return document
 
 
-def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
+def hydrate_grouped_transcript(document: dict, root: Path, uid: str, *, original_segments: dict | None = None) -> dict:
     """Resolve only a validated imported local result under the paired owner's service directory."""
     local = (document.get('external_data') or {}).get('local_transcript') or {}
     if local.get('segment_storage') != 'result-file':
@@ -248,5 +290,20 @@ def hydrate_grouped_transcript(document: dict, root: Path) -> dict:
     full = build_conversation(raw, manifest)
     if len(full.transcript_segments) != local.get('segment_count'):
         raise ValueError('Incomplete transcript')
-    return {**document, 'transcript_segments': [s.model_dump() for s in full.transcript_segments],
-            'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}
+    edits = read_grouped_transcript_edits(document, uid)
+    segments = []
+    for segment in full.transcript_segments:
+        entry = segment.model_dump()
+        if original_segments is not None and segment.id in original_segments:
+            original_segments[segment.id] = entry.copy()
+        if patch := edits.pop(segment.id, None):
+            entry.update(patch)
+            if 'is_user' in patch:
+                entry['speaker_identity_status'] = 'user' if patch['is_user'] else 'unknown'
+        segments.append(entry)
+    if edits:
+        raise ValueError('Edited segment missing from transcript')
+    result = {**document, 'transcript_segments': segments,
+              'external_data': {**document['external_data'], 'local_transcript': {**local, 'segment_preview': False}}}
+    result.pop('local_transcript_edits', None)
+    return result

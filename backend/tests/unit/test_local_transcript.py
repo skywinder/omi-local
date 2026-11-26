@@ -383,7 +383,7 @@ def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_tran
     assert card['external_data']['local_transcript']['segment_preview'] is True
     card['starred'] = True
     card['structured']['overview'] = 'Updated summary'
-    full = hydrate_grouped_transcript(card, root)
+    full = hydrate_grouped_transcript(card, root, 'fixture-owner')
     assert full['starred'] and full['structured']['overview'] == 'Updated summary'
     assert not full['external_data']['local_transcript']['segment_preview']
     assert [s['text'] for s in full['transcript_segments']] == [s['text'] for s in transcript['segments']]
@@ -394,7 +394,7 @@ def test_large_grouped_import_projects_small_card_and_hydrates_full_checked_tran
     assert source.segment_ids[-1] == (conversation.transcript_segments[-1].id,)
     raw_path.write_text('{"segments": []}')
     with pytest.raises(ValueError, match='changed'):
-        hydrate_grouped_transcript(card, root)
+        hydrate_grouped_transcript(card, root, 'fixture-owner')
     with pytest.raises(local_summary.SummaryUnavailable):
         local_summary.source(card, 'fixture-owner', background=True)
     assert len(grouped_import_document(conversation, manifest(), raw_path)['transcript_segments']) == 1500

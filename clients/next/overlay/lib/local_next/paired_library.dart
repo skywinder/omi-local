@@ -682,6 +682,8 @@ class PairedLibrary {
         '/v1/local/conversations/$id/edit',
         (response) async {
           if (response.statusCode == HttpStatus.conflict) throw RecordingEditFailure.conflict;
+          if (response.statusCode == HttpStatus.requestEntityTooLarge) throw RecordingEditFailure.transcriptEditLimit;
+          if (response.statusCode == HttpStatus.serviceUnavailable) throw RecordingEditFailure.transcriptUnavailable;
           if (response.statusCode != HttpStatus.ok) throw RecordingEditFailure.unavailable;
           final data = await _json(response, 24 << 20) as Map<String, dynamic>;
           final row = ServerConversation.fromJson(data['conversation'] as Map<String, dynamic>);

@@ -3,16 +3,14 @@
 import hashlib
 import json
 import math
-import os
 from collections import Counter
-from pathlib import Path
 from typing import NamedTuple
 
 from google.cloud import firestore
 
 from database import conversations
 from database._client import db, run_transactional
-from utils.local_transcript import hydrate_grouped_transcript, summary_labels, summary_note_fields
+from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root, summary_labels, summary_note_fields
 
 SUMMARY_SHORT_LIMIT = 120_000
 SUMMARY_BACKGROUND_LIMIT = 2_000_000
@@ -59,8 +57,7 @@ def _transcript(raw, uid, *, background=False):
         if not background:
             raise SummaryTooLarge()
         try:
-            root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services/local-transcripts'
-            row = hydrate_grouped_transcript(row, root)
+            row = hydrate_grouped_transcript(row, local_transcript_root(), uid)
         except (ValueError, OSError, KeyError, TypeError):
             raise SummaryUnavailable() from None
         if (row['external_data']['local_transcript']).get('segment_preview'):

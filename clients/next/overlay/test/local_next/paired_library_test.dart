@@ -290,6 +290,10 @@ void main() {
           edits.add(jsonDecode(await utf8.decoder.bind(request).join()));
           if (edits.length == 1) {
             response.statusCode = HttpStatus.conflict;
+          } else if (edits.length == 3) {
+            response.statusCode = HttpStatus.serviceUnavailable;
+          } else if (edits.length == 4) {
+            response.statusCode = HttpStatus.requestEntityTooLarge;
           } else {
             response.write(
               jsonEncode({
@@ -310,10 +314,15 @@ void main() {
       throwsA(RecordingEditFailure.conflict),
     );
     expect((await library.editRecording(id, const RecordingEdit.starred(false, true))).starred, isTrue);
+    const segment = RecordingEdit.segment('line-1', 'Original', 'Corrected');
+    await expectLater(library.editRecording(id, segment), throwsA(RecordingEditFailure.transcriptUnavailable));
+    await expectLater(library.editRecording(id, segment), throwsA(RecordingEditFailure.transcriptEditLimit));
     expect((await library.list(0, starredOnly: true, folderId: 'project-folder')).rows.single.starred, isTrue);
     expect(edits, [
       {'field': 'title', 'expected': sha256.convert(utf8.encode('Earlier')).toString(), 'value': 'New title'},
       {'field': 'starred', 'expected': false, 'value': true},
+      segment.wire,
+      segment.wire,
     ]);
   });
 

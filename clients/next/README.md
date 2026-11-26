@@ -286,6 +286,11 @@ in bounded pages and reuses Omi's transcript snippet format. It covers records
 saved before this feature and reflects edits without a separate index. Search
 uses the same checksummed transcript as detail for file-backed recordings. One request expands at most one such file. Bastion serves this route. Search duration for a rare term grows with the archive size.
 
+You can correct a line or assign its speaker in a completed file-backed
+recording. The server saves changes with the archived conversation and applies
+them to the full transcript for playback, search and summary generation. The
+imported audio and transcript file keep their original checksums.
+
 ## Offline recordings
 
 In a finished recording, open **More options → Download for offline**. In the

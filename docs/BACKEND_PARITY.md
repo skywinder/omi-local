@@ -154,10 +154,12 @@ a stale edit returned 409, an invalid category returned 422, and an unsigned
 request returned 401. The probe removed only its own fixture.
 
 The Local storage contract from `625034a` now covers large grouped recordings
-in Next's backend. The detail and metadata-edit responses expand the stored
-preview from the checksummed transcript. Segment and speaker changes against a
-file-backed preview return a conflict. A fixture with 1,500 segments verified
-complete expansion and rejection of a changed file. Each Bastion release keeps
+in Next's backend. The detail and edit responses expand the preview from the
+checksummed transcript. Segment text and speaker changes compare against the
+complete transcript inside the recording transaction. Firestore stores the
+bounded encrypted edits and a current first-line preview. Detail, search and
+summary generation read the same edited segments. Returning a segment to its
+original text or speaker removes the corresponding override. Each Bastion release keeps
 its previous Compose file list for rollback, including the original provider
 and capture adjustments.
 

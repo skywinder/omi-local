@@ -5,7 +5,6 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from utils.conversations.semantic_passages import owner_digest, passages, source_revision
@@ -17,9 +16,9 @@ _RECORDING_ID = re.compile(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}')
 
 def iter_sources(uid):
     from database.conversations import read_local_search_page
-    from utils.local_transcript import hydrate_grouped_transcript
+    from utils.local_transcript import hydrate_grouped_transcript, local_transcript_root
 
-    root = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'services' / 'local-transcripts'
+    root = local_transcript_root()
     cursor = None
     while True:
         rows, next_cursor = read_local_search_page(uid, cursor, 20, end_page_after_file=True)
@@ -28,7 +27,7 @@ def iter_sources(uid):
                 continue
             source = (row.get('external_data') or {}).get('local_transcript') or {}
             if source.get('segment_storage') == 'result-file':
-                row = hydrate_grouped_transcript(row, root)
+                row = hydrate_grouped_transcript(row, root, uid)
             yield {
                 'id': row['id'], 'revision': source_revision(row['_local_read_version']),
                 'passages': [passage.text for passage in passages(row)],
