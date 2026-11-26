@@ -196,7 +196,7 @@ app.add_middleware(
 )
 
 if _OFFLINE_RUNTIME:
-    from routers import local_daily_recaps, local_folders, local_goals, local_recording_chat, local_summary, local_tasks
+    from routers import local_daily_recaps, local_folders, local_goals, local_library_notes, local_recording_chat, local_summary, local_tasks
 
     _router_modules = (
         local_recording_chat,
@@ -204,6 +204,7 @@ if _OFFLINE_RUNTIME:
         local_goals,
         local_summary,
         local_folders,
+        local_library_notes,
         local_tasks,
         local_processing,
         transcribe,

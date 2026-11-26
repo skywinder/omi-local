@@ -26,7 +26,7 @@ h1 span { font-size:14px; font-weight:400; vertical-align:middle; color:var(--mu
 .search>span { font-size:24px; line-height:1; color:var(--muted); }
 .search input { width:100%; min-width:0; border:0; outline:0; background:none; color:var(--ink); font-size:14px; }
 .search:focus-within { outline:2px solid #4e6578; outline-offset:2px; }
-.filters { display:flex; gap:6px; margin:20px 10px; }
+.filters { display:flex; flex-wrap:wrap; gap:6px; margin:20px 10px; }
 .filter { border-radius:6px; padding:7px 10px; font-size:13px; color:var(--muted); }
 .filter.selected { background:var(--active); color:var(--ink); font-weight:550; }
 .recordings { overflow-y:auto; flex:1; scrollbar-width:thin; padding:0 2px 14px; }
@@ -183,3 +183,6 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
 .recording-summary p { white-space:pre-wrap; font-size:15px; line-height:1.85; margin:0; overflow-wrap:anywhere; }
 @media(max-width:1050px) { .settings-fields { grid-template-columns:1fr; } .provider-editor { padding:19px; } }
 @media(max-width:650px) { .provider-settings { padding:27px 23px 40px; overflow:visible; } .settings-heading { align-items:flex-start; } .settings-heading h2 { font-size:28px; } .settings-tab { font-size:12px; padding:8px 9px; } .settings-feedback { position:static; } .provider-card .settings-button { font-size:12px; } }
+.note-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+.note-actions [aria-pressed=true] { background: var(--active); color: var(--accent); border-color: var(--line); }
+.favorite-mark { color: var(--accent); }

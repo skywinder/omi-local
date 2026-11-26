@@ -23,8 +23,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import httpx
+
 from . import config, safety
 from .local_capture_wav import read_wave
+from .local_library_notes import NoteConflict, NoteStates, valid_change
 
 
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
@@ -33,6 +36,7 @@ ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
           '/settings.mjs': ('settings.mjs', 'text/javascript; charset=utf-8'),
           '/recording-processing.mjs': ('recording-processing.mjs', 'text/javascript; charset=utf-8'),
+          '/recording-categories.mjs': ('recording-categories.mjs', 'text/javascript; charset=utf-8'),
           '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8'),
           '/reload.mjs': ('reload.mjs', 'text/javascript; charset=utf-8')}
 
@@ -237,7 +241,7 @@ class Library:
                     state = job.get('state', 'unavailable')
                     state = state if state in {'pending', 'processing', 'failed'} else 'unavailable'
                     segments, summary, processing = [], None, {}
-                    summary_recording = None
+                    summary_recording = note_key = None
                     if digest in results:
                         try:
                             raw_path, progress_path, _stamp = results[digest]
@@ -284,7 +288,8 @@ class Library:
                                     and re.fullmatch(r'[a-f0-9]{64}', raw_path.parent.name)
                                     and safe_file(raw_path.parent / 'import.json', self.transcripts)
                                     and read_json(raw_path.parent / 'import.json').get('import') == 'passed'):
-                                summary_recording = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + raw_path.parent.name))
+                                note_key = raw_path.parent.name
+                                summary_recording = str(uuid.uuid5(uuid.NAMESPACE_URL, 'omi-local-stt:' + note_key))
                         except (OSError, ValueError, KeyError, TypeError, AttributeError):
                             segments, state = [], 'failed'
                     records[token] = {'id': token, 'started_at': started.isoformat(),
@@ -292,6 +297,7 @@ class Library:
                                       'duration': duration, 'status': state, 'segments': segments,
                                       'attempts': job.get('attempts', 0),
                                       'summary': summary, 'processing': processing, 'summary_recording': summary_recording,
+                                      'note_key': note_key,
                                       'audio': audio, 'decode_warning': bool(meta.get('decode_errors', 0))}
                 except (OSError, ValueError, KeyError, TypeError, EOFError, wave.Error):
                     continue
@@ -302,7 +308,7 @@ class Library:
 
     @staticmethod
     def public(record, *, detail):
-        result = {k: v for k, v in record.items() if k not in {'audio', 'segments', 'summary_recording'}}
+        result = {k: v for k, v in record.items() if k not in {'audio', 'segments', 'summary_recording', 'note_key'}}
         if record.get('summary_recording'):
             result['summary_editable'] = True
         result['preview'] = record['segments'][0]['text'][:180] if record['segments'] else ''
@@ -316,6 +322,10 @@ class Library:
             if not record or not safe_file(record['audio'], self.captures):
                 raise KeyError('Recording unavailable')
             return record
+
+    def note_keys(self, records):
+        with self.lock:
+            return {row['id']: key for row in records if (key := self.records.get(row['id'], {}).get('note_key'))}
 
 
 def byte_range(value, size):
@@ -336,7 +346,7 @@ def byte_range(value, size):
     return start, end
 
 
-def handler(library, assets, delete=None, runtime=None, settings=None, access=None, summary_jobs=None):
+def handler(library, assets, delete=None, runtime=None, settings=None, access=None, summary_jobs=None, notes=None):
     access = access or Access()
     from .local_provider_api import Processing
     processing = Processing(settings.cfg, summary_jobs) if settings is not None else None
@@ -393,6 +403,51 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
 
         def do_HEAD(self):
             self.do_GET()
+
+        def enrich_notes(self, records):
+            keys = library.note_keys(records) if notes is not None else {}
+            if not keys:
+                return True
+            try:
+                states = notes.exchange(list(dict.fromkeys(keys.values())))
+            except (httpx.HTTPError, OSError, ValueError, KeyError):
+                return False
+            for row in records:
+                if (note := states.get(keys.get(row['id']))) is not None:
+                    row['note'] = note
+            return True
+
+        def do_PATCH(self):
+            if not self.allowed(request='notes'):
+                return self.reject('Требуется доступ к аудиотеке.')
+            match = re.fullmatch(r'/api/recordings/([A-Za-z0-9_-]{24})/notes', self.path)
+            try:
+                key = library.get(match[1]).get('note_key') if match and notes is not None else None
+            except KeyError:
+                key = None
+            if not key:
+                return self.send_json({'error': 'Заметка недоступна.'}, 404)
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if (not 0 < length <= 256 or self.headers.get('Transfer-Encoding')
+                        or self.headers.get_content_type() != 'application/json'):
+                    raise ValueError()
+                self.connection.settimeout(10)
+                body = self.rfile.read(length)
+                change = json.loads(body)
+                if len(body) != length or not valid_change(change):
+                    raise ValueError()
+            except (OSError, ValueError):
+                return self.send_json({'error': 'Некорректное изменение заметки.'}, 400)
+            try:
+                note = notes.exchange([key], change=change).get(key)
+            except NoteConflict:
+                return self.send_json({'error': 'Категория уже изменилась. Обновите запись и повторите.'}, 409)
+            except (httpx.HTTPError, OSError, ValueError, KeyError):
+                return self.send_json({'error': 'Не удалось подтвердить изменение заметки.'}, 503)
+            if note is None:
+                return self.send_json({'error': 'Заметка недоступна.'}, 404)
+            self.send_json({'note': note})
 
         def settings_request(self):
             from .local_providers import SettingsError
@@ -512,7 +567,9 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             elif path == '/health':
                 self.send_json({'service': 'omi-local-library', 'status': 'ok'})
             elif path == '/api/recordings':
-                self.send_json({'recordings': library.scan()})
+                records = library.scan()
+                notes_available = self.enrich_notes(records)
+                self.send_json({'recordings': records, **({'notes_unavailable': True} if not notes_available else {})})
             elif path == '/api/assets':
                 self.send_json(asset_versions(assets))
             elif path == '/api/runtime' and runtime is not None:
@@ -571,7 +628,10 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 parts = path.split('/')
                 record = library.get(parts[3])
                 if len(parts) == 4:
-                    return self.send_json(library.public(record, detail=True))
+                    detail = library.public(record, detail=True)
+                    if not self.enrich_notes([detail]):
+                        detail['notes_unavailable'] = True
+                    return self.send_json(detail)
                 with record['audio'].open('rb') as stream:
                     size = os.fstat(stream.fileno()).st_size
                     try:
@@ -652,7 +712,8 @@ def main():
     summaries = SummaryJobs(cfg, settings.registry)
     server = ThreadingHTTPServer(('127.0.0.1', port(cfg)), handler(
         Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio),
-        Runtime(cfg), settings, access=Access.from_env(), summary_jobs=summaries))
+        Runtime(cfg), settings, access=Access.from_env(), summary_jobs=summaries,
+        notes=NoteStates(cfg) if cfg.local_transport in config.PAIRED_TRANSPORTS else None))
     server.daemon_threads = True
     try:
         server.serve_forever()

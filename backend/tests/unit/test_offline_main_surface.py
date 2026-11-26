@@ -93,6 +93,63 @@ for path in ('/v1/local/folders', '/v1/local/people'):
     assert client.get(path).status_code == 401
     assert client.post(path, json={'name': 'A private label'}).status_code == 401
 
+from routers import local_library_notes
+from unittest.mock import patch as patch_notes
+loopback = TestClient(main.app, base_url='http://127.0.0.1:8000', client=('127.0.0.1', 43100))
+note_path = '/v1/local/library/note-states'
+note_key = 'f' * 64
+note_id = local_library_notes.conversation_id(note_key)
+note_headers = {'Authorization': 'Bearer ' + key}
+assert loopback.post(note_path, json={'keys': [note_key]}).status_code == 401
+assert client.post(note_path, json={'keys': [note_key]}, headers=note_headers).status_code == 404
+assert loopback.post(note_path, json={'keys': [note_key]}, headers={**note_headers, 'X-Forwarded-For': '127.0.0.1'}).status_code == 404
+assert loopback.post(note_path, json={'keys': [note_key], 'change': {'archived': 'true'}}, headers=note_headers).status_code == 400
+note_ref, note_tx, note_doc = MagicMock(), MagicMock(), MagicMock()
+note_doc.id = note_id
+note_doc.exists = True
+note_raw = {'status': 'completed', 'external_data': {'local_transcript': {'result_key': note_key}},
+            'structured': {'category': 'education', 'emoji': '🎓'}, 'starred': True}
+note_doc.to_dict.side_effect = lambda: json.loads(json.dumps(note_raw))
+note_ref.get.return_value = note_doc
+note_db = MagicMock()
+note_owner = note_db.collection.return_value.document.return_value
+
+def apply_note_patch(_ref, data):
+    assert _ref is note_ref
+    for field, value in data.items():
+        if field == 'structured.category':
+            note_raw['structured']['category'] = value
+        else:
+            note_raw[field] = value
+
+note_tx.update.side_effect = apply_note_patch
+note_db.get_all.return_value = [note_doc]
+with patch_notes.object(local_library_notes._client, 'get_firestore_client', return_value=note_db), \
+     patch_notes.object(local_library_notes.conversations, 'db', note_db), \
+     patch_notes.object(note_owner.collection.return_value.document, 'return_value', note_ref), \
+     patch_notes.object(local_library_notes.conversations, 'run_transactional',
+                       lambda _db, func, *args: func.to_wrap(note_tx, *args)):
+    read = loopback.post(note_path, json={'keys': [note_key]}, headers=note_headers)
+    assert read.json() == {note_key: {'category': 'education', 'emoji': '🎓', 'starred': True, 'archived': False}}
+    assert read.headers['cache-control'] == 'no-store'
+    changed = loopback.post(note_path, json={'keys': [note_key], 'change': {'archived': True}}, headers=note_headers)
+    assert changed.json()[note_key]['archived'] is True
+    note_tx.update.assert_called_once_with(note_ref, {'archived': True})
+    assert note_raw['starred']
+    stale = loopback.post(note_path, json={'keys': [note_key], 'change': {
+        'category': {'expected': 'work', 'value': 'technology'}}}, headers=note_headers)
+    assert stale.status_code == 409
+    assert loopback.post(note_path, json={'keys': [note_key], 'change': {
+        'category': {'expected': 'education', 'value': 'technology'}}}, headers=note_headers).json()[note_key]['category'] == 'technology'
+    note_raw['local_chat_deleting'] = True
+    assert loopback.post(note_path, json={'keys': [note_key]}, headers=note_headers).json() == {}
+    assert loopback.post(note_path, json={'keys': [note_key], 'change': {'starred': False}}, headers=note_headers).status_code == 404
+    note_raw.pop('local_chat_deleting')
+    note_raw['external_data']['local_transcript']['result_key'] = 'e' * 64
+    assert loopback.post(note_path, json={'keys': [note_key], 'change': {'starred': False}}, headers=note_headers).status_code == 404
+    assert note_tx.update.call_count == 2
+    note_db.collection.return_value.document.assert_any_call('fixture-owner')
+
 from utils import local_recording_rows
 original_canonical = main.conversations.conversations_db.get_conversations_without_photos
 original_local = local_recording_rows.local_recording_rows
@@ -919,6 +976,7 @@ print(json.dumps({
         '/v1/local/conversations/{conversation_id}/summary-jobs',
         '/v1/local/conversations/{conversation_id}/retry-processing',
         '/v1/local/preview',
+        '/v1/local/library/note-states',
         '/v1/local/processing',
         '/v1/local/processing/live-tuning',
         '/v1/local/processing/summary-settings',

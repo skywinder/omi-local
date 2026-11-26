@@ -1127,7 +1127,7 @@ def _local_transcript_edit_patch(raw, row, uid, changed, fields, original_segmen
 
 
 @firestore.transactional
-def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id):
+def _patch_local_recording(transaction, uid, conversation_id, field, expected, value, segment_id, result_key=None):
     owner = db.collection('users').document(uid)
     ref = owner.collection(conversations_collection).document(conversation_id)
     snapshot = ref.get(transaction=transaction, timeout=6)
@@ -1137,6 +1137,8 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     if raw.get('status') not in {None, 'completed'}:
         return 'not_ready', None
     storage = (raw.get('external_data') or {}).get('local_transcript') or {}
+    if result_key is not None and storage.get('result_key') != result_key:
+        return 'not_found', None
     row = _prepare_conversation_for_read(raw, uid)
     if row is None:
         return 'not_found', None
@@ -1162,6 +1164,8 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         return 'ok', row
 
     def matches_original(current):
+        if result_key is not None and field in {'starred', 'archived'} and expected is None:
+            return True
         if field in {'title', 'segment_text'} and isinstance(current, str):
             return expected == hashlib.sha256(current.encode('utf-8')).hexdigest()
         return expected == current
@@ -1178,10 +1182,10 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
             patch['structured.title'] = value
         else:
             patch['structured'] = structured
-    elif field == 'starred':
-        current = bool(row.get('starred'))
-        row['starred'] = value
-        patch = {'starred': value}
+    elif field in {'starred', 'archived'}:
+        current = row.get(field) is True
+        row[field] = value
+        patch = {field: value}
     elif field == 'folder':
         current = row.get('folder_id')
         if value is not None:
@@ -1194,10 +1198,11 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
         structured = row.get('structured')
         structured = structured if isinstance(structured, dict) else {}
         try:
-            current = CategoryEnum(structured.get('category')).value
+            current = CategoryEnum(row.get('user_category') or structured.get('category')).value
         except (ValueError, TypeError):
             current = CategoryEnum.other.value
         value = CategoryEnum(value).value
+        row['user_category'] = value
         structured['category'] = value
         row['structured'] = structured
         patch = {'user_category': value}
@@ -1264,8 +1269,8 @@ def _patch_local_recording(transaction, uid, conversation_id, field, expected, v
     return 'ok', row
 
 
-def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None):
-    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id)
+def patch_local_recording(uid, conversation_id, field, expected, value, segment_id=None, *, result_key=None):
+    return run_transactional(db, _patch_local_recording, uid, conversation_id, field, expected, value, segment_id, result_key)
 
 
 def update_conversation_summary(uid: str, conversation_id: str, app_id: Optional[str], content: str) -> str:

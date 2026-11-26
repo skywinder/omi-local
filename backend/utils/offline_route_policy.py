@@ -37,6 +37,7 @@ _ALLOWED_HTTP = frozenset(
         ("GET", "/v1/health"),
         ("GET", "/v1/local/status"),
         ("GET", "/v1/local/preview"),
+        ("POST", "/v1/local/library/note-states"),
         ("GET", "/v1/local/processing"),
         ("GET", "/v1/local/processing/live-tuning"),
         ("GET", "/v1/local/processing/summary-settings"),

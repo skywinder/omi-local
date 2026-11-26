@@ -17,7 +17,13 @@
     <aside class="library" aria-label="Аудиозаписи">
       <div class="library-heading"><div><p class="eyebrow">БИБЛИОТЕКА</p><h1>Записи <span id="count"></span></h1></div><button id="refresh" class="icon-button" title="Обновить список" aria-label="Обновить список">↻</button></div>
       <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти запись…" aria-label="Поиск по дате, источнику и началу транскрипта"></label>
-      <div class="filters" aria-label="Фильтр записей"><button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button><button id="filter-ready" class="filter" aria-pressed="false">С транскриптом</button></div>
+      <div class="filters" aria-label="Фильтр записей">
+        <button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button>
+        <button id="filter-favorites" class="filter" aria-pressed="false">Избранное</button>
+        <button id="filter-archive" class="filter" aria-pressed="false">Архив</button>
+        <button id="filter-ready" class="filter" aria-pressed="false">С транскриптом</button>
+        <select id="filter-category" aria-label="Категория записей"><option value="">Все категории</option></select>
+      </div>
       <p id="connection" class="connection" role="status" hidden></p>
       <div id="recordings" class="recordings"><p class="empty-list">Загружаем записи…</p></div>
       <footer class="library-footer">
@@ -39,6 +45,12 @@
       <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>
         <header class="detail-heading"><div class="detail-actions"><p id="recording-date" class="eyebrow"></p><button id="delete" class="delete-button">Удалить запись</button></div><h2 id="recording-title"></h2><div id="recording-meta" class="recording-meta"></div></header>
+        <div id="note-actions" class="note-actions" hidden>
+          <button id="note-star" type="button" class="filter" aria-pressed="false">В избранное</button>
+          <button id="note-archive" type="button" class="filter">Архивировать</button>
+          <select id="note-category" aria-label="Категория записи"></select>
+        </div>
+        <p id="note-feedback" class="folder-message" role="status" hidden></p>
         <section id="recording-processing" class="recording-processing" aria-label="Этапы обработки" hidden></section>
         <section id="recording-summary" class="recording-summary" aria-label="Краткое содержание" hidden></section>
         <button id="summary-edit" hidden>Сгенерировать итоги заново</button>

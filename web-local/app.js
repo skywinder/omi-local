@@ -2,11 +2,13 @@ import {formatTime, segmentAt, seekTo, playFrom} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
 import {mountSettings} from '/settings.mjs';
 import {processingFailure, renderProcessing} from '/recording-processing.mjs';
+import {categories, categoryLabel} from '/recording-categories.mjs';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
 const providerSettings = mountSettings($('provider-settings'));
-const state = {records: [], selected: null, detail: null, view: 'live', filter: false, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
+const state = {records: [], selected: null, detail: null, view: 'live', filter: 'all', category: '', noteWrite: false,
+  noteVersion: 0, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
 const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Обрабатывается', no_speech: 'Речь не обнаружена', failed: 'Ошибка обработки', unavailable: 'Без транскрипта'};
 const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
 const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
@@ -33,8 +35,12 @@ function showView(view = state.view) {
 
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
-  const items = state.records.filter(r => (!state.filter || r.status === 'ready') && `${r.summary?.title || ''} ${r.preview} ${day(r.started_at)} ${hour(r.started_at)} ${[r.phone, r.source].filter(Boolean).join(' · ')}`.toLocaleLowerCase('ru-RU').includes(query));
-  $('count').textContent = state.records.length;
+  const items = state.records.filter(r => (state.filter === 'archive' ? r.note?.archived : !r.note?.archived)
+    && (state.filter !== 'favorites' || r.note?.starred) && (state.filter !== 'ready' || r.status === 'ready')
+    && (!state.category || r.note?.category === state.category)
+    && [r.summary?.title, r.preview, day(r.started_at), hour(r.started_at), r.phone, r.source, categoryLabel(r.note?.category)]
+      .join(' ').toLocaleLowerCase('ru-RU').includes(query));
+  $('count').textContent = items.length;
   const fragment = document.createDocumentFragment();
   let previous = '';
   for (const r of items) {
@@ -42,17 +48,72 @@ function renderList() {
     if (date !== previous) { fragment.append(node('p', 'group-label', date)); previous = date; }
     const button = node('button', `recording${state.selected === r.id ? ' active' : ''}`);
     button.setAttribute('aria-pressed', String(state.selected === r.id));
-    const top = node('span', 'recording-top', r.summary?.title || `Запись в ${hour(r.started_at)}`);
+    const title = r.summary?.title || `Запись в ${hour(r.started_at)}`;
+    const top = node('span', 'recording-top', r.note?.emoji ? `${r.note.emoji} ${title}` : title);
     top.append(node('span', 'recording-length', formatTime(r.duration)));
     button.append(top, node('p', 'recording-preview', r.preview || statuses[r.status]));
     const bottom = node('span', 'recording-bottom');
     bottom.append(node('span', 'source', [r.phone, r.source].filter(Boolean).join(' · ')), node('span', '', processingFailure(r) || statuses[r.status]));
+    if (r.note?.starred) {
+      const star = node('span', 'favorite-mark', '★');
+      star.setAttribute('aria-label', 'В избранном');
+      bottom.append(star);
+    }
+    if (r.note?.category) button.append(node('span', 'source', categoryLabel(r.note.category)));
     button.append(bottom);
     button.addEventListener('click', () => select(r.id));
     fragment.append(button);
   }
   if (!items.length) fragment.append(node('p', 'empty-list', state.records.length ? 'Ничего не найдено. Попробуйте другую дату или сбросьте фильтр.' : 'Записей пока нет. Завершите запись на CV1 — она появится здесь автоматически.'));
   $('recordings').replaceChildren(fragment);
+}
+
+function noteFeedback(text = '') {
+  $('note-feedback').textContent = text;
+  $('note-feedback').hidden = !text;
+}
+
+function renderNoteActions() {
+  const note = state.detail?.note;
+  $('note-actions').hidden = !note;
+  $('note-star').textContent = note?.starred ? 'В избранном' : 'В избранное';
+  $('note-star').setAttribute('aria-pressed', String(note?.starred === true));
+  $('note-archive').textContent = note?.archived ? 'Вернуть из архива' : 'Архивировать';
+  $('note-category').value = categories.has(note?.category) ? note.category : 'other';
+  for (const id of ['note-star', 'note-archive', 'note-category']) {
+    $(id).disabled = state.noteWrite || state.detail?.notes_unavailable === true;
+  }
+}
+
+async function changeNote(field, value) {
+  const note = state.detail?.note;
+  if (!note || state.noteWrite || state.detail.notes_unavailable) return;
+  const id = state.selected;
+  const request = state.request;
+  const change = field === 'category' ? {category: {expected: note.category, value}} : {[field]: !note[field]};
+  state.noteWrite = true;
+  ++state.noteVersion;
+  noteFeedback('Сохраняем…');
+  renderNoteActions();
+  try {
+    const response = await fetch(`/api/recordings/${id}/notes`, {method: 'PATCH',
+      headers: {'Content-Type': 'application/json', 'X-Omiloc-Request': 'notes'},
+      body: JSON.stringify(change), signal: AbortSignal.timeout(10000)});
+    const result = await response.json();
+    if (!response.ok || !result.note) throw new Error(result.error || 'Изменение не подтверждено.');
+    state.records = state.records.map(row => row.id === id ? {...row, note: result.note} : row);
+    if (request === state.request && state.detail) {
+      state.detail.note = result.note;
+      noteFeedback();
+    }
+    renderList();
+  } catch (error) {
+    if (request === state.request) noteFeedback(error.message || 'Изменение не подтверждено.');
+  } finally {
+    state.noteWrite = false;
+    renderNoteActions();
+    await refresh();
+  }
 }
 
 function renderTranscript(record) {
@@ -103,6 +164,7 @@ async function select(id, open = true) {
   audio.load();
   state.selected = id;
   state.detail = null;
+  noteFeedback();
   showView(open ? 'recording' : state.view);
   message();
   renderList();
@@ -110,6 +172,8 @@ async function select(id, open = true) {
     const record = await get(`/api/recordings/${id}`);
     if (request !== state.request) return;
     state.detail = record;
+    renderNoteActions();
+    if (record.notes_unavailable) noteFeedback('Избранное и категории временно недоступны.');
     showView();
     $('recording-date').textContent = day(record.started_at).toLocaleUpperCase('ru-RU');
     $('recording-title').textContent = `Запись в ${hour(record.started_at)}`;
@@ -224,11 +288,17 @@ function syncPlayer() {
 }
 
 async function refresh() {
-  if (state.loading || state.deleting || $('delete-dialog').open) return;
+  if (state.loading || state.deleting || state.noteWrite || $('delete-dialog').open) return;
+  const noteVersion = state.noteVersion;
   state.loading = true;
   $('refresh').disabled = true;
   try {
-    const {recordings} = await get('/api/recordings');
+    const {recordings, notes_unavailable: notesUnavailable} = await get('/api/recordings');
+    if (noteVersion !== state.noteVersion) return;
+    if (notesUnavailable) {
+      const known = new Map(state.records.map(row => [row.id, row.note]));
+      for (const row of recordings) if (!row.note && known.get(row.id)) row.note = known.get(row.id);
+    }
     const changed = JSON.stringify(recordings) !== JSON.stringify(state.records);
     state.records = recordings;
     $('connection').hidden = true;
@@ -240,8 +310,14 @@ async function refresh() {
     if (!state.selected && recordings.length) await select(recordings[0].id, false);
     else if (state.detail) {
       const id = state.selected;
+      const request = state.request;
       const record = await get(`/api/recordings/${id}`);
-      if (state.selected === id && state.detail && (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing]))) {
+      if (request !== state.request || noteVersion !== state.noteVersion || !state.detail) return;
+      if (record.notes_unavailable && !record.note) record.note = state.detail.note;
+      state.detail.note = record.note;
+      state.detail.notes_unavailable = record.notes_unavailable;
+      renderNoteActions();
+      if (record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
         state.detail = record;
         $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
         renderTranscript(record);
@@ -315,7 +391,26 @@ $('delete-confirm').addEventListener('click', async () => {
   }
 });
 $('search').addEventListener('input', renderList);
-for (const [id, enabled] of [['filter-all', false], ['filter-ready', true]]) $(id).addEventListener('click', () => { state.filter = enabled; for (const name of ['filter-all', 'filter-ready']) { $(name).classList.toggle('selected', name === id); $(name).setAttribute('aria-pressed', String(name === id)); } renderList(); });
+const filters = ['all', 'favorites', 'archive', 'ready'];
+for (const mode of filters) $(`filter-${mode}`).addEventListener('click', () => {
+  state.filter = mode;
+  for (const name of filters) {
+    $(`filter-${name}`).classList.toggle('selected', name === mode);
+    $(`filter-${name}`).setAttribute('aria-pressed', String(name === mode));
+  }
+  renderList();
+});
+for (const key of categories.keys()) {
+  for (const id of ['filter-category', 'note-category']) {
+    const option = node('option', '', categoryLabel(key));
+    option.value = key;
+    $(id).append(option);
+  }
+}
+$('filter-category').addEventListener('change', event => { state.category = event.target.value; renderList(); });
+$('note-star').addEventListener('click', () => changeNote('starred'));
+$('note-archive').addEventListener('click', () => changeNote('archived'));
+$('note-category').addEventListener('change', event => changeNote('category', event.target.value));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 for (const view of ['live', 'recording', 'settings']) $(`view-${view}`).addEventListener('click', () => showView(view));

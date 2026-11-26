@@ -89,6 +89,17 @@ A failed schedule read leaves the last confirmed device schedule intact.
 
 ## Paired archive management
 
+The web library reads favorites, archiving and category metadata from paired
+Conversations after a recording has been imported. Browser requests use opaque
+recording tokens. The harness resolves them to import keys and sends the paired
+key to the backend on loopback. The backend checks the owner, recording
+provenance and availability inside the write transaction. A category edit
+compares the previously shown category. The backend keeps a manual category
+when later processing updates the summary. Archiving sets only the browser's
+`archived` flag. The mobile client uses the shared favorite and category fields.
+When note metadata is temporarily unavailable, audio and transcripts remain
+available in the web library.
+
 Next reads `local_folders_version`, `local_speaker_labels_version`, and
 `local_task_suggestions_version` from the authenticated paired profile. When
 updating an existing deployment, verify those flags together with the live

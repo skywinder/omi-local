@@ -111,6 +111,48 @@ def test_catalogue_detail_and_audio_seek_are_exact_and_read_only(library):
     assert before == {p: p.read_bytes() for p in before}
 
 
+def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(library):
+    from dev_harness.local_library_notes import NoteConflict
+
+    key = 'e' * 64
+    folder = (library.transcripts / 'result').rename(library.transcripts / key)
+    (folder / 'import.json').write_text('{"import":"passed"}')
+    metadata = {'category': 'work', 'emoji': '💼', 'archived': False, 'starred': True}
+    calls = []
+    available = True
+
+    def exchange(keys, *, change=None):
+        calls.append((keys, change))
+        if not available:
+            raise OSError('Unavailable')
+        if 'category' in (change or {}):
+            raise NoteConflict()
+        metadata.update(change or {})
+        return {key: metadata.copy()}
+
+    assets = Path(__file__).resolve().parents[3] / 'web-local'
+    route = handler(library, assets, notes=SimpleNamespace(exchange=exchange))
+    rows = request(library, '/api/recordings', http_handler=route)
+    assert key.encode() not in rows[2]
+    row, = json.loads(rows[2])['recordings']
+    assert row['note'] == metadata
+    detail = f"/api/recordings/{row['id']}"
+    payload = '{"archived":true}'
+    headers = {'Origin': 'http://127.0.0.1:20001', 'Content-Type': 'application/json', 'Content-Length': str(len(payload))}
+    assert request(library, detail + '/notes', method='PATCH', headers=headers, payload=payload, http_handler=route)[0] == 403
+    headers['X-Omiloc-Request'] = 'notes'
+    changed = request(library, detail + '/notes', method='PATCH', headers=headers, payload=payload, http_handler=route)
+    assert json.loads(changed[2])['note']['archived'] is True
+    assert calls[-1] == ([key], {'archived': True})
+    payload = '{"category":{"expected":"education","value":"work"}}'
+    assert request(library, detail + '/notes', method='PATCH', headers={**headers, 'Content-Length': str(len(payload))},
+                   payload=payload, http_handler=route)[0] == 409
+    available = False
+    status, _, body = request(library, detail, http_handler=route)
+    assert status == 200 and json.loads(body)['notes_unavailable']
+    assert request(library, detail + '/audio', http_handler=route)[0] == 200
+
+
 @pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [
     ('phone', {'phone_platform': 'android', 'phone_model': 'Test Pixel'}, 'Микрофон телефона', 'Android · Test Pixel'),
     ('phone', {}, 'Микрофон телефона', ''),
