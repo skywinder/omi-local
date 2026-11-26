@@ -11,6 +11,10 @@ import 'wav_level.dart';
 
 enum _Phase { waiting, settling, room, ready, countdown, speech }
 
+enum _Test { microphone, coldPlayback, awakePlayback }
+
+typedef _PlaybackReading = ({int gain, bool streamingBeforeCue, int? firstAudio, WavLevel level});
+
 class Cv1GainCalibrationCard extends StatefulWidget {
   const Cv1GainCalibrationCard({
     super.key,
@@ -38,14 +42,24 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   Timer? _tick;
   int _quarterSeconds = 0;
   Cv1GainCalibration? _meter;
-  bool _checkWake = false;
-  bool _countdownAudio = false;
-  int? _firstWakeAudio;
+  _Test _test = _Test.microphone;
+  int? _lastCountdownAudio;
+  bool _streamingBeforeCue = false;
+  int? _firstPlaybackAudio;
   WavLevel? _recent;
   String? _notice;
   final _results = <({int gain, WavLevel room, WavLevel speech, Cv1GainAdvice advice})>[];
-  ({int gain, bool alreadyStreaming, int? firstAudio, double seconds})? _wakeResult;
+  _PlaybackReading? _coldResult;
+  _PlaybackReading? _awakeResult;
   _Phase _phase = _Phase.waiting;
+
+  static const _speechSeconds = 5;
+
+  int get _countdownSeconds => switch (_test) {
+    _Test.microphone => 3,
+    _Test.coldPlayback => 12,
+    _Test.awakePlayback => 4,
+  };
 
   @override
   void initState() {
@@ -64,7 +78,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     if (!_foreground && _meter != null) _finish(notice: 'gainTestCancelled');
   }
 
-  Future<void> _start({bool checkWake = false}) async {
+  Future<void> _start([_Test test = _Test.microphone]) async {
     if (_opening || widget.busy()) return;
     final link = widget.link;
     final connected = link.linkState?.generation;
@@ -86,10 +100,11 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
         return;
       }
       _meter = Cv1GainCalibration(decoder);
-      _checkWake = checkWake;
-      _countdownAudio = false;
-      _firstWakeAudio = null;
-      _enter(checkWake ? _Phase.countdown : _Phase.waiting);
+      _test = test;
+      _lastCountdownAudio = null;
+      _streamingBeforeCue = false;
+      _firstPlaybackAudio = null;
+      _enter(test == _Test.microphone ? _Phase.waiting : _Phase.countdown);
       _tick = Timer.periodic(const Duration(milliseconds: 250), _advance);
     } catch (_) {
       _notice = 'gainTestDecoderUnavailable';
@@ -105,9 +120,9 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
       if (!meter.accept(raw)) return;
       if (_phase == _Phase.waiting) {
         setState(() => _enter(_Phase.settling));
-      } else if (_checkWake) {
-        if (_phase == _Phase.countdown) _countdownAudio = true;
-        if (_phase == _Phase.speech) _firstWakeAudio ??= _quarterSeconds;
+      } else if (_test != _Test.microphone) {
+        if (_phase == _Phase.countdown) _lastCountdownAudio = _quarterSeconds;
+        if (_phase == _Phase.speech) _firstPlaybackAudio ??= _quarterSeconds;
       }
     } catch (_) {
       _finish(notice: 'gainTestDecodeFailed');
@@ -132,7 +147,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     }
     switch (_phase) {
       case _Phase.waiting when _quarterSeconds >= 32:
-      case _Phase.speech when _quarterSeconds >= 20:
+      case _Phase.speech when _quarterSeconds >= _speechSeconds * 4:
         _finish(report: true);
       case _Phase.settling when _quarterSeconds >= 4:
         setState(() => _enter(_Phase.room));
@@ -140,8 +155,14 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
         setState(() => _enter(_Phase.ready));
       case _Phase.ready when _quarterSeconds >= 120:
         _finish(notice: 'gainTestReadyExpired');
-      case _Phase.countdown when _quarterSeconds >= 12:
-        setState(() => _enter(_Phase.speech));
+      case _Phase.countdown when _quarterSeconds >= _countdownSeconds * 4:
+        setState(() {
+          // The cold run can begin with an awake mic that falls silent. Only
+          // packets near the cue establish that audio was already streaming.
+          final last = _lastCountdownAudio;
+          _streamingBeforeCue = last != null && _quarterSeconds - last <= 8;
+          _enter(_Phase.speech);
+        });
       case _:
         setState(() {});
     }
@@ -152,13 +173,19 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
     if (meter == null) return;
     _tick?.cancel();
     _meter = null;
-    if (report && _checkWake) {
-      _wakeResult = (
+    if (report && _test != _Test.microphone) {
+      final reading = (
         gain: widget.gain,
-        alreadyStreaming: _countdownAudio,
-        firstAudio: _firstWakeAudio,
-        seconds: meter.speech.seconds,
+        streamingBeforeCue: _streamingBeforeCue,
+        firstAudio: _firstPlaybackAudio,
+        level: meter.speech,
       );
+      if (_test == _Test.coldPlayback) {
+        _coldResult = reading;
+        _awakeResult = null;
+      } else {
+        _awakeResult = reading;
+      }
     } else if (report) {
       _results.removeWhere((result) => result.gain == widget.gain);
       _results.insert(0, (gain: widget.gain, room: meter.room, speech: meter.speech, advice: meter.advice));
@@ -189,30 +216,60 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
   String _coverage(BuildContext context, String key, double seconds, int expected) =>
       '${pairedSettingsLabel(context, key)} · ${seconds.toStringAsFixed(1)} / $expected s';
 
+  Widget _playbackResult(_PlaybackReading result, {required bool warmed}) {
+    String label(String key) => pairedSettingsLabel(context, key);
+    final first = result.firstAudio;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text('${label(warmed ? 'gainWakeAfter' : 'gainWakeBefore')} · ${result.gain} / 8'),
+      subtitle: Text(
+        [
+          _coverage(context, 'gainAudioReceived', result.level.seconds, _speechSeconds),
+          if (result.streamingBeforeCue && !warmed) label('gainWakeAlreadyStreaming'),
+          if (!result.streamingBeforeCue && warmed) label('gainWakeUnconfirmed'),
+          if (first == null)
+            label('gainWakeNoAudio')
+          else if (!result.streamingBeforeCue)
+            '${label('gainWakeFirstAudio')} · ~${(first / 4).toStringAsFixed(1)} s',
+          if (result.level.seconds > 0) ...[
+            '${label('gainWakeSignal')} · ${_db(result.level.rms)}',
+            '${label('gainTestPeak')} · ${_db(result.level.peak)}',
+          ],
+        ].join('\n'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String label(String key) => pairedSettingsLabel(context, key);
     final meter = _meter;
+    final canStart = !_opening && !widget.busy() && widget.gain > 0;
     final prompt = switch (_phase) {
       _Phase.waiting => label('gainTestWaiting'),
       _Phase.settling || _Phase.room => label('gainTestQuiet'),
       _Phase.ready => label('gainTestReady'),
       _Phase.countdown =>
-        '${label(_checkWake ? 'gainWakeCountdown' : 'gainTestCountdown')} · ${3 - _quarterSeconds ~/ 4}',
-      _Phase.speech => label(_checkWake ? 'gainWakePlayNow' : 'gainTestSpeak'),
+        '${label(switch (_test) {
+          _Test.microphone => 'gainTestCountdown',
+          _Test.coldPlayback => 'gainWakeCountdown',
+          _Test.awakePlayback => 'gainWakeWarmCountdown',
+        })} · ${_countdownSeconds - _quarterSeconds ~/ 4}',
+      _Phase.speech => label(_test == _Test.microphone ? 'gainTestSpeak' : 'gainWakePlayNow'),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label('gainTestHelp')),
+        if (widget.gain == 0) Text(label('gainTestMuted')),
         if (meter == null) ...[
           TextButton.icon(
-            onPressed: _opening || widget.busy() ? null : _start,
+            onPressed: canStart ? _start : null,
             icon: const Icon(Icons.graphic_eq),
             label: Text(label('gainTestStart')),
           ),
           TextButton.icon(
-            onPressed: _opening || widget.busy() ? null : () => _start(checkWake: true),
+            onPressed: canStart ? () => _start(_Test.coldPlayback) : null,
             icon: const Icon(Icons.volume_down_outlined),
             label: Text(label('gainWakeStart')),
           ),
@@ -226,7 +283,7 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
                 value: (((_recent?.rms ?? double.negativeInfinity) + 70) / 70).clamp(0.0, 1.0),
               ),
             ),
-            Text(_coverage(context, 'gainAudioReceived', meter.speech.seconds, 5)),
+            Text(_coverage(context, 'gainAudioReceived', meter.speech.seconds, _speechSeconds)),
           ],
           TextButton(
             onPressed: () => _finish(notice: 'gainTestCancelled'),
@@ -234,22 +291,24 @@ class _Cv1GainCalibrationCardState extends State<Cv1GainCalibrationCard> with Wi
           ),
         ],
         if (_notice case final key?) Text(label(key)),
-        if (_wakeResult case final result? when meter == null)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('${label('gainWakeStart')} · ${result.gain} / 8'),
-            subtitle: Text(
-              [
-                _coverage(context, 'gainAudioReceived', result.seconds, 5),
-                if (result.alreadyStreaming) label('gainWakeAlreadyStreaming'),
-                if (result.firstAudio case final time? when !result.alreadyStreaming)
-                  '${label('gainWakeFirstAudio')} · ~${(time / 4).toStringAsFixed(1)} s'
-                else if (result.firstAudio == null)
-                  label('gainWakeNoAudio'),
-              ].join('\n'),
-            ),
+        if (_coldResult case final cold? when meter == null) ...[
+          _playbackResult(cold, warmed: false),
+          if (_awakeResult case final awake? when awake.gain == cold.gain) ...[
+            _playbackResult(awake, warmed: true),
+            if (!cold.streamingBeforeCue &&
+                cold.level.seconds < 4 &&
+                awake.streamingBeforeCue &&
+                awake.level.seconds >= 4)
+              Text(label('gainWakeDifference')),
+          ],
+          TextButton.icon(
+            onPressed: canStart && cold.gain == widget.gain ? () => _start(_Test.awakePlayback) : null,
+            icon: const Icon(Icons.hearing),
+            label: Text(label('gainWakeRepeatAwake')),
           ),
-        if (meter == null && _results.isNotEmpty) ...[
+          if (cold.gain != widget.gain) Text(label('gainWakeGainChanged')),
+        ],
+        if (meter == null && (_results.isNotEmpty || _coldResult != null)) ...[
           if (widget.changeGain case final changeGain?)
             Wrap(
               spacing: 8,

@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:omi/pages/settings/device/device_control_sheets.dart' show micGainLevelLabel;
 import 'package:omi/ui/format/omi_duration.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
@@ -117,12 +118,13 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 )
               else
                 Text('${draft.round()}'),
+              if (field == 'gain') Text(micGainLevelLabel(context, draft.round())),
               Slider(
                 min: 0,
                 max: max.toDouble(),
                 divisions: max,
                 value: draft,
-                label: '${draft.round()}',
+                label: field == 'gain' ? micGainLevelLabel(context, draft.round()) : '${draft.round()}',
                 onChanged: (value) => setDraft(() => draft = value),
               ),
               if (field == 'gain')
@@ -255,9 +257,11 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                       trailing: const Icon(Icons.tune),
                       onTap: widget.captureBusy() || _writing ? null : () => _edit('gain', l.micGain, gain, 8),
                     ),
+                    Text(micGainLevelLabel(context, gain)),
                     if (widget.captureBusy() && !link.calibrating)
                       Text(pairedSettingsLabel(context, 'nextCv1SettingsBusy')),
                     Cv1GainCalibrationCard(
+                      key: ValueKey(link.linkState?.generation),
                       link: link,
                       gain: gain,
                       busy: () => _writing || widget.captureBusy(),

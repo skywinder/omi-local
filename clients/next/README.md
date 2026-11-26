@@ -149,8 +149,8 @@ minutes. Connection events can be copied with timestamps, reason codes, last
 measurements and link duration. The journal does not contain Bluetooth
 identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
-and a confirmed Bluetooth write. Device Diagnostics exposes gain on the Omi 0–8 scale.
-These levels identify the firmware setting. Measured levels are displayed in dBFS.
+and a confirmed Bluetooth write. Device Diagnostics uses the upstream Omi gain
+labels for the firmware's 0–8 levels. Measured signal levels use dBFS.
 The gain editor can select the original firmware default of 6/8 and applies it
 when you tap Save.
 Use two short CV1 archive recordings of the
@@ -164,10 +164,13 @@ The moving meter shows the latest audio, and the result shows how much CV1
 audio arrived during each window and how far speech rose above the room level.
 Use the one-step controls to compare up to two levels at equal distance and
 volume. To check whether a quiet speaker starts the stream after silence, use
-**Test quiet playback**. Stay quiet until the cue and then play the phrase. If
-the CV1 already sent audio during the countdown, wait in silence and repeat.
-If no audio arrives during playback, repeat the phrase with the normal microphone
-test after deliberately waking the CV1. Both tests run in memory on the phone
+**Test quiet playback**. Stay quiet for the 12-second countdown and play the
+phrase at the cue. Tap **Repeat after waking CV1**, make a short sound next to
+the pendant during the countdown, and play the same phrase at the same volume
+and distance. The two results show received duration, signal and peak. The
+comparison checks whether audio was already arriving just before each cue.
+Use the main microphone test to measure speech above room noise and adjust
+gain one step at a time. Both tests run in memory on the phone
 without creating recordings or running speech recognition. Stop any active
 recording before testing. For an archived comparison the phone reads at most the first ten
 seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital

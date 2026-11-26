@@ -237,26 +237,64 @@ void main() {
       final playback = find.text('Test quiet playback');
       await tester.tap(playback);
       await tester.pump();
-      expect(find.text('Stay quiet until playback · 3'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 3));
-      expect(find.text('Play the phrase now at the usual volume'), findsOneWidget);
-      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Stay quiet until playback · 12'), findsOneWidget);
       packet(0, 3);
       packet(1, 3);
+      await tester.pump(const Duration(seconds: 12));
+      expect(find.text('Play the phrase now at the same volume and distance'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      packet(2, 3);
+      packet(3, 3);
       await tester.pump(const Duration(seconds: 4));
       expect(find.textContaining('First CV1 audio after the playback cue · ~1.0 s'), findsOneWidget);
+      expect(find.textContaining('still streaming just before playback'), findsNothing);
       expect(link.calibrating, isFalse);
 
+      final warm = find.text('Repeat after waking CV1');
+      Future<void> startWarm() async {
+        await tester.ensureVisible(warm);
+        await tester.tap(warm);
+        await tester.pump();
+        expect(find.textContaining('Make a short sound close to CV1 now'), findsOneWidget);
+      }
+
+      await startWarm();
+      await tester.pump(const Duration(seconds: 4));
+      for (var counter = 0; counter < 250; counter++) {
+        packet(counter, 4);
+      }
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.textContaining('CV1 audio was absent just before'), findsOneWidget);
+      expect(find.textContaining('More audio arrived'), findsNothing);
+
+      await startWarm();
+      await tester.pump(const Duration(seconds: 3));
+      packet(0, 5);
+      packet(1, 5);
+      await tester.pump(const Duration(seconds: 1));
+      for (var counter = 2; counter < 252; counter++) {
+        packet(counter, 5);
+      }
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('Playback after silence · 6 / 8'), findsOneWidget);
+      expect(find.text('Playback after waking CV1 · 6 / 8'), findsOneWidget);
+      expect(find.textContaining('More audio arrived after waking CV1 at the same gain'), findsOneWidget);
+      expect(find.textContaining('Playback signal'), findsNWidgets(2));
+
+      await tester.ensureVisible(playback);
       await tester.tap(playback);
       await tester.pump();
-      packet(0, 4);
-      packet(1, 4);
-      await tester.pump(const Duration(seconds: 8));
-      expect(find.textContaining('CV1 sent audio during the countdown'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 11));
+      packet(0, 6);
+      packet(1, 6);
+      await tester.pump(const Duration(seconds: 6));
+      expect(find.textContaining('still streaming just before playback'), findsOneWidget);
       expect(find.textContaining('No CV1 audio arrived during playback'), findsOneWidget);
       expect(find.textContaining('First CV1 audio'), findsNothing);
+      expect(find.textContaining('More audio arrived'), findsNothing);
       expect(journal.recordings, 0);
 
+      await tester.ensureVisible(start);
       await tester.tap(start);
       await tester.pump();
       wire.reconnect();
@@ -363,11 +401,13 @@ void main() {
         ),
       );
       await tester.pump();
+      expect(find.text('+20dB'), findsOneWidget);
       await tester.tap(find.text('Mic Gain'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Decrease gain'));
       await tester.pump();
       expect(find.text('5 / 8'), findsOneWidget);
+      expect(find.text('+10dB'), findsOneWidget);
       await tester.tap(find.text('Factory gain · 6/8'));
       await tester.pump();
       expect(find.text('6 / 8'), findsWidgets);
