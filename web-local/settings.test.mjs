@@ -191,10 +191,10 @@ test('failed activation keeps effective profile and re-enables retry controls', 
     if (path === '/activate') throw new Error('Завершите текущую запись.');
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Skip automatic summaries'); await settle();
+  await settings.show(); ui.click('Turn off automatic summaries'); await settle();
   assert.match(ui.root.textContent, /Local modelActive/);
   assert.match(ui.root.textContent, /Завершите текущую запись/);
-  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Skip automatic summaries').disabled, false);
+  assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Turn off automatic summaries').disabled, false);
   assert.equal(ui.root.querySelectorAll('button').find(button => button.textContent === 'Delete').disabled, true);
 });
 
@@ -210,10 +210,10 @@ for (const outcome of ['timeout', 'indeterminate']) test(`activation ${outcome} 
     }
     return structuredClone(state);
   }});
-  await settings.show(); ui.click('Skip automatic summaries'); await settle();
+  await settings.show(); ui.click('Turn off automatic summaries'); await settle();
   assert.deepEqual(paths, ['', '/activate', '']);
   assert.match(ui.root.textContent, /Change not confirmed/);
-  assert.match(ui.category('summary').textContent, /Stage off/);
+  assert.match(ui.category('summary').textContent, /Automatic summaries off/);
   assert.match(ui.root.textContent, /The request was not repeated/);
 });
 
@@ -330,7 +330,7 @@ test('a provider can be tested directly without changing the active stage', asyn
   assert.equal(list.tag, 'ul');
   assert.equal(list.querySelector('.provider-row').tag, 'li');
   assert.match(ui.root.textContent, /Connection not tested/);
-  assert.match(ui.root.textContent, /Automatic summaries will be skipped/);
+  assert.match(ui.root.textContent, /New processing jobs generate a summary after transcription/);
   await ui.click('Test connection');
   assert.deepEqual(paths, ['', '/probe']);
   assert.match(ui.root.querySelector('.provider-health').textContent, /Server responded/);
@@ -382,4 +382,49 @@ test('all provider categories share one view and only matching active rows inher
   assert.equal(ui.category('summary').querySelector('.provider-health').textContent, 'Connection not tested');
   assert.equal(ui.root.querySelector('form').querySelector('input'), draft);
   assert.equal(draft.value, 'Unsaved name');
+});
+
+test('automatic summaries show confirmed on and off states with a way back to the saved provider', async t => {
+  const ui = dom(t), state = serverState(), calls = [];
+  const settings = mountSettings(ui.root, {request: async (path, body) => {
+    if (path === '/activate') {
+      calls.push(body);
+      state.active.summary = body.id;
+      state.effective.summary = state.profiles.find(profile => profile.id === body.id) || null;
+      state.revision++;
+    }
+    return structuredClone(state);
+  }});
+  await settings.show();
+  assert.equal(ui.category('summary').querySelector('.summary-setting-state').textContent, 'Automatic summaries on');
+  await ui.click('Turn off automatic summaries', 'summary');
+  assert.equal(ui.category('summary').querySelector('.summary-setting-state').textContent, 'Automatic summaries off');
+  assert.match(ui.category('summary').textContent, /Existing summaries stay available/);
+  assert.match(ui.category('summary').textContent, /Resume with Local model/);
+  await ui.click('Enable automatic summaries', 'summary');
+  assert.equal(ui.category('summary').querySelector('.summary-setting-state').textContent, 'Automatic summaries on');
+  assert.deepEqual(calls, [{revision: 7, stage: 'summary', id: null}, {revision: 8, stage: 'summary', id: 'summary-1'}]);
+});
+
+test('with automatic summaries off and multiple providers, enabling targets the chosen row', async t => {
+  const ui = dom(t), state = serverState(), calls = [];
+  state.active.summary = null;
+  state.effective.summary = null;
+  state.profiles.push({...state.profiles[0], id: 'backup', name: 'Backup'});
+  const settings = mountSettings(ui.root, {request: async (path, body) => {
+    if (path === '/activate') {
+      calls.push(body);
+      state.active.summary = body.id;
+      state.effective.summary = state.profiles.find(profile => profile.id === body.id);
+      state.revision++;
+    }
+    return structuredClone(state);
+  }});
+  await settings.show();
+  const rows = ui.category('summary').querySelectorAll('.provider-row');
+  const enable = rows[1].querySelectorAll('button').find(button => button.textContent === 'Enable');
+  assert.equal(enable.attrs['aria-label'], 'Enable automatic summaries with Backup');
+  await enable.dispatch('click');
+  assert.deepEqual(calls, [{revision: 7, stage: 'summary', id: 'backup'}]);
+  assert.match(ui.category('summary').querySelectorAll('.provider-row').find(row => row.className.includes(' active')).textContent, /BackupActive/);
 });

@@ -13,7 +13,10 @@ changes the processing profiles shown on the phone.
 
 Open **Settings → Summary templates** and select a row to reveal its prompt.
 The template marked **Default** applies to new recordings. The **Summarization** category also links to the
-template editor. To regenerate one recording, open it and select
+template editor. Its **Automatic summaries** control applies to new processing
+jobs. To resume with the only saved provider, choose **Enable automatic
+summaries**. When several providers are saved, choose **Enable** on the row you
+want to use. To regenerate one recording, open it and select
 **Regenerate summary**.
 
 ## Choose local or remote processing

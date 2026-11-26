@@ -4,8 +4,7 @@ export const stages = {
   stt: {title: 'Transcription', description: 'Turn finished recordings into timestamped text.'},
   diarization: {title: 'Speakers', description: 'Identify who spoke in finished recordings.', off: 'Skip speaker labels',
     effect: 'New transcripts will contain text and timestamps without identifying speakers.'},
-  summary: {title: 'Summarization', description: 'Generate a title and summary from the transcript.', off: 'Skip automatic summaries',
-    effect: 'New recordings will still have audio and a transcript. Automatic summaries will be skipped.'},
+  summary: {title: 'Summarization', description: 'Generate a title and summary from the transcript.'},
   translation: {title: 'Translation', description: 'Choose a model for translation. Language is set in the app.',
     off: 'Use summary model', effect: 'New translations will use the active summary model when it is available.'},
 };
@@ -301,7 +300,8 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     }, '', path === '/models' ? 'Loading models…' : 'Testing connection…');
   }
   function activate(stage, id) {
-    operation(async () => {
+    const summary = stage === 'summary';
+    return operation(async () => {
       try {
         state.data = await request('/activate', {revision: state.data.revision, stage, id});
         unavailableUntil.set(stage, availability?.checked_at || 0);
@@ -313,8 +313,14 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
         throw new Error(`${error.name === 'TimeoutError' ? 'Request timed out.' : error.message} Change not confirmed. ${refreshed ? 'Reloaded current settings.' : 'Select Refresh after the connection returns.'} The request was not repeated.`);
       }
       render();
-    }, id ? 'Provider applies to new jobs and sessions.' : 'Setting applies to new jobs and sessions.',
-    'Applying settings. Setting up a local model can take up to 12 minutes.');
+      if (summary) {
+        const on = Boolean(state.data.effective.summary);
+        message(on ? 'Automatic summaries enabled for new processing jobs.' : 'Automatic summaries are off for new processing jobs.', 'success');
+        root.querySelector('.summary-setting-action')?.focus({preventScroll: true});
+      }
+    }, summary ? '' : id ? 'Provider applies to new jobs and sessions.' : 'Setting applies to new jobs and sessions.',
+    summary ? (id ? 'Enabling automatic summaries…' : 'Turning off automatic summaries…')
+      : 'Applying settings. Setting up a local model can take up to 12 minutes.');
   }
   function observedStatus(profile) {
     if (availability?.stale !== false || !Number.isFinite(availability.checked_at)
@@ -323,6 +329,29 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     const matches = report?.name === profile.name || (profile.stage === 'summary' && report?.name === profile.settings.model);
     if (!report || report.kind !== profile.kind || !matches) return '';
     return report.status;
+  }
+
+  function summarySwitch(effective, profiles) {
+    const enabled = Boolean(effective);
+    const only = profiles.length === 1 ? profiles[0] : null;
+    const panel = el('div', 'summary-setting');
+    panel.dataset.enabled = String(enabled);
+    const copy = el('div');
+    copy.append(el('p', 'summary-setting-state', enabled ? 'Automatic summaries on' : 'Automatic summaries off'));
+    copy.append(el('p', 'settings-description', enabled
+      ? 'New processing jobs generate a summary after transcription.'
+      : 'New processing jobs keep audio and a transcript. Automatic summary generation is paused. Existing summaries stay available.'));
+    if (!enabled) {
+      copy.append(el('p', 'settings-description', only ? `Resume with ${only.name}.`
+        : profiles.length ? 'Select Enable on the provider you want to use.' : 'Add a summary provider to enable automatic summaries.'));
+    }
+    panel.append(copy);
+    if (enabled || only) {
+      const label = enabled ? 'Turn off automatic summaries' : 'Enable automatic summaries';
+      panel.append(button(label, () => activate('summary', enabled ? null : only.id),
+        'settings-button summary-setting-action' + (enabled ? '' : ' primary')));
+    }
+    return panel;
   }
 
   function renderCategory(stageId, stage, form) {
@@ -342,8 +371,10 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     const selected = state.data.profiles.find(profile => profile.id === state.data.active[stageId]);
     const effective = state.data.effective[stageId];
     const profiles = state.data.profiles.filter(profile => profile.stage === stageId);
+    const summary = stageId === 'summary';
+    if (summary) section.append(summarySwitch(effective, profiles));
     const current = el('div', 'provider-category-current');
-    if (!profiles.some(profile => profileMatches(profile, effective))) {
+    if ((!summary || effective) && !profiles.some(profile => profileMatches(profile, effective))) {
       const nameLabel = effective ? 'Active provider · ' + profileLabel(effective) : 'Stage off';
       current.append(el('p', 'active-provider', nameLabel));
     }
@@ -395,7 +426,12 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
         message(resultLabels[result.state] || 'Test complete', ['ready', 'available'].includes(result.state) ? 'success' : 'error');
       }, '', 'Testing connection…'), 'settings-button provider-test');
       actions.append(test, button('Edit', () => choose(stageId, profile), 'settings-button provider-edit'));
-      if (!active) actions.append(button('Use provider', () => activate(stageId, profile.id), 'settings-button primary provider-use'));
+      if (!active && (!summary || effective || profiles.length > 1)) {
+        const use = button(summary && !effective ? 'Enable' : 'Use provider', () => activate(stageId, profile.id),
+          'settings-button primary provider-use');
+        if (summary && !effective) use.setAttribute('aria-label', `Enable automatic summaries with ${profile.name}`);
+        actions.append(use);
+      }
       const remove = button('Delete', () => operation(async () => {
         state.data = await request(`/profiles/${encodeURIComponent(profile.id)}`, {revision: state.data.revision}, 'DELETE');
         if (state.draft?.id === profile.id) state.draft = null;
