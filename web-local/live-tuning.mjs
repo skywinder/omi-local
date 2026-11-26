@@ -1,12 +1,12 @@
 import {settingsRequest} from './settings.mjs';
 
 export function tuningStatus(state) {
-  if (!state.available) return state.message || 'Быстрые настройки недоступны.';
-  if (state.failed_sessions) return 'Сервер не подтвердил применение ко всем потокам.';
-  if (!state.active_sessions) return 'Сохранено для следующей записи.';
-  if (state.pending_sessions) return 'Часть настроек вступит в силу со следующей записи.';
-  if (state.applied_sessions < state.active_sessions) return 'Ожидаем подтверждение от активных потоков…';
-  return 'Применено. Следующие реплики используют эти настройки.';
+  if (!state.available) return state.message || 'Live controls are unavailable.';
+  if (state.failed_sessions) return 'The server did not confirm the change. Check your connection and retry.';
+  if (!state.active_sessions) return 'Saved for the next recording.';
+  if (state.pending_sessions) return 'Some settings were saved for the next recording.';
+  if (state.applied_sessions < state.active_sessions) return 'Applying to the current stream…';
+  return 'Applied. New segments use these settings.';
 }
 
 function element(tag, text) {
@@ -24,8 +24,8 @@ export function mountLiveTuning(details, request = settingsRequest) {
   let base, reading = false, saving = false, needsReload = false;
 
   for (const [key, label, min, max, step] of [
-    ['asr_coalesce_min_s', 'Буфер звука, с', 0, 10, 0.1],
-    ['max_speakers', 'Максимум говорящих', 1, 4, 1],
+    ['asr_coalesce_min_s', 'Audio buffer (seconds)', 0, 10, 0.1],
+    ['max_speakers', 'Maximum speakers', 1, 4, 1],
   ]) {
     const group = element('div'), title = element('label', label);
     const number = element('input'), range = element('input');
@@ -43,15 +43,15 @@ export function mountLiveTuning(details, request = settingsRequest) {
     inputs[key] = number; sliders[key] = range;
     group.append(title, range, number); fields.append(group);
   }
-  const label = element('label', 'Текст на экране'), mode = element('select');
-  for (const [value, name] of [['stable', 'Только подтверждённые фразы'], ['draft', 'Включая черновики']]) {
+  const label = element('label', 'On-screen transcript'), mode = element('select');
+  for (const [value, name] of [['stable', 'Confirmed phrases'], ['draft', 'Include drafts']]) {
     const option = element('option', name); option.value = value; mode.append(option);
   }
   mode.onchange = () => { changed.add('preview_mode'); apply(); };
   inputs.preview_mode = mode; label.append(mode); fields.append(label);
-  const save = element('button', 'Применить'), reload = element('button', 'Обновить значения');
+  const save = element('button', 'Apply'), reload = element('button', 'Reload values');
   save.type = 'submit'; reload.type = 'button';
-  const status = element('p', 'Проверяем поддержку сервера…');
+  const status = element('p', 'Checking server support…');
   status.setAttribute('role', 'status');
   form.append(fields, save, reload, status); details.append(form);
 
@@ -68,7 +68,7 @@ export function mountLiveTuning(details, request = settingsRequest) {
   function problem(error) {
     base = null; needsReload = true;
     fields.disabled = save.disabled = true;
-    status.textContent = (error.message || 'Нет ответа от сервера.') + ' Обновите значения перед повтором.';
+    status.textContent = (error.message || 'The server did not respond.') + ' Reload the values before retrying.';
   }
 
   async function refresh() {
@@ -83,7 +83,7 @@ export function mountLiveTuning(details, request = settingsRequest) {
       if (!changed.size && !saving && generation === editGeneration) {
         base = null;
         fields.disabled = save.disabled = true;
-        status.textContent = error.message || 'Нет ответа от сервера. Повторяем проверку…';
+        status.textContent = error.message || 'The server did not respond. Retrying…';
       }
     } finally { reading = false; }
   }
@@ -92,7 +92,7 @@ export function mountLiveTuning(details, request = settingsRequest) {
     if (!base?.available || saving || !changed.size || !form.reportValidity()) return;
     editGeneration++;
     saving = true; fields.disabled = save.disabled = reload.disabled = true;
-    status.textContent = 'Сохраняем настройки…';
+    status.textContent = 'Saving settings…';
     try {
       const settings = {asr_coalesce_min_s: Number(inputs.asr_coalesce_min_s.value),
         max_speakers: Number(inputs.max_speakers.value), preview_mode: mode.value};
