@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 import 'package:omi/services/capture/local_audio_journal.dart';
@@ -377,7 +378,15 @@ void main() {
   });
 
   test('a mismatched receipt cannot delete unacknowledged audio', () async {
-    final wrong = LocalAudioOutbox(directory: directory, upload: (_, __) async => {'stored': true});
+    var connected = false;
+    var valid = false;
+    final wrong = LocalAudioOutbox(
+      directory: directory,
+      upload: (body, _) async {
+        if (!connected) throw const SocketException('fixture');
+        return valid ? receipt(body) : {'stored': true};
+      },
+    );
     await wrong.initialize();
     final recording = wrong.begin(
       source: 'phone',
@@ -390,7 +399,31 @@ void main() {
     await wrong.drain();
     expect(directory.listSync().whereType<File>(), hasLength(1));
     expect(wrong.deliveryRevision, 0);
+    expect(wrong.deliveryIssues, {LocalDeliveryIssue.connection});
+    connected = true;
+    await wrong.drain();
+    expect(wrong.deliveryIssues, {LocalDeliveryIssue.receipt});
+    expect(wrong.pendingParts, 1);
+    valid = true;
+    await wrong.drain();
+    expect(wrong.deliveryIssues, isEmpty);
+    expect(wrong.deliveryRevision, 1);
+    expect(directory.listSync(), isEmpty);
     wrong.dispose();
+  });
+
+  test('an unreadable queue retries even when no part could be counted', () {
+    final missing = Directory('${directory.path}/later');
+    fakeAsync((time) {
+      final journal = LocalAudioJournal(directory: missing, upload: (_, _) async => {});
+      journal.retry();
+      time.flushMicrotasks();
+      expect(journal.deliveryIssues, {LocalDeliveryIssue.queueStorage});
+      missing.createSync();
+      time.elapse(const Duration(seconds: 15));
+      expect(journal.deliveryIssues, isEmpty);
+      journal.dispose();
+    });
   });
 
   test('only a matching grouped delivery receipt can advance the Live boundary', () async {

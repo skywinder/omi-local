@@ -112,6 +112,14 @@ Widget _controlsScaffold(NextCaptureInputs inputs) => Scaffold(
 class _Journal extends LocalAudioJournal {
   _Journal({super.clock})
     : super(directory: Directory('unused-panel-fixture'), upload: (bytes, owner) => throw StateError('no upload'));
+  Set<LocalDeliveryIssue> issues = {};
+  @override
+  Set<LocalDeliveryIssue> get deliveryIssues => issues;
+  void showIssue(LocalDeliveryIssue? value) {
+    issues = {if (value != null) value};
+    notifyListeners();
+  }
+
   final seal = Completer<void>();
   int recordings = 0;
   @override
@@ -853,6 +861,17 @@ void main() {
       await tester.tap(pending);
       await tester.pumpAndSettle();
       expect(find.textContaining('until the paired server confirms'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      journal.showIssue(LocalDeliveryIssue.receipt);
+      await tester.pump();
+      expect(find.text('Delivery paused'), findsOneWidget);
+      await tester.tap(pending);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('invalid audio receipt'), findsOneWidget);
+      journal.showIssue(null);
+      await tester.pump();
+      expect(find.textContaining('invalid audio receipt'), findsNothing);
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
       now = now.add(const Duration(seconds: 9));

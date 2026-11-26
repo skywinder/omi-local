@@ -11,6 +11,8 @@ import 'package:omi/services/capture/local_opus_preroll.dart';
 
 typedef LocalPartUploader = Future<Map<String, dynamic>> Function(Uint8List body, String serverId);
 
+enum LocalDeliveryIssue implements Exception { connection, tls, pairing, server, receipt, localFile, queueStorage }
+
 /// Audio accepted from Flutter is flushed locally before it enters live preview.
 /// Immutable parts survive network failure and are removed only on a matching
 /// durable server receipt. The cloud WAL and its send-time flags are unrelated.
@@ -52,7 +54,9 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   int pendingBytes = 0;
   int _deliveryRevision = 0;
   int get deliveryRevision => _deliveryRevision;
-  bool deliveryFailed = false;
+  Set<LocalDeliveryIssue> _deliveryIssues = const {};
+  Set<LocalDeliveryIssue> get deliveryIssues => _deliveryIssues;
+  bool get deliveryFailed => deliveryIssues.isNotEmpty;
   bool _recoveryFailed = false;
   String? captureIssue;
   int get activeRecordings => _recordings.length;
@@ -80,7 +84,6 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           await _recover(entity);
         } catch (_) {
           // Keep malformed originals for recovery; never replace or delete them.
-          deliveryFailed = true;
           _recoveryFailed = true;
           final fields = entity.uri.pathSegments.last.split('.');
           if (fields.length == 3 && _groupUuid.hasMatch(fields.first)) incompleteGroups.add(fields.first);
@@ -93,10 +96,10 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
       try {
         await _promoteFinish(marker, id);
       } catch (_) {
-        deliveryFailed = true;
         _recoveryFailed = true;
       }
     }
+    if (_recoveryFailed) _deliveryIssues = const {LocalDeliveryIssue.localFile};
     await _countPending();
   }
 
@@ -315,7 +318,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _drain() async {
     _retry?.cancel();
-    deliveryFailed = _recoveryFailed;
+    final issues = <LocalDeliveryIssue>{if (_recoveryFailed) LocalDeliveryIssue.localFile};
     try {
       final files = directory.listSync().whereType<File>().where((file) => file.path.endsWith('.ready')).toList()
         ..sort((a, b) => a.path.compareTo(b.path));
@@ -324,11 +327,26 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           final body = await file.readAsBytes();
           if (body.length > maxPartBytes) throw const FormatException('Oversized local audio part');
           final header = _header(body).header;
-          final receipt = await upload(body, header['server_id'] as String);
+          final Map<String, dynamic> receipt;
+          try {
+            receipt = await upload(body, header['server_id'] as String);
+          } on LocalDeliveryIssue {
+            rethrow;
+          } on TlsException {
+            throw LocalDeliveryIssue.tls;
+          } on SocketException {
+            throw LocalDeliveryIssue.connection;
+          } on TimeoutException {
+            throw LocalDeliveryIssue.connection;
+          } on FormatException {
+            throw LocalDeliveryIssue.receipt;
+          } catch (_) {
+            throw LocalDeliveryIssue.server;
+          }
           if (receipt['stored'] != true ||
               receipt['id'] != header['id'] ||
               receipt['sha256'] != sha256.convert(body).toString()) {
-            throw const FormatException('Mismatched durable audio receipt');
+            throw LocalDeliveryIssue.receipt;
           }
           await file.delete(); // Only this exact immutable body has been acknowledged.
           _deliveryRevision++;
@@ -336,16 +354,27 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           if (header['version'] == 3 && header['silence_seconds'] != 0 && boundary is int && boundary > 0) {
             onConversationBoundary?.call(header['recording_id'] as String, boundary);
           }
+        } on LocalDeliveryIssue catch (issue) {
+          // Continue delivering the other immutable parts even if one is blocked.
+          issues.add(issue);
+        } on FileSystemException {
+          issues.add(LocalDeliveryIssue.queueStorage);
         } catch (_) {
-          // A part for another server must not starve this server's deliveries.
-          deliveryFailed = true;
+          issues.add(LocalDeliveryIssue.localFile);
         }
       }
-    } catch (_) {
-      deliveryFailed = true;
-    } finally {
+    } on FileSystemException {
+      issues.add(LocalDeliveryIssue.queueStorage);
+    }
+    try {
       await _serial(_countPending);
-      if (pendingParts > 0 && !_disposed) _retry = Timer(const Duration(seconds: 15), retry);
+    } on FileSystemException {
+      issues.add(LocalDeliveryIssue.queueStorage);
+    } finally {
+      _deliveryIssues = Set.unmodifiable(issues);
+      if (!_disposed && (pendingParts > 0 || issues.contains(LocalDeliveryIssue.queueStorage))) {
+        _retry = Timer(const Duration(seconds: 15), retry);
+      }
     }
   }
 

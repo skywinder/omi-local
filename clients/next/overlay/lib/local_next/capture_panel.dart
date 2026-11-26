@@ -96,9 +96,17 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         onConversationBoundary: (id, sample) {
           if (!_closed) preview.confirmConversationBoundary(id, sample);
         },
-        upload: (body, id) {
-          if (_closed) throw StateError('Pairing closed');
-          return library.uploadPart(body, id);
+        upload: (body, id) async {
+          if (_closed) throw LocalDeliveryIssue.pairing;
+          try {
+            return await library.uploadPart(body, id);
+          } on LibraryFailure catch (error) {
+            throw switch (error) {
+              LibraryFailure.address || LibraryFailure.key => LocalDeliveryIssue.pairing,
+              LibraryFailure.malformed => LocalDeliveryIssue.receipt,
+              LibraryFailure.unavailable || LibraryFailure.storage => LocalDeliveryIssue.server,
+            };
+          }
         },
       );
       try {
@@ -521,9 +529,13 @@ class LocalNextCaptureControls extends StatelessWidget {
                       leading: Icon(Icons.cloud_upload_outlined, color: NextAccent.amber.of(context)),
                       title: Text(pairedSettingsLabel(context, 'nextPhoneOutbox')),
                       subtitle: Text(
-                        journal.pendingParts == 0
-                            ? pairedSettingsLabel(context, 'nextOutboxHealthy')
-                            : "${pairedSettingsLabel(context, 'nextAudioOnPhone')} · ${journal.pendingParts} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB",
+                        [
+                          if (journal.pendingParts > 0)
+                            "${pairedSettingsLabel(context, 'nextAudioOnPhone')} · ${journal.pendingParts} · ${(journal.pendingBytes / (1 << 20)).toStringAsFixed(1)} MiB"
+                          else if (!journal.deliveryFailed)
+                            pairedSettingsLabel(context, 'nextOutboxHealthy'),
+                          ..._deliveryReasons(context, journal),
+                        ].join('\n'),
                       ),
                       trailing: journal.deliveryFailed
                           ? TextButton(onPressed: journal.retry, child: Text(l.retry))
@@ -629,40 +641,59 @@ class LocalNextCaptureControls extends StatelessWidget {
     );
   }
 
+  Iterable<String> _deliveryReasons(BuildContext context, LocalAudioJournal journal) =>
+      journal.deliveryIssues.map((issue) => pairedSettingsLabel(context, 'nextDelivery_${issue.name}'));
+
   Widget _statusLine(BuildContext context, LocalAudioJournal journal) {
     final timer = _time(context);
     if (timer == null && journal.pendingParts == 0 && !journal.deliveryFailed) return const SizedBox.shrink();
     final l = context.l10n;
     final label = pairedSettingsLabel(context, 'nextAudioOnPhone');
-    final hint = pairedSettingsLabel(context, 'nextAudioOnPhoneHint');
+    final failed = journal.deliveryFailed;
     return Padding(
       key: const ValueKey('next-capture-status'),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           if (timer != null) Flexible(child: timer),
-          if (timer != null && journal.pendingParts > 0) const SizedBox(width: 8),
-          if (journal.pendingParts > 0)
+          if (timer != null && (journal.pendingParts > 0 || failed)) const SizedBox(width: 8),
+          if (journal.pendingParts > 0 || failed)
             Flexible(
               child: TextButton.icon(
                 key: const ValueKey('next-audio-on-phone'),
-                icon: Icon(Icons.cloud_upload_outlined, size: 16, color: NextAccent.amber.of(context)),
-                label: Text('$label · ${journal.pendingParts}', textAlign: TextAlign.start),
+                icon: Icon(
+                  failed ? Icons.sync_problem_outlined : Icons.cloud_upload_outlined,
+                  size: 16,
+                  color: (failed ? NextAccent.red : NextAccent.amber).of(context),
+                ),
+                label: Text(
+                  failed ? pairedSettingsLabel(context, 'nextDeliveryProblem') : '$label · ${journal.pendingParts}',
+                  textAlign: TextAlign.start,
+                ),
                 onPressed: () => showDialog<void>(
                   context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(label),
-                    content: Text(hint),
-                    actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(l.ok))],
+                  builder: (context) => ListenableBuilder(
+                    listenable: journal,
+                    builder: (context, _) => AlertDialog(
+                      title: Text(label),
+                      scrollable: true,
+                      content: Text(
+                        [
+                          if (journal.pendingParts > 0) '$label · ${journal.pendingParts}',
+                          if (journal.pendingParts == 0 && !journal.deliveryFailed)
+                            pairedSettingsLabel(context, 'nextOutboxHealthy'),
+                          ..._deliveryReasons(context, journal),
+                          pairedSettingsLabel(context, 'nextAudioOnPhoneHint'),
+                        ].join('\n\n'),
+                      ),
+                      actions: [
+                        if (journal.deliveryFailed) TextButton(onPressed: journal.retry, child: Text(l.retry)),
+                        TextButton(onPressed: () => Navigator.pop(context), child: Text(l.ok)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          if (journal.deliveryFailed)
-            IconButton(
-              icon: Icon(Icons.sync_problem_outlined, color: NextAccent.red.of(context)),
-              tooltip: l.captureBannerRetrySync,
-              onPressed: journal.retry,
             ),
         ],
       ),

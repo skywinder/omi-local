@@ -9,6 +9,13 @@ validation completes. Those packets enter the journal after validation,
 before opening live preview. Termination during this initial validation can lose
 the RAM-only startup buffer; it is not a durable recording yet.
 
+Omi Local Next shows delivery failures in the audio counter and in the mobile
+settings. Open the counter to see the pending part count, the detected reason
+and the retry action. The journal keeps a part after a connection failure or
+a mismatched receipt. Reopening the queue after a storage access failure uses
+the same 15-second retry interval, including when no parts could be counted.
+
+
 The phone seals an immutable part after at most five minutes of audio or when
 you stop recording. Parts preserve their recording identity, source, start time
 and order. PCM duration comes from sample count; Opus duration comes from its
