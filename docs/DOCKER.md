@@ -581,7 +581,7 @@ API, exported Firestore at shutdown, and read back the corrected transcript,
 speaker and title in the web library after restart. The emulated x86-64
 container also served the transcript search field before and after restart.
 Both runs used private container storage with automatic STT disabled.
-Validation on a copy of Bastion's state with its configured providers is pending.
+On Bastion the x86-64 image then restored a fresh Firestore/Auth export alongside a private copy of 603 WAVs and 604 transcript manifests. Before and after graceful restart, four sampled paired transcripts, summaries and WAV headers matched the working service. Web detail and WAV range reads passed. In a separate container with only the provider configuration, synthetic speech passed STT, diarization, summary and import. The working container stayed up throughout.
 
 Recorded verification on September 11, 2026, on this Mac using Linux ARM64 in
 Docker Desktop: CPU image builds, timestamped synthetic-speech STT, and the path

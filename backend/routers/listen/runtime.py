@@ -71,6 +71,7 @@ from utils.audio import AudioRingBuffer
 from utils.other.storage import get_user_has_speech_profile
 from utils.offline_audio_capture import OfflineAudioCapture, create_offline_audio_capture, rotate_offline_audio_capture
 from utils.local_audio_delivery import initialize_local_capture
+from utils.local_conversation_groups import LiveSilenceBoundary, RATE as GROUP_RATE
 from utils.local_live_preview import LocalLivePreview, normalize_translation_languages, normalize_translation_revision
 from utils.transcribe_decisions import USER_SELF_PERSON_ID, person_id_for_client
 
@@ -280,6 +281,19 @@ class ListenSessionRuntime:
         elif getattr(self, 'outbox_preview_only', False):
             self.outbox_preview_frames += 1
             self.outbox_preview_pcm_bytes += len(pcm)
+            boundary = getattr(self, 'group_silence_boundary', None)
+            previous_activity = boundary.activity_status if boundary is not None else None
+            if boundary is not None and boundary.feed(pcm):
+                if self.local_preview is not None:
+                    update = self.local_preview.segment.begin_conversation(boundary.closed_at / GROUP_RATE)
+                    self.spawn(self.request.websocket.send_json(update), name='local_conversation_boundary')
+                self.send_event(MessageServiceStatusEvent(provider='local_audio_group', status='flush_part',
+                                                           reason=boundary.group_id))
+            if boundary is not None and boundary.activity_status != previous_activity:
+                self.send_event(MessageServiceStatusEvent(provider='local_audio_group', status=boundary.activity_status,
+                                                          reason=boundary.group_id))
+            if boundary is not None and boundary.onset is not None and self.local_preview is not None:
+                self.local_preview.segment.resume_after_silence(boundary.onset / GROUP_RATE)
         if self.local_preview is not None:
             self.local_preview.feed(pcm)
 
@@ -300,6 +314,11 @@ class ListenSessionRuntime:
             codec=codec,
             sample_rate=self.request.sample_rate,
             channels=self.request.channels,
+        )
+
+        self.group_silence_boundary = (
+            LiveSilenceBoundary.from_headers(getattr(self.request.websocket, 'headers', {}))
+            if self.outbox_preview_only else None
         )
 
     def capture_outbound_stt(self, audio: bytes) -> None:

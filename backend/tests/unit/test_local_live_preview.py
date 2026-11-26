@@ -812,3 +812,18 @@ async def test_idle_diarization_health_never_claims_inference(monkeypatch, extra
         assert data['diarization'] == {'state': expected, 'labeled_segments': 0}
     finally:
         await client.aclose()
+
+
+def test_opted_in_silence_reset_discards_stale_provider_updates_until_speech_resumes():
+    segment = PreviewSegment()
+    previous = {'text': 'old phrase', 'start': 0, 'end': 1}
+    previous_snapshot = {'lines': [previous], 'buffer_transcription': 'old draft'}
+    segment.update(previous_snapshot, 2)
+    reset = segment.begin_conversation(17)
+    assert not reset['segments'] and reset['preview_id'] == segment.id and reset['revision'] == 2
+    assert segment.update(previous_snapshot, 19) is None
+    segment.resume_after_silence(20)
+    new = {'text': 'second phrase', 'start': 20.25, 'end': 21}
+    result = segment.update({'lines': [previous, new], 'buffer_transcription': 'old draft fresh'}, 21.5)
+    assert [(s['text'], s['start'], s['end']) for s in result['segments']] == [
+        ('second phrase', .25, 1), ('fresh', 1, 1.5)]

@@ -64,6 +64,61 @@ class SpeechDetector:
             yield speech, samples
 
 
+class LiveSilenceBoundary:
+    """Early flush hint only. Durable ordered audio decides the actual boundaries."""
+
+    @classmethod
+    def from_headers(cls, headers):
+        group = headers.get('x-omi-local-recording-group', '')
+        seconds = headers.get('x-omi-local-group-silence', '')
+        if seconds not in {str(s) for s in SILENCE_OPTIONS if s} or len(group) != 36:
+            return None
+        try:
+            group_id = str(uuid.UUID(group))
+        except ValueError:
+            return None
+        return cls(group_id, int(seconds))
+
+    def __init__(self, group_id, seconds):
+        self.group_id = group_id
+        self.threshold = seconds * RATE
+        self.detector = SpeechDetector()
+        self.tail = b''
+        self.quiet = None
+        self.samples_seen = 0
+        self.closed_at = None
+        self.onset = None
+
+    @property
+    def activity_status(self):
+        if self.quiet is not None:
+            return 'speech_resumed'
+        if self.samples_seen >= self.threshold:
+            return 'awaiting_speech'
+        return None
+
+    def feed(self, pcm):
+        data = self.tail + pcm
+        complete = len(data) // (2 * FRAME) * (2 * FRAME)
+        self.tail = data[complete:]
+        emitted = False
+        for start in range(0, complete, 2 * FRAME):
+            frame = data[start : start + 2 * FRAME]
+            if self.detector.voiced(frame):
+                if self.quiet is None:
+                    self.onset = max(self.closed_at or 0, self.samples_seen - RATE // 5)
+                self.quiet = 0
+            elif self.quiet is not None:
+                self.quiet += FRAME
+                if self.quiet >= self.threshold:
+                    self.quiet = None
+                    self.closed_at = self.samples_seen + FRAME
+                    self.onset = None
+                    emitted = True
+            self.samples_seen += FRAME
+        return emitted
+
+
 def _new_progress():
     return dict(next_index=0, next_sample=0, open_start=None, last_voice=None, open_index=None,
                 waiting_for_parts=False, completed=False, last_boundary=0, archived_before=0)

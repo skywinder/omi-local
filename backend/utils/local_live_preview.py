@@ -69,6 +69,29 @@ class PreviewSegment:
         self.provider = 'custom-live'
         self.last_snapshot = None
         self.last_translation_revision = None
+        self.conversation_floor = 0.0
+        self.awaiting_speech = False
+        self.previous_draft = ''
+        self.previous_cumulative = ''
+
+    def begin_conversation(self, audio_seconds):
+        now = self.last_snapshot or {}
+        self.previous_draft = ' '.join(now.get(k, '').strip() for k in ('buffer_diarization', 'buffer_transcription')
+                                       if isinstance(now.get(k), str) and now[k].strip())
+        self.previous_cumulative = ' '.join(row.get('text', '').strip() for row in now.get('lines', [])
+                                            if isinstance(row, dict) and isinstance(row.get('text'), str))
+        self.conversation_floor = audio_seconds
+        self.awaiting_speech = True
+        self.segments = []
+        self.text = ''
+        self.revision += 1
+        return {'type': 'local_transcript_snapshot', 'preview_id': self.id,
+                'revision': self.revision, 'segments': []}
+
+    def resume_after_silence(self, onset_seconds):
+        if self.awaiting_speech:
+            self.conversation_floor = max(self.conversation_floor, onset_seconds)
+            self.awaiting_speech = False
 
     def configure(self, message: dict) -> None:
         # WLK emits a placeholder speaker even with diarization disabled. Only
@@ -117,7 +140,7 @@ class PreviewSegment:
         return result
 
     def update(self, snapshot: dict, audio_seconds: float) -> dict | None:
-        if 'lines' not in snapshot or 'buffer_transcription' not in snapshot:
+        if self.awaiting_speech or 'lines' not in snapshot or 'buffer_transcription' not in snapshot:
             return None
         lines = snapshot['lines']
         if not isinstance(lines, list) or any(not isinstance(line, dict) for line in lines):
@@ -132,20 +155,33 @@ class PreviewSegment:
         if any(line.get('start') is None or line.get('end') is None for line in lines):
             # Legacy Parakeet exposes only an accumulated hypothesis. Its full
             # audio span is useful for ordering, but is not a phrase timestamp.
-            pending = [line['text'] for line in lines] + pending
+            cumulative = ' '.join(line['text'].strip() for line in lines)
+            if self.previous_cumulative and cumulative.startswith(self.previous_cumulative):
+                cumulative = cumulative[len(self.previous_cumulative):].strip()
+            pending = [cumulative] + pending
         else:
             for index, line in enumerate(lines):
                 start = self._time(line['start'], audio_seconds)
                 end = self._time(line['end'], audio_seconds)
-                if end < start or (segments and start < segments[-1]['start']):
+                if end < start:
+                    raise ValueError('Invalid preview range')
+                if self.conversation_floor and end <= self.conversation_floor:
+                    continue
+                start, end = max(0.0, start - self.conversation_floor), end - self.conversation_floor
+                if segments and start < segments[-1]['start']:
                     raise ValueError('Unordered preview timestamps')
                 if line['text'].strip():
                     segments.append(self._row(f'line-{index}', line['text'].strip(), start, end,
                                               speaker=line.get('speaker'), translations=self._translations(line)))
         draft = ' '.join(text.strip() for text in pending if text.strip())
+        if self.previous_draft:
+            if draft.startswith(self.previous_draft):
+                draft = draft[len(self.previous_draft):].strip()
+            else:
+                self.previous_draft = ''
         if draft:
             segments.append(self._row('draft', draft, segments[-1]['end'] if segments else 0.0,
-                                      audio_seconds, draft=True))
+                                      max(0.0, audio_seconds - self.conversation_floor), draft=True))
         self.last_snapshot = snapshot
         translation_revision = normalize_translation_revision(snapshot.get('translation_revision'))
         if segments == self.segments and translation_revision == self.last_translation_revision:

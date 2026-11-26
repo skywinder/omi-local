@@ -15,7 +15,6 @@ and the retry action. The journal keeps a part after a connection failure or
 a mismatched receipt. Reopening the queue after a storage access failure uses
 the same 15-second retry interval, including when no parts could be counted.
 
-
 The phone seals an immutable part after at most five minutes of audio or when
 you stop recording. Parts preserve their recording identity, source, start time
 and order. PCM duration comes from sample count; Opus duration comes from its
@@ -157,6 +156,13 @@ timecodes and the timer continue on the original clock. Reconnects and
 delayed transcript snapshots respect the confirmed cut. A straddling
 transcript row appears only once it has a start within the new conversation.
 Older receipts keep the continuous Live view.
+
+Legacy paired preview sockets that send both `X-Omi-Local-Recording-Group`
+and `X-Omi-Local-Group-Silence` receive per-session speech activity and a
+`flush_part` hint on a speech-to-silence transition. The hint can seal a
+phone part early. It is independent of the durable receipt. On those sockets
+Live starts the next preview at the resumed speech. Next uses the receipt and
+keeps the recording-relative clock when it omits these headers.
 
 The finish marker becomes ready after Stop,
 or on restart after recoverable parts have been sealed. A malformed group
