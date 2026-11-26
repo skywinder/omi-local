@@ -19,8 +19,27 @@ abstract interface class NextPhoneMicrophone {
 class PhoneCaptureDenied implements Exception {}
 
 class FlutterPhoneMicrophone implements NextPhoneMicrophone {
+  FlutterPhoneMicrophone({
+    @visibleForTesting Future<bool> Function()? requestPermission,
+    @visibleForTesting FlutterSoundRecorder Function()? makeRecorder,
+    @visibleForTesting Future<void> Function(AudioSessionConfiguration)? configureSession,
+    @visibleForTesting bool? isIOS,
+  }) : _requestPermission = requestPermission ?? (() async => Permission.microphone.request().isGranted),
+       _makeRecorder = makeRecorder ?? FlutterSoundRecorder.new,
+       _configureSession = configureSession ?? _configureAudioSession,
+       _isIOS = isIOS ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+
+  final Future<bool> Function() _requestPermission;
+  final FlutterSoundRecorder Function() _makeRecorder;
+  final Future<void> Function(AudioSessionConfiguration) _configureSession;
+  final bool _isIOS;
   FlutterSoundRecorder? _recorder;
   StreamController<Uint8List>? _samples;
+
+  static Future<void> _configureAudioSession(AudioSessionConfiguration configuration) async {
+    final session = await AudioSession.instance;
+    await session.configure(configuration);
+  }
 
   @override
   Stream<bool> get interruptions async* {
@@ -32,8 +51,8 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
 
   @override
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure) async {
-    if (!await Permission.microphone.request().isGranted) throw PhoneCaptureDenied();
-    final recorder = _recorder = FlutterSoundRecorder();
+    if (!await _requestPermission()) throw PhoneCaptureDenied();
+    final recorder = _recorder = _makeRecorder();
     await recorder.openRecorder();
     final samples = _samples = StreamController<Uint8List>(sync: true);
     samples.stream.listen(onSamples, onError: (Object _) => onFailure());
@@ -53,7 +72,16 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
     _recorder = null;
     _samples = null;
     try {
-      if (recorder != null) await recorder.closeRecorder();
+      if (recorder != null) {
+        await recorder.closeRecorder();
+        if (_isIOS) {
+          // Flutter Sound leaves its recording category active after close.
+          // The playback category lets iOS choose the speaker or connected output.
+          await _configureSession(
+            const AudioSessionConfiguration(avAudioSessionCategory: AVAudioSessionCategory.playback),
+          );
+        }
+      }
     } finally {
       await samples?.close();
     }
