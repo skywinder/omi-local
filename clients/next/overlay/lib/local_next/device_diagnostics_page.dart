@@ -14,6 +14,8 @@ import 'gain_samples.dart';
 import 'paired_library.dart';
 import 'settings_labels.dart';
 
+const _cv1FactoryGain = 6;
+
 String cv1PhaseLabel(BuildContext context, Cv1LinkPhase phase) {
   final l = context.l10n;
   return switch (phase) {
@@ -124,16 +126,9 @@ class _DeviceDiagnosticsState extends State<NextDeviceDiagnosticsPage> {
                 onChanged: (value) => setDraft(() => draft = value),
               ),
               if (field == 'gain')
-                Wrap(
-                  spacing: 6,
-                  children: [
-                    for (final (title, level) in [(l.quiet, 2), (l.normal, 4), (l.high, 6)])
-                      ChoiceChip(
-                        label: Text(title),
-                        selected: draft.round() == level,
-                        onSelected: (_) => setDraft(() => draft = level.toDouble()),
-                      ),
-                  ],
+                TextButton(
+                  onPressed: draft == _cv1FactoryGain ? null : () => setDraft(() => draft = _cv1FactoryGain.toDouble()),
+                  child: Text('${pairedSettingsLabel(context, 'gainFactory')} · $_cv1FactoryGain/8'),
                 ),
             ],
           ),

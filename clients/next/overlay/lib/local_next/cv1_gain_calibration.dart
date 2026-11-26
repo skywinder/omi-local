@@ -44,10 +44,17 @@ class Cv1GainCalibration {
   final _frames = Cv1OpusFrameAssembler();
   final _room = PcmLevelMeter();
   final _speech = PcmLevelMeter();
+  var _recent = PcmLevelMeter();
   bool settling = true;
   bool speaking = false;
   WavLevel get room => _room.level;
   WavLevel get speech => _speech.level;
+
+  WavLevel takeRecent() {
+    final reading = _recent.level;
+    _recent = PcmLevelMeter();
+    return reading;
+  }
 
   bool accept(Uint8List raw) {
     final packet = _frames.add(raw);
@@ -57,6 +64,7 @@ class Cv1GainCalibration {
     final meter = speaking ? _speech : _room;
     for (final sample in samples) {
       meter.add(sample);
+      _recent.add(sample);
     }
     return samples.isNotEmpty;
   }

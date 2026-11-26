@@ -151,6 +151,8 @@ identifiers or audio.
 LED brightness and microphone gain require the matching CV1 firmware feature
 and a confirmed Bluetooth write. Device Diagnostics exposes gain on the Omi 0–8 scale.
 These levels identify the firmware setting. Measured levels are displayed in dBFS.
+The gain editor can select the original firmware default of 6/8 and applies it
+when you tap Save.
 Use two short CV1 archive recordings of the
 same phrase to compare gain settings, or open **Test CV1 microphone** for a
 direct measurement. Make a short sound near the CV1 to wake the microphone.
@@ -158,13 +160,16 @@ The phone skips the first second of audio and measures two seconds of room noise
 When ready, start the three-second countdown, then speak or play a phrase
 for five seconds at your normal distance. Only the background and speech
 windows enter the results.
-It decodes only CV1 audio in memory
-and compares up to two tested gain levels. Stop any active recording before
-testing. The test reports missing audio, weak sound, sound close to the room
-level, or peaks near the digital limit. Use the one-step controls after a test
-to adjust gain and repeat with
-the same source and distance. The test measures level and does not run speech
-recognition. For an archived comparison the phone reads at most the first ten
+The moving meter shows the latest audio, and the result shows how much CV1
+audio arrived during each window and how far speech rose above the room level.
+Use the one-step controls to compare up to two levels at equal distance and
+volume. To check whether a quiet speaker starts the stream after silence, use
+**Test quiet playback**. Stay quiet until the cue and then play the phrase. If
+the CV1 already sent audio during the countdown, wait in silence and repeat.
+If no audio arrives during playback, repeat the phrase with the normal microphone
+test after deliberately waking the CV1. Both tests run in memory on the phone
+without creating recordings or running speech recognition. Stop any active
+recording before testing. For an archived comparison the phone reads at most the first ten
 seconds of mono 16 kHz PCM from the paired WAV endpoint and displays digital
 RMS, peak and the number of full-scale samples. The gain shown for the pendant is
 its current setting. Archive recordings do not carry a historical gain measurement.

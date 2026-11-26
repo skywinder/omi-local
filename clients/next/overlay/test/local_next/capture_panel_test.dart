@@ -157,16 +157,18 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: Cv1GainCalibrationCard(
-              link: link,
-              gain: 6,
-              busy: () => inputs.hasCaptureInProgress,
-              changeGain: requestedGains.add,
-              openDecoder: () async {
-                final decoder = _GainDecoder();
-                decoders.add(decoder);
-                return decoder;
-              },
+            body: SingleChildScrollView(
+              child: Cv1GainCalibrationCard(
+                link: link,
+                gain: 6,
+                busy: () => inputs.hasCaptureInProgress,
+                changeGain: requestedGains.add,
+                openDecoder: () async {
+                  final decoder = _GainDecoder();
+                  decoders.add(decoder);
+                  return decoder;
+                },
+              ),
             ),
           ),
         ),
@@ -222,6 +224,8 @@ void main() {
       }
       await tester.pump(const Duration(seconds: 5));
       expect(find.textContaining('The phrase rose above'), findsOneWidget);
+      expect(find.textContaining('Audio received · 5.0 / 5 s'), findsOneWidget);
+      expect(find.textContaining('Speech above room level'), findsOneWidget);
       expect(find.textContaining('−∞'), findsNothing);
       expect(requestedGains, isEmpty);
       await tester.tap(find.text('Increase gain · 7/8'));
@@ -229,6 +233,29 @@ void main() {
       expect(link.calibrating, isFalse);
       expect(journal.recordings, 0);
       expect(decoders.every((decoder) => decoder.closed), isTrue);
+
+      final playback = find.text('Test quiet playback');
+      await tester.tap(playback);
+      await tester.pump();
+      expect(find.text('Stay quiet until playback · 3'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Play the phrase now at the usual volume'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      packet(0, 3);
+      packet(1, 3);
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.textContaining('First CV1 audio after the playback cue · ~1.0 s'), findsOneWidget);
+      expect(link.calibrating, isFalse);
+
+      await tester.tap(playback);
+      await tester.pump();
+      packet(0, 4);
+      packet(1, 4);
+      await tester.pump(const Duration(seconds: 8));
+      expect(find.textContaining('CV1 sent audio during the countdown'), findsOneWidget);
+      expect(find.textContaining('No CV1 audio arrived during playback'), findsOneWidget);
+      expect(find.textContaining('First CV1 audio'), findsNothing);
+      expect(journal.recordings, 0);
 
       await tester.tap(start);
       await tester.pump();
@@ -341,6 +368,11 @@ void main() {
       await tester.tap(find.byTooltip('Decrease gain'));
       await tester.pump();
       expect(find.text('5 / 8'), findsOneWidget);
+      await tester.tap(find.text('Factory gain · 6/8'));
+      await tester.pump();
+      expect(find.text('6 / 8'), findsWidgets);
+      await tester.tap(find.byTooltip('Decrease gain'));
+      await tester.pump();
       expect(radio.writes, isEmpty);
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
