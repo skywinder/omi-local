@@ -20,7 +20,7 @@ export function findTurns(segments, query) {
 }
 export function speakerBadge(segment) {
   const number = /^SPEAKER_\d{1,4}$/.test(segment.speaker) ? Number(segment.speaker.slice(8)) : null;
-  const label = segment.is_user ? 'Вы' : segment.speaker_name || (number === null ? '' : `Говорящий ${number + 1}`);
+  const label = segment.is_user ? 'You' : segment.speaker_name || (number === null ? '' : `Speaker ${number + 1}`);
   return {label, tone: number === null ? 'neutral' : String(number % 4)};
 }
 export function seekTo(audio, time, duration) {

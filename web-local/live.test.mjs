@@ -151,8 +151,8 @@ test('live source distinguishes two internal microphones and an attached CV1', a
 test('recording failure identifies the failed stage even with a saved transcript', async () => {
   const {processingFailure} = await import('./recording-processing.mjs');
   const record = {status: 'failed', attempts: 3, processing: {stt: {status: 'ready'}, summary: {status: 'failed', error_code: 'invalid_json'}}};
-  assert.match(processingFailure(record), /Суммаризация.*JSON.*3/);
-  assert.match(processingFailure({...record, processing: {}}), /Этап сбоя не сохранён/);
+  assert.match(processingFailure(record), /Summarization.*JSON.*3/);
+  assert.match(processingFailure({...record, processing: {}}), /failed stage was not recorded/);
 });
 
 

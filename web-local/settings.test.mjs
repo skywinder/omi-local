@@ -269,7 +269,7 @@ test('processing display handles old records and renders untrusted summaries as 
   assert.equal(summary.hidden, false);
   assert.match(summary.textContent, /<script>synthetic<\/script>/);
   assert.equal(summary.querySelectorAll('script').length, 0);
-  assert.match(ui.root.textContent, /Ошибка/);
+  assert.match(ui.root.textContent, /Failed/);
   assert.doesNotMatch(ui.root.textContent, /must not appear/);
   renderProcessing(ui.root, summary, {});
   assert.equal(summary.hidden, true);

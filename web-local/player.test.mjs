@@ -12,9 +12,9 @@ test('finds one literal phrase per turn and preserves the displayed character of
 });
 
 test('speaker labels follow edits while numbered speakers keep their live colors', () => {
-  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05'}), {label: 'Говорящий 6', tone: '1'});
+  assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05'}), {label: 'Speaker 6', tone: '1'});
   assert.deepEqual(speakerBadge({speaker: 'SPEAKER_05', speaker_name: 'Ира'}), {label: 'Ира', tone: '1'});
-  assert.deepEqual(speakerBadge({speaker_name: 'Ира', is_user: true}), {label: 'Вы', tone: 'neutral'});
+  assert.deepEqual(speakerBadge({speaker_name: 'Ира', is_user: true}), {label: 'You', tone: 'neutral'});
   assert.deepEqual(speakerBadge({speaker: 'unknown'}), {label: '', tone: 'neutral'});
 });
 

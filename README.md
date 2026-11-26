@@ -22,7 +22,10 @@ explicitly selected servers.
 - **CV1 recording controls:** start and finish sessions with the device button;
   mute audio without ending the recording.
 - **Audio library:** browse recordings, search by date, source, or transcript
-  prefix, adjust playback speed, and seek to transcript timestamps.
+  prefix, adjust playback speed, and seek to transcript timestamps. The web
+  library shows each recording's local date and start time. Its **Filters**
+  dialog saves minimum duration, audio availability, and no-speech preferences
+  in the browser.
 - **Delivery recovery:** retain received audio on the iPhone until the paired
   server acknowledges its saved part. See [delivery boundaries](docs/RECORDING_DURABILITY.md).
 - **Local transcription:** prepare local models for final transcripts and an

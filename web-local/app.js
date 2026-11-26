@@ -8,14 +8,53 @@ import {categories, categoryLabel} from '/recording-categories.mjs';
 const $ = id => document.getElementById(id);
 const audio = $('audio');
 const providerSettings = mountSettings($('provider-settings'));
-const state = {records: [], selected: null, detail: null, view: 'live', filter: 'all', category: '', noteWrite: false,
+const state = {records: [], selected: null, detail: null, view: 'live', archived: false, favorites: false, ready: false, category: '', noteWrite: false,
   noteVersion: 0, request: 0, active: -1, loading: false, deleting: false, deleteId: null};
-const statuses = {ready: 'Транскрипт готов', pending: 'В очереди', processing: 'Обрабатывается', no_speech: 'Речь не обнаружена', failed: 'Ошибка обработки', unavailable: 'Без транскрипта'};
-const day = value => new Date(value).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
-const hour = value => new Date(value).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+const defaultVisibility = {minimumSeconds: 0, hideWithoutAudio: false, hideNoSpeech: false};
+const visibilityKey = 'omiloc.library.visibility';
+function readVisibility() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(visibilityKey));
+    return {
+      minimumSeconds: Number.isInteger(saved?.minimumSeconds) && saved.minimumSeconds >= 0 ? saved.minimumSeconds : 0,
+      hideWithoutAudio: saved?.hideWithoutAudio === true,
+      hideNoSpeech: saved?.hideNoSpeech === true,
+    };
+  } catch { return {...defaultVisibility}; }
+}
+let visibility = readVisibility();
+
+const statuses = {ready: 'Transcript ready', pending: 'Queued', processing: 'Processing',
+  no_speech: 'No speech detected', failed: 'Processing failed', unavailable: 'No transcript'};
+const dayFormat = new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'long', year: 'numeric'});
+const cardDate = new Intl.DateTimeFormat('en-GB', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+const detailDate = new Intl.DateTimeFormat('en-GB', {weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', timeZoneName: 'shortOffset'});
+const timeFormat = new Intl.DateTimeFormat('en-GB', {hour: '2-digit', minute: '2-digit'});
+const isoDay = new Intl.DateTimeFormat('sv-SE', {year: 'numeric', month: '2-digit', day: '2-digit'});
+const russianDay = new Intl.DateTimeFormat('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
+const day = value => dayFormat.format(new Date(value));
+const hour = value => timeFormat.format(new Date(value));
 function node(tag, cls, text) { const el = document.createElement(tag); if (cls) el.className = cls; if (text !== undefined) el.textContent = text; return el; }
 async function get(path) { const response = await fetch(path, {cache: 'no-store', signal: AbortSignal.timeout(10000)}); if (!response.ok) throw new Error('Unavailable'); return response.json(); }
 function message(text = '') { $('player-message').textContent = text; $('player-message').hidden = !text; }
+
+function recordingTime(element, value, formatter) {
+  element.dateTime = value;
+  element.textContent = formatter.format(new Date(value));
+  return element;
+}
+
+function sourceLabel(record) {
+  const source = record.source === 'Микрофон телефона' ? 'Phone microphone' : record.source;
+  return [record.phone, source].filter(Boolean).join(' · ');
+}
+
+function renderRecordingInfo(record) {
+  recordingTime($('recording-date'), record.started_at, detailDate);
+  const facts = [sourceLabel(record), formatTime(record.duration), statuses[record.status]];
+  $('recording-meta').replaceChildren(...facts.filter(Boolean).map(value => node('span', 'meta-pill', value)));
+}
 
 function showView(view = state.view) {
   state.view = view;
@@ -37,10 +76,14 @@ function showView(view = state.view) {
 
 function renderList() {
   const query = $('search').value.trim().toLocaleLowerCase('ru-RU');
-  const items = state.records.filter(r => (state.filter === 'archive' ? r.note?.archived : !r.note?.archived)
-    && (state.filter !== 'favorites' || r.note?.starred) && (state.filter !== 'ready' || r.status === 'ready')
+  const items = state.records.filter(r => Boolean(r.note?.archived) === state.archived
+    && (!state.favorites || r.note?.starred) && (!state.ready || r.status === 'ready')
+    && (!Number.isFinite(r.duration) || r.duration < 0 || r.duration >= visibility.minimumSeconds)
+    && (!visibility.hideWithoutAudio || (r.has_audio ?? r.status !== 'waiting_for_parts'))
+    && (!visibility.hideNoSpeech || r.status !== 'no_speech')
     && (!state.category || r.note?.category === state.category)
-    && [r.summary?.title, r.preview, day(r.started_at), hour(r.started_at), r.phone, r.source, categoryLabel(r.note?.category)]
+    && [r.summary?.title, r.preview, day(r.started_at), hour(r.started_at), isoDay.format(new Date(r.started_at)),
+      russianDay.format(new Date(r.started_at)), sourceLabel(r), r.source, categoryLabel(r.note?.category)]
       .join(' ').toLocaleLowerCase('ru-RU').includes(query));
   $('count').textContent = items.length;
   const fragment = document.createDocumentFragment();
@@ -50,23 +93,37 @@ function renderList() {
     if (date !== previous) { fragment.append(node('p', 'group-label', date)); previous = date; }
     const button = node('button', `recording${state.selected === r.id ? ' active' : ''}`);
     button.setAttribute('aria-pressed', String(state.selected === r.id));
-    const title = r.summary?.title || `Запись в ${hour(r.started_at)}`;
-    const top = node('span', 'recording-top', r.note?.emoji ? `${r.note.emoji} ${title}` : title);
-    top.append(node('span', 'recording-length', formatTime(r.duration)));
-    button.append(top, node('p', 'recording-preview', r.preview || statuses[r.status]));
+    button.dataset.recordingId = r.id;
+    const top = node('span', 'recording-top');
+    top.append(recordingTime(node('time', 'recording-time'), r.started_at, cardDate),
+      node('span', 'recording-length', formatTime(r.duration)));
+    const title = node('span', 'recording-name');
+    if (r.note?.emoji) title.append(node('span', 'recording-emoji', r.note.emoji));
+    title.append(node('span', '', r.summary?.title || 'Untitled recording'));
     const bottom = node('span', 'recording-bottom');
-    bottom.append(node('span', 'source', [r.phone, r.source].filter(Boolean).join(' · ')), node('span', '', processingFailure(r) || statuses[r.status]));
+    for (const label of [sourceLabel(r), categoryLabel(r.note?.category)].filter(Boolean)) {
+      bottom.append(node('span', 'source', label));
+    }
+    const status = processingFailure(r) || statuses[r.status];
+    if (status && r.status !== 'ready') bottom.append(node('span', 'recording-status', status));
     if (r.note?.starred) {
       const star = node('span', 'favorite-mark', '★');
-      star.setAttribute('aria-label', 'В избранном');
-      bottom.append(star);
+      star.setAttribute('aria-label', 'Favorited');
+      title.append(star);
     }
-    if (r.note?.category) button.append(node('span', 'source', categoryLabel(r.note.category)));
-    button.append(bottom);
-    button.addEventListener('click', () => select(r.id));
+    button.append(top, title);
+    if (r.preview) button.append(node('span', 'recording-preview', r.preview));
+    if (bottom.childElementCount) button.append(bottom);
+    button.addEventListener('click', async () => {
+      await select(r.id);
+      if (state.detail?.id === r.id && matchMedia('(max-width: 650px)').matches) {
+        $('recording-detail').scrollIntoView({block: 'start'});
+        $('recording-title').focus({preventScroll: true});
+      }
+    });
     fragment.append(button);
   }
-  if (!items.length) fragment.append(node('p', 'empty-list', state.records.length ? 'Ничего не найдено. Попробуйте другую дату или сбросьте фильтр.' : 'Записей пока нет. Завершите запись на CV1 — она появится здесь автоматически.'));
+  if (!items.length) fragment.append(node('p', 'empty-list', state.records.length ? 'No matching recordings.' : 'No recordings yet.'));
   $('recordings').replaceChildren(fragment);
 }
 
@@ -78,9 +135,9 @@ function noteFeedback(text = '') {
 function renderNoteActions() {
   const note = state.detail?.note;
   $('note-actions').hidden = !note;
-  $('note-star').textContent = note?.starred ? 'В избранном' : 'В избранное';
+  $('note-star').textContent = note?.starred ? 'Favorited' : 'Add to favorites';
   $('note-star').setAttribute('aria-pressed', String(note?.starred === true));
-  $('note-archive').textContent = note?.archived ? 'Вернуть из архива' : 'Архивировать';
+  $('note-archive').textContent = note?.archived ? 'Restore from archive' : 'Archive';
   $('note-category').value = categories.has(note?.category) ? note.category : 'other';
   for (const id of ['note-star', 'note-archive', 'note-category']) {
     $(id).disabled = state.noteWrite || state.detail?.notes_unavailable === true;
@@ -95,14 +152,14 @@ async function changeNote(field, value) {
   const change = field === 'category' ? {category: {expected: note.category, value}} : {[field]: !note[field]};
   state.noteWrite = true;
   ++state.noteVersion;
-  noteFeedback('Сохраняем…');
+  noteFeedback('Saving…');
   renderNoteActions();
   try {
     const response = await fetch(`/api/recordings/${id}/notes`, {method: 'PATCH',
       headers: {'Content-Type': 'application/json', 'X-Omiloc-Request': 'notes'},
       body: JSON.stringify(change), signal: AbortSignal.timeout(10000)});
     const result = await response.json();
-    if (!response.ok || !result.note) throw new Error(result.error || 'Изменение не подтверждено.');
+    if (!response.ok || !result.note) throw new Error(result.error || 'Change not confirmed.');
     state.records = state.records.map(row => row.id === id ? {...row, note: result.note} : row);
     if (request === state.request && state.detail) {
       state.detail.note = result.note;
@@ -110,7 +167,7 @@ async function changeNote(field, value) {
     }
     renderList();
   } catch (error) {
-    if (request === state.request) noteFeedback(error.message || 'Изменение не подтверждено.');
+    if (request === state.request) noteFeedback(error.message || 'Change not confirmed.');
   } finally {
     state.noteWrite = false;
     renderNoteActions();
@@ -166,13 +223,13 @@ $('turn-next').addEventListener('click', () => stepTurn(1));
 function renderTranscript(record) {
   renderRecap(record);
   const fragment = document.createDocumentFragment();
-  const notice = record.transcript_source === 'original' ? 'Исходная расшифровка. Сервер пока не подтвердил правки из Next.'
-    : record.speaker_names_unavailable ? 'Имена говорящих временно недоступны.' : '';
+  const notice = record.transcript_source === 'original' ? 'Showing the original transcript while updates from Next are being verified.'
+    : record.speaker_names_unavailable ? 'Speaker names are temporarily unavailable.' : '';
   if (notice) fragment.append(node('p', 'monitor-note', notice));
   record.segments.forEach(segment => {
     const button = node('button', 'segment');
     const speaker = speakerBadge(segment);
-    button.setAttribute('aria-label', [speaker.label, `Слушать с ${formatTime(segment.start)}: ${segment.text}`].filter(Boolean).join('. '));
+    button.setAttribute('aria-label', [speaker.label, `Play from ${formatTime(segment.start)}: ${segment.text}`].filter(Boolean).join('. '));
     button.append(node('span', 'segment-time', formatTime(segment.start)));
     const content = node('span', '');
     if (speaker.label) {
@@ -185,13 +242,13 @@ function renderTranscript(record) {
     button.addEventListener('click', async () => {
       message();
       try { await playFrom(audio, segment.start, record.duration); syncPlayer(); }
-      catch { message('Не удалось включить звук. Нажмите кнопку воспроизведения.'); }
+      catch { message('Could not play audio. Press Play to retry.'); }
     });
     fragment.append(button);
   });
   if (!record.segments.length) {
-    const copy = {pending: 'Запись ожидает распознавания. Аудио уже можно слушать.', processing: 'Распознаём речь. Текст появится автоматически.', no_speech: 'Речь не обнаружена. Аудиозапись сохранена и доступна для прослушивания.', failed: 'Обработка не завершилась. Аудиозапись сохранена и доступна для прослушивания.', unavailable: 'Для этой записи пока нет транскрипта. Аудио можно слушать уже сейчас.'};
-    fragment.append(node('p', 'empty-transcript', record.transcript_source === 'unavailable' ? 'Не удалось открыть актуальную расшифровку. Аудио доступно. Обновите запись для повторной проверки.' : copy[record.status] || copy.unavailable));
+    const copy = {pending: 'Waiting for transcription. Audio is available.', processing: 'Transcribing. Text will appear here.', no_speech: 'No speech detected. Audio is available.', failed: 'Processing failed. Audio is available.', unavailable: 'No transcript yet. Audio is available.'};
+    fragment.append(node('p', 'empty-transcript', record.transcript_source === 'unavailable' ? 'Could not load the current transcript. Refresh to retry. Audio is available.' : copy[record.status] || copy.unavailable));
   }
   $('transcript').replaceChildren(fragment);
   highlightedPhrase = null;
@@ -204,7 +261,7 @@ function renderTranscript(record) {
 
 let canonicalRecap;
 function renderRecap(record) {
-  $('recording-title').textContent = record.summary?.title || `Запись в ${hour(record.started_at)}`;
+  $('recording-title').textContent = record.summary?.title || 'Untitled recording';
   $('summary-edit').hidden = !record.summary_editable;
   const summary = !record.summary_current && canonicalRecap?.id === record.id ? {...record.summary, overview: canonicalRecap.overview} : record.summary;
   renderProcessing($('recording-processing'), $('recording-summary'), {...record, summary});
@@ -239,18 +296,17 @@ async function select(id, open = true) {
     if (request !== state.request) return;
     state.detail = record;
     renderNoteActions();
-    if (record.notes_unavailable) noteFeedback('Избранное и категории временно недоступны.');
+    if (record.notes_unavailable) noteFeedback('Favorites and categories are temporarily unavailable.');
     showView();
-    $('recording-date').textContent = day(record.started_at).toLocaleUpperCase('ru-RU');
-    $('recording-title').textContent = `Запись в ${hour(record.started_at)}`;
-    $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
-    $('player-title').textContent = `${record.source} · ${hour(record.started_at)}`;
+    renderRecordingInfo(record);
+    $('recording-title').textContent = 'Untitled recording';
+    $('player-title').textContent = [sourceLabel(record), hour(record.started_at)].filter(Boolean).join(' · ');
     $('duration').textContent = formatTime(record.duration);
     $('seek').max = record.duration;
     $('seek').value = 0;
     audio.src = `/api/recordings/${id}/audio`;
     audio.playbackRate = Number($('speed').value);
-    if (record.decode_warning) message('В записи возможны пропуски звука.');
+    if (record.decode_warning) message('The recording may have audio gaps.');
     renderTranscript(record);
     if (record.summary_editable && !record.summary_current) {
       get(`/api/recordings/${id}/summary`).then(options => {
@@ -344,7 +400,7 @@ $('summary-form').addEventListener('submit', async event => {
 
 function syncPlayer() {
   $('play').textContent = audio.paused ? '▶' : 'Ⅱ';
-  $('play').setAttribute('aria-label', audio.paused ? 'Воспроизвести' : 'Приостановить');
+  $('play').setAttribute('aria-label', audio.paused ? 'Play' : 'Pause');
   $('elapsed').textContent = formatTime(audio.currentTime);
   if (document.activeElement !== $('seek')) $('seek').value = audio.currentTime;
   const active = segmentAt(state.detail?.segments || [], audio.currentTime);
@@ -400,27 +456,28 @@ async function refresh() {
       state.detail.note = record.note;
       state.detail.notes_unavailable = record.notes_unavailable;
       renderNoteActions();
-      if (record.transcript_source !== state.detail.transcript_source || record.speaker_names_unavailable !== state.detail.speaker_names_unavailable || record.summary_current !== state.detail.summary_current || record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
+      if (record.started_at !== state.detail.started_at || sourceLabel(record) !== sourceLabel(state.detail)
+          || record.transcript_source !== state.detail.transcript_source || record.speaker_names_unavailable !== state.detail.speaker_names_unavailable || record.summary_current !== state.detail.summary_current || record.status !== state.detail.status || JSON.stringify([record.segments, record.summary, record.processing]) !== JSON.stringify([state.detail.segments, state.detail.summary, state.detail.processing])) {
         state.detail = record;
-        $('recording-meta').replaceChildren(node('span', 'meta-pill', [record.phone, record.source].filter(Boolean).join(' · ')), node('span', '', formatTime(record.duration)), node('span', '', statuses[record.status]));
+        renderRecordingInfo(record);
         renderTranscript(record);
       }
     }
     if (!recordings.length) renderList();
   } catch {
-    $('connection').textContent = 'Нет связи с аудиотекой. Выполните omiloc в Terminal и обновите список.';
+    $('connection').textContent = 'Cannot reach the audio library. Reconnecting…';
     $('connection').hidden = false;
-    if (!state.records.length) $('recordings').replaceChildren(node('p', 'empty-list', 'Ожидаем подключения…'));
+    if (!state.records.length) $('recordings').replaceChildren(node('p', 'empty-list', 'Waiting for connection…'));
   } finally { state.loading = false; $('refresh').disabled = false; }
 }
 
-$('play').addEventListener('click', async () => { if (!state.detail) return; message(); if (!audio.paused) audio.pause(); else { try { await audio.play(); } catch { message('Аудио недоступно. Обновите запись и попробуйте ещё раз.'); } } });
+$('play').addEventListener('click', async () => { if (!state.detail) return; message(); if (!audio.paused) audio.pause(); else { try { await audio.play(); } catch { message('Audio unavailable. Refresh the recording and try again.'); } } });
 $('back').addEventListener('click', () => { if (state.detail) seekTo(audio, audio.currentTime - 10, state.detail.duration); });
 $('forward').addEventListener('click', () => { if (state.detail) seekTo(audio, audio.currentTime + 10, state.detail.duration); });
 $('seek').addEventListener('input', () => { if (state.detail) { seekTo(audio, Number($('seek').value), state.detail.duration); syncPlayer(); } });
 $('speed').addEventListener('change', () => { audio.playbackRate = Number($('speed').value); });
 for (const event of ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'seeked']) audio.addEventListener(event, syncPlayer);
-audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Не удалось загрузить аудио. Обновите запись и попробуйте ещё раз.'); });
+audio.addEventListener('error', () => { if (state.detail && audio.getAttribute('src')) message('Could not load audio. Refresh the recording and try again.'); });
 $('refresh').addEventListener('click', refresh);
 for (const button of document.querySelectorAll('[data-folder]')) button.addEventListener('click', async () => {
   const buttons = document.querySelectorAll('[data-folder]');
@@ -474,13 +531,50 @@ $('delete-confirm').addEventListener('click', async () => {
   }
 });
 $('search').addEventListener('input', renderList);
-const filters = ['all', 'favorites', 'archive', 'ready'];
-for (const mode of filters) $(`filter-${mode}`).addEventListener('click', () => {
-  state.filter = mode;
-  for (const name of filters) {
-    $(`filter-${name}`).classList.toggle('selected', name === mode);
-    $(`filter-${name}`).setAttribute('aria-pressed', String(name === mode));
-  }
+$('back-to-recordings').addEventListener('click', () => {
+  const selected = [...$('recordings').querySelectorAll('.recording')]
+    .find(card => card.dataset.recordingId === state.selected);
+  $('library-heading').scrollIntoView({block: 'start'});
+  (selected || $('search')).focus({preventScroll: true});
+});
+for (const [name, key] of [['archive', 'archived'], ['favorites', 'favorites'], ['ready', 'ready']]) {
+  const control = $(`filter-${name}`);
+  control.addEventListener('click', () => {
+    state[key] = !state[key];
+    control.classList.toggle('selected', state[key]);
+    control.setAttribute('aria-pressed', String(state[key]));
+    renderList();
+  });
+}
+const visibilityDialog = $('visibility-dialog');
+const visibilityButton = $('filter-visibility');
+function fillVisibilityForm(values) {
+  $('filter-minimum-duration').value = values.minimumSeconds;
+  $('filter-no-audio').checked = values.hideWithoutAudio;
+  $('filter-no-speech').checked = values.hideNoSpeech;
+}
+function syncVisibilityButton() {
+  const count = Number(visibility.minimumSeconds > 0) + Number(visibility.hideWithoutAudio) + Number(visibility.hideNoSpeech);
+  visibilityButton.classList.toggle('selected', count > 0);
+  visibilityButton.textContent = count ? `Filters (${count})` : 'Filters';
+}
+syncVisibilityButton();
+visibilityButton.addEventListener('click', () => {
+  fillVisibilityForm(visibility);
+  visibilityDialog.showModal();
+});
+$('filter-reset').addEventListener('click', () => fillVisibilityForm(defaultVisibility));
+$('filter-cancel').addEventListener('click', () => visibilityDialog.close());
+$('visibility-form').addEventListener('submit', event => {
+  event.preventDefault();
+  visibility = {
+    minimumSeconds: $('filter-minimum-duration').valueAsNumber,
+    hideWithoutAudio: $('filter-no-audio').checked,
+    hideNoSpeech: $('filter-no-speech').checked,
+  };
+  try { localStorage.setItem(visibilityKey, JSON.stringify(visibility)); } catch { /* Keep filters for this visit. */ }
+  syncVisibilityButton();
+  visibilityDialog.close();
   renderList();
 });
 for (const key of categories.keys()) {

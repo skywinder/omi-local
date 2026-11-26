@@ -1,96 +1,120 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Ваши аудиозаписи и транскрипты на вашем сервере.">
+  <meta name="description" content="Audio recordings and transcripts on your Omi server.">
   <meta name="omiloc-assets" content="__OMILOC_ASSETS__">
-  <title>omiloc · Записи</title>
+  <title>omiloc · Recordings</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/reload.mjs"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="/" aria-label="omiloc — записи">omiloc<span class="brand-dot"></span></a><span class="top-label">Личная аудиотека</span><span class="local-badge"><span></span>Свой сервер</span></header>
+  <header class="topbar"><a class="brand" href="/" aria-label="omiloc recordings">omiloc<span class="brand-dot"></span></a><span class="top-label">Personal audio library</span><span class="local-badge"><span></span>Omi server</span></header>
   <main class="workspace">
-    <aside class="library" aria-label="Аудиозаписи">
-      <div class="library-heading"><div><p class="eyebrow">БИБЛИОТЕКА</p><h1>Записи <span id="count"></span></h1></div><button id="refresh" class="icon-button" title="Обновить список" aria-label="Обновить список">↻</button></div>
+    <aside class="library" aria-label="Recordings">
+      <div id="library-heading" class="library-heading"><div><h1>Recordings <span id="count"></span></h1></div><button id="refresh" class="icon-button" title="Refresh recordings" aria-label="Refresh recordings">↻</button></div>
       <button type="button" id="active-recordings" class="active-recordings" hidden>
-        <strong>Идёт запись</strong><span id="active-inputs"></span>
+        <strong>Live recording</strong><span id="active-inputs"></span>
       </button>
-      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти запись…" aria-label="Поиск по дате, источнику и началу транскрипта"></label>
-      <div class="filters" aria-label="Фильтр записей">
-        <button id="filter-all" class="filter selected" aria-pressed="true">Все записи</button>
-        <button id="filter-favorites" class="filter" aria-pressed="false">Избранное</button>
-        <button id="filter-archive" class="filter" aria-pressed="false">Архив</button>
-        <button id="filter-ready" class="filter" aria-pressed="false">С транскриптом</button>
-        <select id="filter-category" aria-label="Категория записей"><option value="">Все категории</option></select>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search recordings…" aria-label="Search by date, source or transcript excerpt"></label>
+      <div class="filters" aria-label="Recording filters">
+        <button id="filter-archive" class="filter" aria-pressed="false" type="button">Archive</button>
+        <button id="filter-favorites" class="filter" aria-pressed="false" type="button">Favorites</button>
+        <select id="filter-category" aria-label="Recording category"><option value="">All categories</option></select>
+        <button id="filter-visibility" class="filter" aria-haspopup="dialog" type="button">Filters</button>
+        <button id="filter-ready" class="filter" aria-pressed="false" type="button">With transcript</button>
       </div>
       <p id="connection" class="connection" role="status" hidden></p>
-      <div id="recordings" class="recordings"><p class="empty-list">Загружаем записи…</p></div>
+      <div id="recordings" class="recordings"><p class="empty-list">Loading recordings…</p></div>
       <footer class="library-footer">
-        <p class="library-note">Звук и текст хранятся локально.</p>
         <details class="library-folders">
-          <summary>Папки</summary>
+          <summary>Folders</summary>
           <div class="folder-actions">
-            <button type="button" data-folder="audio">Открыть папку с аудио</button>
-            <button type="button" data-folder="transcripts">Открыть папку с транскриптами</button>
+            <button type="button" data-folder="audio">Open audio folder</button>
+            <button type="button" data-folder="transcripts">Open transcripts folder</button>
           </div>
           <p id="folder-message" class="folder-message" role="status" hidden></p>
         </details>
       </footer>
     </aside>
-    <section class="detail" aria-label="Просмотр записи">
-      <nav class="detail-tabs" aria-label="Режим просмотра"><button id="view-live" class="selected" aria-pressed="true">Сейчас</button><button id="view-recording" aria-pressed="false">Запись</button><button id="view-settings" aria-pressed="false">Настройки</button></nav>
-      <section id="live-monitor" class="live-monitor" aria-label="Текущее распознавание"><details id="live-tuning" class="live-tuning"><summary>Настройки живого распознавания</summary></details></section>
-      <section id="provider-settings" class="provider-settings" aria-label="Настройки провайдеров" hidden></section>
-      <div id="welcome" class="welcome"><span class="welcome-mark" aria-hidden="true">◉</span><h2>Место для ваших разговоров</h2><p>Выберите запись, чтобы послушать<br>и вернуться к нужным словам.</p></div>
+    <section class="detail" aria-label="Recording workspace">
+      <nav class="detail-tabs" aria-label="Workspace navigation"><button id="view-live" class="selected" aria-pressed="true">Live</button><button id="view-recording" aria-pressed="false">Recording</button><button id="view-settings" aria-pressed="false">Settings</button></nav>
+      <section id="live-monitor" class="live-monitor" aria-label="Live transcription"><details id="live-tuning" class="live-tuning"><summary>Live transcription settings</summary></details></section>
+      <section id="provider-settings" class="provider-settings" aria-label="Provider settings" hidden></section>
+      <div id="welcome" class="welcome"><h2>Select a recording</h2><p>Open a recording to play its audio and read the transcript.</p></div>
       <div id="recording-detail" class="recording-detail" hidden>
-        <header class="detail-heading"><div class="detail-actions"><p id="recording-date" class="eyebrow"></p><button id="delete" class="delete-button">Удалить запись</button></div><h2 id="recording-title"></h2><div id="recording-meta" class="recording-meta"></div></header>
+        <button id="back-to-recordings" type="button" class="filter back-to-recordings">← Back to recordings</button>
+        <header class="detail-heading">
+          <div class="detail-actions">
+            <time id="recording-date" class="recording-date"></time>
+            <button id="delete" type="button" class="delete-button" aria-label="Delete recording">Delete</button>
+          </div>
+          <h2 id="recording-title" tabindex="-1"></h2>
+          <div id="recording-meta" class="recording-meta"></div>
+        </header>
         <div id="note-actions" class="note-actions" hidden>
-          <button id="note-star" type="button" class="filter" aria-pressed="false">В избранное</button>
-          <button id="note-archive" type="button" class="filter">Архивировать</button>
-          <select id="note-category" aria-label="Категория записи"></select>
+          <button id="note-star" type="button" class="filter" aria-pressed="false">Add to favorites</button>
+          <button id="note-archive" type="button" class="filter">Archive</button>
+          <select id="note-category" aria-label="Recording category"></select>
         </div>
         <p id="note-feedback" class="folder-message" role="status" hidden></p>
-        <section id="recording-processing" class="recording-processing" aria-label="Этапы обработки" hidden></section>
-        <section id="recording-summary" class="recording-summary" aria-label="Краткое содержание" hidden></section>
-        <button id="summary-edit" hidden>Сгенерировать итоги заново</button>
-        <div class="transcript-heading"><h3>Транскрипт</h3><span>Нажмите на фразу, чтобы послушать</span></div>
-        <div id="transcript-find" class="transcript-find" role="search" aria-label="Поиск в открытой записи" hidden>
-          <input id="turn-query" type="search" placeholder="Найти фразу в записи" aria-label="Найти фразу в записи" maxlength="300" aria-controls="transcript">
+        <section id="recording-processing" class="recording-processing" aria-label="Processing stages" hidden></section>
+        <section id="recording-summary" class="recording-summary" aria-label="Summary" hidden></section>
+        <button id="summary-edit" hidden>Regenerate summary</button>
+        <div class="transcript-heading"><h3>Transcript</h3><span>Select a phrase to play it</span></div>
+        <div id="transcript-find" class="transcript-find" role="search" aria-label="Search this transcript" hidden>
+          <input id="turn-query" type="search" placeholder="Find a phrase" aria-label="Find a phrase" maxlength="300" aria-controls="transcript">
           <span id="turn-count" role="status"></span>
-          <button id="turn-prev" type="button" aria-label="Предыдущая найденная реплика" title="Предыдущая реплика">↑</button>
-          <button id="turn-next" type="button" aria-label="Следующая найденная реплика" title="Следующая реплика">↓</button>
+          <button id="turn-prev" type="button" aria-label="Previous match" title="Previous match">↑</button>
+          <button id="turn-next" type="button" aria-label="Next match" title="Next match">↓</button>
         </div>
         <div id="transcript" class="transcript"></div>
       </div>
       <footer id="player" class="player" hidden>
         <audio id="audio" preload="metadata"></audio>
-        <div class="player-top"><span id="player-title"></span><label class="speed-label">Скорость <select id="speed" aria-label="Скорость воспроизведения"><option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option><option value="2">2×</option></select></label></div>
-        <div class="player-controls"><button id="back" class="skip" aria-label="Назад на 10 секунд">−10</button><button id="play" class="play" aria-label="Воспроизвести">▶</button><button id="forward" class="skip" aria-label="Вперёд на 10 секунд">+10</button><span id="elapsed" class="time">0:00</span><input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Позиция воспроизведения"><span id="duration" class="time">0:00</span></div>
+        <div class="player-top"><span id="player-title"></span><label class="speed-label">Speed <select id="speed" aria-label="Playback speed"><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label></div>
+        <div class="player-controls"><button id="back" class="skip" aria-label="Back 10 seconds">−10</button><button id="play" class="play" aria-label="Play">▶</button><button id="forward" class="skip" aria-label="Forward 10 seconds">+10</button><span id="elapsed" class="time">0:00</span><input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Playback position"><span id="duration" class="time">0:00</span></div>
         <p id="player-message" class="player-message" role="status" hidden></p>
       </footer>
     </section>
   </main>
+  <dialog id="visibility-dialog" aria-labelledby="visibility-title">
+    <h2 id="visibility-title">Recording filters</h2>
+    <form id="visibility-form">
+      <div class="visibility-fields">
+        <label>Minimum duration (seconds)
+          <input id="filter-minimum-duration" type="number" min="0" max="999999999" step="1" required>
+        </label>
+        <label><input id="filter-no-audio" type="checkbox"> Hide recordings without audio</label>
+        <label><input id="filter-no-speech" type="checkbox"> Hide recordings with no speech detected</label>
+      </div>
+      <div class="dialog-actions">
+        <button id="filter-reset" type="button">Reset</button>
+        <button id="filter-cancel" type="button">Cancel</button>
+        <button type="submit">Apply filters</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="summary-dialog" aria-labelledby="summary-title">
-    <h2 id="summary-title">Сгенерировать итоги</h2>
+    <h2 id="summary-title">Regenerate summary</h2>
     <form id="summary-form">
-      <p class="dialog-note">Расшифровка будет отправлена выбранной модели. Новый итог появится после обработки.</p>
-      <p><label>Модель <select id="summary-provider" required></select></label></p>
-      <p><label>Шаблон <select id="summary-template" required></select></label></p>
-      <p><label>Инструкция <textarea id="summary-prompt" rows="4" maxlength="8000" required></textarea></label></p>
+      <p class="dialog-note">The selected model will use the transcript to generate a new summary.</p>
+      <p><label>Model <select id="summary-provider" required></select></label></p>
+      <p><label>Template <select id="summary-template" required></select></label></p>
+      <p><label>Prompt <textarea id="summary-prompt" rows="4" maxlength="8000" required></textarea></label></p>
       <p id="summary-status" role="status"></p>
-      <div class="dialog-actions"><button type="button" id="summary-close">Закрыть</button><button id="summary-submit" disabled>Запустить</button></div>
+      <div class="dialog-actions"><button type="button" id="summary-close">Close</button><button id="summary-submit" disabled>Generate</button></div>
     </form>
   </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
-    <h2 id="delete-title">Удалить запись?</h2>
-    <p id="delete-description">Аудио, транскрипт и связанный разговор в приложении будут удалены с Mac. Это действие нельзя отменить.</p>
-    <p class="dialog-note">После удаления обновите список разговоров на iPhone, потянув его вниз. Если аудио дублируется в другой записи, общий транскрипт сохранится до удаления последней копии.</p>
+    <h2 id="delete-title">Delete recording?</h2>
+    <p id="delete-description">This permanently deletes the audio, transcript and linked conversation from the Omi server.</p>
+    <p class="dialog-note">Pull down the conversation list on your phone to refresh it. Shared transcripts stay available until the last copy is deleted.</p>
     <p id="delete-error" class="player-message" role="alert" hidden></p>
-    <div class="dialog-actions"><button id="delete-cancel" autofocus>Отмена</button><button id="delete-confirm" class="danger">Удалить</button></div>
+    <div class="dialog-actions"><button id="delete-cancel" autofocus>Cancel</button><button id="delete-confirm" class="danger">Delete</button></div>
   </dialog>
 </body>
 </html>
