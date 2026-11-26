@@ -210,6 +210,12 @@ typedef Cv1StorageTarget = ({int generation, String deviceId});
 
 enum Cv1ClearResult { empty, unavailable, unconfirmed }
 
+typedef Cv1ArchiveBatch = ({Uint8List bytes, int start, bool complete});
+
+abstract interface class Cv1ArchiveTransport {
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target);
+}
+
 abstract interface class Cv1StorageTransport {
   Future<bool> clearStorage(Cv1StorageTarget target);
 }
@@ -222,7 +228,7 @@ abstract interface class Cv1DiagnosticsTransport {
 
 class Cv1PermissionDenied implements Exception {}
 
-class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1StorageTransport {
+class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1StorageTransport, Cv1ArchiveTransport {
   static const _methods = MethodChannel('org.omilocal.next/cv1');
   static const _events = EventChannel('org.omilocal.next/cv1.events');
 
@@ -251,6 +257,18 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
 
   @override
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
+
+  @override
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) async {
+    final reply = await _methods.invokeMapMethod<String, dynamic>('readOldest', {
+      'generation': target.generation,
+      'deviceId': target.deviceId,
+    });
+    if (reply?['bytes'] is! Uint8List || reply?['start'] is! int || reply?['complete'] is! bool) {
+      throw const FormatException('Invalid CV1 transfer reply');
+    }
+    return (bytes: reply!['bytes'] as Uint8List, start: reply['start'] as int, complete: reply['complete'] as bool);
+  }
 
   @override
   Future<bool> clearStorage(Cv1StorageTarget target) async =>
@@ -359,7 +377,15 @@ class Cv1Connection extends ChangeNotifier {
   List<Cv1DeviceFound> get devices => List.unmodifiable(_devices.values);
 
   bool beginCalibration(ValueChanged<Uint8List> accept) {
-    if (_closing || phase != Cv1LinkPhase.ready || _capture.active || _capture.sealing || calibrating) return false;
+    if (_closing ||
+        importingStorage ||
+        clearingStorage ||
+        phase != Cv1LinkPhase.ready ||
+        _capture.active ||
+        _capture.sealing ||
+        calibrating) {
+      return false;
+    }
     _calibration = accept;
     _demandChanged();
     notifyListeners();
@@ -402,6 +428,31 @@ class Cv1Connection extends ChangeNotifier {
   }
 
   bool clearingStorage = false;
+  bool importingStorage = false;
+
+  Cv1StorageTarget? get importTarget =>
+      defaultTargetPlatform == TargetPlatform.android &&
+          _transport is Cv1ArchiveTransport &&
+          !clearingStorage &&
+          !importingStorage &&
+          diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy
+      ? storageTarget
+      : null;
+
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target) async {
+    if (target != importTarget) throw PlatformException(code: 'storage_busy');
+    importingStorage = true;
+    notifyListeners();
+    try {
+      return await (_transport as Cv1ArchiveTransport).readOldest(target);
+    } finally {
+      importingStorage = false;
+      if (!_closing) {
+        notifyListeners();
+        unawaited(sampleDiagnostics());
+      }
+    }
+  }
 
   Cv1StorageTarget? get storageTarget {
     final id = linkedDeviceId;
@@ -421,7 +472,7 @@ class Cv1Connection extends ChangeNotifier {
 
   Future<Cv1ClearResult> clearStorage(Cv1StorageTarget target) async {
     final transport = _transport;
-    if (clearingStorage || storageTarget != target || transport is! Cv1StorageTransport) {
+    if (importingStorage || clearingStorage || storageTarget != target || transport is! Cv1StorageTransport) {
       return Cv1ClearResult.unavailable;
     }
     clearingStorage = true;

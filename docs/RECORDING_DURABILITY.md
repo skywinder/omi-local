@@ -72,8 +72,11 @@ CV1 firmware 3.0.21 returns four little-endian words for unread bytes, unread
 444-byte packets, free bytes and RTC validity. Reading that status leaves audio
 on the pendant. Its audio download protocol advances the ring cursor after BLE
 transmission completes, before a phone can acknowledge a durable journal write.
-Next currently supports live BLE capture and phone outbox recovery. Importing
-offline SD audio requires a transfer protocol with a durable receiver checkpoint.
+On Android, **Import oldest CV1 audio** requests up to 32 legacy records per
+confirmation. The phone retains the complete records, separates intervals at
+clock discontinuities and queues them with their original timestamps. If processing
+fails, the raw fragment stays bound to that server and can be retried offline.
+An interruption during the Bluetooth transfer can lose audio on legacy firmware.
 Firmware tags 3.0.23 and 3.0.24 implement ring identity and explicit cursor acknowledgement. Next still needs the matching phone journal and resumable transfer.
 See the [CV1 3.0.23 transfer commands](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.23/omi/firmware/omi/src/lib/core/storage.c) and the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
 

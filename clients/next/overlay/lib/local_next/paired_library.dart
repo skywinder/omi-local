@@ -228,7 +228,10 @@ class PairedLibrary {
       final base = documents ?? await getApplicationDocumentsDirectory();
       final queue = Directory('${base.path}/outbox/$ownerId');
       return await queue.list(followLinks: false).any((entry) {
-        return entry.path.endsWith('.part') || entry.path.endsWith('.ready') || entry.path.endsWith('.finish');
+        return entry.path.endsWith('.part') ||
+            entry.path.endsWith('.ready') ||
+            entry.path.endsWith('.finish') ||
+            entry.path.endsWith('.cv1');
       });
     } on PathNotFoundException {
       return false;

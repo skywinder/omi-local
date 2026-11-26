@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,7 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'accents.dart';
 import 'capture.dart';
 import 'cv1_capture.dart';
+import 'cv1_archive.dart';
 import 'cv1_resume.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
@@ -125,8 +127,10 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
           if (!_closed) unawaited(journal.recoverConnection());
         },
       );
+      bool retainedArchive;
       try {
         await journal.initialize();
+        retainedArchive = !await Cv1Archive(journal, library.audioOwnerId).recover();
       } catch (_) {
         preview.dispose();
         rethrow;
@@ -151,6 +155,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         resumeSettings: _groupPrefs == null ? null : Cv1ResumeSettings(_groupPrefs!, library.audioOwnerId),
         diagnosticsHistory: Cv1History(preferences: _groupPrefs),
       );
+      if (retainedArchive) _inputs!.archiveMessage = 'nextImportRetained';
       widget.onInputsReady?.call(_inputs!);
       if (_hasCv1) _diagnosticPoll = Timer.periodic(const Duration(minutes: 1), (_) => _sampleIdleLink());
       journal.retry();
@@ -343,6 +348,56 @@ class NextCaptureInputs extends ChangeNotifier {
     return pending;
   }
 
+  String? archiveMessage;
+  Duration? importedAudio;
+  bool get hasRetainedArchive => archiveMessage == 'nextImportRetained';
+
+  Future<void> retryStagedArchive() async {
+    if (hasCaptureInProgress || !permitsNewRecording) return;
+    await _change(() async {
+      final saved = await Cv1Archive(phone.journal, phone.owner).recover();
+      archiveMessage = saved ? 'nextImportSaved' : 'nextImportRetained';
+    });
+  }
+
+  Future<void> importOldest(Cv1StorageTarget target) async {
+    if (hasCaptureInProgress || !permitsNewRecording || connection.importTarget != target) return;
+    final codec = connection.codec!;
+    final journal = phone.journal;
+    await _change(() async {
+      archiveMessage = 'nextImportProgress';
+      importedAudio = null;
+      if (!_closed) notifyListeners();
+      final archive = Cv1Archive(journal, phone.owner);
+      try {
+        if (archive.staged.isNotEmpty) {
+          archiveMessage = 'nextImportRetained';
+          return;
+        }
+        // Reserve room for the raw window and immutable audio before a consuming legacy read.
+        if (journal.pendingBytes + 65536 > journal.maxStorageBytes) {
+          archiveMessage = 'nextImportCapacity';
+          return;
+        }
+        final batch = await connection.readOldest(target);
+        if (batch.bytes.isEmpty) {
+          archiveMessage = 'nextImportInterrupted';
+          return;
+        }
+        importedAudio = Duration(microseconds: await archive.save(batch.bytes, target.deviceId, batch.start, codec));
+        archiveMessage = batch.complete ? 'nextImportSaved' : 'nextImportPartial';
+      } on PlatformException catch (error) {
+        archiveMessage = switch (error.code) {
+          'storage_busy' => 'nextImportBusy',
+          'phone_full' => 'nextImportCapacity',
+          _ => 'nextImportInterrupted',
+        };
+      } catch (_) {
+        archiveMessage = archive.staged.isNotEmpty ? 'nextImportRetained' : 'nextImportFailed';
+      }
+    });
+  }
+
   Future<void> _claimCv1() {
     if (!permitsNewRecording) return Future<void>.value();
     return _change(() async {
@@ -489,6 +544,24 @@ class LocalNextCaptureControls extends StatelessWidget {
       _mute(context),
     ],
   );
+
+  Future<void> _importPendant(BuildContext context, Cv1Connection link) async {
+    final target = link.importTarget;
+    if (target == null) return;
+    String label(String key) => pairedSettingsLabel(context, key);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(label('nextImportAction')),
+        content: Text('CV1 · ${_shortCv1Id(target.deviceId)}\n\n${label('nextImportHint')}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(context.l10n.cancel)),
+          TextButton(onPressed: () => Navigator.pop(dialog, true), child: Text(label('nextImportConfirm'))),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) await inputs.importOldest(target);
+  }
 
   Future<void> _clearPendant(BuildContext context, Cv1Connection link) async {
     final target = link.storageTarget;
@@ -647,6 +720,33 @@ class LocalNextCaptureControls extends StatelessWidget {
                           ].join('\n'),
                           null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),
                         }),
+                      ),
+                    if (hasCv1 &&
+                        defaultTargetPlatform == TargetPlatform.android &&
+                        (link.diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy ||
+                            inputs.archiveMessage != null))
+                      ListTile(
+                        leading: Icon(Icons.download_outlined, color: NextAccent.teal.of(context)),
+                        title: Text(
+                          pairedSettingsLabel(
+                            context,
+                            inputs.hasRetainedArchive ? 'nextImportRetry' : 'nextImportAction',
+                          ),
+                        ),
+                        subtitle: inputs.archiveMessage == null
+                            ? null
+                            : Text(
+                                [
+                                  pairedSettingsLabel(context, inputs.archiveMessage!),
+                                  if (inputs.importedAudio case final duration?)
+                                    '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
+                                ].join(' · '),
+                              ),
+                        enabled:
+                            !inputs.hasCaptureInProgress && (inputs.hasRetainedArchive || link.importTarget != null),
+                        onTap: inputs.hasRetainedArchive
+                            ? inputs.retryStagedArchive
+                            : () => _importPendant(context, link),
                       ),
                     if (hasCv1)
                       ListTile(

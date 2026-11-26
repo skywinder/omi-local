@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' as typed;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -244,6 +245,60 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     _recordings.add(recording);
     return recording;
   }
+
+  /// Publish a recovered interval through the same receipt-checked queue as live audio.
+  /// The importer supplies a deterministic identity so interrupted publication can be replayed.
+  Future<void> queueRecoveredOpus({
+    required String id,
+    required String serverId,
+    required String codec,
+    required DateTime startedAt,
+    required List<List<int>> packets,
+  }) => _serial(() async {
+    if (!_groupUuid.hasMatch(id) ||
+        !{'opus', 'opus_fs320'}.contains(codec) ||
+        packets.isEmpty ||
+        packets.length > maxPartPackets) {
+      throw const FormatException('Invalid recovered audio part');
+    }
+    final header = utf8.encode(
+      jsonEncode({
+        'version': 2,
+        'id': id,
+        'recording_id': id,
+        'index': 0,
+        'source': 'omi',
+        'codec': codec,
+        'started_at': startedAt.toUtc().toIso8601String(),
+        'server_id': serverId,
+        'preroll_frames': 0,
+      }),
+    );
+    final body = typed.BytesBuilder()
+      ..add(magic)
+      ..add(_length(header.length))
+      ..add(header);
+    for (final packet in packets) {
+      if (packet.isEmpty || packet.length > maxFrameBytes || body.length + packet.length + 4 > maxPartBytes) {
+        throw const FormatException('Invalid recovered audio packet');
+      }
+      LocalAudioRecording.packetMicroseconds(codec, packet);
+      body
+        ..add(_length(packet.length))
+        ..add(packet);
+    }
+    final ready = File('${directory.path}/$id.ready');
+    final bytes = body.takeBytes();
+    if (await ready.exists()) {
+      if (!listEquals(bytes, await ready.readAsBytes())) throw const FormatException('Recovered part conflict');
+      return;
+    }
+    if (pendingBytes + bytes.length > maxStorageBytes) throw LocalDeliveryIssue.queueStorage;
+    final temp = File('${directory.path}/$id.importing');
+    await temp.writeAsBytes(bytes, flush: true);
+    await temp.rename(ready.path);
+    await _countPending();
+  });
 
   void reportCaptureIssue(String? issue) {
     captureIssue = issue;

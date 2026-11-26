@@ -1,8 +1,10 @@
 # Recovering audio from Omi after Bluetooth loss
 
-Status: source assessment and implementation plan, not an enabled feature.
-The local runtime resumes live capture after reconnect, but does not import the
-wearable's offline buffer. A running timer is not evidence of recovered audio.
+Next on Android supports manual extraction of a short interval from a legacy CV1.
+Open Settings and diagnostics → Import oldest CV1 audio after stopping capture.
+Each confirmation requests up to 32 records (14,208 bytes) from the oldest
+unread position. Firmware 3.0.21 releases records during transfer. A disconnect
+or app termination before phone storage can lose some of the requested audio.
 
 ## Verified boundaries
 
@@ -12,7 +14,7 @@ source, not a readback of a particular device's installed binary or storage.
 
 | Interval | Current path | Recovery limitation |
 | --- | --- | --- |
-| Bluetooth disconnected | Firmware writes packed Opus records to SD when storage is available and its clock is valid. | The local app has no wearable-to-local-outbox importer. Actual stored coverage must be measured. |
+| Bluetooth disconnected | Firmware writes packed Opus records to SD when storage is available and its clock is valid. | Android Next can import the oldest legacy records. Actual stored coverage must be measured. |
 | Connected, audio notifications not ready | Firmware removes frames from its transmission queue but neither sends nor stores them. | Downloading the existing ring cannot recover frames that were never stored. |
 | Phone receives audio, live ASR not ready | The app journals received frames before attempting live preview. | Final processing can recover journaled audio; a replacement live preview currently starts with new audio. |
 
@@ -67,9 +69,15 @@ It confirmed advance for one-record completion, a newer start that skips older
 history, and periodic advance without an application receipt. This is a software
 boundary check, not a physical transfer test.
 
-The current decision is to retain automatic reconnect and phone journaling,
-without enabling an experimental consuming import or updating firmware.
-The plan below is deferred; it is not a prerequisite for the working release.
+The manual Android transfer checks the current connection, legacy INFO, acknowledged
+read window, complete record boundaries and closing cursor. On interruption it
+keeps whole records received after a matching READ_BEGIN. The phone flushes the
+raw fragment to the selected server's private directory, validates the stored
+clock, splits across timestamp gaps and queues immutable Opus audio with the
+stored UTC time. A restart replays the raw fragment with stable part IDs. Invalid
+raw data stays on the phone for inspection. The retry action reprocesses the
+same fragment without starting another Bluetooth read. A matching server receipt
+releases each phone part. Live capture and ring import run separately.
 
 ## Deferred implementation order
 
@@ -101,5 +109,5 @@ The plan below is deferred; it is not a prerequisite for the working release.
    immediately after Bluetooth loss. Software tests alone cannot establish that
    every phrase is recovered.
 
-This assessment does not flash firmware, consume historical audio, change the
-device cursor, or require rebuilding the currently working iPhone application.
+The iOS client currently exposes storage measurement and explicit clear. Manual
+extraction and receiver-acknowledged recovery are separate implementation steps there.

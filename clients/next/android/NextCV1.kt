@@ -26,6 +26,8 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import java.util.UUID
 
 /** A single CV1 connection, with one pending Android GATT operation at a time. */
@@ -57,6 +59,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var diagnosticsRequested = false
     private var storageNotifications = false
     private var clearReply: MethodChannel.Result? = null
+    private class ArchiveRead(val reply: MethodChannel.Result, val start: Long, val count: Int) {
+        val bytes = ByteArrayOutputStream(count * 444)
+        var began = false
+    }
+    private var archive: ArchiveRead? = null
     private var rssiPending = false
     private val operations = ArrayDeque<Job>()
     private var active: Job? = null
@@ -143,7 +150,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 }
                 "setAudio" -> setAudio(call, result)
                 "sampleDiagnostics" -> {
-                    if (phase == "ready" && clearReply == null && desiredAudio == null && confirmedAudio == null) {
+                    if (phase == "ready" && clearReply == null && archive == null && desiredAudio == null && confirmedAudio == null) {
                         diagnosticsRequested = true
                         advance()
                     }
@@ -153,6 +160,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     sampleSignal()
                     result.success(null)
                 }
+                "readOldest" -> readOldest(call, result)
                 "clearStorage" -> clearStorage(call, result)
                 "writeSetting" -> writeSetting(call, result)
                 else -> result.notImplemented()
@@ -210,6 +218,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val pending = listOfNotNull(active) + operations
         active = null
         operations.clear()
+        finishArchive(false)
         finishClear(false)
         stats.clear()
         diagnosticsRequested = false
@@ -441,6 +450,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     }
 
     private fun setAudio(call: MethodCall, result: MethodChannel.Result) {
+        if (archive != null) return result.error("storage_busy", null, null)
         val token = call.argument<Int>("subscription")
         val enabled = call.argument<Boolean>("enabled")
         if (token == null || enabled == null || token <= 0 || call.argument<Int>("generation") != generation) {
@@ -527,6 +537,54 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         }
     }
 
+    private fun readOldest(call: MethodCall, reply: MethodChannel.Result) {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
+        val info = stats["storageInfo"] as? ByteArray
+        if (phase != "ready" || call.argument<Int>("generation") != generation ||
+            call.argument<String>("deviceId") != target || archive != null || clearReply != null ||
+            !storageNotifications || char == null || info?.size != 31 || active != null || operations.isNotEmpty() ||
+            desiredAudio != null || confirmedAudio != null || codec !in setOf(20, 21)) {
+            return reply.error("storage_busy", null, null)
+        }
+        if (context.filesDir.usableSpace < 65536) return reply.error("phone_full", null, null)
+        val header = ByteBuffer.wrap(info)
+        val start = header.getLong(1)
+        val end = header.getLong(9)
+        if (start < 0 || end <= start || end - start > header.getInt(17).toLong() ||
+            header.getShort(29).toInt() != 444) return reply.error("storage_busy", null, null)
+        val count = minOf(32L, end - start).toInt()
+        val pending = ArchiveRead(reply, start, count)
+        archive = pending
+        stats.remove("storageInfo")
+        telemetry()
+        val command = ByteBuffer.allocate(13).put(0x11).putLong(start).putInt(count).array()
+        writeIdle(char, command) { if (it == null && archive === pending) finishArchive(false) }
+        handler.postDelayed({ if (archive === pending) finishArchive(false) }, 15000)
+    }
+
+    private fun archiveNotification(value: ByteArray) {
+        val read = archive ?: return
+        val frame = ByteBuffer.wrap(value)
+        when (value.firstOrNull()?.toInt()) {
+            5 -> if (value.size == 13 && !read.began && frame.getLong(1) == read.start &&
+                frame.getInt(9) == read.count) read.began = true else finishArchive(false)
+            3 -> if (read.began && value.size > 1 && read.bytes.size() + value.size - 1 <= read.count * 444)
+                read.bytes.write(value, 1, value.size - 1) else finishArchive(false)
+            4 -> finishArchive(read.began && value.size == 10 && value[1].toInt() == 0 &&
+                frame.getLong(2) == read.start + read.count && read.bytes.size() == read.count * 444)
+            1 -> if (value.size != 2 || value[1].toInt() != 0) finishArchive(false)
+        }
+    }
+
+    private fun finishArchive(complete: Boolean) {
+        val read = archive ?: return
+        archive = null
+        val received = read.bytes.toByteArray()
+        val usable = received.size - received.size % 444
+        read.reply.success(mapOf("complete" to complete, "start" to read.start,
+            "bytes" to received.copyOf(usable)))
+    }
+
     private fun finishClear(acknowledged: Boolean) {
         val reply = clearReply ?: return
         clearReply = null
@@ -537,7 +595,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
         val info = stats["storageInfo"] as? ByteArray
         if (phase != "ready" || call.argument<Int>("generation") != generation ||
-            call.argument<String>("deviceId") != target || clearReply != null || !storageNotifications ||
+            call.argument<String>("deviceId") != target || clearReply != null || archive != null || !storageNotifications ||
             char == null || info == null || info[29].toInt() != 1 || info[30].toInt().and(255) != 188 ||
             desiredAudio != null || confirmedAudio != null || active != null || operations.isNotEmpty()) {
             reply.error("storage_busy", null, null)
@@ -569,7 +627,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     // The controller RSSI read is separate from the ATT characteristic queue.
     // A failed or unanswered observation never restarts the audio connection.
     private fun sampleSignal() {
-        if (phase != "ready" || rssiPending || active != null || operations.isNotEmpty()) return
+        if (archive != null || phase != "ready" || rssiPending || active != null || operations.isNotEmpty()) return
         rssiPending = runCatching { gatt?.readRemoteRssi() == true }.getOrDefault(false)
     }
 
@@ -684,6 +742,10 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     stats["battery"] = level
                     telemetry("battery")
                 } else if (char.uuid == Cv1Uuid.storageCommand) {
+                    if (archive != null) {
+                        archiveNotification(value)
+                        return@post
+                    }
                     if (value.size == 2 && value[0].toInt() == 1 && clearReply != null) {
                         finishClear(value[1].toInt() == 0)
                         return@post
