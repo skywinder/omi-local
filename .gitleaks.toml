@@ -25,6 +25,15 @@ paths = [
 id = "generic-api-key"
 
 [[rules.allowlists]]
+description = "Historical tokenizer model-file SHA-256 checksum, not an authentication key"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39$''']
+paths = [
+  '''(?:^|/)scripts/dev-harness/dev_harness/local_semantic_model\.py$''',
+]
+
+[[rules.allowlists]]
 description = "CocoaPods dependency checksum, not an authentication key"
 condition = "AND"
 regexTarget = "secret"

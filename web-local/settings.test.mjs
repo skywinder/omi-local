@@ -6,6 +6,9 @@ import {processingRows, renderProcessing} from './recording-processing.mjs';
 
 test('adapters expose supported settings and preserve independent diarization', () => {
   assert.deepEqual(providerFields(providerDefaults('live', 'external')).map(field => field.key), ['url']);
+  const localLive = providerDefaults('live', 'parakeet-local');
+  assert.deepEqual(providerFields(localLive).map(field => field.key), []);
+  assert.deepEqual(localLive.settings, {});
   assert.deepEqual(providerFields(providerDefaults('summary', 'openai-compatible')).map(field => field.key), ['base_url', 'model', 'reasoning']);
   assert.equal(providerDefaults('summary', 'openai-compatible').settings.reasoning, 'default');
   assert.deepEqual(providerFields(providerDefaults('translation')).map(field => field.key), ['base_url', 'model', 'reasoning']);
@@ -112,6 +115,35 @@ function serverState() {
   return {version: 1, revision: 7, profiles: [profile], active: {live: null, stt: null, diarization: null, summary: profile.id},
     effective: {live: null, stt: null, diarization: null, summary: structuredClone(profile)}};
 }
+
+test('a managed Parakeet profile can be saved and selected without entering a port', async t => {
+  const ui = dom(t), state = serverState(), calls = [];
+  const settings = mountSettings(ui.root, {request: async (path, body) => {
+    calls.push({path, body});
+    if (path === '/save') {
+      state.profiles.push({...body.profile, id: 'local-live', settings: {url: 'ws://127.0.0.1:19090/asr'}});
+      state.revision++;
+    }
+    if (path === '/activate') {
+      state.effective.live = structuredClone(state.profiles.find(p => p.id === body.id));
+      state.revision++;
+    }
+    return structuredClone(state);
+  }});
+  await settings.show();
+  ui.click('+ Add provider', 'live');
+  const kind = ui.root.querySelectorAll('select').find(input => input.name === 'kind');
+  kind.value = 'parakeet-local';
+  kind.dispatch('change');
+  ui.input('name', 'Parakeet');
+  ui.root.querySelector('form').dispatch('submit');
+  await settle();
+  assert.deepEqual(calls.at(-1).body.profile.settings, {});
+  ui.click('Use provider', 'live');
+  await settle();
+  assert.equal(calls.at(-1).body.id, 'local-live');
+  assert.match(ui.category('live').textContent, /ParakeetActive/);
+});
 
 test('translation settings explain the server model used automatically', async t => {
   const ui = dom(t), state = serverState();

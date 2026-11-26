@@ -275,8 +275,9 @@ def up(cfg) -> int:
     local_live.require_backend_environment(cfg)
     local_transcription.check_models(cfg)
     from .local_stt_services import health as stt_health
-    from .local_stt_services import live_url, start_configured
+    from .local_stt_services import live_settings, live_url, registry_exists, start_configured
     configured_live_url = live_url(cfg)
+    live_disabled = registry_exists(cfg) and not live_settings(cfg)
     if not configured_live_url:
         local_live.preflight_start(cfg)
     sys.path.insert(0, str(cfg.repo_root / "backend"))
@@ -310,7 +311,9 @@ def up(cfg) -> int:
                 raise LocalMacError('Tailscale backend is not ready')
         require_auth_boundary(data['url'], open_url=opener.open)
         local_stt_watch.start_if_enabled(cfg)
-        if configured_live_url:
+        if live_disabled:
+            pass
+        elif configured_live_url:
             if not stt_health(cfg, 'live-stt')[0]:
                 raise LocalMacError('Configured live STT is not ready; inspect its owned service')
         else:
@@ -346,7 +349,9 @@ def up(cfg) -> int:
                         require_auth_boundary(data["url"])
                         print("Public HTTPS health passed; run audio-smoke to verify authenticated WSS")
                         local_stt_watch.start_if_enabled(cfg)
-                        if configured_live_url:
+                        if live_disabled:
+                            pass
+                        elif configured_live_url:
                             if not stt_health(cfg, "live-stt")[0]:
                                 raise LocalMacError("Configured live STT is not ready; inspect its owned service")
                         else:

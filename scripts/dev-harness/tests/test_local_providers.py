@@ -31,6 +31,43 @@ def summary(name='Synthetic LLM', base='https://llm.example/v1'):
             'settings': {'base_url': base, 'model': 'synthetic-model'}}
 
 
+@pytest.mark.parametrize('library_environment', [False, True])
+def test_first_save_preserves_default_managed_live_and_explicit_off(cfg, monkeypatch, library_environment):
+    cfg.local_transport = 'tailscale'
+    cfg.container_runtime = False
+    if library_environment:
+        monkeypatch.setenv('OMI_LOCAL_LIVE_PREVIEW_URL', 'ws://127.0.0.1:18090/asr')
+    else:
+        monkeypatch.delenv('OMI_LOCAL_LIVE_PREVIEW_URL', raising=False)
+    registry = Registry(cfg)
+    assert registry.snapshot('live')['kind'] == 'parakeet-local'
+    registry.save({'revision': 0, 'profile': summary()})
+    assert registry.snapshot('live')['name'] == 'Parakeet на этом Mac'
+    registry.activate({'revision': 1, 'stage': 'live', 'id': None}, prepare=lambda _, publish: publish())
+    assert registry.snapshot('live') is None
+    assert Registry(cfg).snapshot('live') is None
+
+
+def test_first_save_respects_explicitly_disabled_legacy_live(cfg):
+    cfg.local_transport = 'tailscale'
+    cfg.container_runtime = False
+    (cfg.layout.state_root / 'live-preview.json').write_text('{"enabled": false}')
+    registry = Registry(cfg)
+    registry.save({'revision': 0, 'profile': summary()})
+    assert registry.snapshot('live') is None
+
+
+def test_managed_parakeet_card_derives_its_port_and_cannot_target_another(cfg):
+    cfg.backend_port = 21000
+    registry = Registry(cfg)
+    card = {'name': 'Local Parakeet', 'stage': 'live', 'kind': 'parakeet-local', 'settings': {}}
+    saved = registry.save({'revision': 0, 'profile': card})
+    selected = next(p for p in saved['profiles'] if p['kind'] == 'parakeet-local')
+    assert selected['settings']['url'] == 'ws://127.0.0.1:19090/asr'
+    with pytest.raises(SettingsError, match='порт'):
+        registry.save({'revision': saved['revision'], 'profile': {**card, 'settings': {'url': 'ws://127.0.0.1:18090/asr'}}})
+
+
 def test_translation_defaults_to_applied_summary_and_keeps_credentials_pinned(cfg):
     registry = Registry(cfg)
     # Legacy users with only STT have no text model; never send text to ASR.
