@@ -1,3 +1,4 @@
+import {mountRecordingSummary} from '/recording-summary.mjs';
 import {mountLiveTuning} from './live-tuning.mjs';
 import {formatTime, segmentAt, seekTo, playFrom, speakerBadge, findTurns} from '/player.mjs';
 import {mountLiveMonitor} from '/live.mjs';
@@ -281,7 +282,6 @@ function renderTranscript(record) {
 let canonicalRecap;
 function renderRecap(record) {
   $('recording-title').textContent = record.summary?.title || 'Untitled recording';
-  $('summary-edit').hidden = !record.summary_editable;
   const summary = !record.summary_current && canonicalRecap?.id === record.id ? {...record.summary, overview: canonicalRecap.overview} : record.summary;
   renderProcessing($('recording-processing'), $('recording-summary'), {...record, summary});
 }
@@ -298,6 +298,7 @@ function syncRecap(id, options) {
 
 async function select(id, open = true) {
   const request = ++state.request;
+  summaryControls.open(null);
   turnQuery.value = '';
   turnMatches = [];
   audio.pause();
@@ -327,11 +328,7 @@ async function select(id, open = true) {
     audio.playbackRate = Number($('speed').value);
     if (record.decode_warning) message('The recording may have audio gaps.');
     renderTranscript(record);
-    if (record.summary_editable && !record.summary_current) {
-      get(`/api/recordings/${id}/summary`).then(options => {
-        if (request === state.request) syncRecap(id, options);
-      }).catch(() => {});
-    }
+    summaryControls.open(record.summary_editable ? id : null);
   } catch {
     if (request !== state.request) return;
     $('connection').textContent = 'Не удалось открыть запись. Обновите список и попробуйте ещё раз.';
@@ -339,83 +336,7 @@ async function select(id, open = true) {
   }
 }
 
-let summaryDialog;
-function drawSummaryOptions(id, options, {preserve = false} = {}) {
-  if (!$('summary-dialog').open || summaryDialog?.id !== id) return;
-  summaryDialog.options = options;
-  syncRecap(id, options);
-  const job = options.job;
-  const state = job?.state;
-  if (state === 'failed') summaryDialog.signature = null;
-  const phases = {waiting: 'Итоги в очереди.', reading: 'Проверяется сохранённая расшифровка.',
-    sections: 'Обрабатываются части расшифровки.', combining: 'Части объединяются в общий итог.',
-    saving: 'Итог сохраняется в архиве.'};
-  const failures = {recording_changed: 'Запись изменилась. Обновите данные и повторите.',
-    connection: 'Модель не ответила. Проверьте провайдера и повторите.',
-    timeout: 'Модель не успела ответить. Проверьте провайдера и повторите.',
-    http_429: 'Модель занята. Повторите чуть позже.',
-    credential_missing: 'Ключ модели недоступен. Проверьте настройки провайдера.'};
-  const progress = job?.progress;
-  const count = progress?.phase === 'sections' && Number.isInteger(progress.completed) && Number.isInteger(progress.total)
-    ? ` ${progress.completed}/${progress.total}.` : '';
-  $('summary-status').textContent = state === 'queued' ? `${phases[progress?.phase] || 'Сервер готовит итоги.'}${count} Можно закрыть окно.`
-    : state === 'ready' ? 'Итоги готовы.'
-    : state === 'failed' ? failures[job.error] || 'Не удалось обновить итоги. Проверьте запись и настройки модели.' : '';
-  if (!preserve) {
-    $('summary-provider').replaceChildren(...options.providers.map(row => new Option(`${row.name} · ${row.model} · ${row.host}`, row.binding)));
-    $('summary-template').replaceChildren(...options.templates.map(row => new Option(row.name, row.id)));
-    if (options.default_provider_binding) $('summary-provider').value = options.default_provider_binding;
-    $('summary-template').value = options.default_template_id;
-    chooseSummaryTemplate();
-  }
-  $('summary-submit').disabled = state === 'queued' || !options.providers.length;
-  if (state === 'queued') {
-    const run = summaryDialog;
-    setTimeout(() => {
-      if (summaryDialog !== run || !$('summary-dialog').open) return;
-      get(`/api/recordings/${id}/summary`).then(next => drawSummaryOptions(id, next, {preserve: true})).catch(summaryLoadFailed);
-    }, 8000);
-  }
-}
-function chooseSummaryTemplate() {
-  const template = summaryDialog?.options?.templates.find(row => row.id === $('summary-template').value);
-  $('summary-prompt').value = template?.prompt || '';
-}
-function summaryLoadFailed() {
-  $('summary-status').textContent = 'Связь с сервером прервалась. Откройте итоги снова, чтобы проверить статус.';
-}
-$('summary-edit').addEventListener('click', () => {
-  const id = state.detail?.id;
-  if (!id) return;
-  summaryDialog = {id};
-  $('summary-status').textContent = 'Загрузка…';
-  $('summary-submit').disabled = true;
-  $('summary-dialog').showModal();
-  get(`/api/recordings/${id}/summary`).then(options => drawSummaryOptions(id, options)).catch(summaryLoadFailed);
-});
-$('summary-close').addEventListener('click', () => $('summary-dialog').close());
-$('summary-template').addEventListener('change', chooseSummaryTemplate);
-$('summary-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const run = summaryDialog;
-  const options = run?.options;
-  const template = options?.templates.find(row => row.id === $('summary-template').value);
-  if (!options || !template) return;
-  const path = `/api/recordings/${run.id}/summary`;
-  const parameters = {source_revision: options.source_revision, provider_binding: $('summary-provider').value,
-    template_id: template.id, template_digest: template.digest, prompt: $('summary-prompt').value.trim()};
-  const encoded = JSON.stringify(parameters);
-  if (run.signature !== encoded) { run.signature = encoded; run.requestId = crypto.randomUUID(); }
-  $('summary-submit').disabled = true;
-  try {
-    const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Omiloc-Request': 'summary'},
-      signal: AbortSignal.timeout(12000), body: JSON.stringify({...parameters, request_id: run.requestId})});
-    if (!response.ok) throw new Error('Unavailable');
-    if (summaryDialog === run) drawSummaryOptions(run.id, {...options, job: await response.json()}, {preserve: true});
-  } catch {
-    if (summaryDialog === run) { summaryLoadFailed(); $('summary-submit').disabled = false; }
-  }
-});
+const summaryControls = mountRecordingSummary($('summary-controls'), {onOptions: syncRecap});
 
 function syncPlayer() {
   $('play').textContent = audio.paused ? '▶' : 'Ⅱ';
@@ -453,6 +374,7 @@ async function refresh() {
     $('connection').hidden = true;
     if (state.selected && !recordings.some(r => r.id === state.selected)) {
       audio.pause(); state.selected = null; state.detail = null; ++state.request;
+      summaryControls.open(null);
       showView();
     }
     if (changed) renderList();
@@ -480,6 +402,7 @@ async function refresh() {
         state.detail = record;
         renderRecordingInfo(record);
         renderTranscript(record);
+        summaryControls.refresh(id);
       }
     }
     if (!recordings.length) renderList();

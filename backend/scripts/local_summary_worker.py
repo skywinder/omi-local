@@ -42,6 +42,7 @@ def execute(uid, body):
             result['transcript'] = snapshot.transcript
         else:
             result['overview'] = (raw.get('structured') or {}).get('overview')
+            result['published'] = summaries.published_provenance(raw)
         return result
     raise ValueError('Unknown summary worker operation')
 

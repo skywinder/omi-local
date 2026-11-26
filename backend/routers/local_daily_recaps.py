@@ -71,7 +71,7 @@ def _day(value):
 
 
 def _request(body=None):
-    return library_request('daily-recap', body, timeout=72, size_limit=64 * 1024)
+    return library_request('daily-recap', body, timeout=72 if body else 6, size_limit=64 * 1024)
 
 
 @router.post('/v1/local/daily-recaps/preview', response_model=Preview)
@@ -93,9 +93,13 @@ def preview(body: DayInput, response: Response, uid: str = Depends(require_paire
 
 @router.post('/v1/local/daily-recaps/generate', response_model=DailySummaryResponse)
 def generate(body: Generate, response: Response, uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    return generate_recap(body, uid)
+
+
+def generate_recap(body: Generate, uid: str, publication_guard=None):
     day = _day(body)
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
-    response.headers['Cache-Control'] = 'no-store'
     try:
         saved = recaps.read(uid, day)
         replay = recaps.repeated(saved, body.request_id, fingerprint)
@@ -121,8 +125,67 @@ def generate(body: Generate, response: Response, uid: str = Depends(require_pair
                 for item in candidate.decisions
             ],
         }
-        return recaps.public_summary(recaps.publish(uid, day, captured, result, body.request_id, fingerprint))
+        return recaps.public_summary(recaps.publish(
+            uid, day, captured, result, body.request_id, fingerprint, publication_guard,
+        ))
     except recaps.DayChanged:
         raise HTTPException(409, 'local_recap_source_changed') from None
     except (ValidationError, IndexError):
         raise HTTPException(502, 'local_recap_invalid_result') from None
+
+
+class ScheduleInput(BaseModel):
+    request_id: str = Field(pattern=_UUID)
+    revision: str = Field(max_length=36)
+    enabled: bool = Field(strict=True)
+    timezone: str = Field(min_length=1, max_length=100)
+    hour: int = Field(strict=True, ge=0, le=23)
+    minute: int = Field(strict=True, ge=0, le=59)
+    provider_binding: str = Field(default='', max_length=64)
+
+
+def _schedule_view(uid):
+    from database import local_recap_schedule as schedule
+    provider = None
+    try:
+        provider = ProviderOptions.model_validate_json(_request()).provider
+    except (ValidationError, HTTPException):
+        pass
+    return {**schedule.public(schedule.read(uid)), 'provider': provider}
+
+
+@router.get('/v1/local/daily-recaps/schedule')
+def get_schedule(response: Response, uid: str = Depends(require_paired_owner)):
+    response.headers['Cache-Control'] = 'no-store'
+    return _schedule_view(uid)
+
+
+@router.post('/v1/local/daily-recaps/schedule')
+def set_schedule(body: ScheduleInput, response: Response, uid: str = Depends(require_paired_owner)):
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    from database import local_recap_schedule as schedule
+    try:
+        ZoneInfo(body.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(422, 'local_recap_invalid_timezone') from None
+    provider = None
+    if body.enabled:
+        try:
+            provider = ProviderOptions.model_validate_json(_request()).provider
+        except ValidationError:
+            raise HTTPException(502, 'local_recap_invalid_provider') from None
+        if provider is None or provider.binding != body.provider_binding:
+            raise HTTPException(409, 'local_recap_provider_changed')
+    if not body.enabled:
+        try:
+            provider = ProviderOptions.model_validate_json(_request()).provider
+        except (ValidationError, HTTPException):
+            pass
+    data = {**body.model_dump(), 'model': provider.model if provider else None,
+            'host': provider.host if provider else None}
+    try:
+        row = schedule.configure(uid, data)
+    except recaps.DayChanged:
+        raise HTTPException(409, 'local_recap_schedule_changed') from None
+    response.headers['Cache-Control'] = 'no-store'
+    return {**schedule.public(row), 'provider': provider}

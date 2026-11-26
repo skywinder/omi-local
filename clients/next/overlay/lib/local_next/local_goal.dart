@@ -3,6 +3,17 @@ import 'package:omi/backend/schema/gen/task_intelligence_wire.g.dart' show Gener
 
 enum LocalGoalFailure implements Exception { conflict, invalid, unavailable }
 
+enum LocalGoalTransition {
+  pause('paused', 'localGoalPause'),
+  resume('background', 'localGoalResume'),
+  achieve('achieved', 'localGoalAchieve'),
+  abandon('abandoned', 'localGoalAbandon');
+
+  const LocalGoalTransition(this.status, this.label);
+  final String status;
+  final String label;
+}
+
 class LocalGoalDetail {
   const LocalGoalDetail({
     required this.goal,
@@ -28,3 +39,11 @@ class LocalGoalDetail {
 
   bool get acceptsProgress => goal.status == 'background' || goal.status == 'focused';
 }
+
+String localGoalStatusLabel(String status) => switch (status) {
+  'paused' => 'localGoalPaused',
+  'achieved' => 'localGoalAchieved',
+  'abandoned' => 'localGoalAbandoned',
+  'focused' => 'localGoalFocused',
+  _ => 'localGoalActive',
+};

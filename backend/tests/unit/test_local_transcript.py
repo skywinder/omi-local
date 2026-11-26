@@ -268,6 +268,16 @@ def test_pipeline_stage_outcomes_are_projected_with_fixed_fields_only():
     assert 'must-not-escape' not in str(conversation.external_data)
 
 
+def test_summary_stage_preserves_only_published_model_and_template():
+    data, result = manifest(), raw()
+    result['processing'] = {'summary': {'status': 'ready', 'model': 'Actual model',
+        'template_name': 'Saved template', 'prompt': 'private', 'api_key': 'private'}}
+    stages = build_conversation(result, data).external_data['local_transcript']['stages']
+    assert stages == {'summary': {'status': 'ready', 'model': 'Actual model', 'template_name': 'Saved template'}}
+    result['processing']['summary']['status'] = 'failed'
+    assert build_conversation(result, data).external_data['local_transcript']['stages'] == {'summary': {'status': 'failed'}}
+
+
 def test_legacy_results_without_processing_carry_no_stage_block():
     conversation = build_conversation(raw(), manifest())
     assert 'stages' not in conversation.external_data['local_transcript']

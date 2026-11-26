@@ -37,6 +37,7 @@ class _SummaryLibrary extends PairedLibrary {
   @override
   Future<RecordingSummaryOptions> readSummaryOptions(String id) async => RecordingSummaryOptions(
     sourceRevision: 'fixture',
+    published: (model: 'Published model', templateName: 'Published template'),
     providers: const [
       (
         name: 'Test provider',
@@ -65,6 +66,25 @@ class _SummaryLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('saved provenance appears beside the recap and opens model selection', (tester) async {
+    final library = _SummaryLibrary();
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: RecordingPage(id: _id, library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Published template · Published model'), findsOneWidget);
+    expect(find.text('Default template'), findsNothing);
+    await tester.tap(find.text('Choose template and model'));
+    await tester.pumpAndSettle();
+    expect(find.text('Default template'), findsWidgets);
+    expect(library.requests, isEmpty);
+  });
+
   testWidgets('a failed background recap tells the owner where to fix the model key', (tester) async {
     final library = _SummaryLibrary()
       ..summaryJobsAvailable = true

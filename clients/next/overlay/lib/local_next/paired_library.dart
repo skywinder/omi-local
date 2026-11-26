@@ -22,6 +22,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import 'daily_recap.dart';
+import 'local_memory.dart';
 import 'wav_level.dart';
 import 'live_preview.dart';
 import 'local_goal.dart';
@@ -106,8 +107,11 @@ class PairedLibrary {
   bool taskSuggestionsAvailable = false;
   bool summaryRegenerationAvailable = false;
   bool summaryJobsAvailable = false;
+  bool memoriesAvailable = false;
   bool dailyRecapsAvailable = false;
+  bool dailyRecapScheduleAvailable = false;
   bool goalsAvailable = false;
+  bool goalLifecycleAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -155,8 +159,11 @@ class PairedLibrary {
     taskSuggestionsAvailable = false;
     summaryRegenerationAvailable = false;
     summaryJobsAvailable = false;
+    memoriesAvailable = false;
     dailyRecapsAvailable = false;
+    dailyRecapScheduleAvailable = false;
     goalsAvailable = false;
+    goalLifecycleAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -540,8 +547,11 @@ class PairedLibrary {
     taskSuggestionsAvailable = data['local_task_suggestions_version'] == 1;
     summaryRegenerationAvailable = data['local_summary_regeneration_version'] == 1;
     summaryJobsAvailable = data['local_summary_jobs_version'] == 1;
+    memoriesAvailable = data['local_memories_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
+    dailyRecapScheduleAvailable = data['local_daily_recap_schedule_version'] == 1;
     goalsAvailable = data['local_goals_version'] == 1;
+    goalLifecycleAvailable = goalsAvailable && data['local_goal_lifecycle_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -908,6 +918,19 @@ class PairedLibrary {
     await _goalRequest('${_goalPath(id)}/progress', body: body);
   }
 
+  Future<void> changeGoalStatus(
+    String id,
+    LocalGoalTransition transition, {
+    required String revision,
+    required String requestId,
+  }) async {
+    if (!goalLifecycleAvailable) throw LocalGoalFailure.unavailable;
+    await _goalRequest(
+      '${_goalPath(id)}/lifecycle',
+      body: {'status': transition.status, 'request_id': requestId, 'expected_revision': revision},
+    );
+  }
+
   String _goalPath(String id) {
     if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(id)) throw LocalGoalFailure.invalid;
     return '/v1/local/goals/$id';
@@ -931,6 +954,84 @@ class PairedLibrary {
     return data;
   }
 
+  Future<LocalMemoryPage> listMemories({
+    String state = 'accepted',
+    String? sourceId,
+    String query = '',
+    String? after,
+  }) async {
+    final data = await _memoryRequest(
+      '/v1/local/memories',
+      query: {
+        'state': state,
+        if (sourceId != null) 'source_id': sourceId,
+        if (query.isNotEmpty) 'query': query,
+        if (after != null) 'after': after,
+      },
+    );
+    return (
+      items: (data['items'] as List).map((item) => LocalMemory(item as Map<String, dynamic>)).toList(),
+      next: data['next_after'] as String?,
+    );
+  }
+
+  Future<LocalMemoryProvider?> memoryProvider(String id) async {
+    final data = await _memoryRequest('/v1/local/conversations/$id/memories');
+    return data['provider'] == null ? null : LocalMemoryProvider.fromJson(data['provider'] as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> extractMemories(String id, String binding, String requestId) => _memoryRequest(
+    '/v1/local/conversations/$id/memories',
+    body: {'request_id': requestId, 'provider_binding': binding},
+    timeout: const Duration(seconds: 84),
+  );
+
+  Future<void> reviewMemory(LocalMemory fact, String action, String requestId, {String? content}) async {
+    await _memoryRequest(
+      '/v1/local/memories/${fact.id}',
+      body: {
+        'request_id': requestId,
+        'revision': fact.revision,
+        'action': action,
+        if (content != null) 'content': content,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _memoryRequest(
+    String path, {
+    Map<String, String>? query,
+    Map<String, dynamic>? body,
+    Duration timeout = _deadline,
+  }) async {
+    if (!isSignedIn || !memoriesAvailable) throw LocalMemoryFailure.unavailable;
+    final data = await _request(
+      path,
+      (response) async => await _json(response, 1 << 20) as Map<String, dynamic>,
+      query: query,
+      body: body == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(body))),
+      bodyType: ContentType.json,
+      overallTimeout: timeout,
+      statusFailure: (status) => status == 409
+          ? LocalMemoryFailure.changed
+          : status == 422
+          ? LocalMemoryFailure.invalid
+          : LocalMemoryFailure.unavailable,
+    );
+    if (!isSignedIn) throw LibraryFailure.key;
+    return data;
+  }
+
+  Future<DailyRecapSchedule> dailyRecapSchedule() async {
+    if (!dailyRecapScheduleAvailable) throw DailyRecapFailure.unavailable;
+    return DailyRecapSchedule.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/schedule'));
+  }
+
+  Future<DailyRecapSchedule> saveDailyRecapSchedule(Map<String, dynamic> body) async {
+    if (!dailyRecapScheduleAvailable) throw DailyRecapFailure.unavailable;
+    return DailyRecapSchedule.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/schedule', body: body));
+  }
+
   Future<DailyRecapPreview> previewDailyRecap(DateTime date) async =>
       DailyRecapPreview.fromJson(await _dailyRecapRequest('/v1/local/daily-recaps/preview', body: dailyRecapDay(date)));
 
@@ -951,7 +1052,7 @@ class PairedLibrary {
   Future<Map<String, dynamic>> _dailyRecapRequest(
     String path, {
     Map<String, String>? query,
-    Map<String, String>? body,
+    Map<String, dynamic>? body,
     Duration timeout = _deadline,
   }) async {
     if (!isSignedIn || !dailyRecapsAvailable) throw DailyRecapFailure.unavailable;

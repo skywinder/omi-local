@@ -14,6 +14,10 @@ Cold-start checks validate owned Argmax files before starting services; the sele
 HTTP model is checked after its owned listener starts, never as a prerequisite to it.
 See `docs/NGROK.md` and `docs/TAILSCALE.md`; `make test-offline` is the local suite.
 Paired archive search uses the same verified file-backed transcript as detail.
+Optional archive MCP uses a separately prefixed read key, never the phone key.
+Preserve its exact method/path allowlist in `utils/local_transport_auth.py` and
+revision-checked quote pagination in `routers/local_archive.py`. No generic proxy
+or write access belongs in this scope. See [MCP setup](../tools/archive-mcp/README.md).
 After a file-backed result, the page cursor resumes at the next unscanned document.
 Meaning search ranks revision-bound pointers over the private Unix socket and
 rechecks each canonical row before returning snippets. The optional model runs
@@ -83,6 +87,10 @@ Archive chat combines keyword and local semantic results under one evidence
 budget. Resolve semantic pointers against the paired owner's current revision.
 Only the cited segment may supply text to the model. Summary windows and
 neighboring context can affect ranking without becoming transcript citations.
+For long segments, choose a bounded, contiguous excerpt around query terms;
+never rank the complete segment and then send only its prefix. Hybrid merging
+retains distinct evidence windows from one segment and removes exact duplicates.
+The fixed EN/RU evidence questions run in `test_local_retrieval_quality.py`.
 Clients opt in to the stored archive chat contract. Its encrypted history is
 scoped to the paired server owner. The append transaction checks the current
 head and source revisions. Hide answers whose sources, including those supplied
@@ -131,14 +139,34 @@ publishes through the paired database under the admitted owner scope. Recover
 chunk checkpoints after restart and verify file-backed transcript checksums and
 the original summary revision before publication. Only the library process
 contacts the selected model. Preserve the synchronous endpoint for older apps.
+Summary options expose only the saved result's model and template name as
+`published`. Never substitute defaults or the latest attempted job. New automatic
+and regenerated summaries persist the model actually resolved by the provider.
 Generated next steps stay in notes until the owner creates a task.
+Paired reviewed memory has one local authority in `database/local_memories.py`.
+Keep hosted memory admission/graph routes disabled. Reuse `MemoryEvidence` for
+exact source identity, version, digest and quotation. Extraction may only create
+encrypted proposals; a paired owner must accept each fact. Confirm/edit checks
+both the fact revision and the current recording inside the transaction. Search
+excludes unaccepted or changed/unavailable-source facts and never searches old
+wording. Delete scrubs the encrypted fact, quote and bounded correction history;
+content-free receipts prevent uncertain retries from recreating it. The UI must
+show partial extraction and changed sources. See `docs/BACKEND_PARITY.md`.
 Paired daily recaps use the canonical daily summary collection. Start/end
 are the phone's local calendar midnights converted to UTC. The archive
 snapshot is checked again before publication, including additions to that day.
+Automatic recaps are opt-in via the paired schedule endpoint. The offline backend
+owns the persistent day cursor and transaction lease; only the loopback library
+calls the approved model. Publication fences the schedule revision, lease and
+shutdown flag, and never replaces an existing recap. Disabled schedules make no
+inference calls. The worker catches up one completed day per minute, backs off
+failures, and bounds its shutdown wait so inference cannot hold up exit. See `docs/BACKEND_PARITY.md`.
 Paired goals use the canonical goal and progress-event collections. An event
 checks the goal revision and any linked recording inside the same transaction
 that writes progress and its daily history. Paired routes skip hosted goal
-wakeups.
+wakeups. Goal lifecycle changes compare the paired revision, retain links and
+history, and replay the original request after uncertain delivery. The paired
+lifecycle regression runs in `make test-offline` through `test_workstream_core.py`.
 The loopback web library deletes through `scripts/delete_local_recording.py`,
 which verifies the paired owner and exact WAV/result provenance before deleting
 local transcript-only Conversations. The STT lock serializes deletion and import;

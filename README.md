@@ -15,7 +15,7 @@ explicitly selected servers.
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client for new development. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for the integrated version. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 

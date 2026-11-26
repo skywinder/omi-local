@@ -99,7 +99,7 @@ class SummaryJobs:
         if body is not None:
             return self.submit({**body, **handle}, expected_revision=source['revision'])
         return {**local_summary_regeneration.options(self.registry), 'source_revision': source['revision'],
-                **self.latest(handle), 'overview': source['overview']}
+                **self.latest(handle), 'overview': source['overview'], 'published': source.get('published')}
 
     def submit(self, body, *, expected_revision=None):
         file = self.file(body)
@@ -162,10 +162,11 @@ class SummaryJobs:
                 snapshot = job['snapshot']
                 candidate = local_pipeline.summarize_text(
                     snapshot, self.registry.key(snapshot), source['transcript'], file.parent, atomic_json, sourced=True,
-                    deadline=monotonic() + INFERENCE_BUDGET_SECONDS,
+                    deadline=monotonic() + INFERENCE_BUDGET_SECONDS, include_model=True,
                     progress=lambda phase, *counts: self.update_progress(file, job, phase, *counts),
                 )
-                job['candidate'] = {**candidate, 'model': job['model'], 'template_name': job['template_name']}
+                job['model'] = candidate['model']
+                job['candidate'] = {**candidate, 'template_name': job['template_name']}
                 atomic_json(file, job)
             self.update_progress(file, job, 'saving')
             publication = {k: job[k] for k in ('request_id', 'fingerprint', 'model', 'template_name')}

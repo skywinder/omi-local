@@ -261,6 +261,11 @@ Polling ends when the screen closes and resumes when foreground access returns.
 
 ## Summary templates
 
+The recording's Summary tab shows the published template and model, with a
+button to choose the next template/model. Older results without provenance say
+that it was not recorded. This read is optional on older paired servers; it
+never replaces the visible summary with the current provider defaults.
+
 Open **Processing → Summary Template** to add or edit a named prompt. Enable
 **Use for new recordings** to make it the default when the server snapshots the
 applied summary provider for future jobs. If another client saved in the
@@ -280,6 +285,21 @@ chunks have finished. The counter keeps its last saved value after a worker
 restart. The final combine and save phases have their own status. Model access,
 availability and response errors include instructions for retrying.
 
+## Reviewed memory
+
+On compatible servers, open **Memory** from the archive to search confirmed facts
+or review proposals. From a recording, **Memory → Propose facts from recording**
+shows the configured model and host before sending transcript excerpts. Compare
+each proposed statement with its quotation, then **Confirm fact**, **Edit and
+confirm**, or **Reject**. The source action opens the cited segment. Extraction
+may cover only part of a long recording and does not confirm anything itself.
+
+Changed or unavailable sources are marked for review and excluded from fact
+search. The old quotation is hidden; open the recording and extract again after
+corrections. The last 20 wording changes can be inspected. **Delete** removes the
+fact, stored quote and correction history while retaining the recording. Changes
+are saved on the paired server; no hosted memory/graph service is enabled.
+
 ## Daily recaps
 
 Open **Daily Recaps** from the archive and select a date. Next previews the
@@ -289,7 +309,22 @@ and the summary links highlights and decisions back to their recordings.
 Next marks incomplete coverage. A new local generation replaces the same
 day's local recap. Existing recaps stay in the same archive.
 
+On compatible servers, the clock action opens **Automatic daily recaps**. Choose
+an IANA timezone and next-day time, review the model/host, enable and Save. The
+server must remain running; the phone may be closed. Schedules start with today
+and catch up after server downtime, while keeping existing recaps. Re-enabling
+or changing timezone starts with today again. The page shows the saved model,
+last outcome and next day. Refresh and save to approve a changed model or retry
+sooner. Disabling prevents an active attempt from publishing. This is server-side
+processing, not an iOS background task or an external calendar integration.
+
+
 ## Goals
+
+Compatible paired servers expose goal actions to pause, resume, mark achieved or
+abandon. Ending a goal asks for confirmation and keeps its history and linked
+tasks. A conflicting edit reloads the goal; retrying an uncertain write reuses
+the same request. Older servers keep goal reading and manual progress available.
 
 Open **Goals** from the archive to create a goal or review progress. A target
 and unit are optional. **Log progress** saves a note, with an optional new

@@ -24,6 +24,7 @@ import 'paired_library.dart';
 import 'offline_recordings.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
+import 'local_memories_page.dart';
 import 'recording_chat_page.dart';
 import 'recording_edit.dart';
 import 'recording_export.dart';
@@ -31,6 +32,7 @@ import 'conversation_categories.dart';
 import 'category_backfill.dart';
 import 'recording_search.dart';
 import 'recording_summary_page.dart';
+import 'recording_summary_info.dart';
 import 'recording_player_bar.dart';
 import 'recording_playback.dart';
 import 'settings_labels.dart';
@@ -989,6 +991,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     _RecordingEditAction.classifyCategory => _classifyCategory(),
                     _RecordingEditAction.task => _addTask(loaded),
                     _RecordingEditAction.taskFromLine => _addTask(loaded, useLine: true),
+                    _RecordingEditAction.memories => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => LocalMemoriesPage(library: widget.library, sourceId: loaded.row.id),
+                      ),
+                    ),
                     _RecordingEditAction.goalProgress => Navigator.of(context).push<void>(
                       MaterialPageRoute(
                         builder: (_) => LocalGoalsPage(library: widget.library, conversationId: loaded.row.id),
@@ -1002,6 +1009,11 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                     ),
                   },
                   itemBuilder: (context) => [
+                    if (widget.library.memoriesAvailable && !_readingOffline && !loaded.pending)
+                      PopupMenuItem(
+                        value: _RecordingEditAction.memories,
+                        child: Text(pairedSettingsLabel(context, 'memoryTitle')),
+                      ),
                     if (!_readingOffline &&
                         canPlay &&
                         loaded.row.status == ConversationStatus.completed &&
@@ -1189,6 +1201,17 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
                         children: [
                           _Summary(
                             detail: loaded,
+                            controls:
+                                !_readingOffline &&
+                                    !loaded.pending &&
+                                    (widget.library.summaryRegenerationAvailable || widget.library.summaryJobsAvailable)
+                                ? RecordingSummaryInfo(
+                                    key: ObjectKey(loaded),
+                                    id: _id,
+                                    library: widget.library,
+                                    onChoose: _regenerateSummary,
+                                  )
+                                : null,
                             onOpenLine: (line) => _openLine(line, canPlay: canPlay),
                           ),
                           loaded.lines.isEmpty
@@ -1244,6 +1267,7 @@ class _RecordingPageState extends State<RecordingPage> with SingleTickerProvider
 }
 
 enum _RecordingEditAction {
+  memories,
   offline,
   recordingResults,
   export,
@@ -1325,7 +1349,8 @@ class _RecordingDetail {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.detail, required this.onOpenLine});
+  const _Summary({required this.detail, required this.onOpenLine, this.controls});
+  final Widget? controls;
   final _RecordingDetail detail;
   final ValueChanged<TranscriptSegment> onOpenLine;
 
@@ -1335,6 +1360,7 @@ class _Summary extends StatelessWidget {
     return SelectionArea(
       child: CustomScrollView(
         slivers: [
+          if (controls != null) SliverToBoxAdapter(child: controls),
           SliverPadding(
             padding: const EdgeInsets.all(OmiSpacing.md),
             sliver: summary.sections.isNotEmpty

@@ -36,6 +36,7 @@ ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/live-tuning.mjs': ('live-tuning.mjs', 'text/javascript; charset=utf-8'),
           '/live.mjs': ('live.mjs', 'text/javascript; charset=utf-8'),
           '/settings.mjs': ('settings.mjs', 'text/javascript; charset=utf-8'),
+          '/recording-summary.mjs': ('recording-summary.mjs', 'text/javascript; charset=utf-8'),
           '/recording-processing.mjs': ('recording-processing.mjs', 'text/javascript; charset=utf-8'),
           '/recording-categories.mjs': ('recording-categories.mjs', 'text/javascript; charset=utf-8'),
           '/player.mjs': ('player.mjs', 'text/javascript; charset=utf-8'),
@@ -683,7 +684,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                     self.send_json({'error': 'Summary settings are unavailable.'}, 503)
             elif path in {
                 '/api/processing/recording-chat', '/api/processing/archive-chat', '/api/processing/task-suggestions',
-                '/api/processing/daily-recap', '/api/processing/classify-categories',
+                '/api/processing/daily-recap', '/api/processing/classify-categories', '/api/processing/memory-proposals',
             } and processing is not None:
                 if not self.allowed(request='processing') or not self.processing_allowed():
                     return self.reject('Доступ только через сопряжённый сервер.')

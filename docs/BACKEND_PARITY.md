@@ -152,6 +152,70 @@ verified folder moves, stale-write rejection, deletion that preserved the
 recording, manual speaker assignment and suggestions from the selected model
 with transcript timestamps. Requests without a paired key were rejected.
 
+## Read-only archive MCP
+
+`local_archive_read_version: 1` advertises a bounded canonical archive surface:
+`GET /v1/local/archive/recordings` and `POST /v1/local/archive/read`. The separate
+`omilocal_archive_…` credential permits only those routes plus the two existing
+keyword/semantic search POST routes. Both transport middleware and paired-owner
+dependency enforce method/path scope; legacy full keys retain their behavior.
+The server stores only the read-key hash beside the existing pairing hash.
+
+Reads return revision-bound segment quotes with timestamps and character offsets.
+Long transcripts and long individual segments have bounded continuation; changed
+sources reject continuation rather than silently joining different versions.
+The optional stdio SDK adapter has four fixed read tools and one resource template.
+See [installation, grant and revoke](../tools/archive-mcp/README.md).
+
+The real SDK stdio session and backend scope/pagination tests passed with synthetic
+fixtures. No live credential, assistant connection or deployment is established
+by those checks. Task/calendar integrations remain deferred.
+
+## Reviewed local memory
+
+`local_memories_version=1` enables **Memory** in the Next archive and recording
+menus. The recording action obtains the selected model/host, asks for consent,
+and sends only bounded transcript excerpts to the owned loopback library.
+The model proposes up to 12 statements with exact supporting quotations. The
+backend rejects invented quotes and source numbers; this proves provenance,
+not the truth of a model's interpretation. The owner confirms, corrects or rejects
+each proposal. No extraction or background task can confirm a fact automatically.
+
+The hosted admission, graph and memory-control services remain disabled. The
+paired feature has one owner-scoped `local_memories` authority and content-free
+`local_memory_requests` receipts. It reuses Omi's typed `MemoryEvidence` contract,
+including source ID/version, content digest and quote reference, without enabling
+a second memory writer. This is an explicit local review lifecycle, not a writer
+into the hosted canonical-memory control plane. Any future convergence with that
+plane needs an explicit migration, not dual writes.
+
+Fact text, original wording, quote and the last 20 corrections are encrypted as
+one payload. Confirmation/edit compares the fact revision and transactionally
+fences the checked recording version. Every list/search rechecks the cited
+segment against the canonical, fully hydrated transcript. Edited, missing,
+locked or unreadable sources make facts ineligible; the UI hides the old quote
+and marks the entry for review. Search uses only confirmed current text, never
+old wording. There is no separate memory vector projection that can serve stale
+facts. Lists are paginated; extraction marks incomplete source coverage. A user
+can extract again after correcting a source and review the new proposals.
+
+Deleting a fact clears its payload and source pointer, retaining a content-free
+tombstone and receipt so retries cannot resurrect it. The recording is retained.
+Recording deletion invalidates linked facts on read; it does not implicitly erase
+a separately confirmed memory. Delete the memory to remove that stored content.
+
+Routes: GET/POST `/v1/local/conversations/{id}/memories` for provider/extraction;
+GET `/v1/local/memories` for state/source/query/cursor-filtered pages;
+POST `/v1/local/memories/{id}` for revision-checked accept/edit/reject/delete.
+All require the paired owner and return `Cache-Control: no-store`. Older clients
+and servers keep the memory actions hidden through capability detection.
+
+Validation uses synthetic encrypted storage, real transaction functions and the
+FastAPI path for extraction → review → search, plus provider binding and exact
+quotation rejection. Tests cover owner separation, concurrent source changes,
+correction/deletion invalidation, retry and pagination. Live model interpretation,
+deployment and physical iPhone acceptance remain separate gates.
+
 ## Daily recaps and manual goal progress
 
 The paired profile advertises `local_daily_recaps_version` and
@@ -162,10 +226,41 @@ consent the server uses the applied model through the private library relay,
 resolves citations to the saved conversations, and checks the archive revision
 before publishing. An identical retry returns the saved overview.
 
+`local_daily_recap_schedule_version=1` adds owner-authenticated GET/POST
+`/v1/local/daily-recaps/schedule`. Schedules default to off. Enabling records an
+IANA timezone, next-day hour/minute and the confirmed provider binding. Initial
+enablement, re-enablement and timezone changes start with the current local day;
+there is no implicit historical backfill. The offline backend processes at most
+one due day per minute and catches up from the persisted cursor after downtime.
+A missing DST clock hour runs at the first later tick; repeated hours cannot
+advance the same day twice. Failures retry from five minutes up to six hours.
+
+The canonical publication transaction checks the archive revision, schedule
+revision and ten-minute worker lease. Existing recaps are retained, including
+manual results. Disabling or reconfiguring prevents an older attempt from
+publishing; backend shutdown also fences publication. A process killed during
+work leaves a recoverable lease. Empty completed days advance the cursor;
+unreadable evidence and provider failures retain it for retry. Recordings that
+complete after a day was processed require manual regeneration. The screen shows
+the last result and day, next day, approved model and host. Changing the provider
+requires saving again to confirm its new binding. Manual generation stays available.
+
+Validation: synthetic authenticated API → scheduler → canonical publication,
+23/25-hour day bounds, conflict/retry, lease expiry and cancellation tests; Next
+opt-in/save/retry/disable widget flow. No live schedule or physical iPhone
+acceptance was performed for this addition.
+
 Goals reuse the original Firestore collection and read route. A paired owner
 can add a goal and append a manual progress event with an optional metric and
 recording link. Replays return the same event. A conflicting revision or an
 unavailable source is rejected before changing the goal.
+
+The separate `local_goal_lifecycle_version` capability enables
+`POST /v1/local/goals/{goal_id}/lifecycle`. The paired client sends the last
+goal revision and a stable request ID. It can pause an active goal, resume
+a paused goal, or end it as achieved or abandoned. The canonical transaction
+retains progress history and links to tasks and workstreams. Existing clients
+continue to use `local_goals_version` for reading and logging progress.
 
 The test server enabled both capabilities on November 26. An isolated owner verified
 generation through the applied model, listing the saved recap, creating a
@@ -173,7 +268,36 @@ goal, and checking a replayed progress event with a recording reference.
 In Next, open **Daily Recaps** or **Goals** from the archive menu. Open
 **Log progress** from a completed conversation to attach it to a goal entry.
 
+## Retrieval evidence evaluation
+
+The offline gate includes `test_local_retrieval_quality.py`: four fixed EN/RU
+questions in short old recordings and the middle/end of long segments, plus
+corrected-transcript and hybrid evidence cases. Before the repair, 9 of 14 cases
+failed: keyword ranking saw matching words after character 1200 but supplied
+only the prefix; merging then dropped a distinct semantic window from that
+same segment. Chat now chooses an overlapping, contiguous query-relevant window
+and deduplicates identical evidence rather than all text with one segment ID.
+Segment IDs/timestamps and original text remain citable; existing byte/character
+budgets remain enforced. Existing semantic tests exclude deleted and stale
+revision pointers and keep neighboring context out of attributed evidence.
+
+The repaired cases pass, alongside the authenticated archive API checks. A local
+five-run microbenchmark over 20 synthetic old recordings (1,024,840 characters)
+measured 39.6 ms median / 42.3 ms maximum for evidence selection and merging.
+This excludes database scans, embeddings, model inference and network latency.
+These results do not establish answer quality on the owner's real archive.
+Representative live questions, semantic ranking quality, end-to-end latency and
+long-archive scan coverage remain acceptance work; no private transcript is
+included in the test corpus.
+
 ## Semantic archive search
+
+Semantic search cards and chat now use the same ranked transcript window.
+For a long segment, the card shows the selected window rather than always its
+first characters. Short replies still cite only their own text when neighboring
+context contributed to ranking. Segment IDs and seek timestamps are unchanged;
+index passage positions and embedding inputs are unchanged, so this display
+correction does not require rebuilding the semantic index.
 
 Next offers **Words** and **Meaning** in the archive search screen. The paired
 `POST /v1/local/conversations/semantic-search` route uses an optional CPU worker
@@ -318,11 +442,12 @@ Each search page expands at most one file and resumes after the last scanned doc
 
 ## Next slices
 
-1. The signed package was installed and launched alongside Omi Local. Check category selection,
-   filtering, playback, phone microphone capture and CV1 delivery to the same archive.
-2. Verify folder operations on the deployed owner collection and exercise them
-   from Next. Bring the offline capability flags and task routes across with
-   their owner checks. Continue measuring archive search on the iPhone.
+The [repository plan](REPOSITORY_PLAN.md) owns the current implementation order.
+Folders, paired task routes, archive search, recaps and manual goal progress
+already have implementations and acceptance evidence above. Their remaining
+iPhone checks are not new backend features. Next backend work should extend
+the existing summary provenance, recap generation and retrieval contracts before
+introducing source-linked memory or external integrations.
 
 Run `make test-offline` for the archive adapter and the offline HTTP surface.
 Run `make test-transport-unit` for transport/auth and offline route coverage.

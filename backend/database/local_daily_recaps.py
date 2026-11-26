@@ -139,12 +139,16 @@ def repeated(saved, request_id, fingerprint):
 
 
 @firestore.transactional
-def _publish(transaction, uid, day, captured, result, request_id, fingerprint):
+def _publish(transaction, uid, day, captured, result, request_id, fingerprint, publication_guard=None):
     ref = _recap(uid, day)
     current = ref.get(transaction=transaction, timeout=6).to_dict()
     replay = repeated(current, request_id, fingerprint)
     if replay is not None:
         return replay
+    if publication_guard is not None:
+        publication_guard(transaction)
+        if current is not None:
+            raise DayChanged()
     rows, limited = _documents(uid, day, transaction)
     if _revision(day, rows, current, limited) != captured.revision:
         raise DayChanged()
@@ -158,5 +162,5 @@ def _publish(transaction, uid, day, captured, result, request_id, fingerprint):
     return summary
 
 
-def publish(uid, day, captured, result, request_id, fingerprint):
-    return run_transactional(db, _publish, uid, day, captured, result, request_id, fingerprint)
+def publish(uid, day, captured, result, request_id, fingerprint, publication_guard=None):
+    return run_transactional(db, _publish, uid, day, captured, result, request_id, fingerprint, publication_guard)

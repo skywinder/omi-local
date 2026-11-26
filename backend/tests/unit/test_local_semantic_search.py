@@ -50,6 +50,13 @@ def test_semantic_chat_cites_the_match_window_and_merges_distinct_segments_withi
     match = semantic_archive_source(*answer)
     assert match['segment_id'] == 'late' and match['start_ms'] == 10_000 and late in match['text']
     assert not match['text'].startswith('x' * 200)  # This is the matched window, past the first 640 characters.
+    # The search card must show the same ranked window as the chat evidence,
+    # while retaining the canonical segment's seek timestamp.
+    card, = resolve(hits[1:], {'recording': row}, lambda value: value)
+    snippet, = card['match_snippets']
+    assert late in snippet['text']
+    assert snippet['text'] == match['text'][:360]
+    assert snippet['segment_id'] == 'late' and snippet['start'] == 10
     keyword = [{'conversation_id': 'recording', 'segment_id': 'keyword', 'text': 'typed terms'}]
     extra = [{'conversation_id': 'recording', 'segment_id': str(i), 'text': 'z' * 1200} for i in range(20)]
     selected = merge_archive_sources([*keyword, *extra], [match, match])

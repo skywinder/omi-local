@@ -353,7 +353,8 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced
         summaries = [request(chunk, reduction=True) for chunk in text_chunks(summary_reduction_text(summaries, sourced))]
     if not summaries:
         raise PipelineError('No speech to summarize')
-    return {**summaries[0], 'model': model} if include_model else summaries[0]
+    return {**summaries[0], 'model': model,
+            **({'template_name': template['name']} if template else {})} if include_model else summaries[0]
 
 
 def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
@@ -378,11 +379,15 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
                 validate_transcript(value, manifest['duration_seconds'])
             else:
                 model = value.get('model') if isinstance(value, dict) else None
+                template_name = value.get('template_name') if isinstance(value, dict) else None
                 value = validate_summary(value)
                 stored = value
                 if isinstance(model, str) and 0 < len(model) <= 256 and model.isprintable():
                     processing[name]['model'] = model
                     stored = {**value, 'model': model}
+                if isinstance(template_name, str) and 0 < len(template_name) <= 100 and template_name.isprintable():
+                    processing[name]['template_name'] = template_name
+                    stored = {**stored, 'template_name': template_name}
             if not path.exists():
                 write(path, stored)
         except Exception as error:

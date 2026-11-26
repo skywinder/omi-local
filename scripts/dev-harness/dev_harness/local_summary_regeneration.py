@@ -56,12 +56,11 @@ def regenerate(registry, body):
     if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 120_000:
         raise SettingsError('Invalid transcript for summary.')
     try:
-        provider = _provider(profile)
         with TemporaryDirectory(prefix='summary-', dir=registry.root) as temp:
             summary = local_pipeline.summarize_text(
                 profile, registry.key(profile), transcript,
-                Path(temp), atomic_json, deadline=monotonic() + 205, sourced=body.get('numbered_sources') is True,
+                Path(temp), atomic_json, deadline=monotonic() + 205, sourced=body.get('numbered_sources') is True, include_model=True,
             )
     except (OSError, ValueError):
         raise SettingsError('Summary inference failed.', status=503) from None
-    return {**summary, 'model': provider['model'], 'template_name': profile['template']['name']}
+    return {**summary, 'template_name': profile['template']['name']}

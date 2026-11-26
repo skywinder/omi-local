@@ -281,13 +281,12 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
 .recording-name { display:flex; align-items:baseline; gap:6px; font-weight:650; font-size:15px; line-height:1.38; overflow-wrap:anywhere; }
 .recording-name > span { min-width:0; }
 .recording-status { overflow-wrap:anywhere; }
-.filters select,.note-actions select,#summary-dialog select,#summary-dialog textarea { min-height:36px; max-width:100%; border:1px solid var(--line); border-radius:7px; padding:6px 8px; color:var(--ink); background:#fcfbf8; font:inherit; font-size:13px; }
+.filters select,.note-actions select,.summary-controls select,.summary-controls textarea { min-height:36px; max-width:100%; border:1px solid var(--line); border-radius:7px; padding:6px 8px; color:var(--ink); background:#fcfbf8; font:inherit; font-size:13px; }
 .filters select { flex:1 1 125px; min-width:0; order:1; }
 .filter:hover { border-color:#93ad9c; }
-.filter:focus-visible,#summary-edit:focus-visible { outline-offset:2px; }
-#summary-edit { min-height:36px; padding:6px 10px; border:1px solid var(--line); border-radius:7px; margin:0 0 18px; background:#fcfbf8; font-size:13px; }
+.filter:focus-visible { outline-offset:2px; }
 #player-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#summary-dialog textarea { display:block; width:100%; margin-top:6px; }
+.summary-controls textarea { display:block; width:100%; margin-top:6px; }
 .visibility-fields { display:grid; gap:12px; }
 .visibility-fields label { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .visibility-fields input[type=number] { width:7rem; font:inherit; }
@@ -328,3 +327,15 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
   .workspace:has(> .detail > #settings-workspace:not([hidden])) > .library { display:none; }
   .provider-settings { padding:18px 16px 32px; }
 }
+
+.summary-provenance { color: var(--muted, #aaa); font-size: .85rem; }
+.summary-controls { display: grid; gap: .75rem; padding: 1rem 0; }
+.summary-controls label { display: grid; gap: .35rem; min-width: 0; }
+.summary-controls select, .summary-controls textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.summary-controls p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.summary-controls button { justify-self: start; border: 1px solid var(--line); border-radius: 7px; padding: 10px 16px; font-size: 14px; }
+.summary-controls button[type=submit] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.summary-controls details { font-size: 14px; }
+.summary-controls summary { cursor: pointer; padding-block: 4px; }
+.summary-controls textarea { resize: vertical; }
+.summary-provenance { overflow-wrap: anywhere; line-height: 1.5; }

@@ -112,6 +112,18 @@ def source(raw, uid, *, background=False) -> SummarySource:
     return SummarySource(transcript, _revision(raw, transcript, segment_ids), segment_ids)
 
 
+def published_provenance(raw):
+    """Describe the saved result, never the current provider or latest attempted job."""
+    publication = raw.get('local_summary_publication')
+    if not isinstance(publication, dict):
+        publication = (((raw.get('external_data') or {}).get('local_transcript') or {}).get('stages') or {}).get('summary')
+        if not isinstance(publication, dict) or publication.get('status') != 'ready':
+            return None
+    result = {key: value for key, limit in (('model', 300), ('template_name', 100))
+              if isinstance(value := publication.get(key), str) and 0 < len(value) <= limit and value.isprintable()}
+    return result or None
+
+
 def replay(raw, request_id, fingerprint):
     previous = raw.get('local_summary_publication') or {}
     if previous.get('request_id') != request_id:

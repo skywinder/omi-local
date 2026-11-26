@@ -99,6 +99,11 @@ def stage_outcomes(raw: dict) -> dict | None:
         provider = entry.get('provider_name')
         if isinstance(provider, str) and provider.strip() and provider.isprintable():
             row['provider'] = provider[:100]
+        if stage == 'summary' and status == 'ready':
+            for key, limit in (('model', 300), ('template_name', 100)):
+                value = entry.get(key)
+                if isinstance(value, str) and 0 < len(value) <= limit and value.isprintable():
+                    row[key] = value
         if stage == 'diarization':
             speakers = (raw.get('diarization') or {}).get('speakers') if isinstance(raw.get('diarization'), dict) else None
             if type(speakers) is int and 0 <= speakers <= 10_000:

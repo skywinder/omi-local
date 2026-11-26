@@ -13,3 +13,4 @@ python-multipart==0.0.20
 
 # Grouped audio-delivery tests exercise the same native VAD as the backend.
 webrtcvad==2.0.10
+uv==0.7.3

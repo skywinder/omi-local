@@ -24,6 +24,9 @@ _ALLOWED_HTTP = frozenset(
         ("POST", "/v1/local/conversations/chat"),
         ("GET", "/v1/local/conversations/chat/threads"),
         ("POST", "/v1/local/conversations/chat/threads"),
+        ("GET", "/v1/local/archive/recordings"),
+        ("POST", "/v1/local/archive/read"),
+        ("GET", "/v1/local/memories"),
         ("GET", "/v1/local/folders"),
         ("POST", "/v1/local/folders"),
         ("POST", "/v1/local/folders/reorder"),
@@ -50,6 +53,8 @@ _ALLOWED_HTTP = frozenset(
         ("HEAD", "/v1/health"),
         ("GET", "/v1/users/available-languages"),
         ("GET", "/v1/users/daily-summaries"),
+        ("GET", "/v1/local/daily-recaps/schedule"),
+        ("POST", "/v1/local/daily-recaps/schedule"),
         ("POST", "/v1/local/daily-recaps/preview"),
         ("POST", "/v1/local/daily-recaps/generate"),
         ("GET", "/v1/users/me/subscription"),
@@ -69,6 +74,16 @@ _ALLOWED_WEBSOCKETS = frozenset({"/v4/listen"})
 
 
 def is_offline_http_route_allowed(method: str, path: str) -> bool:
+    if method in {'GET', 'POST'} and (
+        path == '/v1/local/conversations/{conversation_id}/memories'
+        or re.fullmatch(r'/v1/local/conversations/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/memories', path)
+    ):
+        return True
+    if method == 'POST' and (
+        path == '/v1/local/memories/{memory_id}'
+        or re.fullmatch(r'/v1/local/memories/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', path)
+    ):
+        return True
     if method.upper() in {'GET', 'POST', 'DELETE'} and (
         path == '/v1/local/conversations/chat/threads/{thread_id}'
         or re.fullmatch(r'/v1/local/conversations/chat/threads/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', path)
@@ -84,8 +99,8 @@ def is_offline_http_route_allowed(method: str, path: str) -> bool:
     ):
         return True
     if method.upper() == 'POST' and (
-        path == '/v1/local/goals/{goal_id}/progress'
-        or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}/progress', path)
+        path in {'/v1/local/goals/{goal_id}/progress', '/v1/local/goals/{goal_id}/lifecycle'}
+        or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}/(?:progress|lifecycle)', path)
     ):
         return True
     if method.upper() in {'GET', 'POST'} and (

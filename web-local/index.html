@@ -71,7 +71,7 @@
         <p id="note-feedback" class="folder-message" role="status" hidden></p>
         <section id="recording-processing" class="recording-processing" aria-label="Processing stages" hidden></section>
         <section id="recording-summary" class="recording-summary" aria-label="Summary" hidden></section>
-        <button id="summary-edit" hidden>Regenerate summary</button>
+        <section id="summary-controls" aria-label="Summary model and template" hidden></section>
         <div class="transcript-heading"><h3>Transcript</h3><span>Select a phrase to play it</span></div>
         <div id="transcript-find" class="transcript-find" role="search" aria-label="Search this transcript" hidden>
           <input id="turn-query" type="search" placeholder="Find a phrase" aria-label="Find a phrase" maxlength="300" aria-controls="transcript">
@@ -104,17 +104,6 @@
         <button id="filter-cancel" type="button">Cancel</button>
         <button type="submit">Apply filters</button>
       </div>
-    </form>
-  </dialog>
-  <dialog id="summary-dialog" aria-labelledby="summary-title">
-    <h2 id="summary-title">Regenerate summary</h2>
-    <form id="summary-form">
-      <p class="dialog-note">The selected model will use the transcript to generate a new summary.</p>
-      <p><label>Model <select id="summary-provider" required></select></label></p>
-      <p><label>Template <select id="summary-template" required></select></label></p>
-      <p><label>Prompt <textarea id="summary-prompt" rows="4" maxlength="8000" required></textarea></label></p>
-      <p id="summary-status" role="status"></p>
-      <div class="dialog-actions"><button type="button" id="summary-close">Close</button><button id="summary-submit" disabled>Generate</button></div>
     </form>
   </dialog>
   <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">

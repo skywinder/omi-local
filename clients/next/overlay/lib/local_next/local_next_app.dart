@@ -17,6 +17,7 @@ import 'conversation_categories.dart';
 import 'daily_recaps_page.dart';
 import 'folder_picker.dart';
 import 'local_goals_page.dart';
+import 'local_memories_page.dart';
 import 'local_tasks_page.dart';
 import 'recording_edit.dart';
 import 'archive_search_page.dart';
@@ -119,7 +120,7 @@ ThemeData _nextTheme(Brightness brightness) {
   );
 }
 
-enum _ArchiveAction { refresh, offline, tasks, recaps, goals, select, about }
+enum _ArchiveAction { refresh, offline, tasks, recaps, goals, memories, select, about }
 
 enum _ArchiveSelectionActivity { move, classify }
 
@@ -457,6 +458,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
                   open(LocalTasksPage(library: library, reminders: widget.reminders));
                 case _ArchiveAction.recaps:
                   open(DailyRecapsPage(library: library));
+                case _ArchiveAction.memories:
+                  open(LocalMemoriesPage(library: library));
                 case _ArchiveAction.goals:
                   open(LocalGoalsPage(library: library));
                 case _ArchiveAction.select:
@@ -473,6 +476,8 @@ class _LibraryPageState extends State<LocalNextLibraryPage> with WidgetsBindingO
               ),
               if (library.tasksAvailable) PopupMenuItem(value: _ArchiveAction.tasks, child: Text(l.tasks)),
               if (library.dailyRecapsAvailable) PopupMenuItem(value: _ArchiveAction.recaps, child: Text(l.dailyRecaps)),
+              if (library.memoriesAvailable)
+                PopupMenuItem(value: _ArchiveAction.memories, child: Text(pairedSettingsLabel(context, 'memoryTitle'))),
               if (library.goalsAvailable) PopupMenuItem(value: _ArchiveAction.goals, child: Text(l.goals)),
               if ((library.folderManagementAvailable || library.categoryBackfill) && selection == null)
                 PopupMenuItem(

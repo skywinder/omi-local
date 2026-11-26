@@ -284,3 +284,13 @@ using loopback and does not receive external server keys. The first Live
 activation attaches the relay by restarting only the stack-owned backend while
 idle. Later switches and disabling Live require neither a backend restart nor a
 new iPhone build. Existing local live diarization is preserved through the same relay.
+
+## Published summary provenance
+
+The web recording card provides model and template choices for its next summary,
+with an expandable instruction editor. Generate submits to the same durable
+summary queue as Next. The saved result keeps its own model and template labels
+while a replacement is queued or fails. Missing historical labels are shown as
+not recorded; current defaults are never used to infer them. When the provider
+selects its loaded model automatically, new results record that resolved model.
+The paired summary-options API exposes the same optional `published` metadata.

@@ -108,7 +108,7 @@ def pair(cfg):
     # Never show a draft key that does not match this runtime's existing identity.
     import json
     saved = json.loads((cfg.layout.state_root / 'pairing.json').read_text())
-    if local_mac.pairing_data(key) != saved:
+    if not local_mac.pairing_identity_matches(saved, local_mac.pairing_data(key)):
         raise SetupError('Private settings differ from the prepared pairing. Run bootstrap while stopped.')
     show_frame('IPHONE PAIRING', ['Address: ' + local_mac.read_config(cfg)['url'], 'App key: ' + key])
     return 0

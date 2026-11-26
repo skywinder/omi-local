@@ -75,8 +75,12 @@ assert profile['local_task_reminders_version'] == 1
 assert profile['local_folders_version'] == 2
 assert profile['local_speaker_labels_version'] == 1
 assert profile['local_task_suggestions_version'] == 1
+assert profile['local_archive_read_version'] == 1
+assert profile['local_memories_version'] == 1
 assert profile['local_daily_recaps_version'] == 1
+assert profile['local_daily_recap_schedule_version'] == 1
 assert profile['local_goals_version'] == 1
+assert profile['local_goal_lifecycle_version'] == 1
 
 key = 'A' * 43
 pairing = Path(os.environ['OMI_HARNESS_STATE_ROOT']) / 'pairing.json'
@@ -885,6 +889,15 @@ try:
     raise AssertionError('The synchronous route has a smaller input budget')
 except summary_db.SummaryTooLarge:
     pass
+assert summary_db.published_provenance(raw) is None
+raw['external_data'] = {'local_transcript': {'stages': {'summary': {
+    'status': 'ready', 'model': 'Initial actual model', 'template_name': 'Initial template', 'prompt': 'private',
+}}}}
+assert summary_db.published_provenance(raw) == {'model': 'Initial actual model', 'template_name': 'Initial template'}
+raw['local_summary_publication'] = {'model': 'Published actual model', 'template_name': 'Saved template',
+                                    'fingerprint': 'private', 'prompt': 'private'}
+assert summary_db.published_provenance(raw) == {'model': 'Published actual model', 'template_name': 'Saved template'}
+del raw['local_summary_publication']
 revision = snapshot.revision
 publication = {'request_id': documents[0].id, 'fingerprint': 'fixture', 'model': 'fixture', 'template_name': 'fixture'}
 candidate = {'title': 'Generated title', 'overview': 'New recap', 'category': 'education', 'emoji': '📚'}
@@ -918,6 +931,10 @@ except summary_db.SummaryChanged:
     pass
 transaction.update.assert_not_called()
 
+assert client.get('/v1/local/memories').status_code == 401
+assert client.post('/v1/local/memories/00000000-0000-4000-8000-000000000001', json={}).status_code == 401
+assert client.post('/v1/local/conversations/00000000-0000-4000-8000-000000000001/memories', json={}).status_code == 401
+
 from routers import local_daily_recaps
 from datetime import timedelta
 
@@ -925,16 +942,97 @@ spring = {'day': '2026-03-29', 'start': '2026-03-28T23:00:00Z', 'end': '2026-03-
 assert local_daily_recaps._day(local_daily_recaps.DayInput(**spring)).end - datetime(
     2026, 3, 28, 23, tzinfo=timezone.utc,
 ) == timedelta(hours=23)
+assert client.get('/v1/local/daily-recaps/schedule').status_code == 401
+assert client.post('/v1/local/daily-recaps/schedule', json={}).status_code == 401
 assert client.post('/v1/local/daily-recaps/preview', json=spring).status_code == 401
 assert client.post('/v1/local/daily-recaps/generate', json={}).status_code == 401
 invalid = {**spring, 'end': '2026-03-31T22:00:00Z'}
 assert client.post('/v1/local/daily-recaps/preview', json=invalid, headers=headers).status_code == 422
+
+# Exercise the authenticated API and real scheduler/publication with synthetic
+# sources, controlled clock and in-memory transaction storage (no live models).
+def exercise_recap_schedule():
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from database import local_daily_recaps as recap_db, local_recap_schedule as schedule_db
+    from utils import local_recap_scheduler as runner
+    store = {}
+    instant = [datetime(2026, 3, 28, 12, tzinfo=timezone.utc)]
+    class Ref:
+        def __init__(self, key): self.key = key
+        def get(self, **kwargs):
+            return SimpleNamespace(to_dict=lambda: deepcopy(store.get(self.key)))
+    class Tx:
+        def set(self, ref, value): store[ref.key] = deepcopy(value)
+    def transaction(db, fn, *args): return fn.to_wrap(Tx(), *args)
+    def documents(*args):
+        return [('source', ({'status': 'completed', 'structured': {'overview': 'An explicit decision.'}},
+                            instant[0], 'revision'))], False
+    provider = {'provider': {'binding': 'a' * 64, 'model': 'Synthetic', 'host': 'fixture.invalid'}}
+    model_calls = []
+    stopping = [False]
+    def request(body=None):
+        if body is None: return json.dumps(provider)
+        assert body['binding'] == 'a' * 64
+        model_calls.append(body)
+        if len(model_calls) == 2: stopping[0] = True
+        return json.dumps({'headline': 'Day recap', 'overview': 'An explicit decision.',
+                           'decisions': [{'decision': 'An explicit decision.', 'source': 1}]})
+    with patch.object(schedule_db, '_ref', lambda uid: Ref('schedule')), \
+         patch.object(schedule_db, 'now', lambda: instant[0]), \
+         patch.object(schedule_db, 'run_transactional', transaction), \
+         patch.object(recap_db, '_recap', lambda uid, day: Ref(day.id)), \
+         patch.object(recap_db, '_documents', documents), \
+         patch.object(recap_db, 'run_transactional', transaction), \
+         patch.object(local_daily_recaps, '_request', request):
+        initial = client.get('/v1/local/daily-recaps/schedule', headers=headers)
+        assert initial.status_code == 200 and initial.json()['enabled'] is False
+        assert initial.headers['cache-control'] == 'no-store'
+        body = {'request_id': str(uuid.uuid4()), 'revision': '', 'enabled': True,
+                'timezone': 'Europe/Berlin', 'hour': 9, 'minute': 0, 'provider_binding': 'a' * 64}
+        assert client.post('/v1/local/daily-recaps/schedule', headers=headers,
+                           json={**body, 'timezone': 'not/a-zone'}).status_code == 422
+        assert client.post('/v1/local/daily-recaps/schedule', headers=headers,
+                           json={**body, 'provider_binding': 'b' * 64}).status_code == 409
+        saved = client.post('/v1/local/daily-recaps/schedule', headers=headers, json=body)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()['next_day'] == '2026-03-28'
+        assert 'lease' not in saved.json() and 'request_body' not in saved.json()
+        assert client.post('/v1/local/daily-recaps/schedule', headers=headers, json=body).json() == saved.json()
+        runner.tick()
+        assert not model_calls
+        instant[0] = datetime(2026, 3, 29, 7, tzinfo=timezone.utc)
+        runner.tick()
+        assert len(model_calls) == 1
+        assert store['local-2026-03-28']['decisions_made'][0]['conversation_id'] == 'source'
+        assert store['schedule']['status'] == 'ready'
+        runner.tick()
+        assert len(model_calls) == 1
+        instant[0] += timedelta(days=1)
+        runner.tick(lambda: stopping[0])
+        assert len(model_calls) == 2
+        assert 'local-2026-03-29' not in store
+        assert store['schedule']['status'] == 'changed'
+        # Disable using the revision that was returned before the worker ran.
+        disabled = {**body, 'revision': saved.json()['revision'], 'request_id': str(uuid.uuid4()), 'enabled': False}
+        assert client.post('/v1/local/daily-recaps/schedule', headers=headers, json=disabled).status_code == 200
+        instant[0] += timedelta(days=1)
+        runner.tick()
+        assert len(model_calls) == 2
+exercise_recap_schedule()
 
 from routers import local_goals
 
 assert client.post('/v1/local/goals', json={}).status_code == 401
 assert client.get('/v1/local/goals/legacy-goal').status_code == 401
 assert client.post('/v1/local/goals/legacy-goal/progress', json={}).status_code == 401
+lifecycle = '/v1/local/goals/legacy-goal/lifecycle'
+assert client.post(lifecycle, json={}).status_code == 401
+assert client.post(lifecycle, headers=headers, json={
+    'request_id': documents[0].id, 'expected_revision': 'old', 'status': 'focused',
+}).status_code == 422
+
 assert client.post('/v1/local/goals', headers=headers, json={
     'request_id': documents[0].id, 'title': 'Fixture', 'current': 2,
 }).status_code == 422
@@ -978,6 +1076,7 @@ print(json.dumps({
         '/v1/local/goals',
         '/v1/local/goals/{goal_id}',
         '/v1/local/goals/{goal_id}/progress',
+        '/v1/local/goals/{goal_id}/lifecycle',
         '/v1/health',
         '/v1/local/status',
         '/v1/local/audio/parts',
@@ -998,6 +1097,11 @@ print(json.dumps({
         '/v1/local/action-items',
         '/v1/local/action-items/reminders/schedule',
         '/v1/local/action-items/{task_id}',
+        '/v1/local/archive/recordings',
+        '/v1/local/archive/read',
+        '/v1/local/memories',
+        '/v1/local/memories/{memory_id}',
+        '/v1/local/conversations/{conversation_id}/memories',
         '/v1/local/conversations/{conversation_id}/task-suggestions',
         '/v1/local/conversations/{conversation_id}/regenerate-summary',
         '/v1/local/conversations/{conversation_id}/summary-jobs',
@@ -1014,6 +1118,7 @@ print(json.dumps({
         '/v1/local/processing/profiles/{profile_id}',
         '/v1/users/available-languages',
         '/v1/users/daily-summaries',
+        '/v1/local/daily-recaps/schedule',
         '/v1/local/daily-recaps/preview',
         '/v1/local/daily-recaps/generate',
         '/v1/users/language',

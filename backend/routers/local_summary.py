@@ -35,8 +35,14 @@ class Options(BaseModel):
     default_template_id: str
 
 
+class SummaryProvenance(BaseModel):
+    model: str | None = None
+    template_name: str | None = None
+
+
 class SummaryOptions(Options):
     source_revision: str
+    published: SummaryProvenance | None = None
 
 
 class Regenerate(BaseModel):
@@ -165,7 +171,8 @@ def options(conversation_id: RecordingId, response: Response, uid: str = Depends
 
 def _options(conversation_id, response, uid, *, background=False):
     try:
-        revision = _source(summaries.recording(uid, conversation_id), uid, background=background).revision
+        raw = summaries.recording(uid, conversation_id)
+        revision = _source(raw, uid, background=background).revision
     except summaries.SummaryUnavailable:
         raise HTTPException(404, 'local_summary_recording_unavailable') from None
     except summaries.SummaryTooLarge:
@@ -175,7 +182,7 @@ def _options(conversation_id, response, uid, *, background=False):
     except ValidationError:
         raise HTTPException(503, 'local_summary_options_unavailable') from None
     response.headers['Cache-Control'] = 'no-store'
-    return {**options.model_dump(), 'source_revision': revision}
+    return {**options.model_dump(), 'source_revision': revision, 'published': summaries.published_provenance(raw)}
 
 
 @router.get('/v1/local/conversations/{conversation_id}/summary-jobs', response_model=QueuedSummaryOptions | SummaryJob)

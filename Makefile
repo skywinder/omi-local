@@ -20,10 +20,11 @@ dev-down:
 	bash scripts/dev-harness/dev-down.sh
 
 test-transport-unit:
+	$(MAKE) test-archive-mcp
 	$(MAKE) test-docker
 	cd scripts && "$${PYTHON}" -m unittest local_live_preview.test_reset_retention local_live_preview.test_parakeet local_live_preview.test_diarization_proxy
 	$(MAKE) test-library
-	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py tests/unit/test_offline_route_policy.py
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py tests/unit/test_local_retrieval_quality.py tests/unit/test_local_recap_schedule.py tests/unit/test_local_memories.py tests/unit/test_offline_route_policy.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_offline_audio_capture.py tests/unit/test_local_audio_delivery.py tests/unit/test_local_audio_delivery_route.py tests/unit/test_local_audio_delivery_runtime.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_local_live_preview.py tests/unit/test_listen_receiver_translation_control.py tests/unit/test_local_provider_stages.py
 
@@ -37,8 +38,10 @@ test-transport-app:
 	cd app && bash scripts/analyze_ratchet.sh
 
 test-offline:
+	$(MAKE) test-archive-mcp
 	$(MAKE) test-library
-	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider tests/unit/test_workstream_core.py -k paired_goal_lifecycle
+	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transcript.py tests/unit/test_local_semantic_search.py tests/unit/test_local_retrieval_quality.py tests/unit/test_local_recap_schedule.py tests/unit/test_local_memories.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_local_transport_auth.py tests/unit/test_verify_token_admin_and_local_dev_gating.py tests/unit/test_local_audio_delivery.py tests/unit/test_local_audio_delivery_route.py tests/unit/test_local_audio_delivery_runtime.py
 	cd backend && env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -x -p no:cacheprovider tests/unit/test_offline_audio_capture.py tests/unit/test_local_live_preview.py tests/unit/test_listen_receiver_translation_control.py tests/unit/test_local_provider_stages.py tests/unit/test_offline_network_policy.py tests/unit/test_offline_route_policy.py tests/unit/test_offline_main_surface.py tests/unit/test_offline_provider_gates.py tests/unit/test_offline_voice_message_routes.py
 
@@ -76,3 +79,7 @@ docker-doctor:
 
 test-docker:
 	env -u PROVIDER_MODE PYTHONDONTWRITEBYTECODE=1 "$${PYTHON}" -m pytest -q -p no:cacheprovider docker/test_runtime.py docker/whisperlivekit/test_omi_live.py
+
+.PHONY: test-archive-mcp
+test-archive-mcp:
+	uv run --project tools/archive-mcp --frozen python -m pytest -q -p no:cacheprovider tools/archive-mcp/test_protocol.py

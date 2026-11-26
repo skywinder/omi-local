@@ -18,7 +18,13 @@ def _milliseconds(value):
     return None
 
 
-def _segment_source(segment):
+def _evidence_score(text, terms, previous=()):
+    words = _terms(text)
+    return (3 * sum(min(len(term), 12) for term in words.intersection(terms))
+            + sum(min(len(term), 12) for term in words.intersection(previous)))
+
+
+def _segment_source(segment, terms=(), previous=()):
     text = segment.get('text') if isinstance(segment, dict) else None
     if not isinstance(text, str) or not text.strip():
         return None
@@ -26,8 +32,14 @@ def _segment_source(segment):
     identifier = segment.get('id')
     start = _milliseconds(segment.get('start'))
     end = _milliseconds(segment.get('end'))
+    excerpt = line[:1200]
+    if len(line) > 1200 and (terms or previous):
+        # Score the exact, contiguous evidence that will reach the model. An
+        # overlap keeps a nearby question term and answer in the same window.
+        excerpt = max((line[offset:offset + 1200] for offset in range(0, len(line), 1000)),
+                      key=lambda window: _evidence_score(window, terms, previous))
     return line, {
-        'text': line[:1200],
+        'text': excerpt,
         'segment_id': identifier if isinstance(identifier, str) and 0 < len(identifier) <= 256 else None,
         'start_ms': start,
         'end_ms': None if start is not None and end is not None and end < start else end,
@@ -37,14 +49,14 @@ def _segment_source(segment):
 def select_sources(segments, query):
     if not isinstance(segments, list):
         return [], False
-    terms = _terms(query)
+    terms = _terms(query) - _QUESTION_WORDS
     candidates = []
     for segment in segments:
-        extracted = _segment_source(segment)
+        extracted = _segment_source(segment, terms)
         if extracted is None:
             continue
         line, source = extracted
-        candidates.append((len(_terms(line) & terms), source, len(line) > 1200))
+        candidates.append((_evidence_score(source['text'], terms), source, len(line) > 1200))
     order = sorted(range(len(candidates)), key=lambda index: (-candidates[index][0], index))
     selected = {}
     bytes_left, chars_left = 25_000, 10_000
@@ -89,18 +101,15 @@ def rank_archive_sources(rows, query, previous_question=''):
         if not isinstance(segments, list):
             return
         for line_index, segment in enumerate(segments):
-            extracted = _segment_source(segment)
+            extracted = _segment_source(segment, query_terms, previous_terms)
             if extracted is None:
                 continue
-            line, source = extracted
+            _, source = extracted
             if source['segment_id'] is None:
                 continue
-            words = _terms(line)
-            overlap = words & query_terms
-            earlier_overlap = words & previous_terms
-            if not overlap and not earlier_overlap:
+            score = _evidence_score(source['text'], query_terms, previous_terms)
+            if not score:
                 continue
-            score = 3 * sum(min(len(term), 12) for term in overlap) + sum(min(len(term), 12) for term in earlier_overlap)
             yield score, -line_index, source
 
     def candidates():
@@ -134,8 +143,8 @@ def merge_archive_sources(keyword, semantic):
         for source in pair:
             if source is None:
                 continue
-            key = (source['conversation_id'], source['segment_id'])
             text = source['text']
+            key = (source['conversation_id'], source['segment_id'], text)
             size = len(json.dumps(text, ensure_ascii=False).encode('utf-8'))
             if key in seen or size > remaining or len(text) > chars:
                 continue

@@ -45,7 +45,7 @@ def test_summary_queue_recovers_long_input_and_candidate_without_repeating_infer
     cfg, registry, body = summary
     calls = []
     transcript = '[src:1] ' + 'a' * 125_000
-    candidate = {'title': 'Recap', 'overview': 'Decisions'}
+    candidate = {'title': 'Recap', 'overview': 'Decisions', 'model': 'actually-loaded'}
     def back(cfg, operation, **payload):
         calls.append(operation)
         assert payload['scope'] == body['scope'] and payload['revision'] == body['source_revision']
@@ -57,7 +57,8 @@ def test_summary_queue_recovers_long_input_and_candidate_without_repeating_infer
             raise Interrupted()
         return {'publication': payload['publication']}
 
-    def generate(snapshot, key, text, folder: Path, write, *, sourced, deadline, progress):
+    def generate(snapshot, key, text, folder: Path, write, *, sourced, deadline, progress, include_model):
+        assert include_model
         assert key == 'fixture-key' and text == transcript and sourced
         assert deadline > module.monotonic()
         calls.append('inference')
@@ -83,6 +84,7 @@ def test_summary_queue_recovers_long_input_and_candidate_without_repeating_infer
     recovered.worker.step()
     assert calls == ['source', 'inference', 'publish', 'publish']
     assert recovered.status(body)['state'] == 'ready'
+    assert recovered.status(body)['model'] == 'actually-loaded'
     assert recovered.latest(body)['job'] == recovered.status(body)
     assert recovered.status({**body, 'scope': 'e' * 64})['state'] == 'missing'
     assert 'snapshot' not in read_json(recovered.file(body))
@@ -96,7 +98,8 @@ def test_web_and_next_share_active_summary_and_reject_stale_input(summary, monke
 
     def back(cfg, operation, **payload):
         if operation == 'describe':
-            return {'revision': body['source_revision'], 'scope': body['scope'], 'overview': 'Canonical recap'}
+            return {'revision': body['source_revision'], 'scope': body['scope'], 'overview': 'Canonical recap',
+                    'published': {'model': 'previous-model', 'template_name': 'Previous template'}}
         assert operation == 'source'
         raise SettingsError('Source changed.', status=409, code='recording_changed')
 
@@ -110,6 +113,7 @@ def test_web_and_next_share_active_summary_and_reject_stale_input(summary, monke
     result = jobs.status(body)
     assert result['state'] == 'failed' and result['error'] == 'recording_changed'
     assert jobs.web(body['recording_id'])['job'] == result
+    assert jobs.web(body['recording_id'])['published'] == {'model': 'previous-model', 'template_name': 'Previous template'}
 
 
 def test_resuming_summary_keeps_the_last_progress_visible(summary, monkeypatch):
@@ -136,7 +140,7 @@ def test_resuming_summary_keeps_the_last_progress_visible(summary, monkeypatch):
         progress('sections', 4, 4)
         progress('combining')
         assert resumed.status(body)['progress'] == {'phase': 'combining'}
-        return {'title': 'Recap', 'overview': 'Saved.'}
+        return {'title': 'Recap', 'overview': 'Saved.', 'model': 'actual'}
 
     monkeypatch.setattr(module.local_pipeline, 'summarize_text', complete)
     resumed.worker.step()

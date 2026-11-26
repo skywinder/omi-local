@@ -336,13 +336,16 @@ def test_summary_regeneration_uses_the_confirmed_model_and_template(cfg, monkeyp
     def summarize(snapshot, key, transcript, *_args, **_kwargs):
         assert key == 'fixture-summary-key'
         received.append((snapshot, transcript))
-        return {'title': 'Generated title', 'overview': 'Generated recap'}
+        assert _kwargs['include_model']
+        return {'title': 'Generated title', 'overview': 'Generated recap', 'model': 'loaded-model'}
 
     monkeypatch.setattr(local_summary_regeneration.local_pipeline, 'summarize_text', summarize)
     assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 409
     assert not received
     body['template_digest'] = template['digest']
-    assert phone_request(cfg, '/regenerate-summary', payload=body)[0] == 200
+    status, generated = phone_request(cfg, '/regenerate-summary', payload=body)
+    assert status == 200
+    assert generated['model'] == 'loaded-model'
     snapshot, transcript = received.pop()
     assert snapshot['template']['prompt'] == body['prompt'] and transcript == body['transcript']
 
@@ -650,7 +653,12 @@ def test_legacy_summary_policy_survives_restart_and_explicit_selection_wins(cfg,
         snapshot = registry.pipeline()['summary']
         key = registry.key(snapshot)
         assert chat_provider(registry)['provider']['model'] == expected
-        assert local_pipeline.summarize_text(snapshot, key, 'Fixture.', cfg.repo_root, lambda *_: None)['title'] == 'Handled'
+        generated = local_pipeline.summarize_text(
+            {**snapshot, 'template': {'name': 'Saved template', 'prompt': 'Summarize.'}},
+            key, 'Fixture.', cfg.repo_root, lambda *_: None, include_model=True)
+        assert generated['title'] == 'Handled'
+        assert generated['model'] == expected
+        assert generated['template_name'] == 'Saved template'
         assert local_live_translation.request_translations(registry.snapshot('translation')['settings'], key, 'ru', ['Fixture.']) == ['Translated']
         assert requests[-2:] == [expected, expected]
 
@@ -686,3 +694,28 @@ def test_translation_stage_uses_summary_shape_and_stays_out_of_pipeline(cfg):
     assert registry.key(registry.snapshot('translation')) == 'translation-test-key'
     assert 'translation' not in registry.pipeline()
     assert registry.read()['active']['translation'] == profile['id']
+
+
+def test_memory_proposals_are_bound_to_confirmed_provider_and_only_send_evidence(cfg, monkeypatch):
+    from dev_harness import local_recording_chat
+    registry = Registry(cfg)
+    state = registry.save({'revision': 0, 'profile': summary(), 'api_key': 'fixture-memory-key'})
+    registry.activate({'revision': 1, 'stage': 'summary', 'id': state['profiles'][-1]['id']},
+                      prepare=lambda _, publish: publish())
+    status, data = phone_request(cfg, '/memory-proposals', method='GET')
+    assert status == 200
+    assert http_request(cfg, '/api/processing/memory-proposals', method='GET')[0] == 403
+    calls = []
+    def complete(_registry, profile, payload):
+        assert registry.key(profile) == 'fixture-memory-key'
+        calls.append(json.loads(payload['messages'][-1]['content']))
+        return {'proposals': [{'content': 'Aurora uses SQLite.', 'source': 1, 'quote': 'Aurora uses SQLite'}]}
+    monkeypatch.setattr(local_recording_chat, '_complete', complete)
+    request = {'binding': '0' * 64, 'sources': ['Project Aurora uses SQLite.']}
+    assert phone_request(cfg, '/memory-proposals', payload=request)[0] == 409
+    assert calls == []
+    request['binding'] = data['provider']['binding']
+    assert phone_request(cfg, '/memory-proposals', payload=request)[0] == 200
+    assert calls == [[{'source': 1, 'text': 'Project Aurora uses SQLite.'}]]
+    assert phone_request(cfg, '/memory-proposals', payload={**request, 'sources': ['x' * 1201]})[0] == 400
+    assert len(calls) == 1

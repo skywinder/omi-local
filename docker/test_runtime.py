@@ -133,7 +133,11 @@ def test_tailscale_volume_needs_no_ngrok_and_keeps_identity_when_switching(tmp_p
     assert not {'NGROK_AUTHTOKEN', 'OMI_NGROK_URL'} & values.keys()
     assert not (data / 'tunnel-url').exists()
     assert not (cfg.layout.state_root / 'ngrok-agent.yml').exists()
-    identity = (cfg.layout.state_root / 'pairing.json').read_bytes()
+    pairing_path = cfg.layout.state_root / 'pairing.json'
+    paired = json.loads(pairing_path.read_text())
+    paired['archive_read_key_sha256'] = 'e' * 64
+    pairing_path.write_text(json.dumps(paired))
+    identity = pairing_path.read_bytes()
     providers = cfg.layout.state_root / 'stt-engine.json'
     providers.write_text('{"custom": true}')
     volume_settings = (data / 'connection.env').read_bytes()
@@ -148,6 +152,12 @@ def test_tailscale_volume_needs_no_ngrok_and_keeps_identity_when_switching(tmp_p
     cfg = config.load_config(root, env, create_layout=True)
     assert runtime.prepare(cfg, root, data)['OMI_LOCAL_APP_KEY'] == values['OMI_LOCAL_APP_KEY']
     assert (cfg.layout.state_root / 'pairing.json').read_bytes() == identity
+
+    # A real phone key change revokes the archive credential along with the old pairing.
+    private = data / 'connection.env'
+    private.write_text(private.read_text().replace(values['OMI_LOCAL_APP_KEY'], 'b' * 43))
+    assert runtime.prepare(cfg, root, data)['OMI_LOCAL_APP_KEY'] == 'b' * 43
+    assert 'archive_read_key_sha256' not in json.loads(pairing_path.read_text())
 
 
 def test_legacy_ngrok_volume_can_select_tailscale_without_changing_saved_values(tmp_path):

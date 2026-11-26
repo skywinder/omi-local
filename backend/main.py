@@ -196,9 +196,11 @@ app.add_middleware(
 )
 
 if _OFFLINE_RUNTIME:
-    from routers import local_daily_recaps, local_folders, local_goals, local_library_notes, local_recording_chat, local_summary, local_tasks
+    from routers import local_archive, local_memories, local_daily_recaps, local_folders, local_goals, local_library_notes, local_recording_chat, local_summary, local_tasks
 
     _router_modules = (
+        local_archive,
+        local_memories,
         local_recording_chat,
         local_daily_recaps,
         local_goals,
@@ -350,12 +352,18 @@ app.add_middleware(OfflineRoutePolicyMiddleware)
 app.add_middleware(LocalTransportAuthMiddleware)
 
 
+from utils.local_recap_scheduler import RecapScheduler
+
+_local_recaps = RecapScheduler()
+
+
 @app.on_event("startup")  # type: ignore[reportDeprecated]  # FastAPI on_event still functional; lifespan migration would change app wiring
 async def startup_event():
     if _OFFLINE_RUNTIME:
         recovered, failed = await run_blocking(storage_executor, recover_offline_audio_captures)
         if recovered or failed:
             logger.info('Offline audio capture recovery completed recovered=%s failed=%s', recovered, failed)
+        _local_recaps.start()
         logger.info(
             'Offline startup complete egress_guard=%s routes=%d',
             'enforced' if _OFFLINE_EGRESS_POLICY is not None else 'missing',
@@ -506,6 +514,8 @@ async def _periodic_listen_finalization_reconcile(interval_seconds: int | None =
 
 @app.on_event("shutdown")  # type: ignore[reportDeprecated]  # FastAPI on_event still functional; lifespan migration would change app wiring
 async def shutdown_event():
+    if _OFFLINE_RUNTIME:
+        await _local_recaps.stop()
     await drain_background_tasks(timeout=10.0)
     await close_all_clients()
     if not _OFFLINE_RUNTIME:

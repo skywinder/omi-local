@@ -56,7 +56,6 @@ def passages(row: dict):
         start = _seconds(segment.get('start'))
         end = _seconds(segment.get('end'))
         snippet = {
-            'text': text[:360],
             'segment_id': _string(segment.get('id')) or None,
             'start': start,
             'end': end,
@@ -72,4 +71,5 @@ def passages(row: dict):
         for chunk in _windows(text):
             # Neighboring context helps rank short replies, but belongs to a
             # different segment and cannot be cited under this segment's ID.
-            yield Passage(chunk, snippet, source_text if len(source_text) < 80 else chunk)
+            evidence = source_text if len(source_text) < 80 else chunk
+            yield Passage(chunk, {**snippet, 'text': evidence[:360]}, evidence)

@@ -6,7 +6,7 @@ import httpx
 
 from .local_providers import Registry, SettingsError
 from .local_provider_probe import probe
-from .local_recording_chat import answer_recording, chat_provider, classify_categories, daily_recap, suggest_tasks
+from .local_recording_chat import answer_recording, chat_provider, classify_categories, daily_recap, suggest_tasks, propose_memories
 from . import local_summary_regeneration
 
 
@@ -134,6 +134,8 @@ class Processing(Settings):
             return answer_recording(self.registry, body, archive=operation == 'archive-chat')
         if method == 'POST' and operation == 'classify-categories':
             return classify_categories(self.registry, body)
+        if method == 'POST' and operation == 'memory-proposals':
+            return propose_memories(self.registry, body)
         if method == 'POST' and operation == 'task-suggestions':
             return suggest_tasks(self.registry, body)
         if method == 'POST' and operation == 'live-tuning':

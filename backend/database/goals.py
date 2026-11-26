@@ -715,9 +715,13 @@ def transition_goal_lifecycle(
     relationship_disposition: GoalRelationshipDisposition,
     idempotency_key: str,
     account_generation: int,
+    paired_expected_revision: Optional[str] = None,
     firestore_client: Any = None,
 ) -> Dict[str, Any]:
-    if status not in {GoalStatus.paused, GoalStatus.achieved, GoalStatus.abandoned}:
+    targets = {GoalStatus.paused, GoalStatus.achieved, GoalStatus.abandoned}
+    if paired_expected_revision is not None:
+        targets.add(GoalStatus.background)
+    if status not in targets:
         raise ValueError('invalid goal lifecycle target')
     client = _get_db(firestore_client)
     goal_ref = _goal_ref(uid, goal_id, firestore_client=client)
@@ -735,6 +739,7 @@ def transition_goal_lifecycle(
             request_payload={
                 'status': status.value,
                 'relationship_disposition': relationship_disposition.value,
+                **({'expected_revision': paired_expected_revision} if paired_expected_revision is not None else {}),
             },
             firestore_client=client,
         )
@@ -743,6 +748,15 @@ def transition_goal_lifecycle(
         goal_snapshot = goal_ref.get(transaction=write_transaction)
         if not goal_snapshot.exists:
             raise GoalNotFoundError(goal_id)
+        current = _goal_dict(goal_snapshot)
+        if paired_expected_revision is not None:
+            if goal_snapshot.update_time.isoformat() != paired_expected_revision:
+                raise GoalConflictError('stale goal revision')
+            previous = normalize_goal_storage(current, goal_id=goal_id)['status']
+            if previous in {GoalStatus.achieved.value, GoalStatus.abandoned.value, status.value} or (
+                status == GoalStatus.background and previous != GoalStatus.paused.value
+            ):
+                raise GoalConflictError('goal status no longer allows the transition')
         if relationship_disposition == GoalRelationshipDisposition.detach:
             user_ref = client.collection(users_collection).document(uid)
             task_snapshots = list(
@@ -772,7 +786,7 @@ def transition_goal_lifecycle(
             'ended_at': now if status in {GoalStatus.achieved, GoalStatus.abandoned} else None,
         }
         write_transaction.update(goal_ref, patch)
-        result = normalize_goal_storage({**_goal_dict(goal_snapshot), **patch}, goal_id=goal_id)
+        result = normalize_goal_storage({**current, **patch}, goal_id=goal_id)
         _finish_goal_mutation(
             write_transaction,
             receipt_ref,

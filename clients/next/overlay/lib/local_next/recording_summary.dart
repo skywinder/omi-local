@@ -4,6 +4,7 @@ enum RecordingSummaryFailure implements Exception { conflict, tooLarge, noTransc
 
 typedef SummaryProvider = ({String name, RecordingChatProvider endpoint});
 typedef SummaryTemplate = ({String id, String name, String prompt, String digest});
+typedef SummaryProvenance = ({String? model, String? templateName});
 typedef SummaryProgress = ({String phase, int? completed, int? total});
 typedef SummaryJob = ({String requestId, String state, String? error, SummaryProgress? progress});
 
@@ -31,6 +32,7 @@ class RecordingSummaryOptions {
     required this.defaultBinding,
     required this.defaultTemplate,
     this.job,
+    this.published,
   });
 
   factory RecordingSummaryOptions.fromJson(Map<String, dynamic> json) => RecordingSummaryOptions(
@@ -49,6 +51,9 @@ class RecordingSummaryOptions {
     }).toList(),
     defaultBinding: json['default_provider_binding'] as String?,
     defaultTemplate: json['default_template_id'] as String,
+    published: json['published'] is Map<String, dynamic>
+        ? (model: json['published']['model'] as String?, templateName: json['published']['template_name'] as String?)
+        : null,
     job: json['job'] == null ? null : decodeSummaryJob(json['job'] as Map<String, dynamic>),
   );
 
@@ -58,6 +63,7 @@ class RecordingSummaryOptions {
   final String? defaultBinding;
   final String defaultTemplate;
   final SummaryJob? job;
+  final SummaryProvenance? published;
 }
 
 typedef SummaryRegeneration = ({
