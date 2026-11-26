@@ -151,6 +151,12 @@ dialog .dialog-note { color:var(--muted); font-size:13px; }
 .provider-list-heading .settings-description { font-size:12px; }
 .provider-category { border-top:1px solid var(--line); padding:13px 0; }
 .provider-category-current p { margin:0 0 6px; overflow-wrap:anywhere; font-size:13px; line-height:1.4; }
+.summary-setting { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px; margin:6px 0 9px; padding:9px 11px; border:1px solid #b9cfbf; border-radius:8px; background:#ecf3ee; }
+.summary-setting[data-enabled=false] { border-color:var(--line); background:#fcfbf8; }
+.summary-setting > div { flex:1 1 200px; min-width:0; overflow-wrap:anywhere; }
+.summary-setting-state { margin:0; font-size:14px; font-weight:650; color:#254f3d; }
+.summary-setting[data-enabled=false] .summary-setting-state { color:var(--ink); }
+.summary-setting-action { flex:none; }
 .active-provider { font-weight:600; color:var(--muted); }
 .provider-category-current .settings-pending { color:#854522; }
 .stage-change { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; margin-top:7px; }
