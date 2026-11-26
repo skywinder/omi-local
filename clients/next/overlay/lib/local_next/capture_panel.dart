@@ -548,6 +548,15 @@ class LocalNextCaptureControls extends StatelessWidget {
                             "${pairedSettingsLabel(context, 'nextPendantUnread')}: ${_storageSize(status.unreadBytes)}",
                             "${pairedSettingsLabel(context, 'nextPendantFree')}: ${_storageSize(status.freeBytes)}",
                             pairedSettingsLabel(context, status.clockValid ? 'nextClockSet' : 'nextClockUnset'),
+                            if (status.almostFull) pairedSettingsLabel(context, 'nextPendantFull'),
+                            if (link.diagnostics?.storageInfo case final info?) ...[
+                              "${pairedSettingsLabel(context, 'nextPendantDropped')}: ${info.overwrittenPackets}",
+                              pairedSettingsLabel(context, switch (info.protocol) {
+                                Cv1StorageProtocol.legacy => 'nextPendantLegacy',
+                                Cv1StorageProtocol.receiverAcknowledgement => 'nextPendantAck',
+                                Cv1StorageProtocol.unconfirmed => 'nextPendantUnconfirmed',
+                              }),
+                            ],
                             pairedSettingsLabel(context, 'nextPendantLastRead'),
                           ].join('\n'),
                           null => pairedSettingsLabel(context, 'nextPendantUnreadUnknown'),

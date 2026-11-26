@@ -34,6 +34,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
   private var metricChars: [String: CBCharacteristic] = [:]
   private var pendingReads: Set<String> = []
   private var readingRSSI = false
+  private var storageCommand: CBCharacteristic?
+  private var enablingStorageNotifications = false
   private var observingBattery = false
   private var features: Int?
   private var setting: (field: String, char: CBCharacteristic, value: Int, reply: FlutterResult)?
@@ -183,6 +185,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     buttonConfirmed = false
     changingAudio = false
     subscription = CV1AudioSubscription()
+    storageCommand = nil
+    enablingStorageNotifications = false
     metricChars.removeAll()
     metrics.removeAll()
     pendingReads.removeAll()
@@ -349,7 +353,8 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     device.discoverCharacteristics([CV1UUID.button], for: button)
     for service in services {
       if let fields = metricServices[service.uuid] {
-        device.discoverCharacteristics(Array(fields.values), for: service)
+        let extra = service.uuid == CV1UUID.storageService ? [CV1UUID.storageCommand] : []
+        device.discoverCharacteristics(Array(fields.values) + extra, for: service)
       }
     }
   }
@@ -358,6 +363,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     guard peer === device else { return }
     if let fields = metricServices[service.uuid] {
       guard error == nil, let chars = service.characteristics else { return }
+      if service.uuid == CV1UUID.storageService {
+        storageCommand = chars.first { $0.uuid == CV1UUID.storageCommand && $0.properties.contains([.notify, .write]) }
+      }
       for (key, id) in fields {
         if let char = chars.first(where: { $0.uuid == id && $0.properties.contains(.read) }) {
           metricChars[key] = char
@@ -425,7 +433,10 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
 
   func peripheral(_ device: CBPeripheral, didUpdateNotificationStateFor char: CBCharacteristic, error: Error?) {
     guard peer === device else { return }
-    if char === buttonChar {
+    if char === storageCommand {
+      enablingStorageNotifications = false
+      if error == nil, char.isNotifying { sampleStorageInfo() }
+    } else if char === buttonChar {
       guard error == nil, char.isNotifying else { return lost(true) }
       buttonConfirmed = true
       readyIfConfigured()
@@ -472,6 +483,18 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
     }
   }
 
+  // Query ring metadata only while the audio stream is idle.
+  private func sampleStorageInfo() {
+    guard phase == "ready", let peer, let char = storageCommand, !changingAudio, audioQueue.isEmpty,
+          audioChar?.isNotifying != true, !enablingStorageNotifications else { return }
+    if char.isNotifying {
+      peer.writeValue(Data([0x10]), for: char, type: .withResponse)
+    } else {
+      enablingStorageNotifications = true
+      peer.setNotifyValue(true, for: char)
+    }
+  }
+
   private func sampleSignal() {
     guard phase == "ready", let peer, !readingRSSI else { return }
     readingRSSI = true
@@ -509,7 +532,9 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
       guard let level = data?.first, level <= 100 else { return }
       metrics[field] = Int(level)
     case "storageStatus":
+      metrics.removeValue(forKey: "storageInfo")
       metrics[field] = data.flatMap { $0.count == 16 ? FlutterStandardTypedData(bytes: $0) : nil }
+      if metrics[field] != nil { sampleStorageInfo() }
     case "led", "gain":
       if supportsSetting(field), metricChars[field]?.properties.contains(.write) == true {
         metrics[field + "Writable"] = true
@@ -527,6 +552,13 @@ final class NextCV1: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralMan
 
   func peripheral(_ device: CBPeripheral, didUpdateValueFor char: CBCharacteristic, error: Error?) {
     guard peer === device else { return }
+    if char === storageCommand {
+      if phase == "ready", error == nil, let data = char.value, data.first == 0x02, data.count == 31 || data.count == 41 {
+        metrics["storageInfo"] = FlutterStandardTypedData(bytes: data)
+        publishMetrics()
+      }
+      return
+    }
     if let field = metricChars.first(where: { $0.value === char })?.key {
       readMetric(field, data: error == nil ? char.value : nil)
       return

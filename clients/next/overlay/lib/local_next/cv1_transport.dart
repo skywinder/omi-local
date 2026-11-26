@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:omi/services/devices/ring_protocol.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'cv1_capture.dart';
@@ -56,6 +57,14 @@ sealed class Cv1TransportEvent {
 
 typedef Cv1StorageStatus = ({int unreadBytes, int freeBytes, bool clockValid});
 
+enum Cv1StorageProtocol { legacy, receiverAcknowledgement, unconfirmed }
+
+typedef Cv1StorageInfo = ({int overwrittenPackets, Cv1StorageProtocol protocol});
+
+extension Cv1StorageCapacity on Cv1StorageStatus {
+  bool get almostFull => freeBytes * 100 <= unreadBytes + freeBytes;
+}
+
 class Cv1Diagnostics {
   const Cv1Diagnostics({
     this.name,
@@ -65,6 +74,7 @@ class Cv1Diagnostics {
     this.manufacturer,
     this.battery,
     this.storage,
+    this.storageInfo,
     this.rssi,
     this.led,
     this.gain,
@@ -76,6 +86,7 @@ class Cv1Diagnostics {
   final String? name, firmware, hardware, model, manufacturer;
   final int? battery, rssi, led, gain;
   final Cv1StorageStatus? storage;
+  final Cv1StorageInfo? storageInfo;
   final bool? charging;
   final bool ledWritable, gainWritable;
 
@@ -88,9 +99,31 @@ class Cv1Diagnostics {
     final packets = data.getUint32(4, Endian.little);
     final free = data.getUint32(8, Endian.little);
     final clockValid = data.getUint32(12, Endian.little);
-    const packetBytes = 444;
+    const packetBytes = RingProtocol.recordSize;
     if (used != packets * packetBytes || free % packetBytes != 0 || used + free == 0 || clockValid > 1) return null;
     return (unreadBytes: used, freeBytes: free, clockValid: clockValid == 1);
+  }
+
+  // INFO is big-endian, unlike the status characteristic. The 31-byte legacy
+  // reply has no custody contract. A partial extension cannot establish one.
+  static Cv1StorageInfo? _storageInfo(Object? raw) {
+    if (raw is! Uint8List || (raw.length != 31 && raw.length != 41)) return null;
+    final info = RingProtocol.parseInfoNotification(raw);
+    if (info == null ||
+        info.packetSize != RingProtocol.recordSize ||
+        info.readSeq < 0 ||
+        info.writeSeq < info.readSeq ||
+        info.capacityPackets == 0 ||
+        info.unreadPackets > info.capacityPackets ||
+        info.droppedPackets < 0) {
+      return null;
+    }
+    var protocol = Cv1StorageProtocol.legacy;
+    if (info.infoBytes == 41) {
+      final supported = info.capAppAckReclaim && info.capAdvanceIdempotent && info.capRingId;
+      protocol = supported ? Cv1StorageProtocol.receiverAcknowledgement : Cv1StorageProtocol.unconfirmed;
+    }
+    return (overwrittenPackets: info.droppedPackets, protocol: protocol);
   }
 
   factory Cv1Diagnostics.fromWire(Map values) {
@@ -112,6 +145,7 @@ class Cv1Diagnostics {
       manufacturer: text('manufacturer'),
       battery: number('battery', 0, 100),
       storage: _storageStatus(values['storageStatus']),
+      storageInfo: _storageInfo(values['storageInfo']),
       rssi: number('rssi', -127, -1),
       led: number('led', 0, 100),
       gain: number('gain', 0, 100),

@@ -94,6 +94,36 @@ void main() {
     expect(storage([4440, 3, 888, 1]), isNull);
   });
 
+  test('ring inventory requires a complete advertised custody contract and a valid sequence range', () {
+    Uint8List info(int length, {int caps = 13, int version = 1, int ringId = 1, int write = 12}) {
+      final bytes = ByteData(length);
+      bytes.setUint8(0, 2);
+      bytes.setUint64(1, 10);
+      bytes.setUint64(9, write);
+      bytes.setUint32(17, 4);
+      bytes.setUint64(21, 7);
+      bytes.setUint16(29, 444);
+      if (length == 41) {
+        bytes.setUint8(31, caps);
+        bytes.setUint8(32, version);
+        bytes.setUint64(33, ringId);
+      }
+      return bytes.buffer.asUint8List();
+    }
+
+    Cv1StorageInfo? decode(Uint8List bytes) => Cv1Diagnostics.fromWire({'storageInfo': bytes}).storageInfo;
+    expect(decode(info(31)), (overwrittenPackets: 7, protocol: Cv1StorageProtocol.legacy));
+    expect(decode(info(41)), (overwrittenPackets: 7, protocol: Cv1StorageProtocol.receiverAcknowledgement));
+    for (final bytes in [info(41, caps: 5), info(41, version: 2), info(41, ringId: 0)]) {
+      expect(decode(bytes)?.protocol, Cv1StorageProtocol.unconfirmed);
+    }
+    for (final bytes in [info(33), info(31, write: 9), info(41, write: 15), info(31)..[0] = 3]) {
+      expect(decode(bytes), isNull);
+    }
+    expect((unreadBytes: 99 * 444, freeBytes: 444, clockValid: true).almostFull, isTrue);
+    expect((unreadBytes: 98 * 444, freeBytes: 2 * 444, clockValid: true).almostFull, isFalse);
+  });
+
   test('CV1 diagnostics reject invalid measurements and retire with the link generation', () async {
     final folder = await Directory.systemTemp.createTemp('next-cv1-diagnostics-');
     final journal = LocalAudioJournal(directory: folder, upload: (body, owner) async => <String, dynamic>{});

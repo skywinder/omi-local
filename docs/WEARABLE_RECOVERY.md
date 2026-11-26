@@ -39,6 +39,12 @@ device buffer. Reading a newer range can also advance past older unread history.
 Use status/INFO only for initial device diagnostics; neither requests audio nor
 advances the ring. Do not use READ, CLEAR or ADVANCE as a diagnostic probe.
 
+Next reads status and INFO from the same connected CV1 while audio is idle.
+Settings shows unread and free bytes, the device clock, the overwritten packet
+count and the advertised transfer contract. An incomplete INFO reply cannot
+establish receiver acknowledgement. A field test of interruption and recovery
+still requires a compatible test pendant with disposable audio.
+
 The existing `RingProtocol` handles 444-byte records and bounded sequence reads.
 `RingStorageSyncImpl` targets the cloud WAL pipeline; its app-side advance guard
 does not override firmware auto-advance. `SyncProvider` deliberately skips that
@@ -71,7 +77,7 @@ The plan below is deferred; it is not a prerequisite for the working release.
    range, dropped count, clock validity and advertised capabilities. Keep device
    identifiers and audio out of diagnostic output. This establishes actual
    storage availability without consuming existing recordings.
-2. Add a capability-negotiated, non-consuming bounded read to firmware. Advance
+2. Verify the capability-negotiated transfer provided by firmware tags 3.0.23 and 3.0.24 on a test device. Advance
    only a contiguous acknowledged prefix after durable delivery, with a storage
    generation identity so card reset or sequence reuse cannot alias old data.
    Preserve older unread history when recovering only new gaps. Separately store

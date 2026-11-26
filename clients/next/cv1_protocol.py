@@ -10,6 +10,7 @@ MODEL_FIELDS = {
     'batteryService': 'batteryServiceUuid',
     'battery': 'batteryLevelCharacteristicUuid',
     'storageService': 'storageDataStreamServiceUuid',
+    'storageCommand': 'storageDataStreamCharacteristicUuid',
     'storageStatus': 'storageReadControlCharacteristicUuid',
     'deviceInfo': 'deviceInformationServiceUuid',
     'firmware': 'firmwareRevisionCharacteristicUuid',

@@ -48,6 +48,14 @@ measurement from the connected pendant. The clock flag describes that sample;
 it cannot establish when previously buffered audio was recorded. Both mobile
 platforms read the storage status characteristic while the CV1 is idle.
 An absent, uninitialized or incompatible response leaves the amount unknown.
+For a recognized ring, Next also requests INFO (0x10) on the idle link. Its
+counter reports unread 444-byte packets already overwritten in this ring's
+history. The count does not establish how many conversations were lost. At 1%
+free or less the settings screen warns about further overwrite. The 31-byte
+reply identifies the legacy transfer contract. For a complete v1 reply Next
+recognizes the advertised receiver-acknowledged mode only with a nonzero ring
+identity, receiver acknowledgement and idempotent advance. Capability discovery
+does not negotiate that mode or read audio.
 **Phone → server** counts the journal of this app installation, including
 its open part. The original Local app and Next each have their own journal.
 

@@ -50,6 +50,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private var desiredAudio: Int? = null
     private var confirmedAudio: Int? = null
     private var lastAudio = 0
+    private var diagnosticsRequested = false
+    private var storageNotifications = false
     private var rssiPending = false
     private val operations = ArrayDeque<Job>()
     private var active: Job? = null
@@ -119,7 +121,10 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 }
                 "setAudio" -> setAudio(call, result)
                 "sampleDiagnostics" -> {
-                    if (phase == "ready" && desiredAudio == null && confirmedAudio == null && active == null && operations.isEmpty()) sample()
+                    if (phase == "ready" && desiredAudio == null && confirmedAudio == null) {
+                        diagnosticsRequested = true
+                        advance()
+                    }
                     result.success(null)
                 }
                 "sampleSignal" -> {
@@ -183,6 +188,8 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
         active = null
         operations.clear()
         stats.clear()
+        diagnosticsRequested = false
+        storageNotifications = false
         codec = null
         discovering = false
         features = null
@@ -275,10 +282,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
     private fun advance() {
         val connection = gatt ?: return
         if (active != null) return
-        val next = operations.removeFirstOrNull() ?: return
+        val next = operations.removeFirstOrNull()
+        if (next == null) {
+            if (diagnosticsRequested) {
+                diagnosticsRequested = false
+                if (phase == "ready" && desiredAudio == null && confirmedAudio == null) sample()
+            }
+            return
+        }
         active = next
         if (runCatching { next.start(connection) }.getOrDefault(false)) {
-            val optional = phase == "ready" && (next.kind == "read" || next.uuid == Cv1Uuid.battery)
+            val optional = phase == "ready" && (next.kind == "read" || next.uuid == Cv1Uuid.battery || next.uuid == Cv1Uuid.storageCommand)
             after(if (optional) 2000 else 5000) {
                 if (optional) finish(connection, next.kind, next.uuid, null)
                 else lost(true, "timeout")
@@ -445,8 +459,30 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 if (char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0 && name in setOf("led", "gain")) {
                     stats["${name}Writable"] = true
                 }
+                if (name == "storageStatus") {
+                    stats.remove("storageInfo")
+                    if (value != null) sampleStorageInfo()
+                }
                 telemetry(if (name == "battery") name else null)
             })
+        }
+    }
+
+    // INFO returns ring metadata. It does not start an SD download or advance its cursor.
+    private fun sampleStorageInfo() {
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand) ?: return
+        val required = BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY
+        if ((char.properties and required) != required || desiredAudio != null || confirmedAudio != null) return
+        val epoch = generation
+        if (storageNotifications) {
+            writeIdle(char, byteArrayOf(0x10)) {}
+        } else {
+            notify(char, true) { ack ->
+                if (ack != null && epoch == generation) {
+                    storageNotifications = true
+                    writeIdle(char, byteArrayOf(0x10)) {}
+                }
+            }
         }
     }
 
@@ -472,7 +508,17 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
             char == null || char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE == 0) {
             return result.error("setting_unavailable", null, null)
         }
-        val payload = byteArrayOf(value.toByte())
+        writeIdle(char, byteArrayOf(value.toByte())) {
+            if (it == null) result.error("setting_write", null, null)
+            else {
+                stats[field] = value
+                telemetry()
+                result.success(null)
+            }
+        }
+    }
+
+    private fun writeIdle(char: BluetoothGattCharacteristic, payload: ByteArray, complete: (ByteArray?) -> Unit) {
         enqueue(Job(char.uuid, "write", { connection ->
             if (desiredAudio != null || confirmedAudio != null) false
             else if (Build.VERSION.SDK_INT >= 33) {
@@ -485,14 +531,7 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                 @Suppress("DEPRECATION")
                 connection.writeCharacteristic(char)
             }
-        }) {
-            if (it == null) result.error("setting_write", null, null)
-            else {
-                stats[field] = value
-                telemetry()
-                result.success(null)
-            }
-        })
+        }, complete))
     }
 
     private val callbacks = object : BluetoothGattCallback() {
@@ -564,6 +603,11 @@ internal class NextCV1(private val context: Context, messenger: BinaryMessenger)
                     val level = value.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 } ?: return@post
                     stats["battery"] = level
                     telemetry("battery")
+                } else if (char.uuid == Cv1Uuid.storageCommand) {
+                    if ((value.size == 31 || value.size == 41) && value[0].toInt() == 2) {
+                        stats["storageInfo"] = value.copyOf()
+                        telemetry()
+                    }
                 } else if (char.uuid == Cv1Uuid.button && value.size >= 4) {
                     val code = (0..3).fold(0) { a, i -> a or ((value[i].toInt() and 0xff) shl (8*i)) }
                     if (code >= 0) sink?.success(mapOf("type" to "button", "generation" to generation, "code" to code))
