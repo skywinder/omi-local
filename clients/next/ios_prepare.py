@@ -90,6 +90,11 @@ def prepare_project(project_file):
                     del settings[key]
             if owner is runner:
                 settings.pop('ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES', None)
+                # Silero obtains this C symbol through DynamicLibrary.process().
+                flags = settings.get('OTHER_LDFLAGS', ['$(inherited)'])
+                if isinstance(flags, str):
+                    flags = [flags]
+                settings['OTHER_LDFLAGS'] = [*flags, '-Wl,-u,_OrtGetApiBase']
                 settings.update({
                     'PRODUCT_BUNDLE_IDENTIFIER': BUNDLE, 'APP_BUNDLE_IDENTIFIER': BUNDLE,
                     'BUNDLE_DISPLAY_NAME': NAME, 'BUNDLE_NAME': NAME, 'INFOPLIST_KEY_CFBundleDisplayName': NAME,

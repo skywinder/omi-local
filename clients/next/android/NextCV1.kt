@@ -63,10 +63,11 @@ internal class NextCV1(
     private var diagnosticsRequested = false
     private var storageNotifications = false
     private var clearReply: MethodChannel.Result? = null
-    private class ArchiveRead(val reply: MethodChannel.Result, val start: Long, val count: Int) {
+    private class ArchiveRead(val reply: MethodChannel.Result, val start: Long, val count: Int, val ring: Long?) {
         val bytes = ByteArrayOutputStream(count * 444)
         var began = false
     }
+    private var durableRead: ArchiveRead? = null
     private var archive: ArchiveRead? = null
     private var rssiPending = false
     private val operations = ArrayDeque<Job>()
@@ -153,6 +154,7 @@ internal class NextCV1(
                     disconnect(if (call.method == "disconnect") "manual" else null)
                     result.success(null)
                 }
+                "captureMute" -> captureMute(call, result)
                 "setAudio" -> setAudio(call, result)
                 "sampleDiagnostics" -> {
                     if (phase == "ready" && clearReply == null && archive == null && desiredAudio == null && confirmedAudio == null) {
@@ -169,6 +171,7 @@ internal class NextCV1(
                     setArchiveAwake(call.argument<Boolean>("enabled") == true)
                     result.success(null)
                 }
+                "advanceArchive" -> advanceArchive(call, result)
                 "readOldest" -> readOldest(call, result)
                 "clearStorage" -> clearStorage(call, result)
                 "writeSetting" -> writeSetting(call, result)
@@ -228,6 +231,7 @@ internal class NextCV1(
         active = null
         operations.clear()
         finishArchive(false)
+        durableRead = null
         finishClear(false)
         stats.clear()
         diagnosticsRequested = false
@@ -551,7 +555,7 @@ internal class NextCV1(
         val info = stats["storageInfo"] as? ByteArray
         if (phase != "ready" || call.argument<Int>("generation") != generation ||
             call.argument<String>("deviceId") != target || archive != null || clearReply != null ||
-            !storageNotifications || char == null || info?.size != 31 || active != null || operations.isNotEmpty() ||
+            !storageNotifications || char == null || info == null || info.size !in setOf(31, 41) || active != null || operations.isNotEmpty() ||
             desiredAudio != null || confirmedAudio != null || codec !in setOf(20, 21)) {
             return reply.error("storage_busy", null, null)
         }
@@ -566,7 +570,14 @@ internal class NextCV1(
         val limit = call.argument<Int>("maxRecords") ?: 0
         if (limit !in 1..32) return reply.error("storage_busy", null, null)
         val count = minOf(limit.toLong(), end - start).toInt()
-        val pending = ArchiveRead(reply, start, count)
+        val ring = if (info.size == 41) {
+            if (info[31].toInt() and 0x0d != 0x0d || info[32].toInt() != 1 || header.getLong(33) == 0L)
+                return reply.error("storage_busy", null, null)
+            header.getLong(33)
+        } else null
+        if (ring != call.argument<Number>("ringId")?.toLong()) return reply.error("cursor_changed", null, null)
+        durableRead = null
+        val pending = ArchiveRead(reply, start, count, ring)
         archive = pending
         stats.remove("storageInfo")
         telemetry()
@@ -592,6 +603,7 @@ internal class NextCV1(
     private fun finishArchive(complete: Boolean) {
         val read = archive ?: return
         archive = null
+        durableRead = if (complete) read else null
         val received = read.bytes.toByteArray()
         val usable = received.size - received.size % 444
         read.reply.success(mapOf("complete" to complete, "start" to read.start,
@@ -604,6 +616,19 @@ internal class NextCV1(
         reply.success(acknowledged)
     }
 
+    private fun advanceArchive(call: MethodCall, reply: MethodChannel.Result) {
+        val read = durableRead
+        val ring = read?.ring
+        val end = call.argument<Number>("end")?.toLong()
+        val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
+        if (phase != "ready" || call.argument<Int>("generation") != generation ||
+            call.argument<String>("deviceId") != target || read == null || ring == null ||
+            end == null || end != read.start + read.count || clearReply != null || archive != null || char == null)
+            return reply.error("cursor_changed", null, null)
+        durableRead = null
+        sendStorageChange(char, ByteBuffer.allocate(17).put(0x15).putLong(ring).putLong(end).array(), reply)
+    }
+
     private fun clearStorage(call: MethodCall, reply: MethodChannel.Result) {
         val char = characteristic(Cv1Uuid.storageService, Cv1Uuid.storageCommand)
         val info = stats["storageInfo"] as? ByteArray
@@ -614,8 +639,12 @@ internal class NextCV1(
             reply.error("storage_busy", null, null)
             return
         }
+        sendStorageChange(char, byteArrayOf(0x13), reply)
+    }
+
+    private fun sendStorageChange(char: BluetoothGattCharacteristic, data: ByteArray, reply: MethodChannel.Result) {
         clearReply = reply
-        writeIdle(char, byteArrayOf(0x13)) { if (it == null && clearReply === reply) finishClear(false) }
+        writeIdle(char, data) { if (it == null && clearReply === reply) finishClear(false) }
         handler.postDelayed({ if (clearReply === reply) finishClear(false) }, 20000)
     }
 
@@ -644,6 +673,23 @@ internal class NextCV1(
         rssiPending = runCatching { gatt?.readRemoteRssi() == true }.getOrDefault(false)
     }
 
+    private fun captureMute(call: MethodCall, reply: MethodChannel.Result) {
+        val epoch = generation
+        if (phase != "ready" || call.argument<Int>("generation") != epoch) return reply.error("stale", null, null)
+        val char = characteristic(Cv1Uuid.settings, Cv1Uuid.mute) ?: return reply.success(null)
+        val desired = call.argument<Boolean>("muted")
+        fun verify() = read(char) { bytes ->
+            val value = bytes?.singleOrNull()?.toInt()
+            if (epoch == generation && value in 0..1 && (desired == null || desired == (value == 1))) {
+                reply.success(value == 1)
+            } else reply.error("mute_unconfirmed", null, null)
+        }
+        if (desired == null) verify()
+        else writeIdle(char, byteArrayOf(if (desired) 1 else 0), requireIdle = false) {
+            if (epoch == generation && it != null) verify() else reply.error("mute_unconfirmed", null, null)
+        }
+    }
+
     private fun writeSetting(call: MethodCall, result: MethodChannel.Result) {
         val field = call.argument<String>("field")
         val value = call.argument<Int>("value")
@@ -669,9 +715,9 @@ internal class NextCV1(
         }
     }
 
-    private fun writeIdle(char: BluetoothGattCharacteristic, payload: ByteArray, complete: (ByteArray?) -> Unit) {
+    private fun writeIdle(char: BluetoothGattCharacteristic, payload: ByteArray, requireIdle: Boolean = true, complete: (ByteArray?) -> Unit) {
         enqueue(Job(char.uuid, "write", { connection ->
-            if (desiredAudio != null || confirmedAudio != null) false
+            if (requireIdle && (desiredAudio != null || confirmedAudio != null)) false
             else if (Build.VERSION.SDK_INT >= 33) {
                 connection.writeCharacteristic(char, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) ==
                     BluetoothStatusCodes.SUCCESS

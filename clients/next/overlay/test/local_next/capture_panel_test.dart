@@ -10,6 +10,7 @@ import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/capture.dart';
 import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_capture.dart';
+import 'package:omi/local_next/cv1_resume.dart';
 import 'package:omi/local_next/cv1_gain_calibration.dart';
 import 'package:omi/local_next/cv1_gain_calibration_card.dart';
 import 'package:omi/local_next/cv1_transport.dart';
@@ -131,7 +132,12 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   Future<void> setArchiveAwake(bool enabled) async => wakeChanges.add(enabled);
 
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget selected, int expectedStart, int maxRecords) async {
+  Future<Cv1ArchiveBatch> readOldest(
+    Cv1StorageTarget selected,
+    int expectedStart,
+    int maxRecords, {
+    int? ringId,
+  }) async {
     expect(selected.deviceId, target);
     expect(expectedStart, oldest);
     expect(selected.generation, generation);
@@ -198,6 +204,8 @@ class _Recording extends Fake implements LocalAudioRecording {
   _Recording(this.sealed, this.codec, this.silenceSeconds, this.number);
   final int number;
   @override
+  bool get reviewSpeech => false;
+  @override
   final String codec;
   @override
   final int? silenceSeconds;
@@ -239,6 +247,52 @@ class _GainDecoder implements Cv1GainDecoder {
 }
 
 void main() {
+  test('a newly paired CV1 syncs unread audio through the local filter before starting notifications', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final folder = await Directory.systemTemp.createTemp('cv1-auto-filter');
+    var classified = 0;
+    final journal = LocalAudioJournal(
+      directory: folder,
+      speechMode: () => true,
+      filterSpeech: (codec, frames, preroll, pause) async {
+        classified += frames.length;
+        return [];
+      },
+      upload: (bytes, owner) async => throw StateError('Silent audio reached the network'),
+    );
+    await journal.initialize();
+    final wire = _ArchiveWire(records: 4);
+    final inputs = NextCaptureInputs(
+      NextPhoneCapture(journal, 'fixture', _Microphone()),
+      wire,
+      resumeSettings: Cv1ResumeSettings(prefs, 'fixture'),
+    );
+    final started = Completer<void>();
+    inputs.cv1.addListener(() {
+      if (inputs.cv1.wantsAudio && !started.isCompleted) started.complete();
+    });
+    try {
+      wire.restoreAt(0);
+      await started.future.timeout(const Duration(seconds: 5));
+      await journal.drain();
+      expect(wire.reads, 1);
+      expect(wire.subscriptions, [true]);
+      expect(classified, 4);
+      expect(journal.pendingParts, 0);
+      expect(journal.deliveryIssues, isEmpty);
+      await inputs.stopRecording();
+      wire.restoreAt(0);
+      await Future<void>.delayed(Duration.zero);
+      expect(wire.reads, 1);
+      expect(inputs.cv1.wantsAudio, isFalse);
+    } finally {
+      await inputs.close();
+      inputs.dispose();
+      journal.dispose();
+      await folder.delete(recursive: true);
+    }
+  });
   testWidgets('CV1 calibration measures speech locally and releases audio on failure and finish', (tester) async {
     final journal = _Journal();
     final wire = _Wire();
@@ -665,7 +719,17 @@ void main() {
     final wire = _Wire();
     final pair = PairedLibrary('100.64.0.1', 'A' * 43);
     final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic), wire);
-    final controls = LocalNextCaptureControls(inputs: inputs, library: pair);
+    final speechMode = ValueNotifier(true);
+    addTearDown(speechMode.dispose);
+    final controls = LocalNextCaptureControls(
+      inputs: inputs,
+      library: pair,
+      speechMode: speechMode,
+      onSpeechMode: (enabled) async {
+        speechMode.value = enabled;
+        return true;
+      },
+    );
     const status = (unreadBytes: 444000, freeBytes: 444, clockValid: true);
     const info = (oldest: 42, unreadPackets: 1000, overwrittenPackets: 4, protocol: Cv1StorageProtocol.legacy);
     void measure(Cv1Diagnostics data) => wire.emit(Cv1DiagnosticsEvent(1, data));
@@ -683,6 +747,11 @@ void main() {
       wire.ready();
       await tester.tap(find.text('Open settings'));
       await tester.pumpAndSettle();
+      final toggle = find.widgetWithText(SwitchListTile, 'Detect speech on this phone');
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
       final storage = find.text('CV1 → phone');
       final after = find.text('Clear CV1 storage');
       await tester.ensureVisible(after);

@@ -56,11 +56,17 @@ final class CV1LegacyRead {
   private static let recordSize = 444
   let start: UInt64
   let count: Int
+  let ring: Data?
   private var began = false
   private var received = Data()
 
   init?(info: Data, maxRecords: Int) {
-    guard (1...32).contains(maxRecords), info.count == 31, info.first == 2,
+    if info.count == 41, info[31] & 0x0d == 0x0d, info[32] == 1, info.suffix(8).contains(where: { $0 != 0 }) {
+      ring = Data(info.suffix(8))
+    } else if info.count == 31 {
+      ring = nil
+    } else { return nil }
+    guard (1...32).contains(maxRecords), info.first == 2,
           Self.integer(info, 29..<31) == UInt64(Self.recordSize) else { return nil }
     let oldest = Self.integer(info, 1..<9)
     let end = Self.integer(info, 9..<17)

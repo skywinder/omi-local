@@ -24,6 +24,7 @@ SETTINGS_FIELDS = {
     'settings': 'settingsServiceUuid',
     'led': 'settingsDimRatioCharacteristicUuid',
     'gain': 'settingsMicGainCharacteristicUuid',
+    'mute': 'settingsMuteCharacteristicUuid',
     'charging': 'settingsChargingStatusCharacteristicUuid',
 }
 

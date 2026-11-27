@@ -6,7 +6,9 @@ enum Cv1ResumeMode { off, armed, stopped, muted }
 class Cv1ResumeSettings {
   Cv1ResumeSettings(this._prefs, String owner) : _key = 'next.cv1.resume.$owner' {
     final stored = _prefs.getString(_key);
-    mode = Cv1ResumeMode.values.where((item) => item.name == stored).firstOrNull ?? Cv1ResumeMode.off;
+    mode =
+        Cv1ResumeMode.values.where((item) => item.name == stored).firstOrNull ??
+        (stored == null ? Cv1ResumeMode.armed : Cv1ResumeMode.off);
   }
 
   final SharedPreferences _prefs;

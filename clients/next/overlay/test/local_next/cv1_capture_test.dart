@@ -115,7 +115,7 @@ class _PreviewProbe extends NextLivePreview {
 }
 
 void main() {
-  test('opt-in CV1 reconnect restores explicit Stop and Mute across cold launches for one pairing', () async {
+  test('default CV1 reconnect restores explicit Stop and Mute across cold launches for one pairing', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     Future<NextCv1Capture> open(String owner, {bool available = true}) async {
@@ -126,7 +126,7 @@ void main() {
     }
 
     final first = await open('a');
-    expect(first.active, isFalse);
+    expect(first.active, isTrue);
     await first.resumeSettings!.save(Cv1ResumeMode.armed);
     first.handle(const Cv1LinkLost(1));
     first.handle(const Cv1LinkReady(2, 20));
@@ -147,7 +147,9 @@ void main() {
     stopped.start();
     await stopped.close();
     expect((await open('a', available: false)).active, isFalse);
-    expect((await open('b')).active, isFalse);
+    expect((await open('b')).active, isTrue);
+    await prefs.setString('next.cv1.resume.c', 'off');
+    expect((await open('c')).active, isFalse);
   });
 
   test('CV1 mute cuts only preview and fences pre-mute flush callbacks from the resumed socket', () async {

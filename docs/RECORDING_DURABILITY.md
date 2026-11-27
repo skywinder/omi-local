@@ -65,6 +65,13 @@ After an interruption, refresh before deciding whether to try again. The
 command clears unread audio on the CV1. Phone parts and server recordings
 remain available independently.
 
+Next checks unread storage on an automatic CV1 connection before starting live notifications.
+Its on-device speech mode writes new audio to private drafts. Each draft keeps its filter
+policy across restarts. The phone promotes confirmed speech intervals to the receipt-checked
+queue with stable IDs and their original times. It discards confirmed silence locally and
+holds uncertain drafts for retry. Unfiltered recordings and older queued parts use their
+original delivery contract. See [phone speech settings](../clients/next/README.md#detect-speech-on-this-phone).
+
 **Phone → server** counts the journal of this app installation, including
 its open part. The original Local app and Next each have their own journal.
 
@@ -83,7 +90,10 @@ are compared by sequence and content before being removed from the incoming stre
 clock discontinuities and queues them with their original timestamps. If processing
 fails, the raw fragment stays bound to that server and can be retried offline.
 An interruption during the Bluetooth transfer can lose audio on legacy firmware.
-Firmware tags 3.0.23 and 3.0.24 implement ring identity and explicit cursor acknowledgement. Next still needs the matching phone journal and resumable transfer.
+On firmware advertising the v1 ring identity, receiver acknowledgement and idempotent advance,
+Next binds the read to that ring. Only a complete read with a successful phone journal flush
+can send an advance for that exact window. Interrupted reads retain the received records.
+The next connection checks the original ring and verifies any repeated records by hash.
 See the [CV1 3.0.23 transfer commands](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.23/omi/firmware/omi/src/lib/core/storage.c) and the [CV1 3.0.21 storage implementation](https://github.com/BasedHardware/omi/blob/Omi_CV1_v3.0.21/omi/firmware/omi/src/lib/core/storage.c).
 
 The Local Mac card includes the number and size of parts retained on the phone.

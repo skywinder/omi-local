@@ -12,7 +12,24 @@ import 'package:omi/services/capture/local_opus_preroll.dart';
 
 typedef LocalPartUploader = Future<Map<String, dynamic>> Function(Uint8List body, String serverId);
 
-enum LocalDeliveryIssue implements Exception { connection, tls, pairing, server, receipt, localFile, queueStorage }
+class LocalSpeechUncertain implements Exception {
+  const LocalSpeechUncertain();
+}
+
+typedef LocalSpeechRange = ({int first, int end});
+typedef LocalSpeechFilter =
+    Future<List<LocalSpeechRange>> Function(String codec, List<Uint8List> packets, int preroll, int pauseSeconds);
+
+enum LocalDeliveryIssue implements Exception {
+  connection,
+  tls,
+  pairing,
+  server,
+  receipt,
+  localFile,
+  queueStorage,
+  speechReview,
+}
 
 /// Audio accepted from Flutter is flushed locally before it enters live preview.
 /// Immutable parts survive network failure and are removed only on a matching
@@ -23,6 +40,8 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     required this.upload,
     this.openJournal,
     this.groupSilence,
+    this.filterSpeech,
+    this.speechMode,
     this.onConversationBoundary,
     DateTime Function()? clock,
     this.partDuration = const Duration(minutes: 5),
@@ -38,6 +57,9 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
   static final _groupUuid = RegExp(r'^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$');
   final Directory directory;
   final LocalPartUploader upload;
+  final LocalSpeechFilter? filterSpeech;
+  final bool Function()? speechMode;
+  bool get filtersNewAudio => speechMode?.call() == true;
   final Future<RandomAccessFile> Function(File file)? openJournal;
   final int? Function()? groupSilence;
   final void Function(String recordingId, int sample)? onConversationBoundary;
@@ -174,7 +196,9 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
       await handle.close();
     }
     if (envelope.header['version'] == 3) await _writeFinishMarker(envelope.header);
-    await file.rename(file.path.replaceFirst(RegExp(r'\.part$'), '.ready'));
+    await file.rename(
+      file.path.replaceFirst(RegExp(r'\.part$'), envelope.header['speech_review'] == 1 ? '.vad' : '.ready'),
+    );
   }
 
   Future<Map<String, dynamic>> _finishHeader(File marker, String recordingId) async {
@@ -241,7 +265,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     captureIssue = null;
     final silence = groupSilence?.call();
     if (silence != null && !groupSilenceChoices.contains(silence)) throw ArgumentError.value(silence);
-    final recording = LocalAudioRecording._(this, source, codec, serverId, silence);
+    final recording = LocalAudioRecording._(this, source, codec, serverId, silence, filtersNewAudio);
     _recordings.add(recording);
     return recording;
   }
@@ -254,6 +278,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     required String codec,
     required DateTime startedAt,
     required List<List<int>> packets,
+    bool? reviewSpeech,
   }) => _serial(() async {
     if (!_groupUuid.hasMatch(id) ||
         !{'opus', 'opus_fs320'}.contains(codec) ||
@@ -264,6 +289,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     final header = utf8.encode(
       jsonEncode({
         'version': 2,
+        if (reviewSpeech ?? filtersNewAudio) 'speech_review': 1,
         'id': id,
         'recording_id': id,
         'index': 0,
@@ -287,7 +313,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
         ..add(_length(packet.length))
         ..add(packet);
     }
-    final ready = File('${directory.path}/$id.ready');
+    final ready = File('${directory.path}/$id.${(reviewSpeech ?? filtersNewAudio) ? 'vad' : 'ready'}');
     final bytes = body.takeBytes();
     if (await ready.exists()) {
       if (!listEquals(bytes, await ready.readAsBytes())) throw const FormatException('Recovered part conflict');
@@ -299,6 +325,25 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     await temp.rename(ready.path);
     await _countPending();
   });
+
+  Future<void> retrySpeechReview() async {
+    await _serial(() async {
+      for (final held in directory.listSync().whereType<File>().where((f) => f.path.endsWith('.held'))) {
+        await held.rename(held.path.replaceFirst(RegExp(r'\.held$'), '.vad'));
+      }
+    });
+    await drain();
+  }
+
+  bool filtersRecording(String id) => _recordings.any((r) => r.recordingId == id && r.reviewSpeech);
+
+  void checkpointSpeech(String id) {
+    for (final recording in _recordings) {
+      if (recording.recordingId == id && recording.reviewSpeech) {
+        unawaited(recording.checkpoint().catchError((Object _) => reportCaptureIssue('storage')));
+      }
+    }
+  }
 
   void reportCaptureIssue(String? issue) {
     captureIssue = issue;
@@ -314,7 +359,11 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     var bytes = 0;
     for (final entity in directory.listSync()) {
       if (entity is File) {
-        final pending = entity.path.endsWith('.ready') || entity.path.endsWith('.part');
+        final pending =
+            entity.path.endsWith('.ready') ||
+            entity.path.endsWith('.vad') ||
+            entity.path.endsWith('.held') ||
+            entity.path.endsWith('.part');
         if (pending) count++;
         if (pending || entity.path.endsWith('.finish')) bytes += await entity.length();
       }
@@ -371,10 +420,114 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
     return run;
   }
 
+  /// Only locally classified packets can enter the network queue. A torn publish
+  /// replays the same envelope IDs and bytes, including after a lost receipt.
+  Future<void> _reviewSpeech(File staged) async {
+    if (await staged.length() > maxPartBytes) throw const FormatException('Oversized speech draft');
+    final bytes = await staged.readAsBytes();
+    final envelope = _header(bytes);
+    final header = envelope.header;
+    if (header['speech_review'] != 1 || header['version'] != 2 || filterSpeech == null) {
+      throw StateError('Speech review unavailable');
+    }
+    final packets = <Uint8List>[];
+    var offset = envelope.offset;
+    while (offset < bytes.length) {
+      final size = ByteData.sublistView(bytes, offset, offset + 4).getUint32(0, Endian.big);
+      offset += 4;
+      if (size == 0 || size > maxFrameBytes || packets.length >= maxPartPackets) {
+        throw const FormatException('Invalid speech draft');
+      }
+      packets.add(Uint8List.sublistView(bytes, offset, offset + size));
+      offset += size;
+    }
+    final codec = header['codec'] as String;
+    final preroll = header['preroll_frames'] as int;
+    final ranges = await filterSpeech!(codec, packets, preroll, header['speech_pause'] as int? ?? 2);
+    final started = DateTime.parse(header['started_at'] as String);
+    final id = header['id'] as String;
+    var next = preroll;
+    var micros = 0;
+    for (final range in ranges) {
+      if (range.first < next || range.first >= range.end || range.end > packets.length) {
+        throw const FormatException('Invalid speech interval');
+      }
+      while (next < range.first) {
+        micros += LocalAudioRecording.packetMicroseconds(codec, packets[next++]);
+      }
+      final context = LocalOpusPreroll();
+      if (codec != 'pcm16') {
+        for (var i = (range.first - 32).clamp(0, range.first); i < range.first; i++) {
+          context.remember(packets[i], LocalAudioRecording.packetMicroseconds(codec, packets[i]));
+        }
+      }
+      final partId = const Uuid().v5(id, 'speech/${range.first}/${range.end}');
+      final meta = Map<String, dynamic>.of(header)
+        ..remove('speech_review')
+        ..remove('speech_pause')
+        ..addAll({
+          'id': partId,
+          'recording_id': partId,
+          'index': 0,
+          'started_at': started.add(Duration(microseconds: micros)).toUtc().toIso8601String(),
+          'preroll_frames': context.packets.length,
+        });
+      final encoded = utf8.encode(jsonEncode(meta));
+      final result = typed.BytesBuilder()
+        ..add(magic)
+        ..add(_length(encoded.length))
+        ..add(encoded);
+      for (final packet in [...context.packets, ...packets.getRange(range.first, range.end)]) {
+        result
+          ..add(_length(packet.length))
+          ..add(packet);
+      }
+      final body = result.takeBytes();
+      if (body.length > maxPartBytes) throw const FormatException('Oversized speech interval');
+      final ready = File('${directory.path}/$partId.ready');
+      await _serial(() async {
+        if (await ready.exists()) {
+          if (!listEquals(await ready.readAsBytes(), body)) throw StateError('Speech part conflict');
+        } else {
+          if (pendingBytes + body.length > maxStorageBytes) throw LocalDeliveryIssue.queueStorage;
+          final temp = File('${ready.path}.tmp');
+          await temp.writeAsBytes(body, flush: true);
+          await temp.rename(ready.path);
+          pendingBytes += body.length;
+          pendingParts++;
+        }
+      });
+      while (next < range.end) {
+        micros += LocalAudioRecording.packetMicroseconds(codec, packets[next++]);
+      }
+    }
+    await _serial(() async {
+      await staged.delete();
+      pendingBytes -= bytes.length;
+      pendingParts--;
+    });
+  }
+
   Future<void> _drain() async {
     _retry?.cancel();
     final issues = <LocalDeliveryIssue>{if (_recoveryFailed) LocalDeliveryIssue.localFile};
     try {
+      for (final staged in directory.listSync().whereType<File>().where((f) => f.path.endsWith('.vad'))) {
+        if (_disposed) return;
+        try {
+          await _reviewSpeech(staged);
+        } on LocalSpeechUncertain {
+          await _serial(() => staged.rename(staged.path.replaceFirst(RegExp(r'\.vad$'), '.held')));
+        } on LocalDeliveryIssue catch (issue) {
+          issues.add(issue);
+        } on FileSystemException {
+          issues.add(LocalDeliveryIssue.queueStorage);
+        } catch (_) {
+          issues.add(LocalDeliveryIssue.speechReview);
+        }
+      }
+      if (directory.listSync().any((entry) => entry.path.endsWith('.held')))
+        issues.add(LocalDeliveryIssue.speechReview);
       final files = directory.listSync().whereType<File>().where((file) => file.path.endsWith('.ready')).toList()
         ..sort((a, b) => a.path.compareTo(b.path));
       for (final file in files) {
@@ -382,6 +535,7 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
           final body = await file.readAsBytes();
           if (body.length > maxPartBytes) throw const FormatException('Oversized local audio part');
           final header = _header(body).header;
+          if (header.containsKey('speech_review')) throw LocalDeliveryIssue.speechReview;
           final Map<String, dynamic> receipt;
           try {
             receipt = await upload(body, header['server_id'] as String);
@@ -442,13 +596,15 @@ class LocalAudioJournal extends ChangeNotifier with WidgetsBindingObserver {
 }
 
 class LocalAudioRecording {
-  LocalAudioRecording._(this.outbox, this.source, this.codec, this.serverId, this.silenceSeconds);
+  LocalAudioRecording._(this.outbox, this.source, this.codec, this.serverId, this.silenceSeconds, this.reviewSpeech);
 
   final LocalAudioJournal outbox;
   final String source;
   final String codec;
   final String serverId;
   final int? silenceSeconds;
+  final bool reviewSpeech;
+  bool get _grouped => silenceSeconds != null && !reviewSpeech;
   final String recordingId = const Uuid().v4();
   int _index = 0;
   File? _file;
@@ -490,7 +646,7 @@ class LocalAudioRecording {
         if (_writeFailed) throw StateError('Local journal write failed; original part is retained');
         const groupedPartMicros = 15 * Duration.microsecondsPerSecond;
         final configuredLimit = outbox.partDuration.inMicroseconds;
-        final partLimit = (silenceSeconds ?? 0) > 0 && configuredLimit > groupedPartMicros
+        final partLimit = _grouped && (silenceSeconds ?? 0) > 0 && configuredLimit > groupedPartMicros
             ? groupedPartMicros
             : configuredLimit;
         if (_handle != null &&
@@ -557,8 +713,9 @@ class LocalAudioRecording {
     final preroll = _preroll.packets;
     _freshPackets = 0;
     final part = _partHeader = {
-      'version': silenceSeconds == null ? 2 : 3,
-      if (silenceSeconds != null) ...{
+      'version': _grouped ? 3 : 2,
+      if (reviewSpeech) ...{'speech_review': 1, 'speech_pause': silenceSeconds ?? 2},
+      if (_grouped) ...{
         'group_version': 1,
         'kind': 'audio',
         'group_started_at': _groupStarted!.toIso8601String(),
@@ -579,7 +736,7 @@ class LocalAudioRecording {
     if (outbox.pendingBytes + openingBytes + freshPacketBytes > outbox.maxStorageBytes) {
       throw StateError('Local audio storage is full; pending audio is retained');
     }
-    final filename = silenceSeconds == null ? id : '$recordingId.$id';
+    final filename = _grouped ? '$recordingId.$id' : id;
     _file = File('${outbox.directory.path}/$filename.part');
     await _file!.create(exclusive: true);
     _handle = await (outbox.openJournal?.call(_file!) ?? _file!.open(mode: FileMode.writeOnly));
@@ -611,8 +768,8 @@ class LocalAudioRecording {
     await _handle!.flush();
     await _handle!.close();
     _handle = null;
-    if (silenceSeconds != null && _freshPackets > 0) await outbox._writeFinishMarker(_partHeader!);
-    await _file!.rename(_file!.path.replaceFirst(RegExp(r'\.part$'), '.ready'));
+    if (_grouped && _freshPackets > 0) await outbox._writeFinishMarker(_partHeader!);
+    await _file!.rename(_file!.path.replaceFirst(RegExp(r'\.part$'), reviewSpeech ? '.vad' : '.ready'));
     _file = null;
     outbox.retry();
   }
@@ -623,7 +780,7 @@ class LocalAudioRecording {
     outbox._recordings.remove(this);
     return _stopping = outbox._serial(() async {
       await _seal();
-      if (silenceSeconds != null && !_writeFailed) await outbox._publishFinish(recordingId);
+      if (_grouped && !_writeFailed) await outbox._publishFinish(recordingId);
     });
   }
 

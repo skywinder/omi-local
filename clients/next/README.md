@@ -531,11 +531,34 @@ See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 Long-press the Next app icon for device settings and, on a task-capable paired server, **Add Task**. During CV1 capture the menu also exposes the current mute or unmute action. Shortcuts are scoped to their saved pairing.
 
 In **Settings and diagnostics**, **Record on CV1 connection** enables automatic
-capture for the active pairing on the next successful CV1 connection. It starts
-off. An explicit Stop waits for a manual Start, and a muted session reopens
+capture for the active pairing on the next successful CV1 connection. New pairings start with this option enabled. A saved Off preference is respected. An explicit Stop waits for a manual Start, and a muted session reopens
 muted. Selecting the phone microphone also suspends automatic CV1 capture.
 Android remembers a CV1 after a successful audio-service handshake; **Forget
 device** clears this selection.
+
+### Detect speech on this phone
+
+**Settings and diagnostics → Detect speech on this phone** defaults to on for each pairing.
+Next runs the bundled Silero model on the phone for CV1 audio, an explicitly started phone
+microphone, and imported CV1 audio. Live sends audio after speech onset with up to about
+320 ms of preceding sound and 480 ms of trailing sound. The archive keeps short pauses
+inside a clip. Two seconds of silence ends a clip by default. A selected silence interval
+overrides this duration. Stopping CV1 packets also closes the current draft on its timer.
+The phone microphone starts only from its own control.
+
+Speech filtering runs offline. A sealed draft produces independent speech clips within
+that part's time range. A five-minute limit, Stop, or a connection checkpoint can also
+end a part. Fully quiet drafts produce no upload. Ambiguous drafts remain on the phone
+for manual retry. An unavailable detector also keeps its drafts locally. Switching the
+filter during CV1 listening starts a fresh draft. Finish a phone-microphone recording
+or a storage transfer before changing the switch. The switch governs new audio.
+Disabling it restores continuous Live and the server's existing archive grouping.
+
+On a saved CV1 link in automatic listening mode, Next checks the stored microphone mute
+and imports the initial unread archive before subscribing to live audio. A compatible
+pendant confirms a persistent mute by readback. With older firmware, the phone stops
+receiving audio and shows hardware mute as unconfirmed. A powered-off or unreachable
+pendant can acknowledge a new hardware mute only after it reconnects.
 
 ## Live transcript
 
@@ -570,7 +593,7 @@ capture after detected speech followed by silence. Enable **Keep listening
 after silence** to finish the conversation and continue monitoring. The choices
 appear on a compatible paired server and apply to the next recording.
 A connected CV1 that stops sending audio can also finish on the phone's
-timer. For incoming audio, automatic Stop depends on the paired server's
+timer. With phone speech detection disabled, automatic Stop during incoming audio uses the paired server's
 silence detector. Live timestamps include gaps in the input. The server uses the
 durable audio samples to publish and trim saved conversations.
 
