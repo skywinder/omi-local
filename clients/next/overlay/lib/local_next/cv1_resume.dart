@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum Cv1ResumeMode { off, armed, stopped, muted }
+enum Cv1ResumeMode { off, armed, stopped, muted, manualRecording, manualMuted }
 
 /// The user's choice belongs to this pairing. Only explicit capture actions change it.
 class Cv1ResumeSettings {
@@ -27,6 +27,9 @@ class Cv1ResumeSettings {
     return _pending;
   }
 
-  bool get enabled => mode != Cv1ResumeMode.off;
+  bool get enabled => switch (mode) {
+    Cv1ResumeMode.armed || Cv1ResumeMode.stopped || Cv1ResumeMode.muted => true,
+    _ => false,
+  };
   Future<bool> get saved => _pending;
 }

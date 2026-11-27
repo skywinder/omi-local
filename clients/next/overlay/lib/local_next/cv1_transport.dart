@@ -264,6 +264,12 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
   @override
   Future<void> sampleSignal() => _methods.invokeMethod<void>('sampleSignal');
 
+  Future<void> setCaptureActive(bool active) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    const channel = MethodChannel('org.omilocal.next/capture');
+    await channel.invokeMethod<void>(active ? 'startCv1' : 'stopCv1');
+  }
+
   @override
   Future<void> setArchiveAwake(bool enabled) => _methods.invokeMethod<void>('setArchiveAwake', {'enabled': enabled});
 
@@ -336,12 +342,14 @@ class UnavailableCv1Transport implements Cv1Transport {
 /// demand for the live link. Capture admission and journal custody stay with
 /// [NextCv1Capture], even if CoreBluetooth is still disabling notifications.
 class Cv1Connection extends ChangeNotifier {
-  Cv1Connection(this._transport, this._capture, {Cv1History? history}) : history = history ?? Cv1History() {
+  Cv1Connection(this._transport, this._capture, {Cv1History? history, this.makeAudioRetry = Timer.new})
+    : history = history ?? Cv1History() {
     _capture.addListener(_demandChanged);
     _subscription = _transport.events.listen(_onEvent, onError: (Object _) => _linkEnded(), onDone: _linkEnded);
   }
 
   final Cv1Transport _transport;
+  final Timer Function(Duration, void Function()) makeAudioRetry;
   final NextCv1Capture _capture;
   late final StreamSubscription<Cv1TransportEvent> _subscription;
   final _devices = <String, Cv1DeviceFound>{};
@@ -376,6 +384,9 @@ class Cv1Connection extends ChangeNotifier {
   int? _nativeSubscription;
   int _subscriptionSerial = 0;
   bool _wantsAudio = false;
+  bool _captureServiceRequested = false;
+  Future<void> _serviceUpdate = Future.value();
+  Timer? _audioRetry;
   int _audioBytesReceived = 0;
 
   /// Raw audio notification bytes for the current subscription, including the CV1 header.
@@ -841,9 +852,30 @@ class Cv1Connection extends ChangeNotifier {
 
   int? get _desiredSubscription => _wantsAudio ? _subscriptionSerial : null;
 
+  void _updateCaptureService(bool active) {
+    final transport = _transport;
+    if (transport is! ChannelCv1Transport || _captureServiceRequested == active) return;
+    _captureServiceRequested = active;
+    _serviceUpdate = _serviceUpdate.then((_) async {
+      try {
+        await transport.setCaptureActive(active);
+      } catch (_) {
+        // An Android background start can be rejected until the app is visible.
+        if (_captureServiceRequested == active) _captureServiceRequested = !active;
+      }
+    });
+  }
+
+  void recoverDemand() => _demandChanged();
+
   void _demandChanged() {
     if (_closing) return;
+    _updateCaptureService(_capture.intent == Cv1CaptureIntent.recording);
     final wants = phase == Cv1LinkPhase.ready && (_capture.wantsAudio || calibrating);
+    if (!wants) {
+      _audioRetry?.cancel();
+      _audioRetry = null;
+    }
     if (wants != _wantsAudio) {
       _wantsAudio = wants;
       if (wants) {
@@ -852,7 +884,10 @@ class Cv1Connection extends ChangeNotifier {
         audioFailed = false;
       }
     }
-    if (!_updatingAudio && phase == Cv1LinkPhase.ready && _nativeSubscription != _desiredSubscription) {
+    if (!_updatingAudio &&
+        _audioRetry == null &&
+        phase == Cv1LinkPhase.ready &&
+        _nativeSubscription != _desiredSubscription) {
       unawaited(_updateAudio());
     }
   }
@@ -879,6 +914,16 @@ class Cv1Connection extends ChangeNotifier {
           if (failed) _recordEvent(Cv1LinkPhase.ready, reason: Cv1LinkReason.audio);
           notifyListeners();
         }
+        if (failed && enabled && generation == _generation && _desiredSubscription == subscription && !_closing) {
+          // Retire the failed token before enabling a fresh subscription. The
+          // native transport can have accepted the token before its BLE write failed.
+          _audioRetry = makeAudioRetry(const Duration(seconds: 4), () {
+            _audioRetry = null;
+            if (generation == _generation && _desiredSubscription == subscription) _subscriptionSerial++;
+            _demandChanged();
+          });
+          break;
+        }
       }
     } finally {
       _updatingAudio = false;
@@ -892,6 +937,9 @@ class Cv1Connection extends ChangeNotifier {
     _calibration = null;
     _cancelPairRetry();
     _capture.removeListener(_demandChanged);
+    _audioRetry?.cancel();
+    _updateCaptureService(false);
+    await _serviceUpdate;
     try {
       await _subscription.cancel();
     } finally {

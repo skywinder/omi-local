@@ -125,6 +125,16 @@ void main() {
       return fixture.capture;
     }
 
+    final manual = await open('manual');
+    expect(manual.resumeSettings!.enabled, isFalse);
+    manual.start();
+    await manual.close();
+    final restored = await open('manual');
+    expect(restored.wantsAudio, isTrue);
+    expect(restored.resumeSettings!.enabled, isFalse);
+    await restored.stop();
+    expect((await open('manual')).active, isFalse);
+
     final first = await open('a');
     expect(first.active, isFalse);
     await first.resumeSettings!.save(Cv1ResumeMode.armed);

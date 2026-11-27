@@ -235,7 +235,7 @@ class _Microphone implements NextPhoneMicrophone {
   @override
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure) async => recording = true;
   @override
-  Future<void> stop() async => recording = false;
+  Future<void> stop({bool reopening = false}) async => recording = false;
 }
 
 class _GainDecoder implements Cv1GainDecoder {
@@ -996,9 +996,9 @@ void main() {
       expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
-      expect(find.text('Stop after silence'), findsOneWidget);
+      expect(find.text('Split conversations after silence'), findsOneWidget);
       expect(find.textContaining('Applies to the next recording.'), findsOneWidget);
-      await tester.tap(find.text('Stop after silence'));
+      await tester.tap(find.text('Split conversations after silence'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('30s'));
       await tester.pumpAndSettle();
@@ -1028,85 +1028,78 @@ void main() {
     }
   });
 
-  for (final keepListening in [false, true]) {
-    testWidgets('Live follows CV1 silence with continued listening set to $keepListening', (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var now = DateTime.utc(2026);
-      final threshold = ValueNotifier<int?>(60);
-      final journal = _Journal(clock: () => now, groupSilence: () => threshold.value);
-      final mic = _Microphone();
-      final wire = _Wire();
-      final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
-      final preview = NextLivePreview(
-        'fixture',
-        (owner, source, codec, {silence}) async => throw const SocketException('offline'),
-      );
-      final inputs = NextCaptureInputs(
-        NextPhoneCapture(journal, 'fixture', mic, preview: preview, keepListeningAfterSilence: () => keepListening),
-        wire,
-      );
-      try {
-        await tester.pumpWidget(
-          MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: LocalNextCaptureControls(
-                inputs: inputs,
-                library: pair,
-                serverLabel: 'Test server',
-                groupSilence: threshold,
-              ),
+  testWidgets('CV1 silence finishes the conversation and keeps the input active', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var now = DateTime.utc(2026);
+    final threshold = ValueNotifier<int?>(60);
+    final journal = _Journal(clock: () => now, groupSilence: () => threshold.value);
+    final mic = _Microphone();
+    final wire = _Wire();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
+    final preview = NextLivePreview(
+      'fixture',
+      (owner, source, codec, {silence}) async => throw const SocketException('offline'),
+    );
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic, preview: preview), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: LocalNextCaptureControls(
+              inputs: inputs,
+              library: pair,
+              serverLabel: 'Test server',
+              groupSilence: threshold,
             ),
           ),
-        );
-        wire.ready();
-        await inputs.startCv1();
-        void packet(int counter) =>
-            inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
-        packet(0);
-        packet(1);
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('next-live-strip')));
-        await tester.pumpAndSettle();
-        expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+        ),
+      );
+      wire.ready();
+      await inputs.startCv1();
+      void packet(int counter) =>
+          inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      packet(0);
+      packet(1);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+      await tester.pumpAndSettle();
+      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
 
-        now = now.add(const Duration(seconds: 59));
-        await tester.pump(const Duration(seconds: 59));
-        expect(inputs.cv1.active, isTrue);
-        packet(2);
-        await tester.pump();
-        now = now.add(const Duration(seconds: 59));
-        await tester.pump(const Duration(seconds: 59));
-        expect(inputs.cv1.active, isTrue);
-        now = now.add(const Duration(seconds: 1));
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pumpAndSettle();
-        expect(inputs.cv1.sealing, isTrue);
-        expect(inputs.cv1.active, keepListening);
-        expect(find.textContaining('Test server'), keepListening ? findsOneWidget : findsNothing);
-        expect(wire.subscriptions, keepListening ? [true] : [true, false]);
-        expect(journal.recordings, 1);
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      packet(2);
+      await tester.pump();
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      now = now.add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.sealing, isTrue);
+      expect(inputs.cv1.active, isTrue);
+      expect(find.textContaining('Test server'), findsOneWidget);
+      expect(wire.subscriptions, [true]);
+      expect(journal.recordings, 1);
 
-        if (keepListening) {
-          packet(3);
-          packet(4);
-          await tester.pumpAndSettle();
-          expect(journal.recordings, 2);
-          expect(find.textContaining('Test server'), findsOneWidget);
-        }
-      } finally {
-        journal.seal.complete();
-        await tester.pumpWidget(const SizedBox.shrink());
-        await inputs.close();
-        inputs.dispose();
-        pair.close();
-        journal.dispose();
-        threshold.dispose();
-        await mic.audioSession.close();
-      }
-    });
-  }
+      packet(3);
+      packet(4);
+      await tester.pumpAndSettle();
+      expect(journal.recordings, 2);
+      expect(find.textContaining('Test server'), findsOneWidget);
+    } finally {
+      journal.seal.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      threshold.dispose();
+      await mic.audioSession.close();
+    }
+  });
 
   testWidgets('pairing waits for native readiness, retries a timeout once and shows the BLE code', (tester) async {
     final journal = _Journal();

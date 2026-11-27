@@ -68,6 +68,19 @@ class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1Diagnostic
   Future<void> writeSetting(int generation, String field, int value) async {}
 }
 
+class _ManualRetry extends Fake implements Timer {
+  _ManualRetry(this.retry);
+  final void Function() retry;
+  bool cancelled = false;
+
+  @override
+  void cancel() => cancelled = true;
+
+  void fire() {
+    if (!cancelled) retry();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -448,6 +461,49 @@ void main() {
       await journal.drain();
       journal.dispose();
       await folder.delete(recursive: true);
+    }
+  });
+
+  test('CV1 retries a failed notification subscription and respects Stop', () async {
+    final journal = LocalAudioJournal(directory: Directory('unused'), upload: (bytes, owner) async => {});
+    final capture = NextCv1Capture(journal, 'fixture', canStart: () => true);
+    final radio = _Radio();
+    final retries = <_ManualRetry>[];
+    final link = Cv1Connection(
+      radio,
+      capture,
+      makeAudioRetry: (delay, retry) {
+        expect(delay, const Duration(seconds: 4));
+        final timer = _ManualRetry(retry);
+        retries.add(timer);
+        return timer;
+      },
+    );
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20));
+      capture.start();
+      await pumpEventQueue();
+      final first = radio.commands.single.$2;
+      radio.enabling.completeError(PlatformException(code: 'audio_subscription'));
+      await pumpEventQueue();
+      expect(link.audioFailed, isTrue);
+      retries.single.fire();
+      await pumpEventQueue();
+      final second = radio.commands.last.$2;
+      expect(second, greaterThan(first));
+      expect(radio.commands, [(1, first, true), (1, first, false), (1, second, true)]);
+      expect(link.audioFailed, isFalse);
+      await capture.stop();
+      await pumpEventQueue();
+      expect(retries, hasLength(1));
+      expect(radio.commands.last, (1, second, false));
+      expect(radio.commands, hasLength(4));
+    } finally {
+      await link.close();
+      await capture.close();
+      link.dispose();
+      capture.dispose();
+      journal.dispose();
     }
   });
 

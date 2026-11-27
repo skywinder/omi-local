@@ -149,10 +149,17 @@ uses the model name or hardware model code when the name is unavailable.
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
 The Live Transcript card shows the active input and elapsed time.
 The Live Transcript screen shows the active silence threshold below the text.
-While a conversation is recording it shows the threshold in use. After a
-full Stop, including a stop triggered by silence, Live returns to Conversations.
-With **Keep listening after silence** enabled, Live stays open for the next
-conversation. The gear menu's **Phone upload queue** shows the audio stored on the phone, including the open part and sealed parts awaiting a durable server receipt. Delivery problems also appear beside the recording buttons.
+Live stays open when silence ends a conversation. The selected input keeps
+listening for the next conversation. Tap **Stop** to end recording and clear
+its automatic resume request. **Phone upload queue** shows the open part and
+sealed parts awaiting a durable server receipt. Delivery problems also appear
+beside the recording buttons.
+
+Next remembers the input started for the paired server. It retries recoverable
+microphone interruptions and restores a previously running input when the app
+reopens. CV1 waits for the selected pendant to reconnect. Android keeps an
+ongoing recording notification while the input is active. If the operating
+system terminates the app, reopen Next to resume.
 Archive, favorites, categories, filters and folders share one toolbar. Color and icons distinguish the phone microphone, CV1, active recording, connection states, and selected filters in both themes. Larger text can be reached by scrolling the toolbar horizontally.
 The Bluetooth menu shows short IDs for nearby and connected devices so
 identically named pendants can be distinguished.
@@ -535,9 +542,10 @@ See [wearable audio recovery](../../docs/WEARABLE_RECOVERY.md).
 Long-press the Next app icon for device settings and, on a task-capable paired server, **Add Task**. During CV1 capture the menu also exposes the current mute or unmute action. Shortcuts are scoped to their saved pairing.
 
 In **Settings and diagnostics**, **Record on CV1 connection** enables automatic
-capture for the active pairing on the next successful CV1 connection. It starts
-off. An explicit Stop waits for a manual Start, and a muted session reopens
-muted. Selecting the phone microphone also suspends automatic CV1 capture.
+capture for the active pairing on the next successful CV1 connection. This
+option starts off. A CV1 recording you start manually can resume even with the
+option off. An explicit Stop waits for a manual Start. A muted session reopens
+muted, and selecting the phone microphone suspends CV1 capture.
 Android remembers a CV1 after a successful audio-service handshake; **Forget
 device** clears this selection.
 
@@ -567,15 +575,13 @@ Use the tuning button on the Live screen to set a limit of one to four voices
 when the paired server and Live provider support it. A save uses the current
 server revision. Refresh before retrying a conflict or an uncertain write.
 The saved limit applies when the server opens a new recognition stream. The
-current stream shows its separately acknowledged limit. **Stop after silence**
-in capture settings and Live settings selects one recording per part, one
-conversation until Stop, or a timed silence interval. A timed interval stops
-capture after detected speech followed by silence. Enable **Keep listening
-after silence** to finish the conversation and continue monitoring. The choices
-appear on a compatible paired server and apply to the next recording.
-A connected CV1 that stops sending audio can also finish on the phone's
-timer. For incoming audio, automatic Stop depends on the paired server's
-silence detector. Live timestamps include gaps in the input. The server uses the
+current stream shows its separately acknowledged limit. **Split conversations
+after silence** selects one recording per part, one conversation until Stop,
+or a timed silence interval. The paired server separates conversations at
+silence while the input stays active. If a connected CV1 stops sending frames,
+the phone can finish the open conversation and accept the next frames as a new
+one. The choices appear on a compatible paired server and apply to the next
+recording. Live timestamps include gaps in the input. The server uses the
 durable audio samples to publish and trim saved conversations.
 
 ## Processing profiles

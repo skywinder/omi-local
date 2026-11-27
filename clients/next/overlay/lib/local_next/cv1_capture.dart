@@ -47,7 +47,6 @@ class NextCv1Capture extends ChangeNotifier {
     this.doubleTapAction,
     this.resumeSettings,
     this.preview,
-    this.keepListeningAfterSilence,
   });
 
   final LocalAudioJournal journal;
@@ -58,7 +57,6 @@ class NextCv1Capture extends ChangeNotifier {
   final Cv1DoubleTapAction Function()? doubleTapAction;
   final Cv1ResumeSettings? resumeSettings;
   final NextLivePreview? preview;
-  final bool Function()? keepListeningAfterSilence;
   final _frames = Cv1OpusFrameAssembler();
   LocalAudioRecording? _recording;
   DateTime? startedAt;
@@ -87,7 +85,6 @@ class NextCv1Capture extends ChangeNotifier {
   Timer? _audioDeadline;
   Timer? _silenceDeadline;
   DateTime? _lastAcceptedAt;
-  bool _stopAfterSilence = false;
   bool get hasPersistedAudio => _lastPersistedAt != null;
   bool get audioPaused => wantsAudio && hasPersistedAudio && _audioDeadline == null;
 
@@ -114,7 +111,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (remaining > Duration.zero) {
       _silenceDeadline = Timer(remaining, rearmSilenceDeadline);
     } else {
-      unawaited(_stopAfterSilence ? stop() : finishConversation());
+      unawaited(finishConversation());
     }
   }
 
@@ -146,7 +143,15 @@ class NextCv1Capture extends ChangeNotifier {
 
   Future<void> _remember(Cv1ResumeMode mode) async {
     final settings = resumeSettings;
-    if (settings == null || !settings.enabled) return;
+    if (settings == null) return;
+    if (!settings.enabled) {
+      mode = switch (mode) {
+        Cv1ResumeMode.armed => Cv1ResumeMode.manualRecording,
+        Cv1ResumeMode.muted => Cv1ResumeMode.manualMuted,
+        Cv1ResumeMode.stopped => Cv1ResumeMode.off,
+        _ => mode,
+      };
+    }
     if (!await settings.save(mode) && !_closed) {
       _problem = Cv1CaptureProblem.preference;
       notifyListeners();
@@ -168,12 +173,16 @@ class NextCv1Capture extends ChangeNotifier {
     if (_closed) return _sealed;
     _cancelButtonStart();
     final remembered = _remember(Cv1ResumeMode.stopped);
-    if (!active) return Future.wait<void>([_sealed, remembered]);
+    _stopCapture();
+    return Future.wait<void>([_sealed, remembered]);
+  }
+
+  void _stopCapture() {
+    if (!active) return;
     _intent = Cv1CaptureIntent.stopped;
     startedAt = null;
     _endSegment();
     notifyListeners();
-    return Future.wait<void>([_sealed, remembered]);
   }
 
   bool get canFinish => active && _recording != null;
@@ -211,18 +220,7 @@ class NextCv1Capture extends ChangeNotifier {
       case Cv1LinkReady(:final codecCode):
         if (_generation == event.generation && _codecCode == codecCode) return;
         _setLink(event.generation, codecCode);
-        if (!active && codecSupported && canStart()) {
-          switch (resumeSettings?.mode) {
-            case Cv1ResumeMode.armed:
-              start();
-            case Cv1ResumeMode.muted:
-              // Restore the control without requesting even one audio notification.
-              _intent = Cv1CaptureIntent.muted;
-              notifyListeners();
-            default:
-              break;
-          }
-        }
+        restore();
       case Cv1LinkLost():
         if (_generation == event.generation && !linked) return;
         _setLink(event.generation, null);
@@ -230,6 +228,19 @@ class NextCv1Capture extends ChangeNotifier {
         if (event.generation == _generation && wantsAudio) _accept(raw);
       case Cv1Button(:final code):
         if (event.generation == _generation && linked) _button(code);
+    }
+  }
+
+  void restore() {
+    if (_closed || active || sealing || !codecSupported || !canStart()) return;
+    switch (resumeSettings?.mode) {
+      case Cv1ResumeMode.armed || Cv1ResumeMode.manualRecording:
+        start();
+      case Cv1ResumeMode.muted || Cv1ResumeMode.manualMuted:
+        _intent = Cv1CaptureIntent.muted;
+        notifyListeners();
+      default:
+        break;
     }
   }
 
@@ -276,7 +287,6 @@ class NextCv1Capture extends ChangeNotifier {
     if (_recording == null) {
       _segment++;
       startedAt ??= journal.clock();
-      _stopAfterSilence = keepListeningAfterSilence?.call() != true;
     }
     final current = _recording ??= journal.beginForServer(source: 'omi', codec: _codec!, serverId: owner);
     final acceptedAt = journal.clock();
@@ -296,17 +306,7 @@ class NextCv1Capture extends ChangeNotifier {
               if (_closed || current != _recording) return;
               if (preview case final live? when previewEpoch == _previewEpoch) {
                 final duration = LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000;
-                live.begin(
-                  current.recordingId,
-                  current.source,
-                  current.codec,
-                  silenceSeconds: current.silenceSeconds,
-                  onSilence: _stopAfterSilence && (current.silenceSeconds ?? 0) > 0
-                      ? () {
-                          if (current == _recording && wantsAudio && previewEpoch == _previewEpoch) unawaited(stop());
-                        }
-                      : null,
-                );
+                live.begin(current.recordingId, current.source, current.codec, silenceSeconds: current.silenceSeconds);
                 live.addPersisted(
                   current.recordingId,
                   current.source,
@@ -334,7 +334,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (current != _recording && active) return;
     _problem = Cv1CaptureProblem.storage;
     if (active) {
-      unawaited(stop());
+      _stopCapture();
     } else {
       notifyListeners();
     }

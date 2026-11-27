@@ -39,7 +39,7 @@ def prepare_native(app):
     shutil.copytree(HERE / 'android/res', main / 'res', dirs_exist_ok=True)
     activity = main / 'kotlin/org/omilocal/next/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
-    for source in ('MainActivity.kt', 'NextCV1.kt', 'NextReminders.kt'):
+    for source in ('MainActivity.kt', 'NextCV1.kt', 'NextCaptureService.kt', 'NextReminders.kt'):
         shutil.copyfile(HERE / 'android' / source, activity.parent / source)
     constants = [f'    val {name} = java.util.UUID.fromString("{value}")'
                  for name, value in cv1_uuids(app).items()]

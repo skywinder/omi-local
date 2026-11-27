@@ -67,13 +67,11 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
   bool _storageFailed = false;
   bool _closed = false;
   final _groupSilence = ValueNotifier<int?>(null);
-  final _keepListening = ValueNotifier(false);
   Cv1DoubleTapAction _doubleTap = Cv1DoubleTapAction.checkpoint;
   static const _doubleTapKey = 'next.cv1.doubleTap';
   SharedPreferences? _groupPrefs;
   Timer? _diagnosticPoll;
   String get _groupPrefKey => 'next.capture.groupSilence.${widget.library.audioOwnerId}';
-  String get _keepListeningKey => 'next.capture.keepListeningAfterSilence.${widget.library.audioOwnerId}';
 
   @override
   void initState() {
@@ -94,7 +92,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         _groupPrefs = await SharedPreferences.getInstance();
         final value = _groupPrefs?.getInt(_groupPrefKey);
         if (LocalAudioJournal.groupSilenceChoices.contains(value)) _groupSilence.value = value;
-        _keepListening.value = _groupPrefs?.getBool(_keepListeningKey) ?? false;
         final gesture = _groupPrefs?.getString(_doubleTapKey);
         _doubleTap =
             Cv1DoubleTapAction.values.where((action) => action.name == gesture).firstOrNull ??
@@ -150,7 +147,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
           library.audioOwnerId,
           FlutterPhoneMicrophone(),
           preview: preview,
-          keepListeningAfterSilence: () => !_closed && _keepListening.value,
+          preferences: _groupPrefs,
         ),
         _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
@@ -160,6 +157,8 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
       );
       if (retainedArchive) _inputs!.archiveMessage = 'nextImportRetained';
       widget.onInputsReady?.call(_inputs!);
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle == null || lifecycle == AppLifecycleState.resumed) unawaited(_inputs!.foregrounded());
       if (_hasCv1) _diagnosticPoll = Timer.periodic(const Duration(minutes: 1), (_) => _sampleIdleLink());
       journal.retry();
     } catch (_) {
@@ -186,8 +185,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _inputs?.phone.rearmWatchdog();
-      _inputs?.cv1.rearmSilenceDeadline();
+      unawaited(_inputs?.foregrounded());
       _sampleIdleLink();
     } else {
       unawaited(_inputs?.connection.history.flush());
@@ -199,7 +197,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     _closed = true;
     _diagnosticPoll?.cancel();
     _groupSilence.dispose();
-    _keepListening.dispose();
     WidgetsBinding.instance.removeObserver(this);
     widget.library.ownerChange.detachCapture(_captureBusy);
     _previousRelease = _release();
@@ -246,8 +243,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     library: widget.library,
     groupSilence: _groupSilence,
     onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
-    keepListening: _keepListening,
-    onKeepListening: _groupPrefs == null ? null : _setKeepListening,
     doubleTap: _doubleTap,
     onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
   );
@@ -286,22 +281,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     }
     return false;
   }
-
-  Future<void> _setKeepListening(bool value) async {
-    final prefs = _groupPrefs;
-    if (prefs == null || _closed || !widget.library.ownerChange.permitsCapture) return;
-    try {
-      if (await prefs.setBool(_keepListeningKey, value) && mounted) {
-        _keepListening.value = value;
-        return;
-      }
-    } catch (_) {
-      // Keep the last confirmed value if the preference cannot be saved.
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.failedToSaveCheckConnection)));
-    }
-  }
 }
 
 /// Both inputs share one journal. Only an explicit Start can take it from the other source.
@@ -317,13 +296,13 @@ class NextCaptureInputs extends ChangeNotifier {
     cv1 = NextCv1Capture(
       phone.journal,
       phone.owner,
-      canStart: () => permitsNewRecording && !switching && !_phoneOwns && !phone.active && !phone.busy,
+      canStart: () =>
+          permitsNewRecording && !switching && !_phoneOwns && !phone.resumeRequested && !phone.active && !phone.busy,
       permitsStartRequest: () => permitsNewRecording,
       onStartRequested: _claimCv1,
       doubleTapAction: doubleTapAction,
       resumeSettings: resumeSettings,
       preview: phone.preview,
-      keepListeningAfterSilence: phone.keepListeningAfterSilence,
     );
     connection = Cv1Connection(transport, cv1, history: diagnosticsHistory);
   }
@@ -511,12 +490,29 @@ class NextCaptureInputs extends ChangeNotifier {
     });
   }
 
+  Future<void> foregrounded() async {
+    if (_closed) return;
+    phone.foregrounded();
+    cv1.rearmSilenceDeadline();
+    connection.recoverDemand();
+    if (phone.resumeRequested) {
+      if (permitsNewRecording && !switching && !isRecording && !cv1.sealing) {
+        await _change(() async {
+          _phoneOwns = true;
+          await phone.start();
+        });
+      }
+    } else {
+      cv1.restore();
+    }
+  }
+
   Future<void> _claimCv1() {
     if (!permitsNewRecording) return Future<void>.value();
     return _change(() async {
       if (!cv1.linked || !cv1.codecSupported) return;
       final needsSeal = phone.active || phone.busy;
-      if (needsSeal) await phone.stop();
+      if (needsSeal || phone.resumeRequested) await phone.stop();
       if (_closed || (needsSeal && phone.problem == CaptureProblem.storage)) return;
       _phoneOwns = false;
     });
@@ -533,7 +529,7 @@ class NextCaptureInputs extends ChangeNotifier {
     if (!phone.active && !permitsNewRecording) return Future<void>.value();
     return _change(() async {
       _phoneOwns = true;
-      if (phone.active) {
+      if (phone.active || phone.resumeRequested) {
         await phone.stop();
         return;
       }
@@ -547,7 +543,7 @@ class NextCaptureInputs extends ChangeNotifier {
   Future<void> stopRecording() async {
     await _transition;
     await _change(() async {
-      if (phone.active || phone.busy) {
+      if (phone.active || phone.busy || phone.resumeRequested) {
         await phone.stop();
       } else {
         await cv1.stop();
@@ -561,7 +557,7 @@ class NextCaptureInputs extends ChangeNotifier {
       await _transition;
     } finally {
       // Fence BLE delivery and both capture paths immediately, then wait for every seal.
-      await Future.wait([connection.close(), cv1.close(), phone.stop()]);
+      await Future.wait([connection.close(), cv1.close(), phone.close()]);
     }
   }
 
@@ -585,8 +581,6 @@ class LocalNextCaptureControls extends StatelessWidget {
     this.library,
     this.groupSilence,
     this.onGroupSilence,
-    this.keepListening,
-    this.onKeepListening,
     this.doubleTap = Cv1DoubleTapAction.checkpoint,
     this.onDoubleTap,
     this.openServers,
@@ -598,19 +592,12 @@ class LocalNextCaptureControls extends StatelessWidget {
   final PairedLibrary? library;
   final ValueListenable<int?>? groupSilence;
   final Future<bool> Function(int?)? onGroupSilence;
-  final ValueListenable<bool>? keepListening;
-  final Future<void> Function(bool)? onKeepListening;
   final Cv1DoubleTapAction doubleTap;
   final Future<bool> Function(Cv1DoubleTapAction)? onDoubleTap;
   final VoidCallback? openServers;
 
-  Widget _boundaries(PairedLibrary paired) => _ConversationBoundaryTile(
-    seconds: groupSilence!,
-    paired: paired,
-    save: onGroupSilence!,
-    keepListening: keepListening,
-    saveKeepListening: onKeepListening,
-  );
+  Widget _boundaries(PairedLibrary paired) =>
+      _ConversationBoundaryTile(seconds: groupSilence!, paired: paired, save: onGroupSilence!);
 
   Widget? _time(BuildContext context) {
     final phone = inputs.phone;
@@ -961,13 +948,15 @@ class LocalNextCaptureControls extends StatelessWidget {
     final buttons = [
       OutlinedButton.icon(
         key: const ValueKey('next-phone-capture'),
-        style: sourceStyle(capture.active ? NextAccent.red : NextAccent.blue),
+        style: sourceStyle((capture.active || capture.resumeRequested) ? NextAccent.red : NextAccent.blue),
         onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
             ? null
             : inputs.togglePhone,
-        icon: Icon(capture.active ? Icons.stop : Icons.mic, size: 18),
+        icon: Icon((capture.active || capture.resumeRequested) ? Icons.stop : Icons.mic, size: 18),
         label: Text(
-          capture.active ? '${l.stop} · ${l.phone}' : pairedSettingsLabel(context, 'nextRecordPhone'),
+          (capture.active || capture.resumeRequested)
+              ? '${l.stop} · ${l.phone}'
+              : pairedSettingsLabel(context, 'nextRecordPhone'),
           textAlign: TextAlign.center,
         ),
       ),
@@ -1097,19 +1086,11 @@ class LocalNextCaptureControls extends StatelessWidget {
 }
 
 class _ConversationBoundaryTile extends StatefulWidget {
-  const _ConversationBoundaryTile({
-    required this.seconds,
-    required this.paired,
-    required this.save,
-    this.keepListening,
-    this.saveKeepListening,
-  });
+  const _ConversationBoundaryTile({required this.seconds, required this.paired, required this.save});
 
   final ValueListenable<int?> seconds;
   final PairedLibrary paired;
   final Future<bool> Function(int?) save;
-  final ValueListenable<bool>? keepListening;
-  final Future<void> Function(bool)? saveKeepListening;
 
   @override
   State<_ConversationBoundaryTile> createState() => _ConversationBoundaryTileState();
@@ -1137,7 +1118,7 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.paired.ownerChange, widget.seconds, widget.keepListening]),
+    listenable: Listenable.merge([widget.paired.ownerChange, widget.seconds]),
     builder: (context, _) => Column(
       children: [
         PopupMenuButton<int>(
@@ -1159,21 +1140,6 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
             trailing: const Icon(Icons.arrow_drop_down),
           ),
         ),
-        if ((widget.seconds.value ?? 0) > 0 && widget.keepListening != null && widget.saveKeepListening != null)
-          SwitchListTile(
-            title: Text(pairedSettingsLabel(context, 'nextKeepListeningAfterSilence')),
-            value: widget.keepListening!.value,
-            onChanged: _saving || !widget.paired.ownerChange.permitsCapture
-                ? null
-                : (value) async {
-                    setState(() => _saving = true);
-                    try {
-                      await widget.saveKeepListening!(value);
-                    } finally {
-                      if (mounted) setState(() => _saving = false);
-                    }
-                  },
-          ),
       ],
     ),
   );
