@@ -468,10 +468,11 @@ class _LivePageState extends State<_LivePage> {
                     padding: const EdgeInsets.fromLTRB(OmiSpacing.md, OmiSpacing.xs, OmiSpacing.md, OmiSpacing.sm),
                     child: Text(
                       switch (threshold()) {
-                        final int seconds when seconds > 0 =>
-                          "${pairedSettingsLabel(context, 'nextSilenceThreshold')} · "
-                              "$seconds\u00a0${pairedSettingsLabel(context, 'nextSilenceSecondsAbbr')}",
-                        _ => pairedSettingsLabel(context, 'nextSilenceThresholdOff'),
+                        final int seconds when seconds > 0 => pairedSettingsLabel(
+                          context,
+                          'nextSplitAfterSilence',
+                        ).replaceFirst('{seconds}', seconds.toString()),
+                        _ => pairedSettingsLabel(context, 'nextSplitAfterSilenceOff'),
                       },
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall,

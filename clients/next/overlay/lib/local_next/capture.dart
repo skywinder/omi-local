@@ -143,6 +143,7 @@ class NextPhoneCapture extends ChangeNotifier {
   Future<void>? _starting;
   Future<void>? _stopping;
   bool get active => _recording != null;
+  bool get hasSavedAudio => (_recording?.audioSeconds ?? 0) > 0;
   int? get silenceSeconds => _recording?.silenceSeconds;
 
   Future<void> start() => _starting ??= _start().whenComplete(() {
@@ -297,25 +298,27 @@ class NextPhoneCapture extends ChangeNotifier {
       final end = math.min(offset + LocalAudioJournal.maxFrameBytes, bytes.length);
       final view = Uint8List.sublistView(bytes, offset, end);
       final activePreview = preview;
+      final firstAudio = !hasSavedAudio;
       final frame = activePreview == null ? view : Uint8List.fromList(view);
       // add() snapshots and counts bytes synchronously before its serialized disk flush.
       unawaited(
         current
             .add(
               frame,
-              afterPersisted: activePreview == null
-                  ? null
-                  : () => activePreview.addPersisted(
-                      current.recordingId,
-                      current.source,
-                      current.codec,
-                      frame,
-                      startSeconds: math.max(
-                        0,
-                        current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
-                      ),
-                      elapsedSeconds: batchEnd - (bytes.length - offset) / 32000,
-                    ),
+              afterPersisted: () {
+                activePreview?.addPersisted(
+                  current.recordingId,
+                  current.source,
+                  current.codec,
+                  frame,
+                  startSeconds: math.max(
+                    0,
+                    current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
+                  ),
+                  elapsedSeconds: batchEnd - (bytes.length - offset) / 32000,
+                );
+                if (firstAudio && _acceptsAudio(current)) notifyListeners();
+              },
             )
             .catchError((Object _) => _fail(current, CaptureProblem.storage)),
       );

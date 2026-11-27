@@ -149,7 +149,9 @@ uses the model name or hardware model code when the name is unavailable.
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
 The Live Transcript card shows the active input and elapsed time.
 The Live Transcript screen shows the active silence threshold below the text.
-Live stays open when silence ends a conversation. The selected input keeps
+The microphone status reports when audio has been saved on the phone, even
+while the Live transcript is waiting for text. Live stays open when silence
+ends a conversation. The selected input keeps
 listening for the next conversation. Tap **Stop** to end recording and clear
 its automatic resume request. **Phone upload queue** shows the open part and
 sealed parts awaiting a durable server receipt. Delivery problems also appear

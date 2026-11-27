@@ -364,11 +364,13 @@ void main() {
       await capture.start();
       await ready.future.timeout(const Duration(seconds: 5));
       await pumpEventQueue();
+      expect(capture.hasSavedAudio, isFalse);
       final frame = Uint8List.fromList([10, 11, 12, 13]);
       mic.samples!(frame);
       final observed = await received.future.timeout(const Duration(seconds: 5));
       expect(observed.sent, frame);
       expect(observed.stored, frame);
+      expect(capture.hasSavedAudio, isTrue);
       await pumpEventQueue();
       expect(capture.active, isTrue);
       expect(mic.stopped.isCompleted, isFalse);

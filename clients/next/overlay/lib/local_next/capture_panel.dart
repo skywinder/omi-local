@@ -629,7 +629,14 @@ class LocalNextCaptureControls extends StatelessWidget {
   }
 
   String? _inputNotice(BuildContext context) {
-    if (inputs.phone.active) return phoneMicNotice(context, inputs.phone);
+    if (inputs.phone.active) {
+      final phone = inputs.phone;
+      final notice = phoneMicNotice(context, phone);
+      final live = inputs.preview;
+      if (notice != null) return notice;
+      if (live?.phase == NextPreviewPhase.listening && live?.lines.isNotEmpty == true) return null;
+      return pairedSettingsLabel(context, 'nextMicAudioSaved');
+    }
     final cv1 = inputs.cv1;
     if (!cv1.wantsAudio || cv1.problem != null || inputs.connection.audioFailed) return null;
     if (!cv1.hasPersistedAudio) return pairedSettingsLabel(context, 'nextCv1WaitingForAudio');
@@ -1045,7 +1052,7 @@ class LocalNextCaptureControls extends StatelessWidget {
               CaptureProblem.permission => l.onboardingMicrophoneRequired,
               CaptureProblem.microphone => l.captureRecordingError(l.microphone),
               CaptureProblem.storage => l.captureRecordingError(l.capturePhoneStorageFull),
-              CaptureProblem.empty => l.onboardingActNoAudioPhone,
+              CaptureProblem.empty => pairedSettingsLabel(context, 'nextMicNoSavedAudio'),
               CaptureProblem.micStalled => pairedSettingsLabel(context, 'nextMicStalled'),
             }),
           if (inputs.preview case final preview?)
@@ -1192,9 +1199,13 @@ Widget? _cv1ImportSubtitle(BuildContext context, NextCaptureInputs inputs) {
 }
 
 String? phoneMicNotice(BuildContext context, NextPhoneCapture capture) => switch (capture.micStatus) {
-  PhoneMicStatus.waiting => context.l10n.waitingForData,
+  PhoneMicStatus.waiting => pairedSettingsLabel(context, 'nextMicWaitingForAudio'),
   PhoneMicStatus.interrupted => pairedSettingsLabel(context, 'nextMicInterrupted'),
-  PhoneMicStatus.recovering => pairedSettingsLabel(context, 'nextMicRecovering'),
+  PhoneMicStatus.recovering => pairedSettingsLabel(
+    context,
+    capture.hasSavedAudio ? 'nextMicRecovering' : 'nextMicRecoveringWithoutAudio',
+  ),
+  PhoneMicStatus.recording when !capture.hasSavedAudio => pairedSettingsLabel(context, 'nextMicWaitingForAudio'),
   _ => capture.problem == CaptureProblem.micStalled ? pairedSettingsLabel(context, 'nextMicStalled') : null,
 };
 

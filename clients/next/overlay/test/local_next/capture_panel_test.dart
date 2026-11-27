@@ -993,7 +993,7 @@ void main() {
         inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
       }
       await tester.pump();
-      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.text('Split conversations after silence'), findsOneWidget);
@@ -1007,15 +1007,15 @@ void main() {
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
       journal.seal.complete();
       await tester.tap(find.text('Stop'));
       await tester.pumpAndSettle();
       expect(inputs.cv1.active, isFalse);
-      expect(find.text('Silence threshold · 60\u00a0s'), findsNothing);
+      expect(find.text('Split conversations after 60 seconds of silence'), findsNothing);
       await tester.tap(find.text('Live Transcript'));
       await tester.pumpAndSettle();
-      expect(find.text('Silence threshold · 30\u00a0s'), findsOneWidget);
+      expect(find.text('Split conversations after 30 seconds of silence'), findsOneWidget);
     } finally {
       if (!journal.seal.isCompleted) journal.seal.complete();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -1065,7 +1065,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('next-live-strip')));
       await tester.pumpAndSettle();
-      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
 
       now = now.add(const Duration(seconds: 59));
       await tester.pump(const Duration(seconds: 59));
