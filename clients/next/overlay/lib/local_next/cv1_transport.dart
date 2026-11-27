@@ -458,6 +458,7 @@ class Cv1Connection extends ChangeNotifier {
     required int? windows,
     required bool Function() shouldStop,
     required Future<void> Function(Cv1ArchiveBatch) persist,
+    void Function(int first, int end)? onRange,
     void Function()? beforeRead,
     Future<void> Function()? onReconnectWait,
     void Function(int missingRecords)? onReconnect,
@@ -478,6 +479,7 @@ class Cv1Connection extends ChangeNotifier {
     importingStorage = true;
     notifyListeners();
     try {
+      onRange?.call(next, windows == null ? availableThrough : (next + windows * 32).clamp(next, availableThrough));
       if (windows == null) await reader.setArchiveAwake(true);
       while ((windows == null || completeWindows < windows) && next < availableThrough && !shouldStop()) {
         Cv1ArchiveBatch? batch;

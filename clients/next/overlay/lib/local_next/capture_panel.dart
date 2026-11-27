@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:intl/intl.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,7 @@ import 'capture.dart';
 import 'cv1_capture.dart';
 import 'cv1_archive.dart';
 import 'cv1_resume.dart';
+import 'cv1_sync_progress.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
 import 'live_preview.dart';
@@ -351,19 +353,25 @@ class NextCaptureInputs extends ChangeNotifier {
 
   String? archiveMessage;
   Duration? importedAudio;
+  ({DateTime first, DateTime last})? importedTimes;
+  final _importClock = Stopwatch();
+  Cv1SyncProgress? _syncProgress;
+
+  bool get finishingImport => _syncProgress?.remainingRecords == 0;
+  ({double bytesPerSecond, Duration remaining})? get transferEstimate => _syncProgress?.estimate(_importClock.elapsed);
   bool get hasRetainedArchive => archiveMessage == 'nextImportRetained';
 
   Future<void> retryStagedArchive() async {
     if (hasCaptureInProgress || !permitsNewRecording) return;
     await _change(() async {
+      importedTimes = null;
+      importedAudio = null;
       final saved = await Cv1Archive(phone.journal, phone.owner).recover();
       archiveMessage = saved ? 'nextImportSaved' : 'nextImportRetained';
     });
   }
 
   int importWindows = 0;
-  int importWindowsDone = 0;
-  bool importingAll = false;
   int importedRecords = 0;
   int importMissingRecords = 0;
   bool stoppingImport = false;
@@ -384,6 +392,9 @@ class NextCaptureInputs extends ChangeNotifier {
     final limit = windows?.clamp(1, possibleWindows);
     final chunkWindows = limit ?? Cv1Archive.maxWindows;
     await _change(() async {
+      importedTimes = null;
+      importedAudio = null;
+      importMissingRecords = 0;
       final archive = Cv1Archive(journal, phone.owner);
       if (archive.staged.isNotEmpty) {
         archiveMessage = 'nextImportRetained';
@@ -396,21 +407,28 @@ class NextCaptureInputs extends ChangeNotifier {
         return;
       }
       archiveMessage = 'nextImportProgress';
-      importedAudio = null;
       importWindows = chunkWindows;
-      importWindowsDone = 0;
-      importingAll = limit == null;
+      final importingAll = limit == null;
+      _importClock
+        ..reset()
+        ..start();
       importedRecords = 0;
-      importMissingRecords = 0;
       var verifiedEnd = storage.oldest;
       var windowsInChunk = 0;
       stoppingImport = false;
       if (!_closed) notifyListeners();
+      final refresh = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!_closed) notifyListeners();
+      });
       try {
         await connection.readArchive(
           target,
           windows: limit,
           shouldStop: () => stoppingImport || _closed,
+          onRange: (start, end) {
+            verifiedEnd = start;
+            _syncProgress = Cv1SyncProgress(start: start, end: end, elapsed: _importClock.elapsed);
+          },
           beforeRead: () {
             if (importingAll && !hasSpace(windowsInChunk + 1)) {
               throw PlatformException(code: 'phone_full');
@@ -425,6 +443,7 @@ class NextCaptureInputs extends ChangeNotifier {
           onReconnect: (missing) {
             importMissingRecords += missing;
             verifiedEnd += missing;
+            _syncProgress?.resume(missing, _importClock.elapsed);
             archiveMessage = 'nextImportProgress';
             if (!_closed) notifyListeners();
           },
@@ -442,10 +461,9 @@ class NextCaptureInputs extends ChangeNotifier {
               if (end > verifiedEnd) verifiedEnd = end;
               importedRecords += archive.records - previousRecords;
               importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
-              if (batch.complete) {
-                importWindowsDone++;
-                windowsInChunk++;
-              }
+              importedTimes = archive.savedTimes;
+              _syncProgress?.savedThrough(verifiedEnd, _importClock.elapsed);
+              if (batch.complete) windowsInChunk++;
               if (importingAll && windowsInChunk == chunkWindows) {
                 await archive.finish();
                 windowsInChunk = 0;
@@ -484,8 +502,10 @@ class NextCaptureInputs extends ChangeNotifier {
           archiveMessage = 'nextImportFailed';
         }
         if (archive.staged.isNotEmpty) archiveMessage = 'nextImportRetained';
+        refresh.cancel();
+        _importClock.stop();
+        _syncProgress = null;
         importWindows = 0;
-        importingAll = false;
         stoppingImport = false;
       }
     });
@@ -823,21 +843,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                             inputs.hasRetainedArchive ? 'nextImportRetry' : 'nextImportAction',
                           ),
                         ),
-                        subtitle: inputs.archiveMessage == null
-                            ? null
-                            : Text(
-                                [
-                                  pairedSettingsLabel(context, inputs.archiveMessage!),
-                                  if (inputs.importingAll)
-                                    '${pairedSettingsLabel(context, 'nextImportRecordCount')} ${inputs.importedRecords}'
-                                  else if (inputs.importWindows > 0)
-                                    '${inputs.importWindowsDone} / ${inputs.importWindows}',
-                                  if (inputs.importMissingRecords > 0)
-                                    '${pairedSettingsLabel(context, 'nextImportMissingRecords')} ${inputs.importMissingRecords}',
-                                  if (inputs.importedAudio case final duration?)
-                                    '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
-                                ].join(' · '),
-                              ),
+                        subtitle: _cv1ImportSubtitle(context, inputs),
                         trailing: inputs.importWindows > 1
                             ? TextButton(
                                 onPressed: inputs.stoppingImport ? null : inputs.stopImport,
@@ -1170,6 +1176,52 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
           ),
       ],
     ),
+  );
+}
+
+Widget? _cv1ImportSubtitle(BuildContext context, NextCaptureInputs inputs) {
+  final message = inputs.archiveMessage;
+  if (message == null) return null;
+  String label(String key) => pairedSettingsLabel(context, key);
+
+  String status = label(message);
+  if (inputs.stoppingImport) {
+    status = label('nextImportStopping');
+  } else if (message == 'nextImportProgress') {
+    if (inputs.finishingImport) {
+      status = label('nextImportFinalizing');
+    } else if (inputs.transferEstimate case final estimate?) {
+      final seconds = estimate.remaining.inSeconds;
+      final l = context.l10n;
+      final time = seconds < 60
+          ? l.timeCompactSecs(seconds)
+          : seconds < 3600
+          ? l.timeCompactMinsAndSecs(seconds ~/ 60, seconds % 60)
+          : l.timeCompactHoursAndMins(seconds ~/ 3600, seconds ~/ 60 % 60);
+      status = '${_storageSize(estimate.bytesPerSecond.round())}/s · ${l.estimatedTimeRemaining(time)}';
+    }
+  }
+
+  String? savedPeriod;
+  if (inputs.importedTimes case final times?) {
+    final start = times.first.toLocal();
+    final end = times.last.toLocal();
+    final locale = Localizations.localeOf(context).toString();
+    final full = DateFormat.yMMMd(locale).add_jms();
+    final endFormat = DateUtils.isSameDay(start, end) ? DateFormat.jms(locale) : full;
+    final range = start == end ? full.format(start) : '${full.format(start)} – ${endFormat.format(end)}';
+    savedPeriod = "${label('nextImportSavedPeriod')} · $range";
+  }
+
+  return Text(
+    [
+      status,
+      if (savedPeriod != null) savedPeriod,
+      if (inputs.importWindows == 0)
+        if (inputs.importedAudio case final duration?)
+          '${context.l10n.durationLabel} · ${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
+      if (inputs.importMissingRecords > 0) '${label('nextImportMissingRecords')} ${inputs.importMissingRecords}',
+    ].join('\n'),
   );
 }
 

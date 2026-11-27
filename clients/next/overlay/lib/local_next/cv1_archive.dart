@@ -22,6 +22,8 @@ class Cv1Archive {
   String? _sessionDevice;
   int? _sessionCodec;
   int records = 0;
+  ({DateTime first, DateTime last})? _savedTimes;
+  ({DateTime first, DateTime last})? get savedTimes => _savedTimes;
   static const _record = RingProtocol.recordSize;
 
   /// Each completed append is flushed before the next consuming Bluetooth request.
@@ -62,9 +64,16 @@ class Cv1Archive {
       throw const FormatException('CV1 series is full');
     }
     // Preserve a malformed window separately so earlier valid windows can still be published.
-    final int micros;
+    var micros = 0;
+    var first = savedTimes?.first;
+    var last = savedTimes?.last;
     try {
-      micros = _decode(fresh, codec == 20 ? 'opus' : 'opus_fs320').fold<int>(0, (sum, record) => sum + record.duration);
+      for (final record in _decode(fresh, codec == 20 ? 'opus' : 'opus_fs320')) {
+        micros += record.duration;
+        final time = DateTime.fromMillisecondsSinceEpoch(record.epoch * 1000, isUtc: true);
+        if (first == null || time.isBefore(first)) first = time;
+        if (last == null || time.isAfter(last)) last = time;
+      }
     } catch (_) {
       final file = await newWindowFile(sequence + overlap ~/ _record, fresh);
       await file.writeAsBytes(fresh, flush: true);
@@ -72,6 +81,7 @@ class Cv1Archive {
     }
     _sessionFile ??= await newWindowFile(sequence + overlap ~/ _record, fresh);
     await _sessionFile!.writeAsBytes(fresh, mode: FileMode.append, flush: true);
+    if (first != null && last != null) _savedTimes = (first: first, last: last);
     _sessionDevice = deviceId;
     _sessionCodec = codec;
     _lastWindow = hashes;

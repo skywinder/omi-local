@@ -12,6 +12,7 @@ import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_gain_calibration.dart';
 import 'package:omi/local_next/cv1_gain_calibration_card.dart';
+import 'package:omi/local_next/cv1_sync_progress.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/live_preview.dart';
@@ -91,6 +92,14 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   }
 }
 
+class _MeasuredArchiveInputs extends NextCaptureInputs {
+  _MeasuredArchiveInputs(super.phone, super.transport);
+
+  @override
+  ({double bytesPerSecond, Duration remaining})? get transferEstimate =>
+      (bytesPerSecond: 12 * 1024, remaining: const Duration(minutes: 2, seconds: 30));
+}
+
 class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   _ArchiveWire({this.records = 32 * 32 + 12, this.interrupt = false});
 
@@ -98,6 +107,7 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   final bool interrupt;
   int oldest = 0;
   int reads = 0;
+  Future<void> Function(int)? beforeRead;
   final starts = <(int, int)>[];
   static const target = 'test-cv1';
 
@@ -136,6 +146,7 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
     expect(expectedStart, oldest);
     expect(selected.generation, generation);
     starts.add((generation, expectedStart));
+    await beforeRead?.call(reads);
     final partial = interrupt && reads == 1;
     final count = partial ? 10 : maxRecords;
     final bytes = Uint8List(count * 444);
@@ -555,6 +566,71 @@ void main() {
     }
   });
 
+  test('CV1 sync estimates from saved bytes and resets the rate after a reconnect', () {
+    final progress = Cv1SyncProgress(start: 100, end: 196, elapsed: Duration.zero);
+    expect(progress.estimate(Duration.zero), isNull);
+
+    progress.savedThrough(132, const Duration(seconds: 2));
+    expect(progress.estimate(const Duration(seconds: 2)), (
+      bytesPerSecond: 7104.0,
+      remaining: const Duration(seconds: 4),
+    ));
+    expect(progress.estimate(const Duration(seconds: 14)), isNull);
+
+    progress.resume(8, const Duration(seconds: 30));
+    expect(progress.remainingRecords, 56);
+    progress.savedThrough(140, const Duration(seconds: 31));
+    expect(progress.estimate(const Duration(seconds: 31)), isNull);
+    progress.savedThrough(168, const Duration(seconds: 32));
+    expect(progress.estimate(const Duration(seconds: 32)), (
+      bytesPerSecond: 6216.0,
+      remaining: const Duration(seconds: 2),
+    ));
+    progress.savedThrough(196, const Duration(seconds: 34));
+    expect(progress.estimate(const Duration(seconds: 34)), isNull);
+  });
+
+  testWidgets('CV1 sync settings put transfer speed, ETA and saved dates first', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final mic = _Microphone();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43);
+    final inputs = _MeasuredArchiveInputs(NextPhoneCapture(journal, 'fixture', mic), wire)
+      ..archiveMessage = 'nextImportProgress'
+      ..importWindows = 32
+      ..importedRecords = 32
+      ..importedTimes = (first: DateTime(2026, 11, 26, 12), last: DateTime(2026, 11, 27, 14));
+    final controls = LocalNextCaptureControls(inputs: inputs, library: pair);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) =>
+                TextButton(onPressed: () => controls.openSettings(context, pair), child: const Text('Open settings')),
+          ),
+        ),
+      );
+      wire.ready();
+      await tester.tap(find.text('Open settings'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Import oldest CV1 audio'), 160);
+      expect(
+        find.textContaining(RegExp(r'12\.0 KiB/s · Estimated: 2m 30s remaining\nSaved audio · .*Nov 26.*Nov 27')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Records saved'), findsNothing);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      await mic.audioSession.close();
+    }
+  });
+
   test('full CV1 sync queues audio beyond 32 BLE reads and ends at the initial archive boundary', () async {
     final folder = await Directory.systemTemp.createTemp('next-cv1-full-sync-');
     final journal = LocalAudioJournal(
@@ -568,14 +644,26 @@ void main() {
       await journal.initialize();
       wire.emit(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: _ArchiveWire.target));
       await wire.sampleDiagnostics();
+      wire.beforeRead = (read) async {
+        if (read == 1) {
+          expect(inputs.transferEstimate?.bytesPerSecond, greaterThan(0));
+          expect(inputs.transferEstimate?.remaining, greaterThan(Duration.zero));
+          expect(inputs.importedTimes?.first, DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true));
+        }
+      };
       final target = inputs.connection.importTarget!;
       await inputs.importOldest(target, windows: null);
+      expect(inputs.transferEstimate, isNull);
       await journal.drain();
       expect(wire.reads, 33);
       expect(wire.wakeChanges, [true, false]);
       expect(wire.oldest, wire.records);
       expect(inputs.importedRecords, wire.records);
       expect(inputs.importedAudio, const Duration(milliseconds: 20720));
+      expect(inputs.importedTimes, (
+        first: DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true),
+        last: DateTime.fromMillisecondsSinceEpoch(1700000020000, isUtc: true),
+      ));
       expect(inputs.archiveMessage, 'nextImportAllSaved');
       expect(journal.pendingParts, 2);
       expect(inputs.connection.importingStorage, isFalse);
