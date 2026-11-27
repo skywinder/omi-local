@@ -318,7 +318,7 @@ and long-session reliability remain unverified.
 
 ### Live diarization status
 
-The Mac library's **Сейчас** view and the expanded **Local Mac** status card on
+The Mac library's **Now** view and the expanded **Local Mac** status card on
 iPhone show live speaker-label status separately from transcription and audio.
 The phone row is labeled **Instant speaker labels** (localized in the app).
 

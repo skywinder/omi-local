@@ -1,3 +1,5 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,9 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/backend/preferences.dart';
 import 'package:omi/env/dev_env.dart';
 import 'package:omi/env/env.dart';
+import 'package:omi/providers/locale_provider.dart';
 import 'package:omi/services/auth/auth_token_result.dart';
 import 'package:omi/services/auth/local_mac_session.dart';
 import 'package:omi/services/auth_service.dart';
+import 'package:omi/utils/notification_channel_strings.dart';
 import 'package:omi/utils/offline_network_policy.dart';
 import 'package:omi/utils/offline_onboarding.dart';
 
@@ -40,6 +44,25 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     await SharedPreferencesUtil.init();
     Env.localTunnelConfigured = false;
+  });
+
+  testWidgets('interface and notification channels default to English and honor a saved language', (tester) async {
+    tester.platformDispatcher.localeTestValue = const Locale('ja');
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+    final provider = LocaleProvider();
+    await tester.pump();
+    expect(provider.locale, const Locale('en'));
+    await NotificationChannelStrings.loadAppLocale();
+    expect(NotificationChannelStrings.omiChannelName, 'Omi Notifications');
+
+    await provider.setLocale(const Locale('ja'));
+    final restored = LocaleProvider();
+    await tester.pump();
+    expect(restored.locale, const Locale('ja'));
+    await NotificationChannelStrings.loadAppLocale();
+    expect(NotificationChannelStrings.omiChannelName, 'Omi の通知');
+    provider.dispose();
+    restored.dispose();
   });
 
   test('offline runtime skips the cloud onboarding steps but still requires permissions', () {

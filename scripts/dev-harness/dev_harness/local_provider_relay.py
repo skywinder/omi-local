@@ -301,14 +301,14 @@ def create_app(cfg, *, registry=None, connector=connect, health_probe=diarizatio
                 return await controls.read()
             body = await request.json()
             if not isinstance(body, dict):
-                raise SettingsError('Ожидается объект настроек.')
+                raise SettingsError('Expected a settings object.')
             if request.url.path == '/tuning/next-session':
                 return await controls.update_next_session(body)
             return await controls.update(body)
         except SettingsError as error:
             return JSONResponse({'error': str(error), 'field': error.field}, status_code=error.status)
         except ValueError:
-            return JSONResponse({'error': 'Некорректные настройки.'}, status_code=400)
+            return JSONResponse({'error': 'Invalid settings.'}, status_code=400)
 
     @app.get('/health')
     async def health():

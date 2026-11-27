@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Localized labels for Android / desktop notification *channels*.
@@ -12,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `context.l10n` here.
 ///
 /// Prefer the in-app locale saved by [LocaleProvider] (`app_locale`), then
-/// fall back to `Platform.localeName`. Call [loadAppLocale] before the first
+/// use English. Call [loadAppLocale] before the first
 /// channel registration so the SharedPreferences read is warm.
 class NotificationChannelStrings {
   NotificationChannelStrings._();
@@ -54,11 +52,6 @@ class NotificationChannelStrings {
 
   static bool get _isJapanese {
     final saved = (_appLocale ?? '').toLowerCase();
-    if (saved.isNotEmpty) {
-      return saved == 'ja' || saved.startsWith('ja_') || saved.startsWith('ja-');
-    }
-    // Platform.localeName looks like "ja_JP.UTF-8" or "ja-JP".
-    final name = Platform.localeName.toLowerCase();
-    return name.startsWith('ja_') || name.startsWith('ja-') || name == 'ja';
+    return saved == 'ja' || saved.startsWith('ja_') || saved.startsWith('ja-');
   }
 }

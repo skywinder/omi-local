@@ -63,8 +63,8 @@ class Runtime:
                 state = 'unavailable'
         if ready and counts['processing']:
             state = 'processing'
-        label = {'openai-compatible': 'OpenAI-совместимый STT', 'whisperkit': 'WhisperKit',
-                 'whisperx': 'WhisperX', 'parakeet-mlx': 'Parakeet MLX'}.get(engine.get('engine'), 'Не настроен')
+        label = {'openai-compatible': 'OpenAI-compatible STT', 'whisperkit': 'WhisperKit',
+                 'whisperx': 'WhisperX', 'parakeet-mlx': 'Parakeet MLX'}.get(engine.get('engine'), 'Not configured')
         if selected:
             label = selected['name']
         argmax = self._settings('argmax-stt.json')
@@ -81,7 +81,7 @@ class Runtime:
         previous = self.previous
         connected = current['backend'] == 'ready'
         if previous is None or connected != (previous['backend'] == 'ready'):
-            self._event('Связь с сервером установлена.' if connected else 'Сервер недоступен. Проверка продолжается.')
+            self._event('Connected to server.' if connected else 'Server unavailable. Retrying.')
         sessions = current.get('sessions', [])
         old_sessions = previous.get('sessions', []) if previous else []
         identity = sorted((s.get('preview_id') or '', s['source']) for s in sessions)
@@ -89,21 +89,21 @@ class Runtime:
         if identity and identity != old_identity:
             from .local_library import recording_origin_labels
             sources = ', '.join(sorted({' · '.join(filter(None, recording_origin_labels(s).values())) for s in sessions}))
-            self._event('Получена текущая запись: ' + sources + '.')
+            self._event('Current recording received: ' + sources + '.')
         if connected and old_sessions and not sessions:
-            self._event('Поток записи закрыт. Ожидаем сохранение и финальное распознавание.')
+            self._event('Recording stream closed. Waiting for storage and final transcription.')
         if current['live_transcript'].get('updates', 0) and (not previous
                 or not previous['live_transcript'].get('updates', 0) or identity != old_identity):
-            self._event('Live-текст отправлен в приложение.')
+            self._event('Live text sent to the app.')
         live_state = current['live_transcript']['state']
         if live_state in {'failed', 'unavailable'} and (not previous or previous['live_transcript']['state'] != live_state):
-            self._event('Live-распознавание недоступно. Состояние аудиопотока показано отдельно.')
+            self._event('Live transcription is unavailable. See audio stream status for capture activity.')
         if previous and previous['final_stt']['state'] != 'unavailable' and current['final_stt']['state'] != 'unavailable':
             jobs, old_jobs = current['final_stt']['jobs'], previous['final_stt']['jobs']
-            for state, message in [('processing', 'Началось финальное распознавание.'),
-                                   ('completed', 'Финальный транскрипт сохранён и доступен в аудиотеке.'),
-                                   ('no_speech', 'Финальная обработка завершена: речь не обнаружена.'),
-                                   ('failed', 'Финальное распознавание завершилось с ошибкой.')]:
+            for state, message in [('processing', 'Final transcription started.'),
+                                   ('completed', 'Final transcript saved to the library.'),
+                                   ('no_speech', 'Processing complete. No speech detected.'),
+                                   ('failed', 'Final transcription failed.')]:
                 if jobs[state] > old_jobs[state]:
                     self._event(message)
         # Retain only counters/ephemeral identity for event comparison, never draft text.
@@ -123,17 +123,17 @@ class Runtime:
                 current['final_stt'] = self._final()
                 live = self._settings('live-stt.json')
                 current['live_transcript']['provider'] = ('WhisperLiveKit · MLX'
-                    if live.get('provider') == 'whisperlivekit' else 'Внешний live STT')
+                    if live.get('provider') == 'whisperlivekit' else 'External live STT')
                 from .local_providers import Registry
                 registry = Registry(self.cfg)
                 if registry.exists:
                     selected = registry.snapshot('live')
-                    current['live_transcript']['provider'] = selected['name'] if selected else 'Выключено'
+                    current['live_transcript']['provider'] = selected['name'] if selected else 'Disabled'
                     if current['live_transcript']['state'] == 'ready':
                         # Relay readiness proves its transport, not upstream inference.
                         current['live_transcript']['state'] = 'configured' if selected else 'disabled'
             except (OSError, ValueError, KeyError, TypeError):
-                current['final_stt'] = {'state': 'unavailable', 'provider': 'Недоступен',
+                current['final_stt'] = {'state': 'unavailable', 'provider': 'Unavailable',
                                         'jobs': dict.fromkeys(('pending', 'processing', 'completed', 'failed', 'no_speech'), 0)}
             self._observe(current)
             self.cached = {**current, 'events': list(self.events),

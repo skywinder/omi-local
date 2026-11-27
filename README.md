@@ -2,15 +2,15 @@
 
 # omiloc
 
-**A personal audio library on your Mac, controlled from your iPhone.**
+**A self-hosted audio library for Omi CV1, iPhone, and Android.**
 
-Record audio from an Omi CV1, browse transcripts, and jump from a transcript
-segment to its audio. The iPhone app sends audio through Tailscale or an authenticated ngrok
+Record from an Omi CV1 or a phone microphone, browse transcripts, and play a recording
+from any timestamped turn. The mobile app sends audio through Tailscale or an authenticated ngrok
 tunnel. The server keeps the audio library; the phone retains pending audio
 locally until the server confirms storage. Processing uses local engines or
 explicitly selected servers.
 
-[Release notes](docs/releases/v0.1.0.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
+[Release notes](docs/releases/v0.1.1.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
@@ -110,7 +110,7 @@ Later launches from the app icon reuse the saved entries; select one and tap
 
 Run `./omiloc pair` in your own interactive terminal to view the native address
 and app key (`./omiloc --runtime docker pair` for Docker).
-In the app, open **Local Mac** (**Локальный Mac**), enter that address and key,
+In the app, open **Local Mac**, enter that address and key,
 and select **Check and connect**. A bare Tailscale IP uses port 20000; Docker uses IP:21000. The app key is separate from
 the ngrok authtoken; the authtoken stays on the Mac.
 
@@ -132,12 +132,12 @@ omiloc
 
 The [audio library](http://127.0.0.1:20001/) is accessible only on your Mac. Select
 a recording to play it, or click a transcript segment to seek to that moment.
-In an open transcript, type in **Найти фразу в записи** to highlight a phrase.
+In an open transcript, type in **Find a phrase** to highlight a phrase.
 Use the arrows or Enter / Shift+Enter to browse matching turns. Playback stays
 at its current position until you click a turn.
 New recordings and completed transcripts appear automatically.
 
-The **Now** section, currently labeled **Сейчас**, shows live text, the audio
+The **Now** section shows live text, the audio
 source, transcription status, and events. Select a recording in the left-hand
 list to open its completed transcript and player. See
 [Live preview](docs/LIVE_PREVIEW.md) for monitoring and log details.

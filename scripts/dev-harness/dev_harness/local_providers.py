@@ -31,7 +31,7 @@ LIVE_FIELDS = {'url', 'python', 'model_dir', 'chunk_seconds', 'language', 'diari
 NAME_LIMIT = 100
 DEFAULT_SUMMARY_TEMPLATE = {
     'id': 'standard',
-    'name': 'Стандартное резюме',
+    'name': 'Standard summary',
     'prompt': 'Summarize the recording accurately. Preserve decisions, important facts and explicit action items.',
 }
 
@@ -53,7 +53,7 @@ def summary_templates(state):
 
 def validate_summary_templates(templates, default):
     if not isinstance(templates, list) or not 1 <= len(templates) <= 24:
-        raise SettingsError('Добавьте от 1 до 24 шаблонов.')
+        raise SettingsError('Add between 1 and 24 templates.')
     ids = set()
     for item in templates:
         if (not isinstance(item, dict) or set(item) != {'id', 'name', 'prompt'}
@@ -63,27 +63,27 @@ def validate_summary_templates(templates, default):
                 or not item['prompt'].strip() or len(item['prompt']) > 8000
                 or any(ord(char) < 32 and char not in '\n\r\t' or 0xD800 <= ord(char) <= 0xDFFF
                        for char in item['prompt'])):
-            raise SettingsError('Проверьте название и текст шаблона.')
+            raise SettingsError('Check the template name and text.')
         ids.add(item['id'])
     if not isinstance(default, str) or default not in ids:
-        raise SettingsError('Выберите существующий шаблон по умолчанию.')
+        raise SettingsError('Select an existing default template.')
 
 
 def read_json(path, default=None):
     if not path.exists():
         return deepcopy(default)
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
-        raise SettingsError('Файл настроек недоступен.', status=503)
+        raise SettingsError('Settings file unavailable.', status=503)
     try:
         return json.loads(path.read_text())
     except (OSError, ValueError):
-        raise SettingsError('Не удалось прочитать настройки.', status=503) from None
+        raise SettingsError('Could not read settings.', status=503) from None
 
 
 def atomic_json(path, value):
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     if path.is_symlink():
-        raise SettingsError('Файл настроек недоступен.', status=503)
+        raise SettingsError('Settings file unavailable.', status=503)
     fd, temporary = tempfile.mkstemp(prefix='.providers-', dir=path.parent)
     try:
         with os.fdopen(fd, 'w') as stream:
@@ -108,40 +108,40 @@ def identity(profile):
 def number(settings, key, default, low, high, *, integer=True):
     value = settings.get(key, default)
     if type(value) not in ((int,) if integer else (int, float)) or not low <= value <= high:
-        raise SettingsError('Недопустимое значение: ' + key, field=key)
+        raise SettingsError('Invalid value: ' + key, field=key)
     settings[key] = value
 
 
 def text_field(settings, key, default='', *, required=False, limit=2048):
     value = settings.get(key, default)
     if not isinstance(value, str) or len(value) > limit or (value and not value.isprintable()):
-        raise SettingsError('Недопустимое значение: ' + key, field=key)
+        raise SettingsError('Invalid value: ' + key, field=key)
     value = value.strip()
     if required and not value:
-        raise SettingsError('Заполните поле: ' + key, field=key)
+        raise SettingsError('Required field: ' + key, field=key)
     if value or key in settings or default:
         settings[key] = value
 
 
 def validate_profile(value, *, models=False):
     if not isinstance(value, dict):
-        raise SettingsError('Некорректная карточка провайдера.')
+        raise SettingsError('Invalid provider profile.')
     stage, kind = value.get('stage'), value.get('kind')
     if stage not in KINDS or kind not in KINDS[stage]:
-        raise SettingsError('Выберите поддерживаемый тип провайдера.')
+        raise SettingsError('Select a supported provider type.')
     name = value.get('name', '')
     if not isinstance(name, str) or not name.strip() or len(name) > NAME_LIMIT or any(ord(c) < 32 for c in name):
-        raise SettingsError('Введите название провайдера (до 100 символов).', field='name')
+        raise SettingsError('Enter a provider name of up to 100 characters.', field='name')
     data = deepcopy(value.get('settings', {}))
     if not isinstance(data, dict):
-        raise SettingsError('Некорректные параметры провайдера.')
+        raise SettingsError('Invalid provider parameters.')
     allowed = (ENGINE_FIELDS if stage == 'stt' else LIVE_FIELDS if stage == 'live' else
                SPEAKER_FIELDS if kind == 'pyannote' else
                {'base_url', 'min_speakers', 'max_speakers'} if stage == 'diarization' else
                {'base_url', 'model', 'reasoning', 'model_source'} if stage == 'summary' else
                {'base_url', 'model', 'reasoning'})
     if set(data) - allowed:
-        raise SettingsError('Параметры не соответствуют выбранному типу провайдера.')
+        raise SettingsError('The parameters do not match the selected provider type.')
     for key in data:
         if key not in {'diarization', 'batch_size', 'chunk_duration', 'overlap_duration', 'speaker_threads',
                        'speaker_count', 'chunk_seconds', 'min_speakers', 'max_speakers'}:
@@ -152,7 +152,7 @@ def validate_profile(value, *, models=False):
         if kind == 'openai-compatible':
             data['provider_url'] = endpoint(data, 'provider_url')
             if not data['provider_url'].endswith('/v1'):
-                raise SettingsError('Адрес STT должен оканчиваться на /v1.', field='provider_url')
+                raise SettingsError('The STT address must end in /v1.', field='provider_url')
         if 'batch_size' in data:
             number(data, 'batch_size', 1, 1, 8)
         if 'chunk_duration' in data:
@@ -162,45 +162,45 @@ def validate_profile(value, *, models=False):
         if (not re.fullmatch(r'[a-z]{2,3}|auto', data['language'])
                 or kind == 'whisperx' and data['language'] == 'auto'
                 or kind == 'parakeet-mlx' and data['language'] != 'auto'):
-            raise SettingsError('Язык не поддерживается выбранным движком.', field='language')
+            raise SettingsError('The selected engine does not support this language.', field='language')
     elif stage == 'live':
         data['url'] = endpoint(data, 'url', websocket=True)
         if kind == 'parakeet-local':
             from urllib.parse import urlsplit
             parsed = urlsplit(data['url'])
             if parsed.scheme != 'ws' or parsed.hostname != '127.0.0.1' or parsed.path != '/asr' or set(data) != {'url'}:
-                raise SettingsError('Локальный Parakeet требует локальный адрес /asr.', field='url')
+                raise SettingsError('Local Parakeet requires a local /asr endpoint.', field='url')
         if kind == 'whisperlivekit':
             from urllib.parse import urlsplit
             parsed = urlsplit(data['url'])
             if parsed.scheme != 'ws' or parsed.hostname != '127.0.0.1' or not parsed.port or parsed.path != '/asr':
-                raise SettingsError('Управляемый WhisperLiveKit должен работать на 127.0.0.1 с путём /asr.', field='url')
+                raise SettingsError('Managed WhisperLiveKit must run on 127.0.0.1 at /asr.', field='url')
             text_field(data, 'python', required=True)
             text_field(data, 'model_dir', required=True)
             number(data, 'chunk_seconds', 4, 1, 10, integer=False)
             if data.get('language', 'ru') not in {'ru', 'en', 'auto'}:
-                raise SettingsError('Выберите язык ru, en или auto.')
+                raise SettingsError('Select ru, en, or auto.')
         if data.get('diarization'):
             from .local_stt_services import diarization_settings
             diarization_settings(data)
     elif kind == 'pyannote':
         if data.get('speaker_model') not in {'pyannote/speaker-diarization-community-1', 'pyannote/speaker-diarization-3.1'}:
-            raise SettingsError('Выберите подготовленную модель Pyannote.', field='speaker_model')
+            raise SettingsError('Select a prepared Pyannote model.', field='speaker_model')
         if data.get('speaker_device', 'cpu') not in {'cpu', 'mps'}:
-            raise SettingsError('Выберите CPU или MPS.')
+            raise SettingsError('Choose CPU or MPS.')
         number(data, 'speaker_threads', 4, 1, 16)
         number(data, 'speaker_count', 0, 0, 32)
     else:
         data['base_url'] = endpoint(data, 'base_url')
         if stage in {'summary', 'translation'}:
             if 'model_source' in data and data['model_source'] not in ('profile', 'provider'):
-                raise SettingsError('Недопустимый режим выбора модели.', field='model_source')
+                raise SettingsError('Invalid model selection mode.', field='model_source')
             if data.get('model_source') == 'provider':
                 data.pop('model', None)
             else:
                 text_field(data, 'model', required=not models, limit=256)
             if data.get('reasoning', 'default') not in {'default', 'off'}:
-                raise SettingsError('Режим рассуждений: по умолчанию или отключён.', field='reasoning')
+                raise SettingsError('Select default or disabled reasoning.', field='reasoning')
             if data.get('reasoning') == 'default':
                 data.pop('reasoning')
         else:
@@ -208,11 +208,11 @@ def validate_profile(value, *, models=False):
                 if key in data:
                     number(data, key, 1, 1, 32)
             if data.get('min_speakers', 1) > data.get('max_speakers', 32):
-                raise SettingsError('Минимум говорящих превышает максимум.')
+                raise SettingsError('Minimum speaker count exceeds the maximum.')
     result = {'name': name.strip(), 'stage': stage, 'kind': kind, 'settings': data}
     if value.get('id') is not None:
         if not isinstance(value['id'], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', value['id']):
-            raise SettingsError('Некорректная карточка провайдера.')
+            raise SettingsError('Invalid provider profile.')
         result['id'] = value['id']
     return result
 
@@ -239,31 +239,31 @@ class Registry:
         engine = read_json(self.root / 'stt-engine.json', {})
         live = read_json(self.root / 'live-stt.json', {})
         if not isinstance(engine, dict) or not isinstance(live, dict):
-            raise SettingsError('Текущие настройки движков недоступны.', status=503)
+            raise SettingsError('Current engine settings unavailable.', status=503)
         # Resolve exactly the defaults/runtime paths used before the registry exists.
         # Raw omissions differ between managed WhisperX and older engine profiles.
         from .local_stt import EngineConfig, TranscriptionError
         try:
             resolved = EngineConfig.load(self.cfg)
         except (TranscriptionError, ValueError, TypeError):
-            raise SettingsError('Текущие настройки движка недоступны.', status=503) from None
+            raise SettingsError('Current engine settings unavailable.', status=503) from None
         engine = {key: getattr(resolved, key) for key in ENGINE_FIELDS | SPEAKER_FIELDS}
         kind = resolved.engine
         profile = {'id': 'current-stt', 'name': {'whisperkit': 'WhisperKit', 'whisperx': 'WhisperX',
-                   'parakeet-mlx': 'Parakeet MLX', 'openai-compatible': 'Текущий STT-сервер'}.get(kind, kind),
+                   'parakeet-mlx': 'Parakeet MLX', 'openai-compatible': 'Current STT server'}.get(kind, kind),
                    'stage': 'stt', 'kind': kind,
                    'settings': {k: v for k, v in engine.items() if k in ENGINE_FIELDS}}
         state = {'version': 1, 'revision': 0, 'profiles': [profile],
                  'effective': dict.fromkeys(STAGES)}
         state['effective']['stt'] = deepcopy(profile)
         if engine.get('speaker_model'):
-            speakers = {'id': 'current-diarization', 'name': 'Pyannote на этом Mac',
+            speakers = {'id': 'current-diarization', 'name': 'Pyannote on this Mac',
                         'stage': 'diarization', 'kind': 'pyannote',
                         'settings': {k: v for k, v in engine.items() if k in SPEAKER_FIELDS}}
             state['profiles'].append(speakers)
             state['effective']['diarization'] = deepcopy(speakers)
         elif profile['settings'].get('diarization_model', 'none') != 'none':
-            speakers = {'id': 'current-diarization', 'name': 'Встроенная диаризация STT',
+            speakers = {'id': 'current-diarization', 'name': 'Built-in STT diarization',
                         'stage': 'diarization', 'kind': 'pyannote', 'embedded': True,
                         'settings': {'speaker_model': profile['settings']['diarization_model']}}
             if engine.get('python'):
@@ -271,7 +271,7 @@ class Registry:
             state['profiles'].append(speakers)
             state['effective']['diarization'] = deepcopy(speakers)
         if live.get('url'):
-            snapshot = {'id': 'current-live', 'name': 'Текущий Live STT', 'stage': 'live',
+            snapshot = {'id': 'current-live', 'name': 'Current Live STT', 'stage': 'live',
                         'kind': live.get('provider', 'external'),
                         'settings': {k: v for k, v in live.items() if k in LIVE_FIELDS}}
             state['profiles'].append(snapshot)
@@ -286,7 +286,7 @@ class Registry:
             default_url = not preview.get('url') or (
                 not (self.root / 'live-preview.json').exists() and preview['url'] == address)
             if preview['enabled'] and default_url:
-                snapshot = {'id': 'local-parakeet-live', 'name': 'Parakeet на этом Mac', 'stage': 'live',
+                snapshot = {'id': 'local-parakeet-live', 'name': 'Parakeet on this Mac', 'stage': 'live',
                             'kind': 'parakeet-local',
                             'settings': {'url': address}}
                 state['profiles'].append(snapshot)
@@ -297,7 +297,7 @@ class Registry:
         state = read_json(self.path) if self.exists else self._legacy()
         if (not isinstance(state, dict) or state.get('version') != 1
                 or not isinstance(state.get('profiles'), list) or not isinstance(state.get('effective'), dict)):
-            raise SettingsError('Версия настроек не поддерживается.', status=503)
+            raise SettingsError('Unsupported settings version.', status=503)
         return state
 
     @contextmanager
@@ -309,10 +309,10 @@ class Registry:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise SettingsError('Настройки сейчас применяются. Повторите позже.', status=409) from None
+                raise SettingsError('Settings are being applied. Try again later.', status=409) from None
             state = self._load()
             if type(revision) is not int or revision != state['revision']:
-                raise SettingsError('Настройки изменились в другом окне. Обновите страницу.', status=409)
+                raise SettingsError('Settings changed in another window. Refresh the page.', status=409)
             yield state
 
     @staticmethod
@@ -361,7 +361,7 @@ class Registry:
 
     def snapshot(self, stage):
         if stage not in STAGES:
-            raise SettingsError('Неизвестный этап обработки.')
+            raise SettingsError('Unknown processing stage.')
         state = self._load()
         return self._translation(state) if stage == 'translation' else deepcopy(self._summary_policy(state['effective'].get(stage)))
 
@@ -437,7 +437,7 @@ class Registry:
             return ''
         vault = read_json(self.secrets_path, {})
         if ref not in vault:
-            raise SettingsError('API-ключ этого задания недоступен. Настройте провайдера снова.',
+            raise SettingsError('The API key for this job is unavailable. Reconfigure the provider.',
                                 status=409, code='credential_missing')
         key = vault[ref]
         auth_headers(key)
@@ -448,20 +448,20 @@ class Registry:
         if isinstance(candidate, dict) and candidate.get('stage') == 'live' and candidate.get('kind') == 'parakeet-local':
             from . import local_live
             if getattr(self.cfg, 'container_runtime', False):
-                raise SettingsError('Локальный Parakeet поддерживается в macOS.')
+                raise SettingsError('Local Parakeet requires macOS.')
             settings = candidate.get('settings', {})
             if not isinstance(settings, dict):
-                raise SettingsError('Некорректные параметры провайдера.')
+                raise SettingsError('Invalid provider parameters.')
             address = f'ws://127.0.0.1:{local_live.port(self.cfg)}/asr'
             if settings.get('url', address) != address:
-                raise SettingsError('Локальный Parakeet должен использовать порт этого сервера.', field='url')
+                raise SettingsError('Local Parakeet must use the port configured for this server.', field='url')
             candidate['settings'] = {**settings, 'url': address}
         if not models and default_summary_model_source() == 'provider':
             candidate = self._summary_policy(candidate)
         profile = validate_profile(candidate, models=models)
         previous = next((p for p in state['profiles'] if p['id'] == profile.get('id')), None)
         if previous and (previous['stage'], previous['kind']) != (profile['stage'], profile['kind']):
-            raise SettingsError('Для другого типа создайте новую карточку.')
+            raise SettingsError('Create a separate profile for a different provider type.')
         # Embedded execution is registry-owned metadata, not an editable field.
         # Editing/exporting a legacy card must not turn it into a separate worker.
         if previous and previous.get('embedded'):
@@ -493,7 +493,7 @@ class Registry:
             found = next((i for i, p in enumerate(state['profiles']) if p['id'] == profile['id']), None)
             if found is None:
                 if len(state['profiles']) >= 64:
-                    raise SettingsError('Достигнут предел: 64 провайдера.')
+                    raise SettingsError('The provider limit is 64.')
                 state['profiles'].append(profile)
             else:
                 state['profiles'][found] = profile
@@ -504,18 +504,18 @@ class Registry:
     def activate(self, body, *, prepare=None):
         stage = body.get('stage')
         if stage not in STAGES or (stage == 'stt' and body.get('id') is None):
-            raise SettingsError('Выберите провайдера распознавания.')
+            raise SettingsError('Select a transcription provider.')
         with self._edit(body.get('revision')) as state:
             selected = next((p for p in state['profiles'] if p['id'] == body.get('id') and p['stage'] == stage), None)
             if body.get('id') is not None and selected is None:
-                raise SettingsError('Провайдер не найден.', status=404)
+                raise SettingsError('Provider not found.', status=404)
             selected = deepcopy(self._summary_policy(selected))
             next_stt = selected if stage == 'stt' else state['effective'].get('stt')
             next_diarization = selected if stage == 'diarization' else state['effective'].get('diarization')
             if (stage in {'stt', 'diarization'} and next_diarization and next_diarization.get('embedded')
                     and (not next_stt or next_stt['kind'] not in {'whisperx', 'parakeet-mlx'})):
-                raise SettingsError('Сначала выберите отдельного провайдера диаризации или выключите её: '
-                                    'встроенная диаризация недоступна для этого STT.', status=409)
+                raise SettingsError('Select a separate diarization provider or disable diarization first: '
+                                    'this STT provider does not support built-in diarization.', status=409)
             if stage == 'stt':
                 selected['settings']['diarization_model'] = (
                     next_diarization['settings']['speaker_model']
@@ -554,10 +554,10 @@ class Registry:
     def delete(self, profile_id, revision):
         with self._edit(revision) as state:
             if any(p and p['id'] == profile_id for p in state['effective'].values()):
-                raise SettingsError('Сначала выберите другой активный провайдер или выключите этап.', status=409)
+                raise SettingsError('Select another active provider or disable the stage first.', status=409)
             profiles = [p for p in state['profiles'] if p['id'] != profile_id]
             if len(profiles) == len(state['profiles']):
-                raise SettingsError('Провайдер не найден.', status=404)
+                raise SettingsError('Provider not found.', status=404)
             state['profiles'] = profiles
             state['revision'] += 1
             # Credential versions remain available for immutable queued snapshots.

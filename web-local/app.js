@@ -225,7 +225,7 @@ function showTurnMatch(scroll) {
   }
   const match = turnMatches[turnPosition];
   $('turn-count').textContent = !turnQuery.value.trim() ? '' : match
-    ? `Реплика ${turnPosition + 1} из ${turnMatches.length}` : 'Совпадений нет';
+    ? `Turn ${turnPosition + 1} of ${turnMatches.length}` : 'No matches';
   for (const id of ['turn-prev', 'turn-next']) $(id).disabled = turnMatches.length < 2;
   if (!match) return;
   const button = turnButtons[match.index];
@@ -452,12 +452,12 @@ for (const button of document.querySelectorAll('[data-folder]')) button.addEvent
       method: 'POST', headers: {'X-Omiloc-Request': 'open-folder'}, signal: AbortSignal.timeout(10000),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Не удалось открыть папку.');
-    $('folder-message').textContent = 'Папка открыта в Finder.';
+    if (!response.ok) throw new Error(result.error || 'Could not open the folder.');
+    $('folder-message').textContent = 'Folder opened in Finder.';
   } catch (error) {
     $('folder-message').textContent = error instanceof TypeError || error instanceof SyntaxError
-      ? 'Нет ответа от аудиотеки. Обновите страницу и попробуйте ещё раз.'
-      : error.name === 'TimeoutError' ? 'Ответ задерживается. Проверьте Finder.' : error.message;
+      ? 'Library unavailable. Refresh the page and try again.'
+      : error.name === 'TimeoutError' ? 'Response delayed. Check Finder.' : error.message;
   } finally {
     $('folder-message').hidden = false;
     buttons.forEach(item => { item.disabled = false; });
@@ -476,21 +476,21 @@ $('delete-confirm').addEventListener('click', async () => {
   state.deleting = true;
   $('delete-confirm').disabled = true;
   $('delete-cancel').disabled = true;
-  $('delete-confirm').textContent = 'Удаляем…';
+  $('delete-confirm').textContent = 'Deleting…';
   audio.pause();
   try {
     const response = await fetch(`/api/recordings/${state.deleteId}`, {method: 'DELETE', headers: {'X-Omiloc-Request': 'delete'}, signal: AbortSignal.timeout(70000)});
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Не удалось удалить запись.');
+    if (!response.ok) throw new Error(result.error || 'Could not delete the recording.');
     $('delete-dialog').close();
   } catch (error) {
-    $('delete-error').textContent = error.name === 'TimeoutError' ? 'Ответ задерживается. Обновите список, чтобы проверить результат.' : error.message;
+    $('delete-error').textContent = error.name === 'TimeoutError' ? 'Response delayed. Refresh the list to check the result.' : error.message;
     $('delete-error').hidden = false;
   } finally {
     state.deleting = false;
     $('delete-confirm').disabled = false;
     $('delete-cancel').disabled = false;
-    $('delete-confirm').textContent = 'Удалить';
+    $('delete-confirm').textContent = 'Delete';
     await refresh();
   }
 });

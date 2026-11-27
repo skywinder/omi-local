@@ -6,7 +6,7 @@ source scripts/macos-runtime.sh
 omi_require_apple_silicon "$PWD/scripts/install-local-whisperkit.sh" "$@"
 omi_macos_path
 if [[ ! -x backend/.venv/bin/python ]]; then
-  echo 'Сначала подготовьте Mac через start.command.' >&2
+  echo 'Run start.command to prepare the Mac first.' >&2
   exit 1
 fi
 export PYTHONPATH="$PWD/scripts/dev-harness"

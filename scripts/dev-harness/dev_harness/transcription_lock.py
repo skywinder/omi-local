@@ -24,10 +24,10 @@ def _safe_path(repo_root: Path, path: Path) -> None:
     # OMI_LOCAL_STATE_ROOT.  Ownership/safe-root validation below supplies the
     # boundary; here we only reject traversal and symlink redirects.
     if '..' in path.parts:
-        raise TranscriptionLockError('Небезопасный путь общей блокировки распознавания.')
+        raise TranscriptionLockError('Unsafe shared transcription lock path.')
     for item in (path, *path.parents):
         if item.is_symlink():
-            raise TranscriptionLockError('Небезопасный путь общей блокировки распознавания.')
+            raise TranscriptionLockError('Unsafe shared transcription lock path.')
 
 
 def _layout_for_repo(repo_root: Path, instance: str | None = None):
@@ -40,7 +40,7 @@ def _layout_for_repo(repo_root: Path, instance: str | None = None):
         _safe_path(repo, raw_base / name)
         return safety.layout_for_instance(repo, name, os.environ)
     except (OSError, ValueError, safety.SafetyError):
-        raise TranscriptionLockError('Небезопасное локальное окружение распознавания.') from None
+        raise TranscriptionLockError('Unsafe local transcription environment.') from None
 
 
 def _resolve_lock_path(repo_root: Path, *, cfg=None, lock_path: Path | None = None) -> Path | None:
@@ -57,26 +57,26 @@ def _resolve_lock_path(repo_root: Path, *, cfg=None, lock_path: Path | None = No
         path = layout.services_dir / 'local-transcripts/.lock'
 
     if not path.is_absolute() or not root.is_absolute():
-        raise TranscriptionLockError('Небезопасный путь общей блокировки распознавания.')
+        raise TranscriptionLockError('Unsafe shared transcription lock path.')
     if (path.name, path.parent.name, path.parent.parent.name) != ('.lock', 'local-transcripts', 'services'):
-        raise TranscriptionLockError('Небезопасный путь общей блокировки распознавания.')
+        raise TranscriptionLockError('Unsafe shared transcription lock path.')
     if cfg is not None and path != cfg.layout.state_root / 'services/local-transcripts/.lock':
-        raise TranscriptionLockError('Небезопасный путь общей блокировки распознавания.')
+        raise TranscriptionLockError('Unsafe shared transcription lock path.')
     _safe_path(repo_root, root)
     _safe_path(repo_root, path)
     if not root.exists():
         # No harness state means no local service can be using this slot yet.
         if explicit:
-            raise TranscriptionLockError('Не подтверждён каталог общей блокировки распознавания.')
+            raise TranscriptionLockError('Cannot verify the shared transcription lock directory.')
         return None
     if not root.is_dir():
-        raise TranscriptionLockError('Небезопасный каталог локального окружения распознавания.')
+        raise TranscriptionLockError('Unsafe local transcription environment directory.')
     try:
         safety.validate_safe_state_root(root, repo_root.resolve())
         safety.read_and_validate_sentinel(root, repo_root=repo_root.resolve(),
                                           instance=cfg.instance if cfg is not None else None)
     except safety.SafetyError:
-        raise TranscriptionLockError('Не подтверждён владелец локального окружения распознавания.') from None
+        raise TranscriptionLockError('Cannot verify the owner of the local transcription environment.') from None
     return path
 
 
@@ -99,10 +99,10 @@ def acquire(repo_root: Path, *, cfg=None, shared_lock=None, lock_path: Path | No
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
     except OSError:
-        raise TranscriptionLockError('Не удалось безопасно открыть общую блокировку распознавания.') from None
+        raise TranscriptionLockError('Cannot safely open the shared transcription lock.') from None
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise TranscriptionLockError('Общая блокировка распознавания должна быть обычным файлом.')
+            raise TranscriptionLockError('The shared transcription lock must be a regular file.')
         stream = os.fdopen(descriptor, 'r+')
         descriptor = None
         try:
@@ -110,7 +110,7 @@ def acquire(repo_root: Path, *, cfg=None, shared_lock=None, lock_path: Path | No
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise TranscriptionLockBusy(
-                    'Распознавание занято. Дождитесь завершения текущей записи и обработки, затем повторите запуск.'
+                    'Transcription is busy. Wait for recording and processing to finish, then try again.'
                 ) from None
             yield stream
         finally:

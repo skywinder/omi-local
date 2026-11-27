@@ -40,7 +40,7 @@ def summary_model(client, base):
     """Select a usable text model from the configured provider's catalogue."""
     response = metadata_get(client, validate_url(base) + '/models')
     if response.status_code in {404, 405, 503}:
-        raise ProviderResponseError(f'http_{response.status_code}', 'Список моделей суммаризации недоступен.')
+        raise ProviderResponseError(f'http_{response.status_code}', 'Summary model list unavailable.')
     data = json_response(response)
     valid_ids = set(model_ids(data))
     first = None
@@ -61,11 +61,11 @@ def summary_model(client, base):
         first = first or model
     if first:
         return first
-    raise ProviderResponseError('summary_model_unavailable', 'Нет доступных моделей суммаризации.')
+    raise ProviderResponseError('summary_model_unavailable', 'No summary models available.')
 
 
 def rejected_response(status):
-    return ProviderResponseError(f'http_{status}', 'Сервер отклонил запрос. Проверьте адрес, ключ и модель.')
+    return ProviderResponseError(f'http_{status}', 'The server rejected the request. Check the address, key, and model.')
 
 
 def private_address(value):
@@ -75,7 +75,7 @@ def private_address(value):
 
 def validate_url(value, *, websocket=False):
     """Allow TLS publicly and plain transport only to explicit local/VPN addresses."""
-    message = 'Укажите HTTPS/WSS адрес сервера; HTTP/WS доступны только для Mac и LAN/VPN.'
+    message = 'Use an HTTPS or WSS server address. HTTP and WS are limited to the Mac and LAN/VPN.'
     try:
         if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 33 for c in value):
             raise ValueError()
@@ -106,7 +106,7 @@ def validate_url(value, *, websocket=False):
 
 def auth_headers(key):
     if not isinstance(key, str) or len(key) > 8192 or any(ord(c) < 32 or ord(c) > 126 for c in key):
-        raise ProviderResponseError('configuration', 'Недопустимый API-ключ.')
+        raise ProviderResponseError('configuration', 'Invalid API key.')
     return {'Authorization': 'Bearer ' + key} if key else {}
 
 
@@ -121,9 +121,9 @@ def metadata_get(client, url, *, limit=2 * 1024 * 1024, deadline_seconds=15):
         for chunk in response.iter_bytes():
             size += len(chunk)
             if time.monotonic() > deadline:
-                raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
+                raise ProviderResponseError('timeout', 'Server request timed out.')
             if size > limit:
-                raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
+                raise ProviderResponseError('response_too_large', 'Server response too large.')
             chunks.append(chunk)
         return httpx.Response(response.status_code, content=b''.join(chunks))
 
@@ -137,7 +137,7 @@ def post_json(client, url, *, limit=2 * 1024 * 1024, deadline_seconds=180, **kwa
     size could allocate an arbitrarily large intermediate buffer.
     """
     if type(limit) is not int or limit <= 0 or not math.isfinite(deadline_seconds) or deadline_seconds <= 0:
-        raise ValueError('Недопустимые ограничения ответа сервера.')
+        raise ValueError('Invalid server response limits.')
     deadline = time.monotonic() + deadline_seconds
     timeout = {name: min(value, deadline_seconds) if value is not None else deadline_seconds
                for name, value in client.timeout.as_dict().items()}
@@ -147,42 +147,42 @@ def post_json(client, url, *, limit=2 * 1024 * 1024, deadline_seconds=180, **kwa
             if not 200 <= response.status_code < 300:
                 raise rejected_response(response.status_code)
             if response.headers.get('Content-Encoding', 'identity').lower().strip() not in {'', 'identity'}:
-                raise ProviderResponseError('response_encoding', 'Сервер вернул неподдерживаемый ответ.')
+                raise ProviderResponseError('response_encoding', 'Unsupported server response.')
             body = bytearray()
             for chunk in response.iter_bytes():
                 if time.monotonic() > deadline:
-                    raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
+                    raise ProviderResponseError('timeout', 'Server request timed out.')
                 if len(chunk) > limit - len(body):
-                    raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
+                    raise ProviderResponseError('response_too_large', 'Server response too large.')
                 body.extend(chunk)
             if time.monotonic() > deadline:
-                raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.')
+                raise ProviderResponseError('timeout', 'Server request timed out.')
             # Deliberately discard upstream headers, request URL and credentials.
             return json_response(httpx.Response(response.status_code, content=bytes(body)), limit=limit)
     except httpx.TimeoutException:
-        raise ProviderResponseError('timeout', 'Превышено время ожидания ответа сервера.') from None
+        raise ProviderResponseError('timeout', 'Server request timed out.') from None
     except (httpx.HTTPError, OSError):
-        raise ProviderResponseError('connection', 'Не удалось получить ответ сервера.') from None
+        raise ProviderResponseError('connection', 'No response from the server.') from None
 
 
 def json_response(response, *, limit=2 * 1024 * 1024):
     if not 200 <= response.status_code < 300:
         raise rejected_response(response.status_code)
     if len(response.content) > limit:
-        raise ProviderResponseError('response_too_large', 'Ответ сервера слишком большой.')
+        raise ProviderResponseError('response_too_large', 'Server response too large.')
     try:
         value = response.json()
     except (ValueError, TypeError):
-        raise ProviderResponseError('invalid_json', 'Сервер вернул неподдерживаемый ответ.') from None
+        raise ProviderResponseError('invalid_json', 'Unsupported server response.') from None
     if not isinstance(value, dict):
-        raise ProviderResponseError('invalid_provider_response', 'Сервер вернул неподдерживаемый ответ.')
+        raise ProviderResponseError('invalid_provider_response', 'Unsupported server response.')
     return value
 
 
 def model_ids(data):
     rows = data.get('data')
     if not isinstance(rows, list):
-        raise ProviderResponseError('invalid_provider_response', 'Сервер не предоставил список моделей.')
+        raise ProviderResponseError('invalid_provider_response', 'The server did not provide a model list.')
     return sorted({row['id'] for row in rows[:2000] if isinstance(row, dict)
                    and isinstance(row.get('id'), str) and 0 < len(row['id']) <= 256
                    and row['id'].strip() and row['id'].isprintable()})

@@ -98,7 +98,7 @@ def test_managed_receipt_does_not_skip_actual_executable_preflight(prepared, mon
     def failed_probe(_):
         raise local_stt.TranscriptionError('Synthetic executable failure')
     monkeypatch.setattr(local_stt, 'check_model', failed_probe)
-    with pytest.raises(setup.TranscriptionSetupError, match='финальный движок не готов'):
+    with pytest.raises(setup.TranscriptionSetupError, match='final engine is unavailable'):
         setup.prepare(cfg)
     assert not cfg.layout.state_root.exists()
     assert not any(str(item).startswith('install_') for item in events)
@@ -161,7 +161,7 @@ def test_malformed_watcher_choice_does_not_enable_or_prepare_models(prepared):
     create_layout(cfg)
     write(cfg, 'stt-watch.json', {'enabled': 'false'})
     before = (cfg.layout.state_root / 'stt-watch.json').read_bytes()
-    with pytest.raises(setup.TranscriptionSetupError, match='true или false'):
+    with pytest.raises(setup.TranscriptionSetupError, match='true or false'):
         setup.prepare(cfg)
     assert (cfg.layout.state_root / 'stt-watch.json').read_bytes() == before
     assert events == []
@@ -235,7 +235,7 @@ def test_busy_shared_inference_lock_prevents_installation(prepared):
     lock_path.parent.mkdir()
     with lock_path.open('w') as active:
         fcntl.flock(active, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with pytest.raises(setup.TranscriptionSetupError, match='занято'):
+        with pytest.raises(setup.TranscriptionSetupError, match='is busy'):
             setup.prepare(cfg)
     assert not any(item.startswith('install_') for item in events)
     assert ready == {'final': False, 'live': False}
@@ -267,7 +267,7 @@ def test_redirected_state_or_lock_is_rejected_without_installation(prepared, tar
         lock = cfg.layout.services_dir / 'local-transcripts/.lock'
         lock.parent.mkdir()
         lock.symlink_to(outside / 'unchanged')
-    with pytest.raises(setup.TranscriptionSetupError, match='Небезопасный'):
+    with pytest.raises(setup.TranscriptionSetupError, match='Unsafe'):
         setup.prepare(cfg)
     assert not any(item.startswith('install_') for item in events)
     assert list(outside.iterdir()) == []
@@ -276,7 +276,7 @@ def test_redirected_state_or_lock_is_rejected_without_installation(prepared, tar
 def test_existing_unowned_state_is_never_adopted(prepared):
     cfg, events, _ = prepared
     cfg.layout.state_root.mkdir(parents=True)
-    with pytest.raises(setup.TranscriptionSetupError, match='владелец'):
+    with pytest.raises(setup.TranscriptionSetupError, match='owner'):
         setup.prepare(cfg)
     assert events == []
     assert list(cfg.layout.state_root.iterdir()) == []

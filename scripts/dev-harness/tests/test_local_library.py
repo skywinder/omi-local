@@ -235,8 +235,8 @@ def test_note_actions_resolve_an_opaque_token_and_leave_playback_available(libra
 
 
 @pytest.mark.parametrize(('source', 'origin', 'expected_source', 'expected_phone'), [
-    ('phone', {'phone_platform': 'android', 'phone_model': 'Test Pixel'}, 'Микрофон телефона', 'Android · Test Pixel'),
-    ('phone', {}, 'Микрофон телефона', ''),
+    ('phone', {'phone_platform': 'android', 'phone_model': 'Test Pixel'}, 'Phone microphone', 'Android · Test Pixel'),
+    ('phone', {}, 'Phone microphone', ''),
     ('omi', {'phone_platform': 'ios', 'phone_model': 'iPhone Test', 'wearable_name': 'Upstairs'}, 'Omi · Upstairs', 'iPhone Test'),
 ])
 def test_catalogue_and_detail_include_recording_origin(library, source, origin, expected_source, expected_phone):
@@ -530,7 +530,7 @@ def test_delete_preserves_files_on_db_failure_and_busy_inference(library, monkey
     assert audio.exists() and manifest.exists()
     with (library.transcripts / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with pytest.raises(deletion.DeleteError, match='распознавание'):
+        with pytest.raises(deletion.DeleteError, match='Transcription'):
             deletion.delete_recording(cfg, audio, delete_database=unavailable)
     calls = []
     deletion.delete_recording(cfg, audio, delete_database=lambda *args: calls.append(args))
@@ -674,8 +674,8 @@ def test_runtime_journal_observes_final_completion_without_transcript(library):
     current['final_stt']['jobs'].update(processing=0, completed=1)
     runtime._observe(deepcopy(current))
     messages = [event['message'] for event in runtime.events]
-    assert 'Началось финальное распознавание.' in messages
-    assert 'Финальный транскрипт сохранён и доступен в аудиотеке.' in messages
+    assert 'Final transcription started.' in messages
+    assert 'Final transcript saved to the library.' in messages
     assert 'Синтетическая речь' not in json.dumps(messages, ensure_ascii=False)
 
 

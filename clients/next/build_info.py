@@ -17,7 +17,8 @@ def prepare_build_info(root, app):
     commit = subprocess.check_output(['git', '-C', root, 'rev-parse', 'HEAD'], text=True).strip()
     dirty = bool(subprocess.check_output([
         'git', '-C', root, 'status', '--porcelain', '--untracked-files=all', '--',
-        'clients/next', 'app/lib/l10n', 'app/lib/services/capture', 'app/lib/services/local_runtime_status_model.dart',
+        'clients/next', 'app/lib/l10n', 'app/lib/providers/locale_provider.dart',
+        'app/lib/services/capture', 'app/lib/services/local_runtime_status_model.dart',
     ]))
     fields = {'nextAppVersion': version, 'nextBuildNumber': number, 'nextBuildCommit': commit}
     (app / 'lib/local_next/build_info.g.dart').write_text(

@@ -181,7 +181,7 @@ def build_conversation(raw: dict, manifest: dict) -> Conversation:
         provider = 'openai-compatible'
     summary_sources = [] if isinstance(raw.get('structured'), dict) and 'sections' in raw['structured'] else None
     segments = normalize_segments(raw, duration, conversation_id, provider, summary_sources=summary_sources)
-    structured = {'title': 'Локальная запись', 'overview': ''}
+    structured = {'title': 'Local recording', 'overview': ''}
     if 'structured' in raw:
         summary = raw['structured']
         if (not isinstance(summary, dict) or not isinstance(summary.get('title'), str)

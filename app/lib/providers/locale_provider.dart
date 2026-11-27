@@ -7,14 +7,14 @@ import 'package:omi/l10n/app_localizations.dart';
 class LocaleProvider extends ChangeNotifier {
   static const String _localeKey = 'app_locale';
 
-  Locale? _locale;
+  Locale _locale = const Locale('en');
   bool _initialized = false;
 
   LocaleProvider() {
     _loadSavedLocale();
   }
 
-  /// The current app locale. If null, the app uses the system locale.
+  /// English until a saved language choice is loaded.
   Locale? get locale => _locale;
 
   bool get isInitialized => _initialized;
@@ -24,16 +24,6 @@ class LocaleProvider extends ChangeNotifier {
     final localeCode = prefs.getString(_localeKey);
     if (localeCode != null) {
       _locale = Locale(localeCode);
-    } else {
-      final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
-      // Check if the device locale is supported
-      if (AppLocalizations.supportedLocales.any((locale) => locale.languageCode == deviceLocale.languageCode)) {
-        _locale = Locale(deviceLocale.languageCode);
-      } else {
-        _locale = const Locale('en');
-      }
-      // Save the default choice so it persists as an explicit selection
-      await prefs.setString(_localeKey, _locale!.languageCode);
     }
     _initialized = true;
     notifyListeners();

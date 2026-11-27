@@ -192,7 +192,7 @@ def recording_origin_labels(metadata):
     platform = {'android': 'Android', 'ios': 'iPhone'}.get(str(origin.get('phone_platform')), '')
     model = display_label('phone_model')
     phone = model if model and model.startswith(platform) else ' · '.join(filter(None, (platform, model)))
-    source = 'Микрофон телефона'
+    source = 'Phone microphone'
     if metadata.get('source') == 'omi':
         wearable = display_label('wearable_name')
         source = f'Omi · {wearable}' if wearable else 'Omi CV1'
@@ -527,14 +527,14 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
 
         def do_PATCH(self):
             if not self.allowed(request='notes'):
-                return self.reject('Требуется доступ к аудиотеке.')
+                return self.reject('Library access required.')
             match = re.fullmatch(r'/api/recordings/([A-Za-z0-9_-]{24})/notes', self.path)
             try:
                 key = library.get(match[1]).get('note_key') if match and notes is not None else None
             except KeyError:
                 key = None
             if not key:
-                return self.send_json({'error': 'Заметка недоступна.'}, 404)
+                return self.send_json({'error': 'Note unavailable.'}, 404)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 if (not 0 < length <= 256 or self.headers.get('Transfer-Encoding')
@@ -546,15 +546,15 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if len(body) != length or not valid_change(change):
                     raise ValueError()
             except (OSError, ValueError):
-                return self.send_json({'error': 'Некорректное изменение заметки.'}, 400)
+                return self.send_json({'error': 'Invalid note update.'}, 400)
             try:
                 note = notes.exchange([key], change=change).get(key)
             except NoteConflict:
-                return self.send_json({'error': 'Категория уже изменилась. Обновите запись и повторите.'}, 409)
+                return self.send_json({'error': 'The category changed. Refresh the recording and try again.'}, 409)
             except (httpx.HTTPError, OSError, ValueError, KeyError):
-                return self.send_json({'error': 'Не удалось подтвердить изменение заметки.'}, 503)
+                return self.send_json({'error': 'Could not confirm the note update.'}, 503)
             if note is None:
-                return self.send_json({'error': 'Заметка недоступна.'}, 404)
+                return self.send_json({'error': 'Note unavailable.'}, 404)
             self.send_json({'note': note})
 
         def settings_request(self):
@@ -564,9 +564,9 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             controls = processing if phone else settings
             if (not self.allowed(request='processing' if phone else 'settings')
                     or (phone and not self.processing_allowed())):
-                return self.reject('Настройки доступны только на этом Mac.')
+                return self.reject('Settings are available only on this Mac.')
             if controls is None:
-                return self.send_json({'error': 'Настройки недоступны.'}, 503)
+                return self.send_json({'error': 'Settings unavailable.'}, 503)
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 large_requests = ('/api/processing/summary-settings', '/api/settings/summary-settings',
@@ -574,7 +574,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 limit = 1024 * 1024 if self.path in large_requests else 64 * 1024
                 if (not 0 < length <= limit or self.headers.get('Transfer-Encoding')
                         or self.headers.get_content_type() != 'application/json'):
-                    raise SettingsError('Некорректный запрос настроек.')
+                    raise SettingsError('Invalid settings request.')
                 if hasattr(self.connection, 'settimeout'):
                     self.connection.settimeout(15)
                 body = json.loads(self.rfile.read(length))
@@ -582,12 +582,12 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             except SettingsError as error:
                 self.send_json({'error': str(error), **({'field': error.field} if error.field else {})}, error.status)
             except ActivationIndeterminate:
-                self.send_json({'error': 'Результат применения Live STT не подтверждён. Обновите настройки и проверьте состояние сервера.',
+                self.send_json({'error': 'Live STT change unconfirmed. Refresh settings and check server status.',
                                 'outcome': 'indeterminate'}, 503)
             except (ValueError, TypeError, KeyError):
-                self.send_json({'error': 'Настройки не применены. Проверьте параметры и состояние записи.'}, 409)
+                self.send_json({'error': 'Settings could not be applied. Check the values and recording status.'}, 409)
             except (OSError, subprocess.SubprocessError):
-                self.send_json({'error': 'Не удалось применить настройки. Проверьте готовность сервера.'}, 503)
+                self.send_json({'error': 'Could not apply settings. Check server readiness.'}, 503)
 
         def do_POST(self):
             if match := re.fullmatch(r'/api/recordings/([A-Za-z0-9_-]+)/summary', self.path):
@@ -595,49 +595,49 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='open-folder'):
-                return self.reject('Открыть папку можно только на этом Mac.')
+                return self.reject('Folders can only be opened on this Mac.')
             match = re.fullmatch(r'/api/folders/(audio|transcripts)/open', self.path)
             if not match:
-                return self.send_json({'error': 'Папка не найдена.'}, 404)
+                return self.send_json({'error': 'Folder not found.'}, 404)
             try:
                 library.open_folder(match[1])
                 self.send_json({'status': 'opened'})
             except subprocess.TimeoutExpired:
-                self.send_json({'error': 'Ответ задерживается. Проверьте Finder.'}, 504)
+                self.send_json({'error': 'Response delayed. Check Finder.'}, 504)
             except (OSError, subprocess.CalledProcessError):
-                self.send_json({'error': 'Не удалось открыть папку. Проверьте, что она существует и Finder доступен.'}, 503)
+                self.send_json({'error': 'Could not open the folder. Check that it exists and Finder is available.'}, 503)
 
         def web_summary(self, token, *, write=False):
             from .local_providers import SettingsError
             if write and not self.allowed(request='summary'):
-                return self.reject('Доступ к итогам требует сопряжённой библиотеки.')
+                return self.reject('Pair the library to access summaries.')
             try:
                 identity = library.get(token).get('summary_recording')
                 if summary_jobs is None or not identity:
-                    raise SettingsError('Итоги записи недоступны.', status=404)
+                    raise SettingsError('Recording summary unavailable.', status=404)
                 body = None
                 if write:
                     length = int(self.headers.get('Content-Length', '0'))
                     if (not 0 < length <= 64 * 1024 or self.headers.get('Transfer-Encoding')
                             or self.headers.get_content_type() != 'application/json'):
-                        raise SettingsError('Некорректный запрос итогов.')
+                        raise SettingsError('Invalid summary request.')
                     self.connection.settimeout(15)
                     body = json.loads(self.rfile.read(length))
                     if not isinstance(body, dict):
-                        raise SettingsError('Некорректный запрос итогов.')
+                        raise SettingsError('Invalid summary request.')
                 self.send_json(summary_jobs.web(identity, body))
             except SettingsError as error:
-                self.send_json({'error': 'Итоги недоступны. Обновите запись или настройки.'}, error.status)
+                self.send_json({'error': 'Summary unavailable. Refresh the recording or settings.'}, error.status)
             except (OSError, ValueError, KeyError, TypeError):
-                self.send_json({'error': 'Итоги недоступны. Проверьте запись и повторите.'}, 400 if write else 404)
+                self.send_json({'error': 'Summary unavailable. Check the recording and try again.'}, 400 if write else 404)
 
         def do_DELETE(self):
             if self.path.startswith(('/api/settings/', '/api/processing/')):
                 return self.settings_request()
             if not self.allowed(request='delete'):
-                return self.reject('Удаление доступно только на этом Mac.')
+                return self.reject('Recordings can only be deleted on this Mac.')
             if not delete or not re.fullmatch(r'/api/recordings/[A-Za-z0-9_-]+', self.path):
-                return self.send_json({'error': 'Запись не найдена.'}, 404)
+                return self.send_json({'error': 'Recording not found.'}, 404)
             try:
                 with library.lock:
                     record = library.get(self.path.split('/')[-1])
@@ -646,10 +646,10 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 self.send_json(result)
             except ValueError as error:
                 from .local_library_delete import DeleteError
-                message = str(error) if isinstance(error, DeleteError) else 'Удаление не завершено. Обновите список и повторите.'
+                message = str(error) if isinstance(error, DeleteError) else 'Deletion incomplete. Refresh the list and try again.'
                 self.send_json({'error': message}, 409)
             except (OSError, KeyError):
-                self.send_json({'error': 'Удаление не завершено. Обновите список и повторите.'}, 409)
+                self.send_json({'error': 'Deletion incomplete. Refresh the list and try again.'}, 409)
 
         def do_GET(self):
             try:
@@ -657,12 +657,12 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             except (BrokenPipeError, ConnectionResetError):
                 pass  # Normal when seeking or switching recordings.
             except (OSError, ValueError, KeyError, TypeError):
-                self.send_json({'error': 'Запись недоступна. Обновите список.'}, 404)
+                self.send_json({'error': 'Recording unavailable. Refresh the list.'}, 404)
 
         def serve(self):
             path = urlsplit(self.path).path
             if not self.allowed(origin_required=False, api=path.startswith('/api/')):
-                return self.reject('Доступ только с этого Mac.')
+                return self.reject('Available only on this Mac.')
             if path in ASSETS:
                 name, mime = ASSETS[path]
                 body = (assets / name).read_bytes()
@@ -687,7 +687,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             elif path in ('/api/settings/summary-settings', '/api/processing/summary-settings') and settings is not None:
                 phone = path.startswith('/api/processing/')
                 if phone and (not self.allowed(request='processing') or not self.processing_allowed()):
-                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                    return self.reject('Settings require a paired server.')
                 from .local_providers import SettingsError
                 try:
                     self.send_json(settings.registry.summary_settings())
@@ -701,7 +701,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                     self.send_json({'error': str(error)}, error.status)
             elif path == '/api/processing/live-tuning' and processing is not None:
                 if not self.processing_allowed():
-                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                    return self.reject('Settings require a paired server.')
                 from .local_providers import SettingsError
                 try:
                     self.send_json(processing.live_tuning())
@@ -709,11 +709,11 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                     self.send_json({'error': str(error)}, error.status)
             elif path == '/api/processing' and processing is not None:
                 if not self.processing_allowed():
-                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                    return self.reject('Settings require a paired server.')
                 self.send_json(processing.read())
             elif path == '/api/processing/regenerate-summary' and processing is not None:
                 if not self.allowed(request='processing') or not self.processing_allowed():
-                    return self.reject('Настройки доступны только через сопряжённый сервер.')
+                    return self.reject('Settings require a paired server.')
                 from .local_providers import SettingsError
                 try:
                     self.send_json(processing.summary_regeneration_options())
@@ -724,7 +724,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 '/api/processing/daily-recap', '/api/processing/classify-categories', '/api/processing/memory-proposals',
             } and processing is not None:
                 if not self.allowed(request='processing') or not self.processing_allowed():
-                    return self.reject('Доступ только через сопряжённый сервер.')
+                    return self.reject('Access requires a paired server.')
                 from .local_providers import SettingsError
                 try:
                     self.send_json(processing.recording_chat_provider())
@@ -763,7 +763,7 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                         self.wfile.write(chunk)
                         remaining -= len(chunk)
             else:
-                self.send_json({'error': 'Не найдено.'}, 404)
+                self.send_json({'error': 'Not found.'}, 404)
     return Handler
 
 

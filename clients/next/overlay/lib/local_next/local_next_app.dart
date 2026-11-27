@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:omi/providers/locale_provider.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/ui/omi_theme.dart';
@@ -41,17 +43,21 @@ class LocalNextApp extends StatelessWidget {
   final NextHomeShortcuts? shortcuts;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: nextAppName,
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    theme: _nextTheme(Brightness.light),
-    darkTheme: _nextTheme(Brightness.dark),
-    builder: (context, child) {
-      OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
-      return child!;
-    },
-    home: _Pairing(session: session, shortcuts: shortcuts),
+  Widget build(BuildContext context) => ChangeNotifierProvider(
+    create: (_) => LocaleProvider(),
+    builder: (context, _) => MaterialApp(
+      title: nextAppName,
+      locale: context.watch<LocaleProvider>().locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: _nextTheme(Brightness.light),
+      darkTheme: _nextTheme(Brightness.dark),
+      builder: (context, child) {
+        OmiColors.active = OmiColors.forBrightness(Theme.of(context).brightness);
+        return child!;
+      },
+      home: _Pairing(session: session, shortcuts: shortcuts),
+    ),
   );
 }
 

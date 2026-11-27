@@ -60,6 +60,9 @@ def main():
         extract(args.repository.resolve(), build, 'app/ios')
         subprocess.run([sys.executable, HERE / 'ios_prepare.py', app], check=True)
     shutil.copytree(HERE / 'overlay', app, dirs_exist_ok=True)
+    # Share the interface language preference and English default with the Local client.
+    locale_provider = Path('lib/providers/locale_provider.dart')
+    shutil.copy2(ROOT / 'app' / locale_provider, app / locale_provider)
     prepare_build_info(ROOT, app)
     prepare_live_labels(ROOT, app)
     for relative in (

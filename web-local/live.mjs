@@ -1,23 +1,23 @@
 import {formatTime} from './player.mjs';
 
-const states = {ready: 'Готов', configured: 'Провайдер выбран', busy: 'Ожидаем текст', streaming: 'Live-текст получен', disabled: 'Выключен',
-  failed: 'Ошибка', unavailable: 'Недоступен', stopped: 'Остановлен', processing: 'Распознаёт запись'};
+const states = {ready: 'Ready', configured: 'Provider selected', busy: 'Waiting for text', streaming: 'Live text received', disabled: 'Disabled',
+  failed: 'Error', unavailable: 'Unavailable', stopped: 'Stopped', processing: 'Transcribing recording'};
 
 export function audioActivity(current, previous, now, lastProgress) {
   const capture = current.capture || {};
-  if (current.backend !== 'ready') return {label: 'Нет связи с сервером', progress: now, tone: 'error'};
-  if (capture.state === 'idle') return {label: 'Ожидаем запись', progress: now, tone: 'idle'};
-  if (capture.state === 'decode_error') return {label: 'Есть ошибки декодирования', progress: now, tone: 'error'};
-  if (capture.state === 'waiting_audio') return {label: 'Подключено · ждём звук', progress: now, tone: 'waiting'};
-  if (capture.state !== 'received') return {label: 'Состояние звука неизвестно', progress: now, tone: 'error'};
+  if (current.backend !== 'ready') return {label: 'Server disconnected', progress: now, tone: 'error'};
+  if (capture.state === 'idle') return {label: 'Waiting for recording', progress: now, tone: 'idle'};
+  if (capture.state === 'decode_error') return {label: 'Audio decoding errors', progress: now, tone: 'error'};
+  if (capture.state === 'waiting_audio') return {label: 'Connected · waiting for audio', progress: now, tone: 'waiting'};
+  if (capture.state !== 'received') return {label: 'Unknown audio status', progress: now, tone: 'error'};
   const changed = !previous || capture.frames_received !== previous.capture?.frames_received;
   const progress = changed ? now : lastProgress;
-  return {label: now - progress >= 5000 ? 'Аудио не поступает более 5 с' : 'Аудио поступает',
+  return {label: now - progress >= 5000 ? 'No audio for at least 5 seconds' : 'Receiving audio',
     progress, tone: now - progress >= 5000 ? 'waiting' : 'active'};
 }
 
 export function liveSourceLabel(session) {
-  const input = session.source === 'omi' ? 'Omi CV1' : session.source === 'phone' ? 'Встроенный микрофон' : 'Другой вход';
+  const input = session.source === 'omi' ? 'Omi CV1' : session.source === 'phone' ? 'Built-in microphone' : 'Other input';
   const platform = {ios: 'iPhone', android: 'Android'}[session.origin?.phone_platform];
   const phone = session.origin?.phone_model || platform;
   return [phone, input].filter(Boolean).join(' · ');
@@ -29,13 +29,13 @@ function streamActivity(session, previous, now) {
   const advanced = comparable && frames > previous.frames;
   const since = comparable && !advanced ? previous.since : now;
   const confirmed = advanced || (comparable && previous.confirmed);
-  let tone = 'idle', label = 'Проверяем поток';
+  let tone = 'idle', label = 'Checking stream';
   if (session.decode_errors > (previous?.errors ?? 0)) {
-    tone = 'error'; label = 'Ошибка декодирования';
+    tone = 'error'; label = 'Decoding error';
   } else if (frames === 0 || (comparable && now - since >= 5000)) {
-    tone = 'waiting'; label = frames === 0 ? 'Ждём первые кадры' : 'Кадры не поступают ≥ 5 с';
+    tone = 'waiting'; label = frames === 0 ? 'Waiting for the first frames' : 'No frames for at least 5 seconds';
   } else if (confirmed) {
-    tone = 'active'; label = 'Получаем звук';
+    tone = 'active'; label = 'Receiving audio';
   }
   return {frames, since, confirmed, errors: session.decode_errors, tone, label};
 }
@@ -63,32 +63,32 @@ function element(tag, cls, text) {
 export function mountLiveMonitor(root, {refreshControls = () => {}, controls = null, onSources = () => {}, onStages = () => {}} = {}) {
   const title = element('div', 'monitor-heading');
   const heading = element('div');
-  heading.append(element('p', 'eyebrow', 'РАСПОЗНАВАНИЕ НА СЕРВЕРЕ'), element('h2', '', 'Сейчас'));
-  const badge = element('span', 'monitor-badge', 'Подключаемся…');
+  heading.append(element('p', 'eyebrow', 'SERVER TRANSCRIPTION'), element('h2', '', 'Now'));
+  const badge = element('span', 'monitor-badge', 'Connecting…');
   title.append(heading, badge);
-  const note = element('p', 'monitor-note', 'Начните запись на CV1 или с микрофона телефона. Текст появится здесь автоматически.');
+  const note = element('p', 'monitor-note', 'Start recording with a CV1 or the phone microphone to see live text.');
   const cards = element('div', 'monitor-cards');
   const fields = {};
-  for (const [id, label] of [['audio', 'Источник звука'], ['live', 'Live STT'], ['diarization', 'Диаризация · во время записи'], ['final', 'После остановки']]) {
+  for (const [id, label] of [['audio', 'Audio source'], ['live', 'Live STT'], ['diarization', 'Live speaker labels'], ['final', 'After recording stops']]) {
     const card = element('div', 'monitor-card');
     const value = element('strong', '', '—');
-    const detail = element('span', '', 'Проверяем состояние…');
+    const detail = element('span', '', 'Checking status…');
     card.append(element('span', 'monitor-card-label', label), value, detail);
     fields[id] = {value, detail};
     cards.append(card);
   }
   const services = element('ul', 'live-services');
-  const stages = [['stt', 'Транскрипция'], ['diarization', 'Разметка голосов'], ['summary', 'Модель итогов']].map(([id, name]) => {
+  const stages = [['stt', 'Transcription'], ['diarization', 'Speaker labeling'], ['summary', 'Summary model']].map(([id, name]) => {
     const item = element('li');
     services.append(item);
     return {id, name, item};
   });
   const transcriptHeading = element('div', 'transcript-heading');
-  transcriptHeading.append(element('h3', '', 'Live-транскрипт'), element('span', '', 'Черновик уточняется во время речи'));
+  transcriptHeading.append(element('h3', '', 'Live transcript'), element('span', '', 'Draft updates as you speak'));
   const text = element('div', 'live-draft');
   const journal = element('details', 'monitor-journal');
-  const summary = element('summary', '', 'События');
-  const journalNote = element('p', 'monitor-note', 'Время наблюдения в браузере. Журнал начинается с открытия монитора; содержимое речи в него не попадает.');
+  const summary = element('summary', '', 'Events');
+  const journalNote = element('p', 'monitor-note', 'Times are local to this browser. Events start when you open the monitor. Speech content is excluded.');
   const events = element('ol', 'monitor-events');
   journal.append(summary, journalNote, events);
   const freshness = element('p', 'monitor-freshness');
@@ -107,29 +107,29 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
     note.hidden = sessions.length > 0 || data.backend !== 'ready';
     const live = data.live_transcript || {}, final = data.final_stt || {};
     fields.live.value.textContent = live.provider || 'Live STT';
-    fields.live.detail.textContent = `${states[live.state] || 'Неизвестно'} · отправлено обновлений: ${live.updates || 0}`;
+    fields.live.detail.textContent = `${states[live.state] || 'Unknown'} · updates sent: ${live.updates || 0}`;
     const diarization = data.diarization || {};
-    const diarizationStates = {disabled: 'Выключена', ready: 'Сервис готов', busy: 'Сервис занят',
-      pending: 'Включена · ожидаем метки', labeled: 'Метки получены', degraded: 'Ошибка диаризации',
-      failed: 'Поток завершился с ошибкой', unavailable: 'Сервис недоступен', unknown: 'Неизвестно'};
-    fields.diarization.value.textContent = diarizationStates[diarization.state] || 'Неизвестно';
+    const diarizationStates = {disabled: 'Disabled', ready: 'Service ready', busy: 'Service busy',
+      pending: 'Enabled · waiting for labels', labeled: 'Labels received', degraded: 'Speaker labeling error',
+      failed: 'Stream failed', unavailable: 'Service unavailable', unknown: 'Unknown'};
+    fields.diarization.value.textContent = diarizationStates[diarization.state] || 'Unknown';
     fields.diarization.detail.textContent = diarization.state === 'labeled'
-      ? `Размечено фрагментов в текущем тексте: ${diarization.labeled_segments || 0}`
-      : diarization.state === 'degraded' ? 'Метки сняты. Состояние текста и аудио показано отдельно.'
-      : ['ready', 'busy', 'pending'].includes(diarization.state) ? 'Результат текущей записи ещё не подтверждён.'
-      : diarization.state === 'disabled' ? 'Метки спикеров в потоке не создаются.'
-      : 'Нет подтверждения работы диаризации.';
-    fields.final.value.textContent = final.provider || 'Финальный STT';
-    fields.final.detail.textContent = `${states[final.state] || 'Недоступен'}${final.jobs?.pending ? ` · в очереди: ${final.jobs.pending}` : ''}${final.jobs?.failed ? ` · ошибок: ${final.jobs.failed}` : ''}`;
+      ? `Labeled segments in this transcript: ${diarization.labeled_segments || 0}`
+      : diarization.state === 'degraded' ? 'Labels cleared. Check text and audio status separately.'
+      : ['ready', 'busy', 'pending'].includes(diarization.state) ? 'Waiting for a result from this recording.'
+      : diarization.state === 'disabled' ? 'Live speaker labels are disabled.'
+      : 'Speaker labeling has not been confirmed.';
+    fields.final.value.textContent = final.provider || 'Final STT';
+    fields.final.detail.textContent = `${states[final.state] || 'Unavailable'}${final.jobs?.pending ? ` · queued: ${final.jobs.pending}` : ''}${final.jobs?.failed ? ` · failed: ${final.jobs.failed}` : ''}`;
     const report = data.backend === 'ready' ? data.stages : null;
     onStages(report);
     for (const {id, name, item} of stages) {
       const stage = report?.stale === false ? report[id] : null;
       const state = stage?.status ?? 'unknown';
-      const label = {ready: 'доступна', disabled: 'отключена', unavailable: 'недоступна',
-        misconfigured: 'ошибка настройки'}[state];
+      const label = {ready: 'available', disabled: 'disabled', unavailable: 'unavailable',
+        misconfigured: 'configuration error'}[state];
       item.dataset.state = state;
-      item.textContent = name + ' · ' + (label || (report?.stale ? 'проверка устарела' : 'нет данных'));
+      item.textContent = name + ' · ' + (label || (report?.stale ? 'check expired' : 'no data'));
       item.title = stage?.name || '';
     }
     const draft = JSON.stringify(sessions.map(({preview_id, source, origin, revision, text, text_truncated, segments, withdrawn}) =>
@@ -139,8 +139,8 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       indicators = [];
       const fragment = document.createDocumentFragment();
       if (!sessions.length) fragment.append(element('p', 'live-empty', data.backend === 'ready'
-        ? 'Сейчас записи нет. После остановки окончательный текст появится в списке слева.'
-        : 'Нет связи с сервером. Live-текст недоступен; повторяем проверку.'));
+        ? 'No active recording. The final transcript will appear in the library after processing.'
+        : 'Server disconnected. Live text unavailable. Retrying.'));
       for (const session of sessions) {
         const block = element('div', 'live-session');
         const header = element('header', 'live-session-header');
@@ -156,22 +156,22 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
           for (const turn of turns) {
             const row = element('li', turn.draft ? 'draft' : '');
             if (turn.speaker !== null) row.dataset.speaker = String(turn.speaker % 4);
-            const speaker = turn.draft ? 'Черновик' : turn.speaker === null ? 'Говорящий не определён' : `Говорящий ${turn.speaker + 1}`;
+            const speaker = turn.draft ? 'Draft' : turn.speaker === null ? 'Unknown speaker' : `Speaker ${turn.speaker + 1}`;
             row.append(element('span', 'turn-label', [speaker, Number.isFinite(turn.start) ? formatTime(turn.start) : ''].filter(Boolean).join(' · ')),
               element('p', 'live-text', turn.text.join(' ')));
             list.append(row);
           }
           if (session.withdrawn?.text) {
             const row = element('li', 'withdrawn');
-            row.append(element('span', 'turn-label', 'Предыдущий текст · не подтверждено'),
+            row.append(element('span', 'turn-label', 'Previous text · unconfirmed'),
               element('p', 'live-text', session.withdrawn.text));
             list.append(row);
           }
           block.append(list);
         } else {
-          block.append(element('p', session.text ? 'live-text' : 'live-empty', session.text || 'Ожидаем распознанную речь…'));
+          block.append(element('p', session.text ? 'live-text' : 'live-empty', session.text || 'Waiting for speech…'));
         }
-        if (session.text_truncated) block.append(element('p', 'monitor-note', 'Показаны последние реплики длинного эфира. Полная расшифровка появится в архиве после обработки.'));
+        if (session.text_truncated) block.append(element('p', 'monitor-note', 'Showing recent turns. The full transcript will appear in the archive after processing.'));
         fragment.append(block);
       }
       text.replaceChildren(fragment);
@@ -189,12 +189,12 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
     if (activity.tone === 'active' && sessions.length > 1) {
       const affected = indicators.filter(node => ['error', 'waiting'].includes(node.dataset.tone)).length;
       if (affected) {
-        badge.textContent = `Требуют внимания: ${affected} из ${sessions.length}`;
+        badge.textContent = `Need attention: ${affected} of ${sessions.length}`;
         badge.dataset.tone = 'waiting';
       }
     }
     const sources = [...new Set((receiving.length ? receiving : sessions).map(liveSourceLabel))];
-    fields.audio.value.textContent = sources.join(' + ') || 'Нет активной записи';
+    fields.audio.value.textContent = sources.join(' + ') || 'No active recording';
     let sourceStatus = {label: badge.textContent, tone: badge.dataset.tone};
     if (receiving.length) {
       sourceStatus = {label: 'Receiving audio', tone: 'active'};
@@ -203,7 +203,7 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       if (receiving.every(session => Number.isFinite(session.audio_seconds))) {
         details.push(formatTime(receiving.reduce((total, session) => total + session.audio_seconds, 0)));
       }
-      details.push(`${frames} кадров`);
+      details.push(`${frames} frames`);
       fields.audio.detail.textContent = details.join(' · ');
     } else {
       if (sessions.length && activity.tone !== 'error') sourceStatus = {label: 'Connected inputs', tone: 'waiting'};
@@ -216,13 +216,13 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
       lastEvents = serialized;
       events.replaceChildren(...(data.events || []).map(event => {
         const row = element('li');
-        const stamp = new Date(event.observed_at).toLocaleTimeString('ru-RU');
+        const stamp = new Date(event.observed_at).toLocaleTimeString('en-GB');
         row.append(element('time', '', stamp), element('span', '', event.message));
         return row;
       }));
-      summary.textContent = `События · ${(data.events || []).length}`;
+      summary.textContent = `Events · ${(data.events || []).length}`;
     }
-    freshness.textContent = data.observed_at ? `Проверено в ${new Date(data.observed_at).toLocaleTimeString('ru-RU')} · обновление каждую секунду` : 'Аудиотека не отвечает. Повторяем проверку…';
+    freshness.textContent = data.observed_at ? `Checked at ${new Date(data.observed_at).toLocaleTimeString('en-GB')} · updates every second` : 'The library is offline. Retrying…';
     previous = data;
   }
 

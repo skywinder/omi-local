@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:omi/providers/locale_provider.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:omi/utils/l10n_extensions.dart';
 
@@ -143,7 +145,21 @@ class _ServersPageState extends State<NextServersPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.manager ? title : nextAppName)),
+      appBar: AppBar(
+        title: Text(widget.manager ? title : nextAppName),
+        actions: [
+          PopupMenuButton<Locale>(
+            tooltip: l.appLanguage,
+            icon: const Icon(Icons.language),
+            initialValue: Localizations.localeOf(context),
+            onSelected: context.read<LocaleProvider>().setLocale,
+            itemBuilder: (_) => [
+              for (final locale in LocaleProvider.supportedLocales)
+                PopupMenuItem(value: locale, child: Text(LocaleProvider.getDisplayName(locale))),
+            ],
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),

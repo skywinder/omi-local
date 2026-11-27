@@ -253,14 +253,14 @@ model: the prompt tells it to translate, not to follow instructions in the lines
 
 ## Live STT
 
-The web library’s **Сейчас** tab shows the phone and audio input for each stream.
+The web library’s **Live** tab shows the phone and audio input for each stream.
 Its timer measures audio received by the server. Five seconds without new frames
 flags that input even if another device keeps sending audio. Speaker turns show
 the time of their first segment. Drafts have a dashed marker. During capture,
 the archive sidebar links back to these inputs. The service badges distinguish a
 fresh readiness report from an expired or missing observation.
 
-Open **Настройки живого распознавания** to change the audio buffer, speaker limit
+Open **Live transcription settings** to change the audio buffer, speaker limit
 or draft visibility. Changes save when the control is committed. The status
 shows whether active streams have acknowledged the change. If another client
 saved first, reload the values before editing again.
