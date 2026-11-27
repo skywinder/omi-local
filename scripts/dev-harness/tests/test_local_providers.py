@@ -42,7 +42,7 @@ def test_first_save_preserves_default_managed_live_and_explicit_off(cfg, monkeyp
     registry = Registry(cfg)
     assert registry.snapshot('live')['kind'] == 'parakeet-local'
     registry.save({'revision': 0, 'profile': summary()})
-    assert registry.snapshot('live')['name'] == 'Parakeet на этом Mac'
+    assert registry.snapshot('live')['name'] == 'Parakeet on this Mac'
     registry.activate({'revision': 1, 'stage': 'live', 'id': None}, prepare=lambda _, publish: publish())
     assert registry.snapshot('live') is None
     assert Registry(cfg).snapshot('live') is None
@@ -64,7 +64,7 @@ def test_managed_parakeet_card_derives_its_port_and_cannot_target_another(cfg):
     saved = registry.save({'revision': 0, 'profile': card})
     selected = next(p for p in saved['profiles'] if p['kind'] == 'parakeet-local')
     assert selected['settings']['url'] == 'ws://127.0.0.1:19090/asr'
-    with pytest.raises(SettingsError, match='порт'):
+    with pytest.raises(SettingsError, match='port'):
         registry.save({'revision': saved['revision'], 'profile': {**card, 'settings': {'url': 'ws://127.0.0.1:18090/asr'}}})
 
 
@@ -150,7 +150,7 @@ def test_failed_activation_restores_effective_and_rejects_stale_edits(cfg):
     with pytest.raises(SettingsError):
         registry.activate({'revision': 1, 'stage': 'summary', 'id': saved['profiles'][-1]['id']}, prepare=fail)
     assert registry.read() == saved
-    with pytest.raises(SettingsError, match='другом окне'):
+    with pytest.raises(SettingsError, match='another window'):
         registry.save({'revision': 0, 'profile': summary()})
     assert registry.read() == saved
 
@@ -202,14 +202,14 @@ def test_stt_switch_cannot_silently_discard_or_restore_embedded_diarization(cfg)
     activate = lambda stage, profile_id: registry.activate(
         {'revision': registry.read()['revision'], 'stage': stage, 'id': profile_id},
         prepare=lambda _, publish: publish())
-    with pytest.raises(SettingsError, match='отдельного провайдера'):
+    with pytest.raises(SettingsError, match='separate diarization provider'):
         activate('stt', saved['profiles'][-1]['id'])
     assert registry.read() == saved
     activate('diarization', None)
     activate('stt', 'current-stt')
     assert EngineConfig.load(cfg).diarization_model == 'none'
     activate('stt', saved['profiles'][-1]['id'])
-    with pytest.raises(SettingsError, match='отдельного провайдера'):
+    with pytest.raises(SettingsError, match='separate diarization provider'):
         activate('diarization', 'current-diarization')
     assert registry.snapshot('diarization') is None
 

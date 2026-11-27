@@ -69,7 +69,7 @@ test('live monitor resumes after page restoration, skips hidden tabs, and recove
   ui.requests[0].reply('Первый черновик');
   await settle();
   assert.match(ui.root.textContent, /Первый черновик/);
-  assert.match(ui.root.textContent, /Live-текст получен/);
+  assert.match(ui.root.textContent, /Live text received/);
   ui.event('pagehide');
   assert.equal(ui.timers.size, 0);
   ui.event('pageshow');
@@ -82,7 +82,7 @@ test('live monitor resumes after page restoration, skips hidden tabs, and recove
   ui.tick();
   ui.requests[2].reject(new Error('Synthetic connection failure'));
   await settle();
-  assert.match(ui.root.textContent, /Нет связи с сервером/);
+  assert.match(ui.root.textContent, /Server disconnected/);
   assert.doesNotMatch(ui.root.textContent, /Свежий черновик/);
   ui.document.hidden = true;
   ui.tick();
@@ -110,7 +110,7 @@ test('restoration during a pending fetch discards stale results without overlapp
   ui.requests[1].reject(new Error('Synthetic aborted request'));
   await settle();
   assert.equal(ui.timers.size, 0, 'hidden page does not restart its timer');
-  assert.doesNotMatch(ui.root.textContent, /Нет связи с сервером/);
+  assert.doesNotMatch(ui.root.textContent, /Server disconnected/);
   ui.event('pageshow');
   ui.requests[2].reply('Текущий черновик');
   await settle();
@@ -122,30 +122,30 @@ test('restoration during a pending fetch discards stale results without overlapp
 test('diarization distinguishes service readiness, labels, degradation and lost status', async t => {
   const ui = monitor(t);
   for (const [state, label, count] of [
-    ['ready', 'Сервис готов', 0], ['pending', 'ожидаем метки', 0],
-    ['labeled', 'Метки получены', 3], ['degraded', 'Ошибка диаризации', 0],
-    ['disabled', 'Выключена', 0], ['unknown', 'Неизвестно', 0],
+    ['ready', 'Service ready', 0], ['pending', 'waiting for labels', 0],
+    ['labeled', 'Labels received', 3], ['degraded', 'Speaker labeling error', 0],
+    ['disabled', 'Disabled', 0], ['unknown', 'Unknown', 0],
   ]) {
     if (ui.requests.length > 1 || state !== 'ready') ui.tick();
     ui.requests.at(-1).reply('Текст продолжает поступать', {state, labeled_segments: count});
     await settle();
     assert.ok(ui.root.textContent.includes(label));
-    assert.match(ui.root.textContent, /Live-текст получен/);
-    if (state === 'labeled') assert.match(ui.root.textContent, /текущем тексте: 3/);
-    else assert.doesNotMatch(ui.root.textContent, /текущем тексте: 3/);
+    assert.match(ui.root.textContent, /Live text received/);
+    if (state === 'labeled') assert.match(ui.root.textContent, /this transcript: 3/);
+    else assert.doesNotMatch(ui.root.textContent, /this transcript: 3/);
   }
   ui.tick();
   ui.requests.at(-1).reject(new Error('Disconnected'));
   await settle();
-  assert.doesNotMatch(ui.root.textContent, /Метки получены|Сервис готов/);
+  assert.doesNotMatch(ui.root.textContent, /Labels received|Service ready/);
 });
 
 test('live source distinguishes two internal microphones and an attached CV1', async () => {
   const {liveSourceLabel} = await import('./live.mjs');
-  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_platform: 'ios'}}), 'iPhone · Встроенный микрофон');
-  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_model: 'Pixel 5a'}}), 'Pixel 5a · Встроенный микрофон');
+  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_platform: 'ios'}}), 'iPhone · Built-in microphone');
+  assert.equal(liveSourceLabel({source: 'phone', origin: {phone_model: 'Pixel 5a'}}), 'Pixel 5a · Built-in microphone');
   assert.equal(liveSourceLabel({source: 'omi', origin: {phone_model: 'iPhone Air'}}), 'iPhone Air · Omi CV1');
-  assert.equal(liveSourceLabel({source: 'phone'}), 'Встроенный микрофон');
+  assert.equal(liveSourceLabel({source: 'phone'}), 'Built-in microphone');
 });
 
 test('recording failure identifies the failed stage even with a saved transcript', async () => {
@@ -163,15 +163,15 @@ test('a draft moves into the existing speaker bubble when the turn grows', async
     segments: [first, {is_draft: true, text: 'Продолжение'}]};
   ui.requests[0].reply('', {}, [session]);
   await settle();
-  assert.match(ui.root.textContent, /Начало\.ЧерновикПродолжение/);
+  assert.match(ui.root.textContent, /Начало\.DraftПродолжение/);
   ui.tick();
   ui.requests[1].reply('', {}, [{...session, revision: 2, segments: [first], withdrawn: {text: 'Продолжение', end: 2}}]);
   await settle();
-  assert.match(ui.root.textContent, /Начало\.Предыдущий текст · не подтвержденоПродолжение/);
+  assert.match(ui.root.textContent, /Начало\.Previous text · unconfirmedПродолжение/);
   ui.tick();
   ui.requests[2].reply('', {}, [{...session, revision: 3, segments: [{...first, text: 'Начало. Продолжение.'}]}]);
   await settle();
-  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Начало\. Продолжение\./);
+  assert.match(ui.root.textContent, /Speaker 1 · 0:01Начало\. Продолжение\./);
   assert.equal(ui.root.textContent.split('Продолжение').length, 2);
 });
 
@@ -188,14 +188,14 @@ test('parallel inputs keep independent activity and update speaker turns without
     await settle();
   };
   await poll(phone, cv1);
-  assert.match(ui.root.textContent, /Говорящий 1 · 0:01Один дваЧерновиктри/);
-  assert.match(ui.root.textContent, /Проверяем потокДругой поток/);
+  assert.match(ui.root.textContent, /Speaker 1 · 0:01Один дваDraftтри/);
+  assert.match(ui.root.textContent, /Checking streamДругой поток/);
   now += 6000; ui.tick();
   await poll({...phone, frames_received: 6, segments: [{speaker: 'SPEAKER_01', start: 3, text: 'Три'}]}, cv1);
-  assert.match(ui.root.textContent, /Получаем звукГоворящий 2 · 0:03Три/);
-  assert.match(ui.root.textContent, /Кадры не поступают ≥ 5 сДругой поток/);
-  assert.match(ui.root.textContent, /Требуют внимания: 1 из 2/);
-  assert.doesNotMatch(ui.root.textContent, /Один два|Черновиктри/);
+  assert.match(ui.root.textContent, /Receiving audioSpeaker 2 · 0:03Три/);
+  assert.match(ui.root.textContent, /No frames for at least 5 secondsДругой поток/);
+  assert.match(ui.root.textContent, /Need attention: 1 of 2/);
+  assert.doesNotMatch(ui.root.textContent, /Один два|Draftтри/);
 });
 
 
@@ -206,14 +206,14 @@ test('sidebar and service badges share monitor observations and discard expired 
   ui.requests[0].reply('Синтетическая речь', {}, [{source: 'omi'}], stages);
   await settle();
   assert.deepEqual(observations[0].labels, ['Omi CV1']);
-  assert.match(ui.root.textContent, /Модель итогов · доступна/);
+  assert.match(ui.root.textContent, /Summary model · available/);
   ui.tick(); ui.requests[1].reply('', {}, [], {...stages, stale: true});
   await settle();
-  assert.match(ui.root.textContent, /Модель итогов · проверка устарела/);
+  assert.match(ui.root.textContent, /Summary model · check expired/);
   assert.deepEqual(observations[1].labels, []);
   ui.tick(); ui.requests[2].reject(Error('offline'));
   await settle();
-  assert.match(ui.root.textContent, /Модель итогов · нет данных/);
+  assert.match(ui.root.textContent, /Summary model · no data/);
   assert.deepEqual(observations[2].labels, []);
 });
 
@@ -231,7 +231,7 @@ test('an idle iPhone remains in its own stream while the headline identifies aud
   now += 1000;
   ui.requests[1].reply('', {}, [iphone, {...pixel, frames_received: 5}]);
   await settle();
-  assert.deepEqual(observations.at(-1), {labels: ['Pixel 5a · Встроенный микрофон'],
+  assert.deepEqual(observations.at(-1), {labels: ['Pixel 5a · Built-in microphone'],
     activity: {label: 'Receiving audio', tone: 'active'}});
-  assert.match(ui.root.textContent, /iPhone Air · Omi CV1.*Ждём первые кадры/);
+  assert.match(ui.root.textContent, /iPhone Air · Omi CV1.*Waiting for the first frames/);
 });

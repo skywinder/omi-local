@@ -220,7 +220,7 @@ def run(ios, mode='all', **overrides):
                           capture_output=True, text=True, timeout=15)
 
 
-@pytest.mark.parametrize('failure, message', [('license', 'первый запуск Xcode'), ('sdk', 'iOS SDK'),
+@pytest.mark.parametrize('failure, message', [('license', 'Xcode first launch'), ('sdk', 'iOS SDK'),
     ('flutter', 'Flutter'), ('pod', 'CocoaPods')])
 def test_tools_stop_with_remedy_before_signing_or_phone(ios, failure, message):
     root, _, _ = ios
@@ -235,7 +235,7 @@ def test_sdk_mismatch_stops_before_signing_or_phone(ios, version):
     root, _, _ = ios
     result = run(ios, TEST_FLUTTER_VERSION=version)
     assert result.returncode != 0
-    assert 'Flutter 3.47.4 из app/pubspec.yaml' in result.stderr
+    assert 'Flutter 3.47.4 from app/pubspec.yaml' in result.stderr
     events = (root / 'events').read_text()
     assert 'signing' not in events and 'phone' not in events
 
@@ -248,7 +248,7 @@ def test_signing_requires_identity_and_certificate_ou_without_printing_them(ios,
     result = run(ios, mode='signing', TEST_FAIL=failure,
                  OMI_APPLE_TEAM_ID='KLMNOPQRST' if failure == 'wrong_team' else env['OMI_APPLE_TEAM_ID'])
     assert result.returncode != 0
-    assert 'Связк' in result.stderr
+    assert 'Keychain' in result.stderr
     if failure != 'keychain':
         assert 'Manage Certificates' in result.stderr
     assert env['TEST_CERT_SHA'] not in result.stdout + result.stderr
@@ -270,7 +270,7 @@ def test_phone_readiness_uses_live_results_and_keeps_older_ios(ios, failure):
         (root / 'phone.json').write_text(json.dumps(phones))
     result = run(ios, TEST_FAIL=failure)
     assert (result.returncode == 0) == (failure in ['', 'old_ios'])
-    assert ('Подготовка к установке на iPhone проверена.' in result.stderr) == (result.returncode == 0)
+    assert ('iPhone installation prerequisites verified.' in result.stderr) == (result.returncode == 0)
     assert 'TEST-PHONE' not in result.stdout + result.stderr
     if failure == 'old_ios':
         assert 'details' not in (root / 'events').read_text()
@@ -293,7 +293,7 @@ def test_interactive_wait_rechecks_each_stage_and_can_cancel(ios, cancel):
         while time.monotonic() < deadline:
             if select.select([master], [], [], 0.1)[0]:
                 new += os.read(master, 65536)
-                if 'q — выйти: '.encode() in new:
+                if 'q to quit: '.encode() in new:
                     output += new
                     return new.decode()
         raise AssertionError('setup did not wait for user input')
@@ -310,11 +310,11 @@ def test_interactive_wait_rechecks_each_stage_and_can_cancel(ios, cancel):
         assert 'phone' not in (root / 'events').read_text()
         (root / 'signing-ready').touch()
         os.write(master, b'\n')
-        assert 'готовность телефона' in until_prompt()
+        assert 'phone readiness' in until_prompt()
         if cancel:
             os.write(master, b'q\n')
             assert process.wait(timeout=5) != 0
-            assert 'Подготовка к установке на iPhone проверена.' not in output.decode()
+            assert 'iPhone installation prerequisites verified.' not in output.decode()
         else:
             (root / 'phone-ready').touch()
             os.write(master, b'\n')

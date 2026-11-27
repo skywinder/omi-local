@@ -23,14 +23,14 @@ def source_language(value):
 
 def validate(value):
     if not isinstance(value, dict) or set(value) != {'asr_coalesce_min_s', 'max_speakers', 'preview_mode'}:
-        raise SettingsError('Проверьте параметры live-распознавания.')
+        raise SettingsError('Check live transcription settings.')
     seconds, speakers = value['asr_coalesce_min_s'], value['max_speakers']
     if type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0 <= seconds <= 10:
-        raise SettingsError('Накопление аудио: от 0 до 10 секунд.', field='asr_coalesce_min_s')
+        raise SettingsError('Audio buffer must be between 0 and 10 seconds.', field='asr_coalesce_min_s')
     if type(speakers) is not int or not 1 <= speakers <= 4:
-        raise SettingsError('Выберите от 1 до 4 спикеров.', field='max_speakers')
+        raise SettingsError('Choose between 1 and 4 speakers.', field='max_speakers')
     if value['preview_mode'] not in {'draft', 'stable'}:
-        raise SettingsError('Выберите режим текста.', field='preview_mode')
+        raise SettingsError('Select a text mode.', field='preview_mode')
     return {**value, 'asr_coalesce_min_s': float(seconds)}
 
 
@@ -156,7 +156,7 @@ class Controls:
     def view(self, snapshot, capability):
         if not capability:
             return {'available': False, 'source_language': None,
-                    'message': 'Быстрые настройки недоступны: проверьте соединение и поддержку сервера Live.'}
+                    'message': 'Live controls are unavailable. Check the connection and Live server support.'}
         revision, settings = self.state(snapshot, capability)
         sessions = [s for p, s in self.sessions if p == provider_key(snapshot)]
         return {'available': True, 'revision': revision, 'settings': settings,
@@ -175,15 +175,15 @@ class Controls:
         async with self.lock:
             snapshot, capability = await self.current()
             if not capability:
-                raise SettingsError('Сервер Live не подтвердил поддержку быстрых настроек.', status=409)
+                raise SettingsError('The Live server did not confirm support for quick settings.', status=409)
             settings = validate(body.get('settings'))
             revision, previous = self.state(snapshot, capability)
             if type(body.get('revision')) is not int or body['revision'] != revision:
-                raise SettingsError('Настройки изменились. Обновите значения и повторите.', status=409)
+                raise SettingsError('Settings changed. Refresh and try again.', status=409)
             fields = body.get('changed_fields', [])
             if (not isinstance(fields, list) or any(not isinstance(field, str) or field not in settings
                                                      for field in fields) or len(fields) != len(set(fields))):
-                raise SettingsError('Проверьте параметры live-распознавания.')
+                raise SettingsError('Check live transcription settings.')
             changed = {field for field in settings if settings[field] != previous[field]} | set(fields)
             revision += 1
             await asyncio.to_thread(atomic_json, self.path, {
@@ -196,14 +196,14 @@ class Controls:
     async def update_next_session(self, body):
         """Save only the speaker limit without mutating already attached streams."""
         if not isinstance(body, dict) or set(body) != {'revision', 'max_speakers'}:
-            raise SettingsError('Проверьте параметры live-распознавания.')
+            raise SettingsError('Check live transcription settings.')
         async with self.lock:
             snapshot, capability = await self.current()
             if not capability:
-                raise SettingsError('Сервер Live не подтвердил поддержку быстрых настроек.', status=409)
+                raise SettingsError('The Live server did not confirm support for quick settings.', status=409)
             revision, settings = self.state(snapshot, capability)
             if type(body['revision']) is not int or body['revision'] != revision:
-                raise SettingsError('Настройки изменились. Обновите значения и повторите.', status=409)
+                raise SettingsError('Settings changed. Refresh and try again.', status=409)
             settings = validate({**settings, 'max_speakers': body['max_speakers']})
             revision += 1
             await asyncio.to_thread(atomic_json, self.path, {

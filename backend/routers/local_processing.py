@@ -56,24 +56,24 @@ async def forward(request: Request, suffix: str = '', *, request_limit: int = RE
     if request.method != 'GET':
         if (request.headers.get('content-type', '').split(';')[0].strip() != 'application/json'
                 or request.headers.get('transfer-encoding')):
-            return error('Ожидается запрос JSON.', 400)
+            return error('Expected a JSON request.', 400)
         data = bytearray()
         try:
             if int(request.headers.get('content-length', '0')) > request_limit:
-                return error('Запрос настроек слишком большой.', 413)
+                return error('Settings request too large.', 413)
             async with asyncio.timeout(15):
                 async for chunk in request.stream():
                     data.extend(chunk)
                     if len(data) > request_limit:
-                        return error('Запрос настроек слишком большой.', 413)
+                        return error('Settings request too large.', 413)
         except (TimeoutError, ValueError):
-            return error('Не удалось прочитать запрос настроек.', 400)
+            return error('Could not read the settings request.', 400)
         try:
             body = json.loads(data)
             if not isinstance(body, dict):
                 raise ValueError()
         except (ValueError, UnicodeError):
-            return error('Некорректный запрос настроек.', 400)
+            return error('Invalid settings request.', 400)
     activating = suffix == '/activate'
     timeout = 700 if activating else 45
     try:
@@ -96,12 +96,12 @@ async def forward(request: Request, suffix: str = '', *, request_limit: int = RE
     except (TimeoutError, httpx.HTTPError, OSError, ValueError, OfflineEgressBlocked):
         # A connection can end after activation has published. Never retry writes.
         if activating:
-            return error('Результат переключения не подтверждён. Обновите настройки и проверьте активный профиль.',
+            return error('Switch unconfirmed. Refresh settings and check the active profile.',
                          503, outcome='indeterminate')
         if request.method == 'POST' and suffix == '/live-tuning':
-            return error('Результат сохранения не подтверждён. Обновите настройки и проверьте значение.',
+            return error('Save unconfirmed. Refresh settings and check the value.',
                          503, outcome='indeterminate')
-        return error('Сервер настроек недоступен. Проверьте подключение и обновите настройки.', 503)
+        return error('Settings server unavailable. Check the connection and refresh settings.', 503)
 
 
 @router.get('/v1/local/processing', dependencies=[Depends(require_processing)])
@@ -132,5 +132,5 @@ async def change_processing(request: Request) -> JSONResponse:
 @router.delete('/v1/local/processing/profiles/{profile_id}', dependencies=[Depends(require_processing)])
 async def delete_processing(profile_id: str, request: Request) -> JSONResponse:
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', profile_id):
-        return error('Профиль не найден.', 404)
+        return error('Profile not found.', 404)
     return await forward(request, '/profiles/' + profile_id)

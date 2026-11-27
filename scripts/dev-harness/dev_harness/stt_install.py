@@ -66,7 +66,7 @@ def download(asset: dict, root: Path, cancelled=None) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + '.part')
     if target.is_symlink() or partial.is_symlink():
-        raise InstallError('Небезопасный путь к файлу модели.')
+        raise InstallError('Unsafe model file path.')
     offset = partial.stat().st_size if partial.exists() else 0
     if offset >= asset['size']:
         if file_ok(partial, asset):
@@ -78,7 +78,7 @@ def download(asset: dict, root: Path, cancelled=None) -> str:
     # Bounded ranges also handle CDNs that finish a response before the whole object.
     while offset < asset['size']:
         if cancelled is not None and cancelled.is_set():
-            raise InstallError('Загрузка остановлена после ошибки другого файла.')
+            raise InstallError('Download stopped because another file failed.')
         end = min(offset + 64 * 1024**2, asset['size']) - 1
         headers = {'User-Agent': 'omiloc-installer', 'Accept-Encoding': 'identity',
                    'Range': f'bytes={offset}-{end}'}
@@ -89,16 +89,16 @@ def download(asset: dict, root: Path, cancelled=None) -> str:
                 span = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', response.headers.get('Content-Range', ''))
                 if (not span or int(span[1]) != offset or int(span[3]) != asset['size']
                         or not offset <= int(span[2]) <= end):
-                    raise InstallError('Сервер вернул неверный диапазон загрузки; повторите подготовку.')
+                    raise InstallError('The server returned an invalid download range. Run setup again.')
             with partial.open('ab' if append else 'wb') as stream:
                 shutil.copyfileobj(response, stream, length=1024 * 1024)
         received = partial.stat().st_size
         if received <= offset or received > asset['size']:
-            raise InstallError('Загрузка модели не продвигается. Повторите подготовку.')
+            raise InstallError('The model download stalled. Run setup again.')
         offset = received
     if not file_ok(partial, asset):
         partial.unlink()
-        raise InstallError('Контрольная сумма модели не совпала; повторите подготовку.')
+        raise InstallError('Model checksum mismatch. Run setup again.')
     os.replace(partial, target)
     return f'resumed from {initial_offset} bytes' if initial_offset and append else 'downloaded'
 
@@ -108,7 +108,7 @@ def extract_nltk(assets: Path) -> None:
         for entry in archive.infolist():
             path = Path(entry.filename)
             if path.is_absolute() or '..' in path.parts or path.parts[0] != 'punkt_tab':
-                raise InstallError('Неожиданный путь в архиве NLTK.')
+                raise InstallError('Unexpected path in the NLTK archive.')
             if not entry.is_dir():
                 target = assets / 'nltk/tokenizers' / path
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -136,7 +136,7 @@ def verify_assets(assets: Path, data: dict) -> None:
             if path.is_symlink() or [path.stat().st_size, path.stat().st_mtime_ns] != stat:
                 raise ValueError('asset changed')
     except (OSError, ValueError, TypeError):
-        raise InstallError('Модели отсутствуют или изменились. Повторите install-local-stt.sh.') from None
+        raise InstallError('Model files are missing or changed. Run install-local-stt.sh again.') from None
 
 
 def environment(root: Path) -> dict:
@@ -178,7 +178,7 @@ def apply_patch(python: Path, data: dict, env: dict, log, source: Path) -> None:
     if all(actual[name] == value['patched'] for name, value in data['patches'].items()):
         return
     if any(actual[name] not in (value['original'], value['patched']) for name, value in data['patches'].items()):
-        raise InstallError('Исходники WhisperX отличаются от закреплённой версии.')
+        raise InstallError('The WhisperX source differs from the pinned revision.')
     # Publish verified files atomically so an interrupted patch can be retried.
     patch_text = (source / 'whisperx-local.patch').read_text()
     for name, hashes in data['patches'].items():
@@ -192,32 +192,32 @@ def apply_patch(python: Path, data: dict, env: dict, log, source: Path) -> None:
             subprocess.run(['patch', '-p1', '--batch', '--forward'], input=section.encode(), cwd=temporary,
                            env=env, stdout=log, stderr=log, check=True)
             if digest(target) != hashes['patched']:
-                raise InstallError('Проверка правок WhisperX не пройдена.')
+                raise InstallError('WhisperX patch verification failed.')
             os.replace(target, site / name)
 
 
 def install(root: Path, source: Path = SOURCE) -> None:
     data = recipe(source)
     if digest(source / data['smoke']['path']) != data['smoke']['sha256']:
-        raise InstallError('Проверочный аудиофайл отсутствует или изменился.')
+        raise InstallError('Test audio file is missing or changed.')
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
-        raise InstallError('Распознавание рассчитано на Mac с Apple Silicon.')
+        raise InstallError('Transcription requires an Apple Silicon Mac.')
     if int(platform.mac_ver()[0].split('.')[0]) < data['macos_min']:
-        raise InstallError('Этим версиям библиотек нужна macOS 14 или новее.')
+        raise InstallError('These library versions require macOS 14 or later.')
     for tool in ('uv', 'brew', 'patch'):
         if shutil.which(tool) is None:
-            raise InstallError('Сначала подготовьте Mac через start.command.')
+            raise InstallError('Run start.command to prepare the Mac first.')
     revision = fingerprint(source)
     if root.is_symlink() or root.parent.is_symlink():
-        raise InstallError('Небезопасный путь установки.')
+        raise InstallError('Unsafe installation path.')
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     if any((root / name).is_symlink() for name in ('.install.lock', 'install.log', 'ready.json', 'assets', 'runtimes')):
-        raise InstallError('Небезопасный путь установки.')
+        raise InstallError('Unsafe installation path.')
     with (root / '.install.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise InstallError('Подготовка распознавания уже запущена.') from None
+            raise InstallError('Transcription setup is already running.') from None
         env = environment(root)
         libraries = subprocess.run(['brew', '--prefix', 'ffmpeg@7'], env=env, capture_output=True, text=True)
         if libraries.returncode == 0:
@@ -227,11 +227,11 @@ def install(root: Path, source: Path = SOURCE) -> None:
                        '--quick-check', '--assets', str(root / 'assets')]
             probe = subprocess.run(offline_command(command, env), env=env, capture_output=True)
             if probe.returncode == 0:
-                print('Распознавание уже подготовлено.')
+                print('Transcription is already set up.')
                 return
         # Preserve old runtimes; all writes target this recipe's separate environment.
         if shutil.disk_usage(root).free < 8 * 1024**3:
-            raise InstallError('Для подготовки освободите минимум 8 ГБ на диске.')
+            raise InstallError('Free at least 8 GB of disk space before setup.')
         (root / 'ready.json').unlink(missing_ok=True)
         runtime = root / 'runtimes' / revision
         runtime.mkdir(parents=True, exist_ok=True)
@@ -248,7 +248,7 @@ def install(root: Path, source: Path = SOURCE) -> None:
                 if result.returncode:
                     log.write(f'Step failed: exit {result.returncode}\n')
                     raise subprocess.CalledProcessError(result.returncode, command)
-            print('Готовим окружение распознавания…', flush=True)
+            print('Preparing the transcription environment…', flush=True)
             if subprocess.run(['brew', 'list', '--versions', 'ffmpeg@7'], env=env, stdout=log, stderr=log).returncode:
                 run(['brew', 'install', 'ffmpeg@7'])
             run(['uv', 'python', 'install', '--no-bin', data['python']])
@@ -257,7 +257,7 @@ def install(root: Path, source: Path = SOURCE) -> None:
                  '--python', str(python), str(source / 'requirements-whisperx-macos.txt')])
             run(['uv', 'pip', 'check', '--python', str(python)])
             apply_patch(python, data, env, log, source)
-            print('Скачиваем модели — около 3 ГБ. Прерванная загрузка продолжится при повторе.', flush=True)
+            print('Downloading about 3 GB of models. Run setup again to resume an interrupted download.', flush=True)
             cancelled = threading.Event()
             log_lock = threading.Lock()
             def fetch(item):
@@ -286,14 +286,14 @@ def install(root: Path, source: Path = SOURCE) -> None:
             atomic_json(root / 'assets/verified.json', asset_receipt(root / 'assets', data))
             libraries = subprocess.check_output(['brew', '--prefix', 'ffmpeg@7'], env=env, text=True).strip()
             env['DYLD_LIBRARY_PATH'] = str(Path(libraries) / 'lib')
-            print('Проверяем распознавание и таймкоды без сети…', flush=True)
+            print('Checking transcription and timestamps offline…', flush=True)
             command = [str(python), str(source / 'dev_harness/local_whisperx.py'), '--check', '--assets', str(root / 'assets')]
             run(offline_command(command, env))
             if fingerprint(source) != revision:
-                raise InstallError('Файлы установщика изменились. Повторите подготовку.')
+                raise InstallError('Installer files changed. Run setup again.')
             atomic_json(root / 'ready.json', {'revision': revision})
             log.write('Installation completed: offline speech and timestamps passed\n')
-        print('Распознавание подготовлено. Лог: ' + os.path.relpath(root / 'install.log'))
+        print('Transcription ready. Log: ' + os.path.relpath(root / 'install.log'))
 
 
 def main() -> int:
@@ -305,14 +305,14 @@ def main() -> int:
     try:
         if args.check:
             if installed(args.root) is None:
-                raise InstallError('Распознавание не подготовлено. Запустите install-local-stt.sh.')
-            print('Распознавание: файлы проверены.')
+                raise InstallError('Transcription is unavailable. Run install-local-stt.sh.')
+            print('Transcription files verified.')
         else:
             install(args.root.absolute())
         return 0
     except (InstallError, OSError, subprocess.SubprocessError) as error:
         print(str(error) if isinstance(error, InstallError) else
-              'Подготовка остановлена. Повторите команду; подробности: ' +
+              'Setup stopped. Run the command again. Details: ' +
               os.path.relpath(args.root / 'install.log'), file=sys.stderr)
         return 1
 

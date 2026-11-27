@@ -18,7 +18,7 @@ def test_shared_lock_excludes_a_second_standalone_operation(tmp_path, monkeypatc
 
     with transcription_lock.acquire(repo) as active:
         assert active is not None
-        with pytest.raises(transcription_lock.TranscriptionLockBusy, match='занято'):
+        with pytest.raises(transcription_lock.TranscriptionLockBusy, match='is busy'):
             with transcription_lock.acquire(repo):
                 pass
         with transcription_lock.acquire(repo, shared_lock=active) as reused:
@@ -44,10 +44,10 @@ def test_explicit_lock_path_must_be_owned_canonical_lock(tmp_path, monkeypatch):
     monkeypatch.delenv('OMI_LOCAL_INSTANCE', raising=False)
     monkeypatch.delenv('OMI_LOCAL_STATE_ROOT', raising=False)
     layout = safety.create_state_layout(repo, 'ngrok')
-    with pytest.raises(transcription_lock.TranscriptionLockError, match='Небезопасный'):
+    with pytest.raises(transcription_lock.TranscriptionLockError, match='Unsafe'):
         with transcription_lock.acquire(repo, lock_path=layout.services_dir / 'local-transcripts/missing.lock'):
             pass
-    with pytest.raises(transcription_lock.TranscriptionLockError, match='Не подтверждён'):
+    with pytest.raises(transcription_lock.TranscriptionLockError, match='Cannot verify'):
         with transcription_lock.acquire(repo, lock_path=tmp_path / 'missing-state/services/local-transcripts/.lock'):
             pass
 
@@ -72,7 +72,7 @@ def test_live_install_checks_shared_lock_before_touching_assets(tmp_path, monkey
     monkeypatch.setattr(local_live_install, 'smoke', lambda *args, **kwargs: smoke_called.append(args))
 
     with transcription_lock.acquire(repo) as active:
-        with pytest.raises(local_live_install.LiveInstallError, match='занято'):
+        with pytest.raises(local_live_install.LiveInstallError, match='is busy'):
             local_live_install.install(repo)
     assert not root.exists()
     assert smoke_called == []

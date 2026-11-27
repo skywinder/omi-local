@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:omi/backend/schema/conversation.dart';
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_next_app.dart';
@@ -65,6 +66,9 @@ Future<void> _openDetail(
 
 void main() {
   testWidgets('a fresh install asks for pairing and reports a rejected key before network access', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.platformDispatcher.localeTestValue = const Locale('ru');
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
     FlutterSecureStorage.setMockInitialValues({});
     const environment = MethodChannel('org.omilocal.next/environment');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(environment, (call) async {
@@ -83,6 +87,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Invalid key'), findsOneWidget);
     expect(find.text('Conversations'), findsNothing);
+    await tester.tap(find.byTooltip('App Language'));
+    await tester.pumpAndSettle();
+    final german = find.text('Deutsch (German)');
+    await tester.ensureVisible(german);
+    await tester.pumpAndSettle();
+    await tester.tap(german);
+    await tester.pumpAndSettle();
+    expect(Localizations.localeOf(tester.element(find.byType(Scaffold).first)), const Locale('de'));
+    expect((await SharedPreferences.getInstance()).getString('app_locale'), 'de');
   });
 
   for (final brightness in Brightness.values) {

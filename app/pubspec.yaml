@@ -1,5 +1,5 @@
 name: omi
-description: A new Flutter project.
+description: Record audio from an Omi CV1 or iPhone microphone and browse transcripts on a paired Omi Local server.
 
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
 

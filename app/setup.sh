@@ -418,12 +418,12 @@ function check_flutter_version() {
     in_environment && $1 == "flutter:" { gsub(/"/, "", $2); print $2; exit }
   ' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pubspec.yaml") || return 1
   if ! [[ "$required_flutter" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo 'В pubspec.yaml должна быть указана точная версия environment.flutter.' >&2
+    echo 'Pin environment.flutter to an exact version in pubspec.yaml.' >&2
     return 1
   fi
   if ! version=$(flutter --version 2>/dev/null) || ! [[ "$version" =~ Flutter[[:space:]]+([^[:space:]]+) ]] || [[ "${BASH_REMATCH[1]}" != "$required_flutter" ]]; then
-    echo "Нужен Flutter $required_flutter из app/pubspec.yaml в PATH. Установка: https://docs.flutter.dev/install" >&2
-    echo 'Выберите эту версию SDK; после изменения PATH откройте новый Terminal и повторите проверку.' >&2
+    echo "Flutter $required_flutter from app/pubspec.yaml must be on PATH. Install it from https://docs.flutter.dev/install" >&2
+    echo 'Select that SDK, open a new terminal, and run the check again.' >&2
     return 1
   fi
 }
@@ -435,26 +435,26 @@ function check_flutter_version() {
 function check_ios_prerequisites() {
   local version sdk
   if ! version=$(xcodebuild -version 2>/dev/null) || ! [[ "$version" =~ Xcode[[:space:]]+([0-9.]+) ]] || ! _version_at_least "${BASH_REMATCH[1]}" 16.4; then
-    echo 'Нужен рабочий Xcode 16.4 или новее. Установите его из App Store и откройте.' >&2
-    echo 'Примите лицензию; в Settings → Locations → Command Line Tools выберите Xcode.' >&2
+    echo 'Install Xcode 16.4 or later from the App Store and open it.' >&2
+    echo 'Accept the license and select Xcode under Settings → Locations → Command Line Tools.' >&2
     return 1
   fi
   if ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
-    echo 'Завершите первый запуск Xcode: откройте его, примите лицензию и дождитесь компонентов.' >&2
+    echo 'Complete Xcode first launch. Accept the license and wait for components to install.' >&2
     return 1
   fi
   if ! sdk=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null) || [[ ! -d "$sdk" ]]; then
-    echo 'Не найден iOS SDK. В Xcode → Settings → Components установите поддержку iOS.' >&2
+    echo 'iOS SDK missing. Install iOS support in Xcode → Settings → Components.' >&2
     return 1
   fi
   check_flutter_version || return 1
   if ! version=$(pod --version 2>/dev/null) || ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! _version_at_least "$version" 1.16.2; then
-    echo 'Нужен рабочий CocoaPods 1.16.2 или новее: brew install cocoapods (обновление: brew upgrade cocoapods).' >&2
-    echo 'Если Homebrew ещё не установлен, сначала запустите start.command из корня проекта.' >&2
+    echo 'CocoaPods 1.16.2 or later is required. Run brew install cocoapods or brew upgrade cocoapods.' >&2
+    echo 'To install Homebrew, run start.command from the repository root.' >&2
     return 1
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    echo 'Не найден jq: brew install jq. Homebrew подготавливается через start.command.' >&2
+    echo 'Install jq with brew install jq. Run start.command first if you need Homebrew.' >&2
     return 1
   fi
 }
@@ -464,10 +464,10 @@ function ios_retry() {
   local reply
   while ! "$@"; do
     if [[ ! -t 0 || ! -t 1 ]]; then
-      echo 'Проверка остановлена. Исправьте причину и запустите команду снова в Terminal.' >&2
+      echo 'Check stopped. Resolve the issue and run the command again in Terminal.' >&2
       return 1
     fi
-    read -r -p 'После исправления нажмите Enter; q — выйти: ' reply || return 1
+    read -r -p 'Press Enter to retry or q to quit: ' reply || return 1
     [[ "$reply" != q && "$reply" != Q ]] || return 1
     # Tools installed in another terminal may be newly available on PATH.
     hash -r
@@ -479,7 +479,7 @@ function check_ios_signing() {
   # security returns only valid signing identities (certificate + private key).
   # Keep identities and subjects in memory; never send them to the terminal/log.
   if ! identities=$(security find-identity -v -p codesigning 2>/dev/null); then
-    echo 'Не удалось проверить Связку ключей. Разблокируйте её и повторите проверку из Terminal.' >&2
+    echo 'Could not check Keychain. Unlock it and try again in Terminal.' >&2
     return 1
   fi
   certificates=$(security find-certificate -a -p -c 'Apple Development' 2>/dev/null) || certificates=''
@@ -495,10 +495,10 @@ function check_ios_signing() {
       pem=''
     fi
   done <<< "$certificates"
-  echo 'Не подтверждён действующий Apple Development с закрытым ключом для выбранной Team.' >&2
-  echo 'Разблокируйте Связку ключей. В Xcode → Settings → Accounts добавьте Apple Account.' >&2
-  echo 'Выберите Team → Manage Certificates → + → Apple Development; существующий рабочий сертификат оставьте.' >&2
-  echo 'Проверьте Team ID по полю Organizational Unit (OU) сертификата. Подробнее: docs/LOCAL_SETUP.md.' >&2
+  echo 'Could not verify an Apple Development certificate and private key for the selected team.' >&2
+  echo 'Unlock Keychain. Add your Apple Account under Xcode → Settings → Accounts.' >&2
+  echo 'Select your team → Manage Certificates → + → Apple Development. Keep existing working certificates.' >&2
+  echo 'Find the Team ID in the certificate Organizational Unit (OU). See docs/LOCAL_SETUP.md.' >&2
   return 1
 }
 
@@ -514,13 +514,13 @@ function prepare_ios_signing() {
   fi
   while :; do
     if ! [[ "${OMI_APPLE_TEAM_ID:-}" =~ ^[A-Z0-9]{10}$ ]]; then
-      echo 'Подпись: Xcode → Settings → Accounts → ваша Team → Manage Certificates → Apple Development.' >&2
-      echo 'Team ID: Связка ключей → Мои сертификаты → Apple Development → Organizational Unit (OU).' >&2
+      echo 'For signing, open Xcode → Settings → Accounts → your team → Manage Certificates → Apple Development.' >&2
+      echo 'Find your Team ID in Keychain Access → My Certificates → Apple Development → Organizational Unit (OU).' >&2
       if [[ ! -t 0 || ! -t 1 ]]; then
-        echo 'Задайте OMI_APPLE_TEAM_ID или повторите запуск в Terminal; ввод Team ID будет скрыт.' >&2
+        echo 'Set OMI_APPLE_TEAM_ID or run again in Terminal to enter the Team ID privately.' >&2
         return 1
       fi
-      read -r -s -p 'Team ID (10 символов; q — выйти): ' OMI_APPLE_TEAM_ID || return 1
+      read -r -s -p 'Team ID (10 characters, q to quit): ' OMI_APPLE_TEAM_ID || return 1
       printf '\n' >&2
       [[ "$OMI_APPLE_TEAM_ID" != q && "$OMI_APPLE_TEAM_ID" != Q ]] || return 1
       continue
@@ -530,7 +530,7 @@ function prepare_ios_signing() {
       return 0
     fi
     [[ -t 0 && -t 1 ]] || return 1
-    read -r -p 'Enter — проверить снова; t — другой Team ID; q — выйти: ' reply || return 1
+    read -r -p 'Press Enter to retry, t to change Team ID, or q to quit: ' reply || return 1
     case "$reply" in q|Q) return 1 ;; t|T) unset OMI_APPLE_TEAM_ID ;; esac
   done
 }
@@ -608,26 +608,26 @@ function check_ios_phone() {
   # xcdevice includes old iOS releases that predate CoreDevice/Developer Mode.
   if ! devices=$(xcrun xcdevice list --timeout 10 2>/dev/null) ||
      ! device=$(printf '%s' "$devices" | jq -ce --arg id "$device_id" '.[] | select(.identifier == $id and .simulator == false and .platform == "com.apple.platform.iphoneos" and .available == true and .error == null)'); then
-    echo 'Xcode не подтвердил готовность телефона. Подключите и разблокируйте iPhone, подтвердите доверие Mac.' >&2
-    echo 'Откройте Xcode → Window → Devices and Simulators и дождитесь готовности. Xcode должен поддерживать iOS телефона.' >&2
+    echo 'Xcode could not verify phone readiness. Connect and unlock the iPhone and trust the Mac.' >&2
+    echo 'Open Xcode → Window → Devices and Simulators and wait for the phone. Xcode must support its iOS version.' >&2
     return 1
   fi
   major=$(printf '%s' "$device" | jq -r '.operatingSystemVersion // ""' | cut -d. -f1)
   if ! [[ "$major" =~ ^[0-9]+$ ]]; then
-    echo 'Не удалось определить версию iOS. Проверьте телефон в Xcode → Window → Devices and Simulators.' >&2
+    echo 'Could not determine the iOS version. Check the phone in Xcode → Window → Devices and Simulators.' >&2
     return 1
   fi
   if (( major >= 17 )); then
     # Stream JSON into memory, never a file containing device/account identifiers.
     if ! details=$(xcrun devicectl device info details --device "$device_id" --timeout 15 --json-output /dev/stdout --quiet 2>/dev/null) ||
        ! printf '%s' "$details" | jq -e '.result.connectionProperties.pairingState == "paired" and .result.deviceProperties.developerModeStatus == "enabled" and .result.deviceProperties.ddiServicesAvailable == true' >/dev/null 2>&1; then
-      echo 'Готовность iPhone не подтверждена. Разблокируйте его, подтвердите доверие и дождитесь подготовки в Xcode.' >&2
-      echo 'На iPhone: Настройки → Конфиденциальность и безопасность → Режим разработчика; перезагрузите и подтвердите включение.' >&2
+      echo 'iPhone readiness unconfirmed. Unlock the phone, trust the Mac, and wait for Xcode.' >&2
+      echo 'On iPhone, open Settings → Privacy & Security → Developer Mode, restart, and confirm.' >&2
       return 1
     fi
     if ! locked=$(xcrun devicectl device info lockState --device "$device_id" --timeout 15 --json-output /dev/stdout --quiet 2>/dev/null) ||
        ! printf '%s' "$locked" | jq -e '.result.unlockedSinceBoot == true and .result.passcodeRequired == false' >/dev/null 2>&1; then
-      echo 'Не удалось подтвердить разблокировку iPhone. Разблокируйте экран и повторите проверку.' >&2
+      echo 'Could not confirm the iPhone is unlocked. Unlock the screen and try again.' >&2
       return 1
     fi
   fi
@@ -635,13 +635,13 @@ function check_ios_phone() {
 }
 
 function prepare_ios_installation() {
-  echo 'Проверяем Xcode, iOS SDK, Flutter и CocoaPods…' >&2
+  echo 'Checking Xcode, iOS SDK, Flutter, and CocoaPods…' >&2
   ios_retry check_ios_prerequisites || return 1
-  echo 'Инструменты готовы. Проверяем подпись…' >&2
+  echo 'Tools ready. Checking signing…' >&2
   prepare_ios_signing || return 1
-  echo 'Сертификат с закрытым ключом найден. Проверяем iPhone…' >&2
+  echo 'Certificate and private key found. Checking iPhone…' >&2
   ios_retry check_ios_phone || return 1
-  echo 'Подготовка к установке на iPhone проверена.' >&2
+  echo 'iPhone installation prerequisites verified.' >&2
 }
 
 function install_personal_profile() {
@@ -730,7 +730,7 @@ case "${1:-}" in
     omi_macos_path
     if [[ "${2:-}" == "personal" && "${3:-}" == --check && -z "${4:-}" ]]; then
       prepare_ios_installation
-      echo 'Проверка завершена. Сборка и установка не запускались.'
+      echo 'Checks complete. Build and installation were skipped.'
     elif [[ "${2:-}" == "personal" && -z "${3:-}" ]]; then
       OMI_RUNTIME_MODE=offline run_build_ios dev \
           --dart-define=OMI_API_BASE_URL="$LOCAL_API_BASE_URL" \

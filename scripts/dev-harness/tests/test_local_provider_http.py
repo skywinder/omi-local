@@ -32,7 +32,7 @@ class Body(httpx.SyncByteStream):
 def test_post_stops_reading_at_limit_and_closes_response():
     body = Body([b'x' * 9] * 100)
     with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=body))) as client:
-        with pytest.raises(ValueError, match='слишком большой'):
+        with pytest.raises(ValueError, match='too large'):
             transport.post_json(client, 'https://provider.example/v1', limit=16)
     assert body.reads == 2 and body.closed
 
@@ -47,7 +47,7 @@ def test_elapsed_budget_stops_a_trickling_body_without_sleep(monkeypatch):
         assert all(timeout == 2 for timeout in request.extensions['timeout'].values())
         return httpx.Response(200, stream=body)
     with httpx.Client(transport=httpx.MockTransport(respond), timeout=None) as client:
-        with pytest.raises(ValueError, match='время ожидания'):
+        with pytest.raises(ValueError, match='timed out'):
             transport.post_json(client, 'https://provider.example/v1', deadline_seconds=2)
     assert body.reads == 3 and body.closed
 
@@ -94,7 +94,7 @@ def test_network_errors_cannot_expose_credentials_or_provider_body():
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         with pytest.raises(ValueError) as error:
             transport.post_json(client, 'https://provider.example/v1')
-    assert str(error.value) == 'Не удалось получить ответ сервера.'
+    assert str(error.value) == 'No response from the server.'
     assert error.value.__suppress_context__
     assert error.value.diagnostic_code == 'connection'
 

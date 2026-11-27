@@ -35,22 +35,22 @@ def _safe_path(cfg, path):
         if item == cfg.repo_root:
             break
         if item.is_symlink():
-            raise TranscriptionSetupError('Небезопасный путь локальных настроек распознавания.')
+            raise TranscriptionSetupError('Unsafe local transcription settings path.')
 
 
 def _validate_state(cfg, *, required=False):
     if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
-        raise TranscriptionSetupError('Подготовка распознавания требует локальный Mac в парном режиме offline.')
+        raise TranscriptionSetupError('Transcription setup requires a local Mac in paired offline mode.')
     root = cfg.layout.state_root
     _safe_path(cfg, root)
     if cfg.layout.services_dir != root / 'services':
-        raise TranscriptionSetupError('Неверный каталог локальных сервисов распознавания.')
+        raise TranscriptionSetupError('Invalid local transcription service directory.')
     _checked(lambda: safety.validate_safe_state_root(root, cfg.repo_root),
-             'Небезопасный каталог локального окружения.')
+             'Unsafe local environment directory.')
     if root.exists() or required:
         _safe_path(cfg, root / safety.HARNESS_SENTINEL_FILENAME)
         _checked(lambda: safety.read_and_validate_sentinel(root, repo_root=cfg.repo_root, instance=cfg.instance),
-                 'Не подтверждён владелец локального окружения; подготовка остановлена.')
+                 'Setup stopped because the local environment owner could not be verified.')
 
 
 def _settings_path(cfg, name):
@@ -64,9 +64,9 @@ def final_enabled(cfg):
     path = _settings_path(cfg, 'stt-watch.json')
     if not path.exists():
         return True
-    data = _checked(lambda: json.loads(path.read_text()), 'Не удалось прочитать stt-watch.json.')
+    data = _checked(lambda: json.loads(path.read_text()), 'Could not read stt-watch.json.')
     if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
-        raise TranscriptionSetupError('В stt-watch.json требуется enabled: true или false.')
+        raise TranscriptionSetupError('Set enabled to true or false in stt-watch.json.')
     return data['enabled']
 
 
@@ -100,7 +100,7 @@ def _check_final(cfg, engine):
                 'Selected Argmax files are not ready; check argmax-stt.json.'):
         return  # HTTP readiness belongs after the lifecycle starts this owned service.
     return _checked(lambda: local_stt.check_model(engine),
-                    'Выбранный финальный движок не готов. Подготовьте его по docs/LOCAL_STT.md; выбор сохранён.')
+                    'The selected final engine is unavailable. Follow docs/LOCAL_STT.md to prepare it. Your selection was saved.')
 
 
 def check_models(cfg):

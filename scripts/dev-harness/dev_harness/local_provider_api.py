@@ -34,19 +34,19 @@ class Settings:
                 response = client.get(endpoint) if body is None else client.post(endpoint, json=body)
                 data = response.json()
                 if response.is_error:
-                    raise SettingsError(data.get('error', 'Настройки недоступны.'),
+                    raise SettingsError(data.get('error', 'Settings unavailable.'),
                                         status=response.status_code, field=data.get('field'))
                 return data
         except SettingsError:
             raise
         except (httpx.HTTPError, ValueError):
-            message = ('Результат сохранения не подтверждён. Обновите настройки и проверьте значение.'
-                       if next_session else 'Нет связи с сервисом Live. Проверьте, что он запущен.')
+            message = ('Save unconfirmed. Refresh settings and check the value.'
+                       if next_session else 'Cannot reach the Live service. Check that it is running.')
             raise SettingsError(message, status=503) from None
 
     def dispatch(self, method, path, body):
         if not isinstance(body, dict):
-            raise SettingsError('Ожидается объект настроек.')
+            raise SettingsError('Expected a settings object.')
         if method == 'POST':
             if path == '/api/settings/summary-settings':
                 return self.registry.summary_settings(body)
@@ -61,7 +61,7 @@ class Settings:
                 return probe(self.cfg, profile, key=key, models=path.endswith('/models'))
         if method == 'DELETE' and path.startswith('/api/settings/profiles/'):
             return self.registry.delete(path.rsplit('/', 1)[-1], body.get('revision'))
-        raise SettingsError('Не найдено.', status=404)
+        raise SettingsError('Not found.', status=404)
 
 
 class Processing(Settings):
@@ -117,7 +117,7 @@ class Processing(Settings):
 
     def dispatch(self, method, path, body):
         if not isinstance(body, dict):
-            raise SettingsError('Ожидается объект настроек.')
+            raise SettingsError('Expected a settings object.')
         operation = path.removeprefix('/api/processing/')
         if method == 'POST' and operation == 'daily-recap':
             return daily_recap(self.registry, body)
@@ -143,18 +143,18 @@ class Processing(Settings):
         if method == 'POST' and operation in {'save', 'probe', 'models'}:
             profile = body.get('profile')
             if not self.can_edit(profile):
-                raise SettingsError('Этот профиль настраивается на сервере. В приложении можно выбрать подготовленный профиль.', status=403)
+                raise SettingsError('Configure this profile on the server, then select it in the app.', status=403)
             previous = next((p for p in self.registry.read()['profiles'] if p['id'] == profile.get('id')), None)
             if previous and not self.can_edit(previous):
-                raise SettingsError('Подготовленный локальный профиль доступен только для выбора.', status=403)
+                raise SettingsError('This prepared local profile can only be selected.', status=403)
         elif method == 'POST' and operation == 'activate':
             if body.get('stage') not in self.STAGES:
-                raise SettingsError('Выберите этап обработки.')
+                raise SettingsError('Select a processing stage.')
         elif method == 'DELETE' and re.fullmatch(r'profiles/[A-Za-z0-9_-]{1,64}', operation):
             previous = next((p for p in self.registry.read()['profiles'] if p['id'] == operation.rsplit('/', 1)[-1]), None)
             if previous and not self.can_edit(previous):
-                raise SettingsError('Подготовленный локальный профиль удаляется на сервере.', status=403)
+                raise SettingsError('Remove this prepared local profile on the server.', status=403)
         else:
-            raise SettingsError('Не найдено.', status=404)
+            raise SettingsError('Not found.', status=404)
         result = super().dispatch(method, '/api/settings/' + operation, body)
         return self.public(result) if 'profiles' in result else result

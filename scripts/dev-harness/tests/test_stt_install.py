@@ -110,7 +110,7 @@ def test_interrupted_download_preserves_progress_for_retry(tmp_path, monkeypatch
 
 def test_bad_download_never_becomes_a_model(tmp_path, monkeypatch):
     monkeypatch.setattr(install.urllib.request, 'urlopen', lambda *a, **k: Response(b'corrupt'))
-    with pytest.raises(install.InstallError, match='сумма'):
+    with pytest.raises(install.InstallError, match='checksum'):
         install.download(asset(b'correct'), tmp_path)
     assert not list(tmp_path.iterdir())
 
@@ -133,7 +133,7 @@ def test_short_http_response_is_completed_instead_of_discarded(tmp_path, monkeyp
 def test_wrong_range_at_start_is_rejected_before_writing(tmp_path, monkeypatch):
     monkeypatch.setattr(install.urllib.request, 'urlopen', lambda *a, **k:
                         Response(b'wrong', status=206, headers={'Content-Range': 'bytes 5-9/10'}))
-    with pytest.raises(install.InstallError, match='диапазон'):
+    with pytest.raises(install.InstallError, match='range'):
         install.download(asset(b'0123456789'), tmp_path)
     assert not list(tmp_path.iterdir())
 
@@ -309,12 +309,12 @@ def test_readiness_rejects_changed_or_missing_installed_dependencies(tmp_path, m
     monkeypatch.setattr(metadata, 'version', lambda _: '3.8.6')
     verify_runtime(data, tmp_path)
     monkeypatch.setattr(metadata, 'version', lambda _: '3.8.7')
-    with pytest.raises(ValueError, match='Зависимости'):
+    with pytest.raises(ValueError, match='Dependencies'):
         verify_runtime(data, tmp_path)
     def missing(_):
         raise metadata.PackageNotFoundError('whisperx')
     monkeypatch.setattr(metadata, 'version', missing)
-    with pytest.raises(ValueError, match='Зависимости'):
+    with pytest.raises(ValueError, match='Dependencies'):
         verify_runtime(data, tmp_path)
     with pytest.raises(ValueError, match='Python'):
         verify_runtime({'python': '0.0.0'}, tmp_path)
