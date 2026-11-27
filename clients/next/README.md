@@ -5,6 +5,8 @@ The iOS and Android launchers show **Omi Next** with a teal N icon. The applicat
 identifier is `org.omilocal.next`. Pair it with the server's app key in its own
 Keychain. The existing app owns its pending phone recordings.
 
+Next starts in English. Use **App Language** on the pairing or server management screen to save another interface language. Speech recognition and translation have separate settings.
+
 The build starts from the complete Flutter app tree at the Git revision in
 [upstream.json](upstream.json). The self-hosted Flutter entry point is
 `lib/main_local_next.dart`. Upstream supplies the conversation wire model,

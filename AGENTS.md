@@ -1,5 +1,7 @@
 # Omi Local: scope of this standalone snapshot
 
+Use English for release titles and notes, feature descriptions, default app interfaces, and server messages. Preserve user-selected languages and recorded content.
+
 This repository contains the local iOS/CV1 audio MVP. Read `README.md` and
 `docs/LOCAL_SETUP.md` first. If a local, ignored `Work/STATE.md` exists, it is
 the single source for the active gate and private working context.
