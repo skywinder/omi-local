@@ -978,9 +978,15 @@ void main() {
       await inputs.startCv1();
       await tester.pumpAndSettle();
       final strip = find.byKey(const ValueKey('next-live-strip'));
-      expect(find.descendant(of: strip, matching: find.text('CV1 · 00:00')), findsOneWidget);
+      final cv1Stop = find.byKey(const ValueKey('next-cv1-capture'));
+      final phoneMic = find.byKey(const ValueKey('next-phone-capture'));
+      final finishControl = find.byTooltip('Finish this conversation and keep recording');
+      expect(find.descendant(of: cv1Stop, matching: find.text('Stop · CV1 · 00:00')), findsOneWidget);
+      expect(find.descendant(of: strip, matching: find.byKey(const ValueKey('next-recording-time'))), findsNothing);
+      expect(tester.getRect(phoneMic).center.dy, tester.getRect(cv1Stop).center.dy);
+      expect(tester.getBottomLeft(cv1Stop).dy, lessThanOrEqualTo(tester.getTopLeft(finishControl).dy));
+      expect(tester.getBottomLeft(finishControl).dy, lessThanOrEqualTo(tester.getTopLeft(strip).dy));
       expect(find.descendant(of: strip, matching: find.text('Waiting for CV1 audio')), findsOneWidget);
-      expect(find.byTooltip('Finish this conversation and keep recording'), findsOneWidget);
       await tester.tap(strip);
       await tester.pumpAndSettle();
       expect(find.text('CV1 · 00:00'), findsOneWidget);
@@ -1321,7 +1327,7 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
-      final time = find.text('Phone · 00:00');
+      final time = find.descendant(of: phoneButton, matching: find.text('Stop · Phone · 00:00'));
       expect(time, findsOneWidget);
       expect(find.textContaining('Audio on phone'), findsNothing);
       final pending = find.byKey(const ValueKey('next-delivery-warning'));
@@ -1339,7 +1345,7 @@ void main() {
       await tester.pumpAndSettle();
       now = now.add(const Duration(seconds: 9));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('Phone · 00:09'), findsOneWidget);
+      expect(find.descendant(of: phoneButton, matching: find.text('Stop · Phone · 00:09')), findsOneWidget);
       expect(ownerChange.tryHold(), isFalse);
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();

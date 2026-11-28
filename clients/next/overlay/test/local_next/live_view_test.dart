@@ -258,12 +258,13 @@ void main() {
     const warning = 'All live transcription slots are in use. Audio is still recording.';
     expect(find.text(warning), findsOneWidget);
     final card = find.byKey(const ValueKey('next-live-strip'));
-    expect(tester.getRect(card).contains(tester.getCenter(find.text('CV1 · 02:00'))), isTrue);
+    expect(find.text('CV1 · 02:00'), findsNothing);
     expect(tester.getRect(card).bottom, greaterThanOrEqualTo(tester.getRect(find.text(warning)).bottom));
     expect(recording.value, isTrue);
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     expect(find.text(warning), findsOneWidget);
+    expect(find.text('CV1 · 02:00'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Stop Recording'), findsOneWidget);
   });
 

@@ -605,7 +605,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     if (started == null) return null;
     return _ActiveRecordingTime(
       started: started,
-      input: phone.active ? context.l10n.phone : 'CV1',
+      label: phone.active ? context.l10n.phone : 'CV1',
       clock: phone.journal.clock,
     );
   }
@@ -935,6 +935,11 @@ class LocalNextCaptureControls extends StatelessWidget {
     final l = context.l10n;
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
+    final phoneStopping = capture.active || capture.resumeRequested;
+    Widget sourceLabel(String label, DateTime? started) => started == null
+        ? Text(label, textAlign: TextAlign.center)
+        : _ActiveRecordingTime(started: started, label: label, clock: capture.journal.clock, inButton: true);
+
     ButtonStyle sourceStyle(NextAccent accent) => OutlinedButton.styleFrom(
       foregroundColor: accent.of(context),
       backgroundColor: accent.tint(context),
@@ -952,16 +957,14 @@ class LocalNextCaptureControls extends StatelessWidget {
     final buttons = [
       OutlinedButton.icon(
         key: const ValueKey('next-phone-capture'),
-        style: sourceStyle((capture.active || capture.resumeRequested) ? NextAccent.red : NextAccent.blue),
+        style: sourceStyle(phoneStopping ? NextAccent.red : NextAccent.blue),
         onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
             ? null
             : inputs.togglePhone,
-        icon: Icon((capture.active || capture.resumeRequested) ? Icons.stop : Icons.mic, size: 18),
-        label: Text(
-          (capture.active || capture.resumeRequested)
-              ? '${l.stop} · ${l.phone}'
-              : pairedSettingsLabel(context, 'nextRecordPhone'),
-          textAlign: TextAlign.center,
+        icon: Icon(phoneStopping ? Icons.stop : Icons.mic, size: 18),
+        label: sourceLabel(
+          phoneStopping ? '${l.stop} · ${l.phone}' : pairedSettingsLabel(context, 'nextRecordPhone'),
+          phoneStopping ? capture.startedAt : null,
         ),
       ),
       if (cv1.linked || cv1.active)
@@ -974,12 +977,12 @@ class LocalNextCaptureControls extends StatelessWidget {
               ? cv1.stop
               : inputs.startCv1,
           icon: Icon(cv1.active ? Icons.stop : Icons.fiber_manual_record, size: 18),
-          label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', textAlign: TextAlign.center),
+          label: sourceLabel(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', cv1.startedAt),
         ),
     ];
     final journal = capture.journal;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
       child: Row(
         spacing: 8,
         children: [
@@ -1035,6 +1038,14 @@ class LocalNextCaptureControls extends StatelessWidget {
       builder: (context, _) => Column(
         children: [
           _recordingActions(context),
+          if (cv1.active)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: _liveControls(context)),
+              ),
+            ),
           if (cv1.problem != null)
             Text(switch (cv1.problem!) {
               Cv1CaptureProblem.unsupportedCodec => l.captureRecordingError(l.audioFormatLabel),
@@ -1077,16 +1088,8 @@ class LocalNextCaptureControls extends StatelessWidget {
               serverLabel: serverLabel,
               library: library,
             )
-          else ...[
-            if (_time(context) case final time?) time,
-            if (_inputNotice(context) case final notice?) Text(notice),
-            if (cv1.active)
-              Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: _liveControls(context),
-              ),
-          ],
+          else if (_inputNotice(context) case final notice?)
+            Text(notice),
         ],
       ),
     );
@@ -1211,10 +1214,11 @@ String? phoneMicNotice(BuildContext context, NextPhoneCapture capture) => switch
 };
 
 class _ActiveRecordingTime extends StatefulWidget {
-  const _ActiveRecordingTime({required this.started, required this.input, required this.clock});
+  const _ActiveRecordingTime({required this.started, required this.label, required this.clock, this.inButton = false});
   final DateTime started;
-  final String input;
+  final String label;
   final DateTime Function() clock;
+  final bool inButton;
 
   @override
   State<_ActiveRecordingTime> createState() => _ActiveRecordingTimeState();
@@ -1244,14 +1248,14 @@ class _ActiveRecordingTimeState extends State<_ActiveRecordingTime> {
       seconds % 60,
     ].map((v) => v.toString().padLeft(2, '0')).join(':');
     return Text(
-      '${widget.input} · $time',
+      '${widget.label} · $time',
       key: const ValueKey('next-recording-time'),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textAlign: TextAlign.end,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: OmiColors.textPrimary,
-        fontWeight: FontWeight.w600,
+      maxLines: widget.inButton ? null : 1,
+      overflow: widget.inButton ? null : TextOverflow.ellipsis,
+      textAlign: widget.inButton ? TextAlign.center : TextAlign.end,
+      style: (widget.inButton ? DefaultTextStyle.of(context).style : Theme.of(context).textTheme.labelMedium)?.copyWith(
+        color: widget.inButton ? null : OmiColors.textPrimary,
+        fontWeight: widget.inButton ? null : FontWeight.w600,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );

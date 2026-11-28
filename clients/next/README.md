@@ -147,7 +147,8 @@ library can show them alongside the microphone used. On iPhone, the upload
 uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
-The Live Transcript card shows the active input and elapsed time.
+The capture buttons sit above the Live Transcript card, with a dedicated phone
+mic button. The active Stop button shows elapsed recording time.
 The top of Live Transcript shows the speaker limit and silence cutoff.
 The microphone status reports when audio has been saved on the phone, even
 while the Live transcript is waiting for text. Live stays open when silence
@@ -553,10 +554,10 @@ device** clears this selection.
 
 ## Live transcript
 
-While recording, the card above the archive filters shows the current input,
-elapsed time, recognition status, and the latest line or a short input notice.
-CV1 mute and **Finish & keep recording** are available on this card and in the full
-Live transcript. Tap the card header to open Live. The last session remains
+While recording, the card above the archive filters shows the recognition status
+and the latest line or a short input notice.
+CV1 mute and **Finish & keep recording** are available above the card and in the
+full Live Transcript screen. Tap the card to open Live. The last session remains
 accessible after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
