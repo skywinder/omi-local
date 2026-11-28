@@ -46,7 +46,7 @@ class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1Diagnostic
   Future<void> setArchiveAwake(bool enabled) async => wakeChanges.add(enabled);
 
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) {
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords, {int? ringId}) {
     reads.add(target);
     return onRead == null ? read.future : Future.value(onRead!(expectedStart));
   }
@@ -68,7 +68,80 @@ class _StorageRadio extends _Radio implements Cv1StorageTransport, Cv1Diagnostic
   Future<void> writeSetting(int generation, String field, int value) async {}
 }
 
+class _ManualRetry extends Fake implements Timer {
+  _ManualRetry(this.retry);
+  final void Function() retry;
+  bool cancelled = false;
+
+  @override
+  void cancel() => cancelled = true;
+
+  void fire() {
+    if (!cancelled) retry();
+  }
+}
+
+class _AcknowledgedRadio extends _StorageRadio implements Cv1AcknowledgedArchiveTransport {
+  final advanced = <int>[];
+  @override
+  Future<bool> advanceArchive(Cv1StorageTarget target, int end) async {
+    advanced.add(end);
+    return true;
+  }
+}
+
 void main() {
+  test('receiver-acknowledged ring advances only after the phone flush succeeds', () async {
+    final dir = await Directory.systemTemp.createTemp('receiver-ring');
+    final journal = LocalAudioJournal(directory: dir, upload: (bytes, owner) async => {});
+    final capture = NextCv1Capture(journal, 'fixture', canStart: () => true);
+    final radio = _AcknowledgedRadio()..onRead = (start) => (start: start, complete: true, bytes: Uint8List(444));
+    final link = Cv1Connection(radio, capture);
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: 'fixture'));
+      radio.stream.add(
+        const Cv1DiagnosticsEvent(
+          1,
+          Cv1Diagnostics(
+            ringId: 8,
+            storage: (unreadBytes: 444, freeBytes: 4440, clockValid: true),
+            storageInfo: (
+              oldest: 3,
+              unreadPackets: 1,
+              overwrittenPackets: 0,
+              protocol: Cv1StorageProtocol.receiverAcknowledgement,
+            ),
+          ),
+        ),
+      );
+      final target = link.importTarget!;
+      await expectLater(
+        link.readArchive(
+          target,
+          windows: 1,
+          shouldStop: () => false,
+          persist: (_) async => throw const FileSystemException('full'),
+        ),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(radio.advanced, isEmpty);
+      final flush = Completer<void>();
+      final read = link.readArchive(target, windows: 1, shouldStop: () => false, persist: (_) => flush.future);
+      await Future<void>.delayed(Duration.zero);
+      expect(radio.advanced, isEmpty);
+      flush.complete();
+      await read;
+      expect(radio.advanced, [4]);
+    } finally {
+      await link.close();
+      link.dispose();
+      await capture.close();
+      capture.dispose();
+      journal.dispose();
+      await dir.delete(recursive: true);
+    }
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('Dart and the native bridge exchange generation and subscription on the same audio command', () async {
@@ -448,6 +521,49 @@ void main() {
       await journal.drain();
       journal.dispose();
       await folder.delete(recursive: true);
+    }
+  });
+
+  test('CV1 retries a failed notification subscription and respects Stop', () async {
+    final journal = LocalAudioJournal(directory: Directory('unused'), upload: (bytes, owner) async => {});
+    final capture = NextCv1Capture(journal, 'fixture', canStart: () => true);
+    final radio = _Radio();
+    final retries = <_ManualRetry>[];
+    final link = Cv1Connection(
+      radio,
+      capture,
+      makeAudioRetry: (delay, retry) {
+        expect(delay, const Duration(seconds: 4));
+        final timer = _ManualRetry(retry);
+        retries.add(timer);
+        return timer;
+      },
+    );
+    try {
+      radio.stream.add(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20));
+      capture.start();
+      await pumpEventQueue();
+      final first = radio.commands.single.$2;
+      radio.enabling.completeError(PlatformException(code: 'audio_subscription'));
+      await pumpEventQueue();
+      expect(link.audioFailed, isTrue);
+      retries.single.fire();
+      await pumpEventQueue();
+      final second = radio.commands.last.$2;
+      expect(second, greaterThan(first));
+      expect(radio.commands, [(1, first, true), (1, first, false), (1, second, true)]);
+      expect(link.audioFailed, isFalse);
+      await capture.stop();
+      await pumpEventQueue();
+      expect(retries, hasLength(1));
+      expect(radio.commands.last, (1, second, false));
+      expect(radio.commands, hasLength(4));
+    } finally {
+      await link.close();
+      await capture.close();
+      link.dispose();
+      capture.dispose();
+      journal.dispose();
     }
   });
 

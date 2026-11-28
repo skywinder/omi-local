@@ -32,6 +32,21 @@ def test_existing_wire_format_case_times_speakers_and_stable_identity():
     assert build_conversation(raw(), alternative).id != conversation.id
 
 
+def test_summary_backfill_skips_existing_notes_and_incomplete_captures():
+    from database.local_summary import needs_backfill
+
+    capture = raw()
+    capture['processing'] = {'summary': {'status': 'failed'}}
+    recording = build_conversation(capture, manifest()).model_dump(mode='json')
+    assert needs_backfill(recording)
+    assert not needs_backfill({**recording, 'structured': {'overview': 'Existing recap'}})
+    assert not needs_backfill({**recording, 'structured': {'sections': [{'heading': 'Edited note'}]}})
+    assert not needs_backfill({**recording, 'local_summary_publication': {'request_id': 'saved'}})
+    assert not needs_backfill({**recording, 'status': 'processing'})
+    assert not needs_backfill({**recording, 'deleted': True})
+    assert not needs_backfill({**recording, 'external_data': {}})
+
+
 @pytest.mark.parametrize('engine,provider', [('parakeet-mlx', 'parakeet-mlx-local'),
                                            ('whisperkit', 'whisperkit-local'),
                                            ('openai-compatible', 'openai-compatible-local')])

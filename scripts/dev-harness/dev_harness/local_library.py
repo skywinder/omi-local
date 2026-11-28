@@ -415,7 +415,8 @@ def byte_range(value, size):
     return start, end
 
 
-def handler(library, assets, delete=None, runtime=None, settings=None, access=None, summary_jobs=None, notes=None):
+def handler(library, assets, delete=None, runtime=None, settings=None, access=None, summary_jobs=None, notes=None,
+            summary_backfill=None):
     access = access or Access()
     from .local_provider_api import Processing
     processing = Processing(settings.cfg, summary_jobs) if settings is not None else None
@@ -578,7 +579,12 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
                 if hasattr(self.connection, 'settimeout'):
                     self.connection.settimeout(15)
                 body = json.loads(self.rfile.read(length))
-                self.send_json(controls.dispatch(self.command, self.path, body))
+                if self.command == 'POST' and self.path == '/api/settings/summary-backfill' and summary_backfill:
+                    if not isinstance(body, dict):
+                        raise SettingsError('Choose a backfill action.')
+                    self.send_json(summary_backfill.change(body))
+                else:
+                    self.send_json(controls.dispatch(self.command, self.path, body))
             except SettingsError as error:
                 self.send_json({'error': str(error), **({'field': error.field} if error.field else {})}, error.status)
             except ActivationIndeterminate:
@@ -681,9 +687,15 @@ def handler(library, assets, delete=None, runtime=None, settings=None, access=No
             elif path == '/api/assets':
                 self.send_json(asset_versions(assets))
             elif path == '/api/runtime' and runtime is not None:
-                self.send_json(runtime.snapshot())
+                result = runtime.snapshot()
+                if summary_backfill is not None:
+                    result['summary_backfill'] = summary_backfill.status()
+                self.send_json(result)
             elif path == '/api/settings' and settings is not None:
-                self.send_json(settings.read())
+                result = settings.read()
+                if summary_backfill is not None:
+                    result['summary_backfill'] = summary_backfill.status()
+                self.send_json(result)
             elif path in ('/api/settings/summary-settings', '/api/processing/summary-settings') and settings is not None:
                 phone = path.startswith('/api/processing/')
                 if phone and (not self.allowed(request='processing') or not self.processing_allowed()):
@@ -806,6 +818,7 @@ def main():
     from .local_library_delete import delete_recording
     from .local_library_runtime import Runtime
     from .local_provider_api import Settings
+    from .local_summary_backfill import SummaryBackfill
     from .local_summary_queue import SummaryJobs
 
     if sys.argv[1:] == ['hash-password']:
@@ -819,17 +832,23 @@ def main():
     safety.read_and_validate_sentinel(cfg.layout.state_root, repo_root=cfg.repo_root, instance=cfg.instance)
     settings = Settings(cfg)
     summaries = SummaryJobs(cfg, settings.registry)
+    paired = cfg.local_transport in config.PAIRED_TRANSPORTS
+    backfill = SummaryBackfill(summaries) if paired else None
     server = ThreadingHTTPServer(('127.0.0.1', port(cfg)), handler(
         Library(cfg.layout.services_dir), cfg.repo_root / 'web-local', lambda audio: delete_recording(cfg, audio),
         Runtime(cfg), settings, access=Access.from_env(), summary_jobs=summaries,
-        notes=NoteStates(cfg) if cfg.local_transport in config.PAIRED_TRANSPORTS else None))
+        notes=NoteStates(cfg) if paired else None, summary_backfill=backfill))
     server.daemon_threads = True
+    if backfill is not None:
+        backfill.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        if backfill is not None:
+            backfill.close()
         summaries.close()
 
 

@@ -109,6 +109,32 @@ function dom(t) {
       assert.ok(target, `field ${name} exists`); target.value = value; target.dispatch('input'); return target; }};
 }
 async function settle() { for (let i = 0; i < 10; i++) await Promise.resolve(); }
+
+test('manual summary backfill and automatic recovery are independent', async t => {
+  const ui = dom(t);
+  const state = serverState();
+  let backfill = {automatic: false, requested: false, state: 'idle', failed: 0};
+  const calls = [];
+  const settings = mountSettings(ui.root, {request: async (path, body) => {
+    if (path === '') return {...state, summary_backfill: backfill};
+    assert.equal(path, '/summary-backfill');
+    calls.push(body);
+    backfill = {...backfill, automatic: body.automatic ?? backfill.automatic,
+      requested: body.run ?? backfill.requested, state: 'waiting_for_model'};
+    return backfill;
+  }});
+  await settings.show();
+  await ui.click('Backfill missing summaries', 'summary');
+  assert.match(ui.category('summary').textContent, /Waiting for the active summary model/);
+  await ui.click('Turn on automatic backfill', 'summary');
+  const auto = ui.category('summary').querySelectorAll('button').find(b => b.textContent === 'Turn off automatic backfill');
+  assert.equal(auto.attrs['aria-pressed'], 'true');
+  settings.updateAvailability({}, {...backfill, requested: false, state: 'idle'});
+  const manual = ui.category('summary').querySelectorAll('button').find(b => b.textContent === 'Backfill missing summaries');
+  assert.equal(manual.disabled, false);
+  assert.deepEqual(calls, [{run: true}, {automatic: true}]);
+});
+
 function serverState() {
   const profile = {...providerDefaults('summary'), id: 'summary-1', name: 'Local model', has_key: true};
   profile.settings = {base_url: 'http://127.0.0.1:11434/v1', model: 'synthetic-model'};

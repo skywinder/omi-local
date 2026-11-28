@@ -21,13 +21,6 @@ import 'paired_library.dart';
 import 'recording_page.dart';
 import 'settings_labels.dart';
 
-Widget _liveBadge(BuildContext context, NextAccent accent, IconData icon) => Container(
-  width: 38,
-  height: 38,
-  decoration: BoxDecoration(color: accent.tint(context), borderRadius: BorderRadius.circular(12)),
-  child: Icon(icon, color: accent.of(context), size: 21),
-);
-
 class LocalNextLiveButton extends StatefulWidget {
   const LocalNextLiveButton({
     super.key,
@@ -38,7 +31,6 @@ class LocalNextLiveButton extends StatefulWidget {
     required this.onStop,
     this.inputNotice,
     this.recordingTime,
-    this.hasCaptureControls,
     this.captureControls,
     this.captureSettings,
     this.silenceThreshold,
@@ -55,8 +47,7 @@ class LocalNextLiveButton extends StatefulWidget {
   final Future<void> Function() onStop;
   final String? Function(BuildContext)? inputNotice;
   final Widget? Function(BuildContext)? recordingTime;
-  final bool Function()? hasCaptureControls;
-  final WidgetBuilder? captureControls;
+  final List<Widget> Function(BuildContext)? captureControls;
   final WidgetBuilder? captureSettings;
   final int? Function()? silenceThreshold;
   final Listenable? silencePreference;
@@ -177,34 +168,23 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([widget.capture, widget.preview]),
     builder: (context, _) {
-      final l = context.l10n;
-      if (!widget.isRecording()) {
-        return ListTile(
-          leading: _liveBadge(context, NextAccent.slate, Icons.subtitles_outlined),
-          title: Text(l.liveTranscript),
-          subtitle: Text(_liveStatus(context, widget.preview, recording: false, muted: false)),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _open,
-        );
-      }
       final preview = widget.preview;
-      final muted = widget.isMuted?.call() == true;
-      final status = _liveStatus(context, preview, recording: true, muted: muted);
-      final (accent, icon) = muted
-          ? (NextAccent.slate, Icons.mic_off_outlined)
-          : switch (preview.phase) {
-              NextPreviewPhase.listening => (NextAccent.teal, Icons.graphic_eq),
-              NextPreviewPhase.unavailable => (NextAccent.coral, Icons.subtitles_off_outlined),
-              NextPreviewPhase.connecting => (NextAccent.amber, Icons.hourglass_top),
-              NextPreviewPhase.idle => (NextAccent.slate, Icons.subtitles_outlined),
-            };
-      final line = !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
+      final recording = widget.isRecording();
+      final muted = recording && widget.isMuted?.call() == true;
+      final status = _liveStatus(context, preview, recording: recording, muted: muted);
+      final (accent, icon) = switch ((recording, muted, preview.phase)) {
+        (_, true, _) => (NextAccent.slate, Icons.mic_off_outlined),
+        (true, _, NextPreviewPhase.listening) => (NextAccent.teal, Icons.graphic_eq),
+        (true, _, NextPreviewPhase.unavailable) => (NextAccent.coral, Icons.subtitles_off_outlined),
+        (true, _, NextPreviewPhase.connecting) => (NextAccent.amber, Icons.hourglass_top),
+        _ => (NextAccent.slate, Icons.subtitles_outlined),
+      };
+      final line = recording && !muted && preview.phase == NextPreviewPhase.listening && preview.lines.isNotEmpty
           ? preview.lines.last.text.replaceAll(RegExp(r'\s+'), ' ').trim()
           : '';
-      final timer = widget.recordingTime?.call(context);
-      final notice = widget.inputNotice?.call(context);
+      final notice = recording ? widget.inputNotice?.call(context) : null;
       final waitingForInput = notice != null && preview.phase == NextPreviewPhase.idle;
-      final showControls = widget.hasCaptureControls?.call() == true;
+      final secondary = waitingForInput ? null : notice ?? (line.isEmpty ? null : line);
       final theme = Theme.of(context).textTheme;
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
@@ -214,66 +194,39 @@ class _LocalNextLiveButtonState extends State<LocalNextLiveButton> {
           elevation: 0,
           shape: const RoundedRectangleBorder(borderRadius: OmiRadius.mdAll),
           clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              InkWell(
-                key: const ValueKey('next-live-strip'),
-                onTap: _open,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        spacing: 8,
+          child: InkWell(
+            key: const ValueKey('next-live-strip'),
+            onTap: _open,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    Icon(icon, color: accent.of(context), size: 20),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _liveBadge(context, accent, icon),
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  l.liveTranscript,
-                                  style: theme.titleSmall,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(
-                                  waitingForInput ? notice : status,
-                                  style: theme.bodySmall,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                          Text(context.l10n.liveTranscript, style: theme.titleSmall),
+                          Text(waitingForInput ? notice : status, style: theme.bodySmall),
+                          if (secondary != null)
+                            Text(
+                              secondary,
+                              style: theme.bodySmall,
+                              maxLines: notice == null ? 1 : 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          if (timer != null)
-                            Expanded(
-                              flex: 2,
-                              child: Align(alignment: AlignmentDirectional.centerEnd, child: timer),
-                            ),
-                          const Icon(Icons.chevron_right, size: 18),
                         ],
                       ),
-                      if ((notice != null && !waitingForInput) || line.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(start: 46),
-                          child: Text(
-                            notice ?? line,
-                            style: theme.bodySmall,
-                            maxLines: notice != null ? 2 : 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                  ),
+                    ),
+                    const Icon(Icons.chevron_right, size: 18),
+                  ],
                 ),
               ),
-              if (widget.captureControls case final controls? when showControls)
-                Padding(padding: const EdgeInsetsDirectional.only(end: 4), child: controls(context)),
-            ],
+            ),
           ),
         ),
       );
@@ -311,6 +264,21 @@ class _LivePage extends StatefulWidget {
 
 class _LivePageState extends State<_LivePage> {
   bool _stopping = false;
+  late Future<int?> _configuredSpeakers = _readSpeakerLimit();
+
+  Future<int?> _readSpeakerLimit() async => (await widget.view.library?.readLiveTuning())?.speakers;
+
+  Future<void> _openSpeakerSettings(BuildContext context, PairedLibrary library) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => NextLiveTuningSheet(library: library),
+    );
+    if (!mounted) return;
+    final configured = _readSpeakerLimit();
+    setState(() {
+      _configuredSpeakers = configured;
+    });
+  }
 
   Future<void> _stop() async {
     if (_stopping) return;
@@ -334,10 +302,7 @@ class _LivePageState extends State<_LivePage> {
                   leading: const Icon(Icons.groups_outlined),
                   title: Text(pairedSettingsLabel(context, 'liveSpeakerLimit')),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => NextLiveTuningSheet(library: library),
-                  ),
+                  onTap: () => _openSpeakerSettings(context, library),
                 ),
               if (view.captureSettings case final settings?) settings(context),
               Expanded(
@@ -352,6 +317,63 @@ class _LivePageState extends State<_LivePage> {
       ),
     ),
   );
+
+  Widget _limits(BuildContext context, LocalNextLiveButton view, {required bool recording}) {
+    final seconds = view.silenceThreshold?.call();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md, vertical: OmiSpacing.xs),
+      child: Row(
+        spacing: OmiSpacing.md,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: FutureBuilder<int?>(
+              future: _configuredSpeakers,
+              builder: (context, snapshot) {
+                final status = recording ? view.preview.speakerStatus : null;
+                final applied = status?.state == 'applied' ? status?.speakers : null;
+                final speakers = applied ?? snapshot.data;
+                final label = switch (status?.state) {
+                  'failed' => 'liveSpeakerUnconfirmed',
+                  'unsupported' => 'liveSpeakerUnavailable',
+                  _ when speakers != null =>
+                    recording && applied == null ? 'liveSpeakerConfigured' : 'liveSpeakerValue',
+                  _ when snapshot.connectionState == ConnectionState.waiting => 'liveSpeakerLoading',
+                  _ => 'liveSpeakerUnavailable',
+                };
+                final text = Text(
+                  pairedSettingsLabel(context, label).replaceFirst('{count}', speakers?.toString() ?? ''),
+                  style: Theme.of(context).textTheme.bodySmall,
+                );
+                return switch (status?.state) {
+                  'failed' => Tooltip(message: pairedSettingsLabel(context, 'liveSpeakerApplyFailed'), child: text),
+                  'unsupported' => Tooltip(
+                    message: pairedSettingsLabel(context, 'liveSpeakerUnsupported'),
+                    child: text,
+                  ),
+                  _ => text,
+                };
+              },
+            ),
+          ),
+          if (view.silenceThreshold != null)
+            Expanded(
+              flex: 2,
+              child: Text(
+                seconds != null && seconds > 0
+                    ? pairedSettingsLabel(
+                        context,
+                        'nextSplitAfterSilence',
+                      ).replaceFirst('{seconds}', seconds.toString())
+                    : pairedSettingsLabel(context, 'nextSplitAfterSilenceOff'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -372,13 +394,12 @@ class _LivePageState extends State<_LivePage> {
                 tooltip: l.settings,
                 onPressed: () => _openSettings(context, view),
               ),
-              if (recording)
-                TextButton.icon(onPressed: _stopping ? null : _stop, icon: const Icon(Icons.stop), label: Text(l.stop)),
             ],
           ),
           body: SafeArea(
             child: Column(
               children: [
+                _limits(context, view, recording: recording),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md, vertical: OmiSpacing.xs),
                   child: Align(
@@ -411,15 +432,6 @@ class _LivePageState extends State<_LivePage> {
                     _ => null,
                   },
                 ),
-                if (preview.speakerStatus case final reporting?)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
-                    child: Text(switch (reporting.state) {
-                      'applied' => '${pairedSettingsLabel(context, 'liveSpeakerApplied')} ${reporting.speakers}',
-                      'failed' => pairedSettingsLabel(context, 'liveSpeakerApplyFailed'),
-                      _ => pairedSettingsLabel(context, 'liveSpeakerUnsupported'),
-                    }),
-                  ),
                 if (preview.translationStatus == 'unconfigured' || preview.translationStatus == 'failed')
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
@@ -461,20 +473,21 @@ class _LivePageState extends State<_LivePage> {
                     withdrawn: preview.withdrawnText,
                   ),
                 ),
-                if (view.captureControls case final controls? when recording && view.hasCaptureControls?.call() == true)
-                  controls(context),
-                if (view.silenceThreshold case final threshold?)
+                if (recording)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(OmiSpacing.md, OmiSpacing.xs, OmiSpacing.md, OmiSpacing.sm),
-                    child: Text(
-                      switch (threshold()) {
-                        final int seconds when seconds > 0 =>
-                          "${pairedSettingsLabel(context, 'nextSilenceThreshold')} · "
-                              "$seconds\u00a0${pairedSettingsLabel(context, 'nextSilenceSecondsAbbr')}",
-                        _ => pairedSettingsLabel(context, 'nextSilenceThresholdOff'),
-                      },
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.sm),
+                    child: Wrap(
+                      key: const ValueKey('next-live-actions'),
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        TextButton.icon(
+                          onPressed: _stopping ? null : _stop,
+                          icon: const Icon(Icons.stop),
+                          label: Text(l.stopRecording),
+                        ),
+                        ...?view.captureControls?.call(context),
+                      ],
                     ),
                   ),
               ],

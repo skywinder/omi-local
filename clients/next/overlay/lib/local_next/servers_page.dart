@@ -36,7 +36,7 @@ class NextServersPage extends StatefulWidget {
 class _ServersPageState extends State<NextServersPage> {
   final _name = TextEditingController(), _address = TextEditingController(), _keyField = TextEditingController();
   NextSavedServer? _selection;
-  bool _draft = false, _editing = false, _saved = false;
+  bool _draft = false, _editing = false, _saved = false, _statusExpanded = true;
 
   @override
   void initState() {
@@ -173,9 +173,10 @@ class _ServersPageState extends State<NextServersPage> {
                   children: [
                     ListTile(
                       key: ValueKey('server-entry-${activeEntry.id}'),
-                      leading: const Icon(Icons.dns_outlined),
+                      leading: Icon(_statusExpanded ? Icons.expand_less : Icons.expand_more),
                       title: Text(activeEntry.name),
                       subtitle: Text(l.active),
+                      onTap: () => setState(() => _statusExpanded = !_statusExpanded),
                       trailing: PopupMenuButton<_ServerAction>(
                         tooltip: l.moreOptions,
                         enabled: !session.busy,
@@ -200,14 +201,7 @@ class _ServersPageState extends State<NextServersPage> {
                         ],
                       ),
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.monitor_heart_outlined),
-                      title: Text(pairedSettingsLabel(context, 'serverStatus')),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: session.busy
-                          ? null
-                          : () => open(NextServerStatusPage(library: active, serverName: activeEntry.name)),
-                    ),
+                    if (_statusExpanded) NextServerStatusPanel(library: active),
                     ListTile(
                       leading: const Icon(Icons.tune),
                       title: Text(l.processing),

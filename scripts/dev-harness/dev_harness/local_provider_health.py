@@ -54,7 +54,7 @@ def collect(cfg, *, probe=default_probe, now=None):
     return {'version': 1, 'checked_at': int(time.time() if now is None else now), 'stages': stages}
 
 
-def observed_summary_model(cfg, profile):
+def _ready_summary_observation(cfg, profile):
     try:
         report = read_json(path(cfg), {})
         entry = report['stages']['summary']
@@ -62,12 +62,19 @@ def observed_summary_model(cfg, profile):
                 and entry.get('profile_id') == profile['id']
                 and entry.get('configuration_revision') == profile.get('configuration_revision')
                 and 0 <= time.time() - report['checked_at'] <= 3 * INTERVAL_SECONDS):
-            model = entry.get('model')
-            if isinstance(model, str) and 0 < len(model) <= 256 and model.isprintable():
-                return model
+            return entry
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
     return None
+
+
+def observed_summary_ready(cfg, profile):
+    return _ready_summary_observation(cfg, profile) is not None
+
+
+def observed_summary_model(cfg, profile):
+    model = (_ready_summary_observation(cfg, profile) or {}).get('model')
+    return model if isinstance(model, str) and 0 < len(model) <= 256 and model.isprintable() else None
 
 
 def write(cfg, report):

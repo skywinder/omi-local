@@ -7,17 +7,33 @@ import 'package:omi/utils/l10n_extensions.dart';
 import 'paired_library.dart';
 import 'settings_labels.dart';
 
-class NextServerStatusPage extends StatefulWidget {
+class NextServerStatusPage extends StatelessWidget {
   const NextServerStatusPage({super.key, required this.library, required this.serverName});
 
   final PairedLibrary library;
   final String serverName;
 
   @override
-  State<NextServerStatusPage> createState() => _NextServerStatusPageState();
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(pairedSettingsLabel(context, 'serverStatus'))),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [NextServerStatusPanel(library: library, title: serverName)],
+    ),
+  );
 }
 
-class _NextServerStatusPageState extends State<NextServerStatusPage> with WidgetsBindingObserver {
+class NextServerStatusPanel extends StatefulWidget {
+  const NextServerStatusPanel({super.key, required this.library, this.title});
+
+  final PairedLibrary library;
+  final String? title;
+
+  @override
+  State<NextServerStatusPanel> createState() => _NextServerStatusPanelState();
+}
+
+class _NextServerStatusPanelState extends State<NextServerStatusPanel> with WidgetsBindingObserver {
   LocalRuntimeStatus? _status;
   Object? _error;
   Timer? _timer;
@@ -44,7 +60,7 @@ class _NextServerStatusPageState extends State<NextServerStatusPage> with Widget
   }
 
   @override
-  void didUpdateWidget(NextServerStatusPage oldWidget) {
+  void didUpdateWidget(NextServerStatusPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.library == oldWidget.library) return;
     _status = null;
@@ -122,81 +138,77 @@ class _NextServerStatusPageState extends State<NextServerStatusPage> with Widget
       _ when status != null => '${l.connected} · ${l.apiKeyAuth}',
       _ => l.loading,
     };
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(pairedSettingsLabel(context, 'serverStatus')),
-        actions: [
-          IconButton(onPressed: _loading ? null : _refresh, icon: const Icon(Icons.refresh), tooltip: l.refresh),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ListTile(
-            title: Text(widget.serverName),
-            subtitle: Text(connection, key: const ValueKey('next-server-connection')),
+    return Column(
+      children: [
+        ListTile(
+          title: Text(widget.title ?? pairedSettingsLabel(context, 'serverStatus')),
+          subtitle: Text(connection, key: const ValueKey('next-server-connection')),
+          trailing: IconButton(
+            onPressed: _loading ? null : _refresh,
+            icon: const Icon(Icons.refresh),
+            tooltip: l.refresh,
           ),
-          if (_loading) const LinearProgressIndicator(),
-          if (status != null) ...[
-            ListTile(
-              title: Text(pairedSettingsLabel(context, 'serverStatusAudio')),
-              subtitle: Text(switch (status.captureState) {
-                LocalCaptureState.idle => pairedSettingsLabel(context, 'serverNoAudioStream'),
-                LocalCaptureState.waitingAudio => l.waitingForData,
-                LocalCaptureState.decodeError => l.error,
-                LocalCaptureState.received => l.secondsCount(status.audioSeconds.floor()),
-              }, key: const ValueKey('next-server-audio')),
-            ),
-            ListTile(
-              title: Text(l.liveTranscript),
-              subtitle: Text(switch (status.liveTranscriptState) {
-                LocalLiveTranscriptState.disabled => l.off,
-                LocalLiveTranscriptState.unavailable => l.transcriptionUnavailable,
-                LocalLiveTranscriptState.ready => l.modelReady,
-                LocalLiveTranscriptState.busy => l.processing,
-                LocalLiveTranscriptState.streaming => '${l.transcriptReceived} · ${status.transcriptUpdates}',
-                LocalLiveTranscriptState.failed => pairedSettingsLabel(context, 'transcriptionFailed'),
-              }, key: const ValueKey('next-server-live')),
-            ),
-            ListTile(
-              title: Text(pairedSettingsLabel(context, 'serverLiveDiarization')),
-              subtitle: Text(switch (status.diarizationState) {
-                LocalDiarizationState.unknown => l.unknown,
-                LocalDiarizationState.disabled => l.off,
-                LocalDiarizationState.ready => l.modelReady,
-                LocalDiarizationState.busy => l.processing,
-                LocalDiarizationState.pending => l.waitingForData,
-                LocalDiarizationState.labeled => l.nProcessed(status.labeledSegments),
-                LocalDiarizationState.degraded ||
-                LocalDiarizationState.unavailable => pairedSettingsLabel(context, 'providerUnavailable'),
-                LocalDiarizationState.failed => l.statusFailed,
-              }, key: const ValueKey('next-server-diarization')),
-            ),
-            if (status.stagesStale) ListTile(title: Text(pairedSettingsLabel(context, 'serverStageStale'))),
-            for (final (stage, label) in [
-              ('stt', l.transcription),
-              ('diarization', pairedSettingsLabel(context, 'diarization')),
-              ('summary', l.summary),
-            ])
-              if (status.stages[stage] case final provider?)
-                ListTile(
-                  title: Text(label),
-                  subtitle: Text(
-                    status.stagesStale
-                        ? l.unknown
-                        : switch (provider.state) {
-                            LocalStageState.ready => l.modelReady,
-                            LocalStageState.unavailable => pairedSettingsLabel(context, 'providerUnavailable'),
-                            LocalStageState.misconfigured => pairedSettingsLabel(context, 'providerMisconfigured'),
-                            LocalStageState.disabled => l.off,
-                            LocalStageState.unknown => l.unknown,
-                          },
-                    key: ValueKey('next-server-stage-$stage'),
-                  ),
+        ),
+        if (status != null) ...[
+          ListTile(
+            title: Text(pairedSettingsLabel(context, 'serverStatusAudio')),
+            subtitle: Text(switch (status.captureState) {
+              LocalCaptureState.idle => pairedSettingsLabel(context, 'serverNoAudioStream'),
+              LocalCaptureState.waitingAudio => l.waitingForData,
+              LocalCaptureState.decodeError => l.error,
+              LocalCaptureState.received => l.secondsCount(status.audioSeconds.floor()),
+            }, key: const ValueKey('next-server-audio')),
+          ),
+          ListTile(
+            title: Text(l.liveTranscript),
+            subtitle: Text(switch (status.liveTranscriptState) {
+              LocalLiveTranscriptState.disabled => l.off,
+              LocalLiveTranscriptState.unavailable => l.transcriptionUnavailable,
+              LocalLiveTranscriptState.ready => l.modelReady,
+              LocalLiveTranscriptState.busy => l.processing,
+              LocalLiveTranscriptState.streaming => '${l.transcriptReceived} · ${status.transcriptUpdates}',
+              LocalLiveTranscriptState.failed => pairedSettingsLabel(context, 'transcriptionFailed'),
+            }, key: const ValueKey('next-server-live')),
+          ),
+          ListTile(
+            title: Text(pairedSettingsLabel(context, 'serverLiveDiarization')),
+            subtitle: Text(switch (status.diarizationState) {
+              LocalDiarizationState.unknown => l.unknown,
+              LocalDiarizationState.disabled => l.off,
+              LocalDiarizationState.ready => l.modelReady,
+              LocalDiarizationState.busy => l.processing,
+              LocalDiarizationState.pending => l.waitingForData,
+              LocalDiarizationState.labeled => l.nProcessed(status.labeledSegments),
+              LocalDiarizationState.degraded ||
+              LocalDiarizationState.unavailable => pairedSettingsLabel(context, 'providerUnavailable'),
+              LocalDiarizationState.failed => l.statusFailed,
+            }, key: const ValueKey('next-server-diarization')),
+          ),
+          if (status.stagesStale) ListTile(title: Text(pairedSettingsLabel(context, 'serverStageStale'))),
+          for (final (stage, label) in [
+            ('stt', l.transcription),
+            ('diarization', pairedSettingsLabel(context, 'diarization')),
+            ('summary', l.summary),
+          ])
+            if (status.stages[stage] case final provider?)
+              ListTile(
+                title: Text(label),
+                subtitle: Text(
+                  status.stagesStale
+                      ? l.unknown
+                      : switch (provider.state) {
+                          LocalStageState.ready =>
+                            provider.name == null ? l.modelReady : l.modelReadyWithName(provider.name!),
+                          LocalStageState.unavailable => pairedSettingsLabel(context, 'providerUnavailable'),
+                          LocalStageState.misconfigured => pairedSettingsLabel(context, 'providerMisconfigured'),
+                          LocalStageState.disabled => l.off,
+                          LocalStageState.unknown => l.unknown,
+                        },
+                  key: ValueKey('next-server-stage-$stage'),
                 ),
-          ],
+              ),
         ],
-      ),
+      ],
     );
   }
 }

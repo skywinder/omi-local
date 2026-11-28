@@ -19,6 +19,14 @@ summaries**. When several providers are saved, choose **Enable** on the row you
 want to use. To regenerate one recording, open it and select
 **Regenerate summary**.
 
+In the web library under **Settings → Summarization**, choose **Backfill missing
+summaries** to process older saved transcripts with the active model and default
+template. **Turn on automatic backfill** keeps checking for missing summaries
+and starts jobs when the active model is ready. Both use the server's summary
+queue, keep existing summaries, and survive a server restart. Recordings need a
+saved transcript. If automatic transcription succeeds while the summary model is
+unavailable, the transcript is still published and can be backfilled later.
+
 ## Choose local or remote processing
 
 | Where | What to do |

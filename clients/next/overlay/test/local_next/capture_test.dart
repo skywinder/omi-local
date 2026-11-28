@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,7 +53,7 @@ class TestMic implements NextPhoneMicrophone {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop({bool reopening = false}) async {
     samples = null;
     if (!stopped.isCompleted) stopped.complete();
     await stopGate?.future;
@@ -88,6 +89,7 @@ void main() {
         requestPermission: () async => true,
         makeRecorder: () => recorder,
         isIOS: isIOS,
+        isAndroid: false,
         configureSession: (configuration) async {
           recorder.events.add('configure');
           expect(configuration.avAudioSessionCategory, AVAudioSessionCategory.playback);
@@ -108,12 +110,13 @@ void main() {
     await journal.initialize();
     final mic = TestMic();
     final timers = <_Watchdog>[];
+    final delays = <Duration>[];
     final capture = NextPhoneCapture(
       journal,
       'test',
       mic,
       makeTimer: (delay, callback) {
-        expect(delay, const Duration(seconds: 4));
+        delays.add(delay);
         final timer = _Watchdog(callback);
         timers.add(timer);
         return timer;
@@ -150,18 +153,53 @@ void main() {
     timers.last.expire();
     await pumpEventQueue();
     expect(mic.recorders, hasLength(3));
+    expect(delays.last, const Duration(seconds: 8));
     timers.last.expire();
     await pumpEventQueue();
+    expect(mic.recorders, hasLength(4));
+    expect(capture.active, isTrue);
+    expect(capture.micStatus, PhoneMicStatus.recovering);
+    expect(delays.last, const Duration(seconds: 16));
+    mic.recorders.last(Uint8List.fromList([13, 14]));
+    expect(delays.last, const Duration(seconds: 4));
     await capture.stop();
-    expect(capture.problem, CaptureProblem.micStalled);
+    expect(capture.problem, isNull);
     await journal.drain();
     final part = await scratch.listSync().whereType<File>().single.readAsBytes();
     final end = 12 + ByteData.sublistView(part).getUint32(8);
     final audio = ByteData.sublistView(part, end);
     expect(audio.getUint32(0), first.length);
     expect(audio.getUint32(8), second.length);
+    expect(audio.getUint32(16), 2);
     expect(part.sublist(end + 4, end + 8), first);
-    expect(part.sublist(end + 12), second);
+    expect(part.sublist(end + 12, end + 16), second);
+    expect(part.sublist(end + 20), [13, 14]);
+  });
+
+  test('phone intent survives a runtime close and explicit Stop clears it', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final scratch = await Directory.systemTemp.createTemp();
+    addTearDown(() => scratch.delete(recursive: true));
+    final journal = LocalAudioJournal(directory: scratch, upload: (_, owner) async => {'stored': false});
+    await journal.initialize();
+    final mic = TestMic();
+    final first = NextPhoneCapture(journal, 'test', mic, preferences: prefs);
+    await first.start();
+    expect(first.resumeRequested, isTrue);
+    await first.close();
+    first.dispose();
+    final reopened = NextPhoneCapture(journal, 'test', mic, preferences: prefs);
+    expect(reopened.resumeRequested, isTrue);
+    final other = NextPhoneCapture(journal, 'another server', mic, preferences: prefs);
+    expect(other.resumeRequested, isFalse);
+    other.dispose();
+    await reopened.start();
+    await reopened.stop();
+    expect(reopened.resumeRequested, isFalse);
+    reopened.dispose();
+    journal.dispose();
+    await mic.audioSession.close();
   });
 
   test('Stop while reopening wins over the watchdog and retires old callbacks', () async {
@@ -258,7 +296,7 @@ void main() {
     journal.dispose();
   });
 
-  test('the paired silence signal stops the phone mic and delivers the exact persisted audio', () async {
+  test('a paired silence signal leaves phone capture running until explicit Stop', () async {
     final scratch = await Directory.systemTemp.createTemp();
     addTearDown(() => scratch.delete(recursive: true));
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -280,9 +318,9 @@ void main() {
           );
         case '/v4/listen':
           expect(request.headers.value('x-omi-local-audio-outbox'), '1');
-          expect(request.headers.value('x-omi-local-group-silence'), '60');
+          expect(request.headers.value('x-omi-local-group-silence'), isNull);
           final group = request.headers.value('x-omi-local-recording-group');
-          expect(group, isNotNull);
+          expect(group, isNull);
           expect(request.uri.queryParameters['source'], 'phone');
           expect(request.uri.queryParameters['codec'], 'pcm16');
           final socket = await WebSocketTransformer.upgrade(request);
@@ -326,18 +364,24 @@ void main() {
       await capture.start();
       await ready.future.timeout(const Duration(seconds: 5));
       await pumpEventQueue();
+      expect(capture.hasSavedAudio, isFalse);
       final frame = Uint8List.fromList([10, 11, 12, 13]);
       mic.samples!(frame);
       final observed = await received.future.timeout(const Duration(seconds: 5));
       expect(observed.sent, frame);
       expect(observed.stored, frame);
-      await mic.stopped.future.timeout(const Duration(seconds: 5));
-      await closed.future.timeout(const Duration(seconds: 5));
+      expect(capture.hasSavedAudio, isTrue);
+      await pumpEventQueue();
+      expect(capture.active, isTrue);
+      expect(mic.stopped.isCompleted, isFalse);
+      final next = Uint8List.fromList([14, 15, 16, 17]);
+      mic.samples!(next);
       await capture.stop();
+      await closed.future.timeout(const Duration(seconds: 5));
       expect(capture.active, isFalse);
       await journal.drain();
       final part = await uploaded.future.timeout(const Duration(seconds: 5));
-      expect(part.sublist(part.length - frame.length), frame);
+      expect(part.sublist(part.length - next.length), next);
       expect(scratch.listSync(), isEmpty);
       expect(capture.problem, isNull);
     } finally {

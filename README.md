@@ -10,16 +10,16 @@ tunnel. The server keeps the audio library; the phone retains pending audio
 locally until the server confirms storage. Processing uses local engines or
 explicitly selected servers.
 
-[Release notes](docs/releases/v0.1.1.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
+[Release notes](docs/releases/v0.2.0.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for the integrated version. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for tagged source releases. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 
-- **Record from CV1 or the phone mic.** Start, stop and mute from the app, or finish one conversation while keeping CV1 listening. Optional reconnection and auto-start respect an explicit Stop or Mute. Live shows the source, elapsed time, CV1 battery, device identity and connection diagnostics.
+- **Record from CV1 or the phone mic.** Start, stop and mute from the app, or finish one conversation while keeping CV1 listening. Optional CV1 auto-start respects explicit Stop and Mute. Turn on the on-device speech filter for Live and archive uploads in Settings and diagnostics. Live shows the source, elapsed time, CV1 battery, device identity and connection diagnostics.
 - **Keep audio through connection loss.** The mobile outbox retains received audio until the paired server confirms storage. It can deliver ordered parts as one conversation. Next can reopen recent archive cards offline, with audio and full transcripts fetched from the server. See [delivery guarantees and limits](docs/RECORDING_DURABILITY.md).
 - **Follow the live transcript.** Browse incoming text without losing your place. Choose speech and silence settings, show speaker labels where supported, and use live translation with a configured provider.
 - **Review and share saved recordings.** Search the archive and open the matching transcript. Jump to a timestamp, follow the active line, change playback speed, seek ten seconds at a time, and share audio or text. Edit supported recording fields, name speakers, and organize recordings into folders and emoji categories.

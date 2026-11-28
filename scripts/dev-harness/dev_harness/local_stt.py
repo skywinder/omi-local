@@ -491,7 +491,7 @@ def apply_diarization(engine, audio, folder, manifest, raw):
         return {**raw, 'segments': segments, 'diarization': report}
 
 
-def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> int:
+def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None, keep_transcript=False) -> int:
     if cfg.provider_mode != 'offline' or cfg.local_transport not in config.PAIRED_TRANSPORTS:
         raise TranscriptionError('Use the paired local Mac offline stack')
     audio = Path(audio_path).expanduser().resolve()
@@ -546,7 +546,8 @@ def transcribe(cfg, audio_path: str, *, engine: EngineConfig | None = None) -> i
 
             if engine.pipeline is not None:
                 from .local_pipeline import execute
-                raw = execute(engine, audio, folder, manifest, transcribe_audio, apply_diarization, atomic_json)
+                raw = execute(engine, audio, folder, manifest, transcribe_audio, apply_diarization, atomic_json,
+                              keep_transcript=keep_transcript)
             else:
                 asr_path = folder / 'asr.json'
                 if asr_path.exists():

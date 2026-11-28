@@ -15,12 +15,15 @@ from routers.local_summary import Candidate
 
 
 def execute(uid, body):
+    operation = body['operation']
+    scope = summaries.owner_scope(uid)
+    if operation == 'backfill_candidates':
+        return {'scope': scope, 'recording_ids': summaries.backfill_candidates(uid)}
     recording_id = body['recording_id']
     if not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', recording_id):
         raise summaries.SummaryUnavailable()
     raw = summaries.recording(uid, recording_id)
-    operation = body['operation']
-    scope = summaries.owner_scope(uid)
+    only_missing = body.get('only_missing') is True
     if body.get('scope', scope if operation in {'source', 'describe'} else None) != scope:
         raise summaries.SummaryUnavailable()
     if operation == 'publish':
@@ -28,10 +31,13 @@ def execute(uid, body):
         previous = summaries.replay(raw, publication['request_id'], publication['fingerprint'])
         if previous is None:
             candidate = Candidate.model_validate(body['candidate']).model_dump()
-            previous = summaries.publish(uid, recording_id, body['revision'], candidate, publication, background=True)
-            raw = summaries.recording(uid, recording_id)
+            previous = summaries.publish(
+                uid, recording_id, body['revision'], candidate, publication, background=True, only_missing=only_missing,
+            )
         return {'publication': previous}
     if operation in {'source', 'describe'}:
+        if only_missing and not summaries.needs_backfill(raw):
+            raise summaries.SummaryChanged()
         snapshot = summaries.source(raw, uid, background=True)
         if not snapshot.transcript:
             raise summaries.SummaryUnavailable()

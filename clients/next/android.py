@@ -15,7 +15,7 @@ from prepare import HERE, PIN
 
 PLUGINS = {
     'audio_session', 'device_info_plus', 'flutter_secure_storage', 'flutter_sound', 'just_audio', 'opus_flutter_android',
-    'path_provider_android', 'permission_handler_android', 'quick_actions_android', 'share_plus', 'shared_preferences_android',
+    'onnxruntime_v2', 'path_provider_android', 'permission_handler_android', 'quick_actions_android', 'share_plus', 'shared_preferences_android',
 }
 
 
@@ -39,7 +39,7 @@ def prepare_native(app):
     shutil.copytree(HERE / 'android/res', main / 'res', dirs_exist_ok=True)
     activity = main / 'kotlin/org/omilocal/next/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
-    for source in ('MainActivity.kt', 'NextCV1.kt', 'NextReminders.kt'):
+    for source in ('MainActivity.kt', 'NextCV1.kt', 'NextCaptureService.kt', 'NextReminders.kt'):
         shutil.copyfile(HERE / 'android' / source, activity.parent / source)
     constants = [f'    val {name} = java.util.UUID.fromString("{value}")'
                  for name, value in cv1_uuids(app).items()]
@@ -72,7 +72,7 @@ def prepare_native(app):
         return match[0]
 
     source = re.sub(r'    try \{\n.*?    \}\n', keep, source, flags=re.DOTALL)
-    if seen != PLUGINS:
+    if seen != PLUGINS - {'onnxruntime_v2'}:  # FFI-only plugins have no Java registrar.
         raise ValueError('Unexpected Flutter Android registrant')
     registrant.write_text(source)
 
@@ -108,6 +108,8 @@ def main():
     if not apk.is_file():
         raise ValueError('Android APK was not generated')
     with ZipFile(apk) as packaged:
+        if 'lib/arm64-v8a/libonnxruntime.so' not in packaged.namelist():
+            raise ValueError('Android APK is missing the on-device speech detector runtime')
         if 'lib/arm64-v8a/libopus.so' not in packaged.namelist():
             raise ValueError('Android APK is missing the CV1 calibration decoder')
     print(apk)
