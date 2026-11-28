@@ -111,8 +111,10 @@ GitHub has no newer commits. Before the next pin update, fetch and inspect the
 actual delta using [the Next update procedure](../clients/next/README.md#updating-the-original).
 
 Use `sky-dev` for new development of Omi Local Next and the shared local server.
-Merge tested changes into `main` by pull request. Start new feature branches from
-the current `sky-dev`. The source pin for upstream Omi lives in
+Start feature branches from the current `sky-dev`. Open a release pull request
+into `main` for an integrated release and tag the merged commit. Bring the
+release commit back into `sky-dev` and keep `sky/omi-local-next` aligned as a
+compatibility branch. The source pin for upstream Omi lives in
 `clients/next/upstream.json`. Keep shared backend
 models and contracts compatible, but adapt hosted identity, triggers and jobs
 through Local's explicit paired surface. Track individual inherited-code

@@ -149,4 +149,5 @@ After reconnect, a new manual import started at the first unsaved record and
 delivered 38.10 s. The paired server decoded both without errors. This test establishes
 continuity across that interruption. Firmware 3.0.21 can release records before
 the phone saves them, so other interruption timings can still leave a gap.
-Both platforms require separate work for receiver-acknowledged bulk recovery.
+Both platforms implement receiver-acknowledged bulk recovery for compatible firmware.
+Physical verification with that firmware remains open.

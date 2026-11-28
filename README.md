@@ -10,12 +10,12 @@ tunnel. The server keeps the audio library; the phone retains pending audio
 locally until the server confirms storage. Processing uses local engines or
 explicitly selected servers.
 
-[Release notes](docs/releases/v0.1.1.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
+[Release notes](docs/releases/v0.2.0.md) · [Mac quick start](#quick-start) · [Docker quick start](#docker-on-cpu-or-nvidia-gpu) · [Development](#development) · [Documentation](#documentation) · [MIT license](LICENSE)
 
 > **Status: local MVP.** Clean-machine installation and recording reliability
 > during connection loss are not yet fully verified.
 
-[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for the integrated version. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
+[Omi Local Next](clients/next/README.md#prepare-and-verify) is the primary iOS and Android client. Use `sky-dev` for ongoing development and `main` for tagged source releases. It builds from a pinned Omi Flutter revision. On iPhone it can install alongside the original Omi Local client. Pair either client with the same server to open the same archive. Each iPhone app keeps its own pending uploads. See the [feature comparison and remaining gaps](clients/next/FEATURES.md).
 
 ## Features
 
