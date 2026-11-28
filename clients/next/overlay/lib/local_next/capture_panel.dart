@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:intl/intl.dart';
 import 'package:omi/ui/omi_tokens.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,7 @@ import 'capture.dart';
 import 'cv1_capture.dart';
 import 'cv1_archive.dart';
 import 'cv1_resume.dart';
+import 'cv1_sync_progress.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
 import 'live_preview.dart';
@@ -65,13 +67,11 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
   bool _storageFailed = false;
   bool _closed = false;
   final _groupSilence = ValueNotifier<int?>(null);
-  final _keepListening = ValueNotifier(false);
   Cv1DoubleTapAction _doubleTap = Cv1DoubleTapAction.checkpoint;
   static const _doubleTapKey = 'next.cv1.doubleTap';
   SharedPreferences? _groupPrefs;
   Timer? _diagnosticPoll;
   String get _groupPrefKey => 'next.capture.groupSilence.${widget.library.audioOwnerId}';
-  String get _keepListeningKey => 'next.capture.keepListeningAfterSilence.${widget.library.audioOwnerId}';
 
   @override
   void initState() {
@@ -92,7 +92,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         _groupPrefs = await SharedPreferences.getInstance();
         final value = _groupPrefs?.getInt(_groupPrefKey);
         if (LocalAudioJournal.groupSilenceChoices.contains(value)) _groupSilence.value = value;
-        _keepListening.value = _groupPrefs?.getBool(_keepListeningKey) ?? false;
         final gesture = _groupPrefs?.getString(_doubleTapKey);
         _doubleTap =
             Cv1DoubleTapAction.values.where((action) => action.name == gesture).firstOrNull ??
@@ -148,7 +147,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
           library.audioOwnerId,
           FlutterPhoneMicrophone(),
           preview: preview,
-          keepListeningAfterSilence: () => !_closed && _keepListening.value,
+          preferences: _groupPrefs,
         ),
         _hasCv1 ? ChannelCv1Transport() : const UnavailableCv1Transport(),
         ownerChange: library.ownerChange,
@@ -158,6 +157,8 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
       );
       if (retainedArchive) _inputs!.archiveMessage = 'nextImportRetained';
       widget.onInputsReady?.call(_inputs!);
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle == null || lifecycle == AppLifecycleState.resumed) unawaited(_inputs!.foregrounded());
       if (_hasCv1) _diagnosticPoll = Timer.periodic(const Duration(minutes: 1), (_) => _sampleIdleLink());
       journal.retry();
     } catch (_) {
@@ -184,8 +185,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _inputs?.phone.rearmWatchdog();
-      _inputs?.cv1.rearmSilenceDeadline();
+      unawaited(_inputs?.foregrounded());
       _sampleIdleLink();
     } else {
       unawaited(_inputs?.connection.history.flush());
@@ -197,7 +197,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     _closed = true;
     _diagnosticPoll?.cancel();
     _groupSilence.dispose();
-    _keepListening.dispose();
     WidgetsBinding.instance.removeObserver(this);
     widget.library.ownerChange.detachCapture(_captureBusy);
     _previousRelease = _release();
@@ -244,8 +243,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     library: widget.library,
     groupSilence: _groupSilence,
     onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
-    keepListening: _keepListening,
-    onKeepListening: _groupPrefs == null ? null : _setKeepListening,
     doubleTap: _doubleTap,
     onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
   );
@@ -284,22 +281,6 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     }
     return false;
   }
-
-  Future<void> _setKeepListening(bool value) async {
-    final prefs = _groupPrefs;
-    if (prefs == null || _closed || !widget.library.ownerChange.permitsCapture) return;
-    try {
-      if (await prefs.setBool(_keepListeningKey, value) && mounted) {
-        _keepListening.value = value;
-        return;
-      }
-    } catch (_) {
-      // Keep the last confirmed value if the preference cannot be saved.
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.l10n.failedToSaveCheckConnection)));
-    }
-  }
 }
 
 /// Both inputs share one journal. Only an explicit Start can take it from the other source.
@@ -315,13 +296,13 @@ class NextCaptureInputs extends ChangeNotifier {
     cv1 = NextCv1Capture(
       phone.journal,
       phone.owner,
-      canStart: () => permitsNewRecording && !switching && !_phoneOwns && !phone.active && !phone.busy,
+      canStart: () =>
+          permitsNewRecording && !switching && !_phoneOwns && !phone.resumeRequested && !phone.active && !phone.busy,
       permitsStartRequest: () => permitsNewRecording,
       onStartRequested: _claimCv1,
       doubleTapAction: doubleTapAction,
       resumeSettings: resumeSettings,
       preview: phone.preview,
-      keepListeningAfterSilence: phone.keepListeningAfterSilence,
     );
     connection = Cv1Connection(transport, cv1, history: diagnosticsHistory);
   }
@@ -351,19 +332,25 @@ class NextCaptureInputs extends ChangeNotifier {
 
   String? archiveMessage;
   Duration? importedAudio;
+  ({DateTime first, DateTime last})? importedTimes;
+  final _importClock = Stopwatch();
+  Cv1SyncProgress? _syncProgress;
+
+  bool get finishingImport => _syncProgress?.remainingRecords == 0;
+  ({double bytesPerSecond, Duration remaining})? get transferEstimate => _syncProgress?.estimate(_importClock.elapsed);
   bool get hasRetainedArchive => archiveMessage == 'nextImportRetained';
 
   Future<void> retryStagedArchive() async {
     if (hasCaptureInProgress || !permitsNewRecording) return;
     await _change(() async {
+      importedTimes = null;
+      importedAudio = null;
       final saved = await Cv1Archive(phone.journal, phone.owner).recover();
       archiveMessage = saved ? 'nextImportSaved' : 'nextImportRetained';
     });
   }
 
   int importWindows = 0;
-  int importWindowsDone = 0;
-  bool importingAll = false;
   int importedRecords = 0;
   int importMissingRecords = 0;
   bool stoppingImport = false;
@@ -384,6 +371,9 @@ class NextCaptureInputs extends ChangeNotifier {
     final limit = windows?.clamp(1, possibleWindows);
     final chunkWindows = limit ?? Cv1Archive.maxWindows;
     await _change(() async {
+      importedTimes = null;
+      importedAudio = null;
+      importMissingRecords = 0;
       final archive = Cv1Archive(journal, phone.owner);
       if (archive.staged.isNotEmpty) {
         archiveMessage = 'nextImportRetained';
@@ -396,21 +386,28 @@ class NextCaptureInputs extends ChangeNotifier {
         return;
       }
       archiveMessage = 'nextImportProgress';
-      importedAudio = null;
       importWindows = chunkWindows;
-      importWindowsDone = 0;
-      importingAll = limit == null;
+      final importingAll = limit == null;
+      _importClock
+        ..reset()
+        ..start();
       importedRecords = 0;
-      importMissingRecords = 0;
       var verifiedEnd = storage.oldest;
       var windowsInChunk = 0;
       stoppingImport = false;
       if (!_closed) notifyListeners();
+      final refresh = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!_closed) notifyListeners();
+      });
       try {
         await connection.readArchive(
           target,
           windows: limit,
           shouldStop: () => stoppingImport || _closed,
+          onRange: (start, end) {
+            verifiedEnd = start;
+            _syncProgress = Cv1SyncProgress(start: start, end: end, elapsed: _importClock.elapsed);
+          },
           beforeRead: () {
             if (importingAll && !hasSpace(windowsInChunk + 1)) {
               throw PlatformException(code: 'phone_full');
@@ -425,6 +422,7 @@ class NextCaptureInputs extends ChangeNotifier {
           onReconnect: (missing) {
             importMissingRecords += missing;
             verifiedEnd += missing;
+            _syncProgress?.resume(missing, _importClock.elapsed);
             archiveMessage = 'nextImportProgress';
             if (!_closed) notifyListeners();
           },
@@ -442,10 +440,9 @@ class NextCaptureInputs extends ChangeNotifier {
               if (end > verifiedEnd) verifiedEnd = end;
               importedRecords += archive.records - previousRecords;
               importedAudio = (importedAudio ?? Duration.zero) + Duration(microseconds: micros);
-              if (batch.complete) {
-                importWindowsDone++;
-                windowsInChunk++;
-              }
+              importedTimes = archive.savedTimes;
+              _syncProgress?.savedThrough(verifiedEnd, _importClock.elapsed);
+              if (batch.complete) windowsInChunk++;
               if (importingAll && windowsInChunk == chunkWindows) {
                 await archive.finish();
                 windowsInChunk = 0;
@@ -484,11 +481,30 @@ class NextCaptureInputs extends ChangeNotifier {
           archiveMessage = 'nextImportFailed';
         }
         if (archive.staged.isNotEmpty) archiveMessage = 'nextImportRetained';
+        refresh.cancel();
+        _importClock.stop();
+        _syncProgress = null;
         importWindows = 0;
-        importingAll = false;
         stoppingImport = false;
       }
     });
+  }
+
+  Future<void> foregrounded() async {
+    if (_closed) return;
+    phone.foregrounded();
+    cv1.rearmSilenceDeadline();
+    connection.recoverDemand();
+    if (phone.resumeRequested) {
+      if (permitsNewRecording && !switching && !isRecording && !cv1.sealing) {
+        await _change(() async {
+          _phoneOwns = true;
+          await phone.start();
+        });
+      }
+    } else {
+      cv1.restore();
+    }
   }
 
   Future<void> _claimCv1() {
@@ -496,7 +512,7 @@ class NextCaptureInputs extends ChangeNotifier {
     return _change(() async {
       if (!cv1.linked || !cv1.codecSupported) return;
       final needsSeal = phone.active || phone.busy;
-      if (needsSeal) await phone.stop();
+      if (needsSeal || phone.resumeRequested) await phone.stop();
       if (_closed || (needsSeal && phone.problem == CaptureProblem.storage)) return;
       _phoneOwns = false;
     });
@@ -513,7 +529,7 @@ class NextCaptureInputs extends ChangeNotifier {
     if (!phone.active && !permitsNewRecording) return Future<void>.value();
     return _change(() async {
       _phoneOwns = true;
-      if (phone.active) {
+      if (phone.active || phone.resumeRequested) {
         await phone.stop();
         return;
       }
@@ -527,7 +543,7 @@ class NextCaptureInputs extends ChangeNotifier {
   Future<void> stopRecording() async {
     await _transition;
     await _change(() async {
-      if (phone.active || phone.busy) {
+      if (phone.active || phone.busy || phone.resumeRequested) {
         await phone.stop();
       } else {
         await cv1.stop();
@@ -541,7 +557,7 @@ class NextCaptureInputs extends ChangeNotifier {
       await _transition;
     } finally {
       // Fence BLE delivery and both capture paths immediately, then wait for every seal.
-      await Future.wait([connection.close(), cv1.close(), phone.stop()]);
+      await Future.wait([connection.close(), cv1.close(), phone.close()]);
     }
   }
 
@@ -565,8 +581,6 @@ class LocalNextCaptureControls extends StatelessWidget {
     this.library,
     this.groupSilence,
     this.onGroupSilence,
-    this.keepListening,
-    this.onKeepListening,
     this.doubleTap = Cv1DoubleTapAction.checkpoint,
     this.onDoubleTap,
     this.openServers,
@@ -578,19 +592,12 @@ class LocalNextCaptureControls extends StatelessWidget {
   final PairedLibrary? library;
   final ValueListenable<int?>? groupSilence;
   final Future<bool> Function(int?)? onGroupSilence;
-  final ValueListenable<bool>? keepListening;
-  final Future<void> Function(bool)? onKeepListening;
   final Cv1DoubleTapAction doubleTap;
   final Future<bool> Function(Cv1DoubleTapAction)? onDoubleTap;
   final VoidCallback? openServers;
 
-  Widget _boundaries(PairedLibrary paired) => _ConversationBoundaryTile(
-    seconds: groupSilence!,
-    paired: paired,
-    save: onGroupSilence!,
-    keepListening: keepListening,
-    saveKeepListening: onKeepListening,
-  );
+  Widget _boundaries(PairedLibrary paired) =>
+      _ConversationBoundaryTile(seconds: groupSilence!, paired: paired, save: onGroupSilence!);
 
   Widget? _time(BuildContext context) {
     final phone = inputs.phone;
@@ -598,7 +605,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     if (started == null) return null;
     return _ActiveRecordingTime(
       started: started,
-      input: phone.active ? context.l10n.phone : 'CV1',
+      label: phone.active ? context.l10n.phone : 'CV1',
       clock: phone.journal.clock,
     );
   }
@@ -607,7 +614,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     key: const ValueKey('next-cv1-finish'),
     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
     icon: const Icon(Icons.skip_next),
-    label: Text(pairedSettingsLabel(context, 'nextFinishShort'), maxLines: 1, overflow: TextOverflow.ellipsis),
+    label: Text(pairedSettingsLabel(context, 'nextFinishShort')),
     onPressed: inputs.switching || !inputs.cv1.canFinish ? null : inputs.cv1.finishConversation,
   );
 
@@ -622,7 +629,14 @@ class LocalNextCaptureControls extends StatelessWidget {
   }
 
   String? _inputNotice(BuildContext context) {
-    if (inputs.phone.active) return phoneMicNotice(context, inputs.phone);
+    if (inputs.phone.active) {
+      final phone = inputs.phone;
+      final notice = phoneMicNotice(context, phone);
+      final live = inputs.preview;
+      if (notice != null) return notice;
+      if (live?.phase == NextPreviewPhase.listening && live?.lines.isNotEmpty == true) return null;
+      return pairedSettingsLabel(context, 'nextMicAudioSaved');
+    }
     final cv1 = inputs.cv1;
     if (!cv1.wantsAudio || cv1.problem != null || inputs.connection.audioFailed) return null;
     if (!cv1.hasPersistedAudio) return pairedSettingsLabel(context, 'nextCv1WaitingForAudio');
@@ -630,15 +644,12 @@ class LocalNextCaptureControls extends StatelessWidget {
     return null;
   }
 
-  Widget _liveControls(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
-    children: [
-      Flexible(
-        child: Tooltip(message: pairedSettingsLabel(context, 'nextFinishContinue'), child: _finish(context)),
-      ),
+  List<Widget> _liveControls(BuildContext context) => [
+    if (inputs.cv1.active) ...[
+      Tooltip(message: pairedSettingsLabel(context, 'nextFinishContinue'), child: _finish(context)),
       _mute(context),
     ],
-  );
+  ];
 
   Future<void> _importPendant(BuildContext context, Cv1Connection link) async {
     final target = link.importTarget;
@@ -823,21 +834,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                             inputs.hasRetainedArchive ? 'nextImportRetry' : 'nextImportAction',
                           ),
                         ),
-                        subtitle: inputs.archiveMessage == null
-                            ? null
-                            : Text(
-                                [
-                                  pairedSettingsLabel(context, inputs.archiveMessage!),
-                                  if (inputs.importingAll)
-                                    '${pairedSettingsLabel(context, 'nextImportRecordCount')} ${inputs.importedRecords}'
-                                  else if (inputs.importWindows > 0)
-                                    '${inputs.importWindowsDone} / ${inputs.importWindows}',
-                                  if (inputs.importMissingRecords > 0)
-                                    '${pairedSettingsLabel(context, 'nextImportMissingRecords')} ${inputs.importMissingRecords}',
-                                  if (inputs.importedAudio case final duration?)
-                                    '${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
-                                ].join(' · '),
-                              ),
+                        subtitle: _cv1ImportSubtitle(context, inputs),
                         trailing: inputs.importWindows > 1
                             ? TextButton(
                                 onPressed: inputs.stoppingImport ? null : inputs.stopImport,
@@ -938,6 +935,11 @@ class LocalNextCaptureControls extends StatelessWidget {
     final l = context.l10n;
     final capture = inputs.phone;
     final cv1 = inputs.cv1;
+    final phoneStopping = capture.active || capture.resumeRequested;
+    Widget sourceLabel(String label, DateTime? started) => started == null
+        ? Text(label, textAlign: TextAlign.center)
+        : _ActiveRecordingTime(started: started, label: label, clock: capture.journal.clock, inButton: true);
+
     ButtonStyle sourceStyle(NextAccent accent) => OutlinedButton.styleFrom(
       foregroundColor: accent.of(context),
       backgroundColor: accent.tint(context),
@@ -955,14 +957,14 @@ class LocalNextCaptureControls extends StatelessWidget {
     final buttons = [
       OutlinedButton.icon(
         key: const ValueKey('next-phone-capture'),
-        style: sourceStyle(capture.active ? NextAccent.red : NextAccent.blue),
+        style: sourceStyle(phoneStopping ? NextAccent.red : NextAccent.blue),
         onPressed: inputs.switching || capture.busy || (!capture.active && !inputs.permitsNewRecording)
             ? null
             : inputs.togglePhone,
-        icon: Icon(capture.active ? Icons.stop : Icons.mic, size: 18),
-        label: Text(
-          capture.active ? '${l.stop} · ${l.phone}' : pairedSettingsLabel(context, 'nextRecordPhone'),
-          textAlign: TextAlign.center,
+        icon: Icon(phoneStopping ? Icons.stop : Icons.mic, size: 18),
+        label: sourceLabel(
+          phoneStopping ? '${l.stop} · ${l.phone}' : pairedSettingsLabel(context, 'nextRecordPhone'),
+          phoneStopping ? capture.startedAt : null,
         ),
       ),
       if (cv1.linked || cv1.active)
@@ -975,12 +977,12 @@ class LocalNextCaptureControls extends StatelessWidget {
               ? cv1.stop
               : inputs.startCv1,
           icon: Icon(cv1.active ? Icons.stop : Icons.fiber_manual_record, size: 18),
-          label: Text(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', textAlign: TextAlign.center),
+          label: sourceLabel(cv1.active ? '${l.stop} · CV1' : '${l.recordWith} CV1', cv1.startedAt),
         ),
     ];
     final journal = capture.journal;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
       child: Row(
         spacing: 8,
         children: [
@@ -1036,6 +1038,14 @@ class LocalNextCaptureControls extends StatelessWidget {
       builder: (context, _) => Column(
         children: [
           _recordingActions(context),
+          if (cv1.active)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: OmiSpacing.md),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: _liveControls(context)),
+              ),
+            ),
           if (cv1.problem != null)
             Text(switch (cv1.problem!) {
               Cv1CaptureProblem.unsupportedCodec => l.captureRecordingError(l.audioFormatLabel),
@@ -1050,7 +1060,7 @@ class LocalNextCaptureControls extends StatelessWidget {
               CaptureProblem.permission => l.onboardingMicrophoneRequired,
               CaptureProblem.microphone => l.captureRecordingError(l.microphone),
               CaptureProblem.storage => l.captureRecordingError(l.capturePhoneStorageFull),
-              CaptureProblem.empty => l.onboardingActNoAudioPhone,
+              CaptureProblem.empty => pairedSettingsLabel(context, 'nextMicNoSavedAudio'),
               CaptureProblem.micStalled => pairedSettingsLabel(context, 'nextMicStalled'),
             }),
           if (inputs.preview case final preview?)
@@ -1063,7 +1073,6 @@ class LocalNextCaptureControls extends StatelessWidget {
               onStop: inputs.stopRecording,
               inputNotice: _inputNotice,
               recordingTime: _time,
-              hasCaptureControls: () => cv1.active,
               captureControls: _liveControls,
               captureSettings: library?.conversationGroups == true && groupSilence != null && onGroupSilence != null
                   ? (_) => _boundaries(library!)
@@ -1079,11 +1088,8 @@ class LocalNextCaptureControls extends StatelessWidget {
               serverLabel: serverLabel,
               library: library,
             )
-          else ...[
-            if (_time(context) case final time?) time,
-            if (_inputNotice(context) case final notice?) Text(notice),
-            if (cv1.active) _liveControls(context),
-          ],
+          else if (_inputNotice(context) case final notice?)
+            Text(notice),
         ],
       ),
     );
@@ -1091,19 +1097,11 @@ class LocalNextCaptureControls extends StatelessWidget {
 }
 
 class _ConversationBoundaryTile extends StatefulWidget {
-  const _ConversationBoundaryTile({
-    required this.seconds,
-    required this.paired,
-    required this.save,
-    this.keepListening,
-    this.saveKeepListening,
-  });
+  const _ConversationBoundaryTile({required this.seconds, required this.paired, required this.save});
 
   final ValueListenable<int?> seconds;
   final PairedLibrary paired;
   final Future<bool> Function(int?) save;
-  final ValueListenable<bool>? keepListening;
-  final Future<void> Function(bool)? saveKeepListening;
 
   @override
   State<_ConversationBoundaryTile> createState() => _ConversationBoundaryTileState();
@@ -1131,7 +1129,7 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.paired.ownerChange, widget.seconds, widget.keepListening]),
+    listenable: Listenable.merge([widget.paired.ownerChange, widget.seconds]),
     builder: (context, _) => Column(
       children: [
         PopupMenuButton<int>(
@@ -1153,38 +1151,74 @@ class _ConversationBoundaryTileState extends State<_ConversationBoundaryTile> {
             trailing: const Icon(Icons.arrow_drop_down),
           ),
         ),
-        if ((widget.seconds.value ?? 0) > 0 && widget.keepListening != null && widget.saveKeepListening != null)
-          SwitchListTile(
-            title: Text(pairedSettingsLabel(context, 'nextKeepListeningAfterSilence')),
-            value: widget.keepListening!.value,
-            onChanged: _saving || !widget.paired.ownerChange.permitsCapture
-                ? null
-                : (value) async {
-                    setState(() => _saving = true);
-                    try {
-                      await widget.saveKeepListening!(value);
-                    } finally {
-                      if (mounted) setState(() => _saving = false);
-                    }
-                  },
-          ),
       ],
     ),
   );
 }
 
+Widget? _cv1ImportSubtitle(BuildContext context, NextCaptureInputs inputs) {
+  final message = inputs.archiveMessage;
+  if (message == null) return null;
+  String label(String key) => pairedSettingsLabel(context, key);
+
+  String status = label(message);
+  if (inputs.stoppingImport) {
+    status = label('nextImportStopping');
+  } else if (message == 'nextImportProgress') {
+    if (inputs.finishingImport) {
+      status = label('nextImportFinalizing');
+    } else if (inputs.transferEstimate case final estimate?) {
+      final seconds = estimate.remaining.inSeconds;
+      final l = context.l10n;
+      final time = seconds < 60
+          ? l.timeCompactSecs(seconds)
+          : seconds < 3600
+          ? l.timeCompactMinsAndSecs(seconds ~/ 60, seconds % 60)
+          : l.timeCompactHoursAndMins(seconds ~/ 3600, seconds ~/ 60 % 60);
+      status = '${_storageSize(estimate.bytesPerSecond.round())}/s · ${l.estimatedTimeRemaining(time)}';
+    }
+  }
+
+  String? savedPeriod;
+  if (inputs.importedTimes case final times?) {
+    final start = times.first.toLocal();
+    final end = times.last.toLocal();
+    final locale = Localizations.localeOf(context).toString();
+    final full = DateFormat.yMMMd(locale).add_jms();
+    final endFormat = DateUtils.isSameDay(start, end) ? DateFormat.jms(locale) : full;
+    final range = start == end ? full.format(start) : '${full.format(start)} – ${endFormat.format(end)}';
+    savedPeriod = "${label('nextImportSavedPeriod')} · $range";
+  }
+
+  return Text(
+    [
+      status,
+      if (savedPeriod != null) savedPeriod,
+      if (inputs.importWindows == 0)
+        if (inputs.importedAudio case final duration?)
+          '${context.l10n.durationLabel} · ${(duration.inMilliseconds / 1000).toStringAsFixed(2)} s',
+      if (inputs.importMissingRecords > 0) '${label('nextImportMissingRecords')} ${inputs.importMissingRecords}',
+    ].join('\n'),
+  );
+}
+
 String? phoneMicNotice(BuildContext context, NextPhoneCapture capture) => switch (capture.micStatus) {
-  PhoneMicStatus.waiting => context.l10n.waitingForData,
+  PhoneMicStatus.waiting => pairedSettingsLabel(context, 'nextMicWaitingForAudio'),
   PhoneMicStatus.interrupted => pairedSettingsLabel(context, 'nextMicInterrupted'),
-  PhoneMicStatus.recovering => pairedSettingsLabel(context, 'nextMicRecovering'),
+  PhoneMicStatus.recovering => pairedSettingsLabel(
+    context,
+    capture.hasSavedAudio ? 'nextMicRecovering' : 'nextMicRecoveringWithoutAudio',
+  ),
+  PhoneMicStatus.recording when !capture.hasSavedAudio => pairedSettingsLabel(context, 'nextMicWaitingForAudio'),
   _ => capture.problem == CaptureProblem.micStalled ? pairedSettingsLabel(context, 'nextMicStalled') : null,
 };
 
 class _ActiveRecordingTime extends StatefulWidget {
-  const _ActiveRecordingTime({required this.started, required this.input, required this.clock});
+  const _ActiveRecordingTime({required this.started, required this.label, required this.clock, this.inButton = false});
   final DateTime started;
-  final String input;
+  final String label;
   final DateTime Function() clock;
+  final bool inButton;
 
   @override
   State<_ActiveRecordingTime> createState() => _ActiveRecordingTimeState();
@@ -1214,14 +1248,14 @@ class _ActiveRecordingTimeState extends State<_ActiveRecordingTime> {
       seconds % 60,
     ].map((v) => v.toString().padLeft(2, '0')).join(':');
     return Text(
-      '${widget.input} · $time',
+      '${widget.label} · $time',
       key: const ValueKey('next-recording-time'),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textAlign: TextAlign.end,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: OmiColors.textPrimary,
-        fontWeight: FontWeight.w600,
+      maxLines: widget.inButton ? null : 1,
+      overflow: widget.inButton ? null : TextOverflow.ellipsis,
+      textAlign: widget.inButton ? TextAlign.center : TextAlign.end,
+      style: (widget.inButton ? DefaultTextStyle.of(context).style : Theme.of(context).textTheme.labelMedium)?.copyWith(
+        color: widget.inButton ? null : OmiColors.textPrimary,
+        fontWeight: widget.inButton ? null : FontWeight.w600,
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );

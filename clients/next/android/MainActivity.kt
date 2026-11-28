@@ -20,6 +20,26 @@ class MainActivity : FlutterActivity() {
             val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             if (awake) window.addFlags(flag) else window.clearFlags(flag)
         }
+        MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/capture")
+            .setMethodCallHandler { call, result ->
+                val service = when (call.method) {
+                    "startPhone", "stopPhone" -> NextPhoneCaptureService::class.java
+                    "startCv1", "stopCv1" -> NextCv1CaptureService::class.java
+                    else -> {
+                        result.notImplemented()
+                        return@setMethodCallHandler
+                    }
+                }
+                val intent = Intent(this, service)
+                try {
+                    if (call.method.startsWith("start")) startForegroundService(intent) else stopService(intent)
+                    result.success(null)
+                } catch (_: IllegalStateException) {
+                    result.error("foreground_capture_unavailable", null, null)
+                } catch (_: SecurityException) {
+                    result.error("foreground_capture_unavailable", null, null)
+                }
+            }
         MethodChannel(engine.dartExecutor.binaryMessenger, "org.omilocal.next/reminders")
             .setMethodCallHandler { call, result ->
                 val reminders = NextReminders(applicationContext)
@@ -53,6 +73,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(engine: FlutterEngine) {
+        stopService(Intent(this, NextPhoneCaptureService::class.java))
+        stopService(Intent(this, NextCv1CaptureService::class.java))
         cv1?.dispose()
         cv1 = null
         super.cleanUpFlutterEngine(engine)

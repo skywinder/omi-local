@@ -3,8 +3,10 @@ import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:omi/services/capture/local_audio_journal.dart';
 
@@ -13,7 +15,7 @@ import 'live_preview.dart';
 abstract interface class NextPhoneMicrophone {
   Stream<bool> get interruptions;
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure);
-  Future<void> stop();
+  Future<void> stop({bool reopening = false});
 }
 
 class PhoneCaptureDenied implements Exception {}
@@ -24,15 +26,21 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
     @visibleForTesting FlutterSoundRecorder Function()? makeRecorder,
     @visibleForTesting Future<void> Function(AudioSessionConfiguration)? configureSession,
     @visibleForTesting bool? isIOS,
+    @visibleForTesting bool? isAndroid,
   }) : _requestPermission = requestPermission ?? (() async => Permission.microphone.request().isGranted),
        _makeRecorder = makeRecorder ?? FlutterSoundRecorder.new,
        _configureSession = configureSession ?? _configureAudioSession,
-       _isIOS = isIOS ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+       _isIOS = isIOS ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
+       _isAndroid = isAndroid ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.android);
 
   final Future<bool> Function() _requestPermission;
   final FlutterSoundRecorder Function() _makeRecorder;
   final Future<void> Function(AudioSessionConfiguration) _configureSession;
   final bool _isIOS;
+  final bool _isAndroid;
+  bool _foregroundService = false;
+  bool _needsPlaybackSession = false;
+  static const _background = MethodChannel('org.omilocal.next/capture');
   FlutterSoundRecorder? _recorder;
   StreamController<Uint8List>? _samples;
 
@@ -52,7 +60,12 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
   @override
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure) async {
     if (!await _requestPermission()) throw PhoneCaptureDenied();
+    if (_isAndroid && !_foregroundService) {
+      await _background.invokeMethod<void>('startPhone');
+      _foregroundService = true;
+    }
     final recorder = _recorder = _makeRecorder();
+    _needsPlaybackSession = _isIOS;
     await recorder.openRecorder();
     final samples = _samples = StreamController<Uint8List>(sync: true);
     samples.stream.listen(onSamples, onError: (Object _) => onFailure());
@@ -66,24 +79,29 @@ class FlutterPhoneMicrophone implements NextPhoneMicrophone {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop({bool reopening = false}) async {
     final recorder = _recorder;
     final samples = _samples;
     _recorder = null;
     _samples = null;
     try {
-      if (recorder != null) {
-        await recorder.closeRecorder();
-        if (_isIOS) {
-          // Flutter Sound leaves its recording category active after close.
-          // The playback category lets iOS choose the speaker or connected output.
-          await _configureSession(
-            const AudioSessionConfiguration(avAudioSessionCategory: AVAudioSessionCategory.playback),
-          );
-        }
+      await recorder?.closeRecorder();
+      if (_needsPlaybackSession && !reopening) {
+        // Flutter Sound leaves its recording category active after close.
+        await _configureSession(
+          const AudioSessionConfiguration(avAudioSessionCategory: AVAudioSessionCategory.playback),
+        );
+        _needsPlaybackSession = false;
       }
     } finally {
-      await samples?.close();
+      try {
+        await samples?.close();
+      } finally {
+        if (!reopening && _foregroundService) {
+          _foregroundService = false;
+          await _background.invokeMethod<void>('stopPhone');
+        }
+      }
     }
   }
 }
@@ -99,14 +117,16 @@ class NextPhoneCapture extends ChangeNotifier {
     this.microphone, {
     this.preview,
     this.makeTimer = Timer.new,
-    this.keepListeningAfterSilence,
+    this.preferences,
   });
 
   final LocalAudioJournal journal;
   final String owner;
   final NextPhoneMicrophone microphone;
   final NextLivePreview? preview;
-  final bool Function()? keepListeningAfterSilence;
+  final SharedPreferences? preferences;
+  String get _resumeKey => 'next.phone.resume.$owner';
+  bool get resumeRequested => preferences?.getBool(_resumeKey) ?? false;
   final Timer Function(Duration, void Function()) makeTimer;
   PhoneMicStatus? micStatus;
   Timer? _watchdog;
@@ -114,7 +134,7 @@ class NextPhoneCapture extends ChangeNotifier {
   Future<void>? _restarting;
   int _recorderGeneration = 0;
   bool _stopRequested = false;
-  bool _triedRestart = false;
+  int _recoveryAttempts = 0;
   LocalAudioRecording? _recording;
   DateTime? startedAt;
   CaptureProblem? problem;
@@ -123,6 +143,7 @@ class NextPhoneCapture extends ChangeNotifier {
   Future<void>? _starting;
   Future<void>? _stopping;
   bool get active => _recording != null;
+  bool get hasSavedAudio => (_recording?.audioSeconds ?? 0) > 0;
   int? get silenceSeconds => _recording?.silenceSeconds;
 
   Future<void> start() => _starting ??= _start().whenComplete(() {
@@ -134,17 +155,21 @@ class NextPhoneCapture extends ChangeNotifier {
     if (_recording case final current? when _acceptsAudio(current)) _watchFrames(current);
   }
 
+  void foregrounded() {
+    if (micStatus == PhoneMicStatus.interrupted) _showStatus(PhoneMicStatus.recovering);
+    rearmWatchdog();
+  }
+
   Future<void> _start() async {
-    if (active || busy) return;
+    if (active || busy || _stopping != null) return;
     busy = true;
     problem = null;
     _writeFailed = false;
     _stopRequested = false;
-    _triedRestart = false;
+    _recoveryAttempts = 0;
     micStatus = PhoneMicStatus.waiting;
     startedAt = journal.clock();
     final current = _recording = journal.beginForServer(source: 'phone', codec: 'pcm16', serverId: owner);
-    final stopAfterSilence = (current.silenceSeconds ?? 0) > 0 && keepListeningAfterSilence?.call() != true;
     notifyListeners();
     try {
       _interruptions = microphone.interruptions.listen(
@@ -154,26 +179,32 @@ class NextPhoneCapture extends ChangeNotifier {
       );
       await _startRecorder(current);
       if (_acceptsAudio(current)) {
-        preview?.begin(
-          current.recordingId,
-          current.source,
-          current.codec,
-          silenceSeconds: current.silenceSeconds,
-          onSilence: stopAfterSilence
-              ? () {
-                  if (_acceptsAudio(current) && micStatus == PhoneMicStatus.recording) unawaited(stop());
-                }
-              : null,
-        );
+        await _saveResume(true);
+        if (!_acceptsAudio(current)) return;
+        _beginPreview(current);
       }
-    } catch (error) {
-      if (micStatus != PhoneMicStatus.interrupted || error is PhoneCaptureDenied) {
-        _fail(current, error is PhoneCaptureDenied ? CaptureProblem.permission : CaptureProblem.microphone);
+    } on PhoneCaptureDenied {
+      _fail(current, CaptureProblem.permission);
+    } catch (_) {
+      if (_acceptsAudio(current) && micStatus != PhoneMicStatus.interrupted) {
+        _showStatus(PhoneMicStatus.recovering);
       }
     } finally {
       busy = _stopping != null;
       notifyListeners();
     }
+  }
+
+  Future<void> _saveResume(bool requested) async {
+    try {
+      await preferences?.setBool(_resumeKey, requested);
+    } catch (_) {
+      // Capture and its journal can continue if preferences are unavailable.
+    }
+  }
+
+  void _beginPreview(LocalAudioRecording current) {
+    preview?.begin(current.recordingId, current.source, current.codec, silenceSeconds: current.silenceSeconds);
   }
 
   bool _acceptsAudio(LocalAudioRecording current) => _recording == current && !_stopRequested && !_writeFailed;
@@ -189,7 +220,7 @@ class NextPhoneCapture extends ChangeNotifier {
           // A plugin can report an error while startRecorder is still resolving.
           scheduleMicrotask(() async {
             await _starting;
-            if (_recorderGeneration == generation) _recover(current, CaptureProblem.microphone);
+            if (_recorderGeneration == generation) _recover(current);
           });
         }
       },
@@ -200,7 +231,7 @@ class NextPhoneCapture extends ChangeNotifier {
     if (!_acceptsAudio(current)) return;
     if (began) {
       _watchdog?.cancel();
-      _triedRestart = false;
+      _recoveryAttempts = 0;
       _showStatus(PhoneMicStatus.interrupted);
     } else if (micStatus == PhoneMicStatus.interrupted) {
       // Some audio routes restart automatically. Give them a chance to deliver PCM.
@@ -223,65 +254,71 @@ class NextPhoneCapture extends ChangeNotifier {
       return;
     }
     _watchdog?.cancel();
-    _watchdog = makeTimer(const Duration(seconds: 4), () => _recover(current, CaptureProblem.micStalled));
+    final delay = Duration(seconds: 4 << _recoveryAttempts.clamp(0, 3));
+    _watchdog = makeTimer(delay, () => _recover(current));
   }
 
-  void _recover(LocalAudioRecording current, CaptureProblem reason) {
+  void _recover(LocalAudioRecording current) {
     if (!_acceptsAudio(current) || micStatus == PhoneMicStatus.interrupted || _restarting != null) return;
-    if (_triedRestart) {
-      _fail(current, reason);
-      return;
-    }
-    _triedRestart = true;
+    _recoveryAttempts++;
     ++_recorderGeneration;
     _watchdog?.cancel();
-    _restarting = _reopen(current, reason).whenComplete(() {
+    _restarting = _reopen(current).whenComplete(() {
       _restarting = null;
-      if (_acceptsAudio(current) && micStatus != PhoneMicStatus.interrupted) _watchFrames(current);
+      _watchFrames(current);
     });
     _showStatus(PhoneMicStatus.recovering);
   }
 
-  Future<void> _reopen(LocalAudioRecording current, CaptureProblem reason) async {
+  Future<void> _reopen(LocalAudioRecording current) async {
     try {
-      await microphone.stop();
-      if (_acceptsAudio(current) && micStatus != PhoneMicStatus.interrupted) await _startRecorder(current);
+      await microphone.stop(reopening: true);
+      if (!_acceptsAudio(current) || micStatus == PhoneMicStatus.interrupted) return;
+      await _startRecorder(current);
+      if (_acceptsAudio(current)) {
+        await _saveResume(true);
+        if (_acceptsAudio(current)) _beginPreview(current);
+      }
+    } on PhoneCaptureDenied {
+      _fail(current, CaptureProblem.permission);
     } catch (_) {
-      if (_acceptsAudio(current) && micStatus != PhoneMicStatus.interrupted) _fail(current, reason);
+      // The OS may still hold the audio route. The watchdog backs off and retries.
     }
   }
 
   void _write(LocalAudioRecording current, Uint8List bytes) {
     if (!_acceptsAudio(current) || micStatus == PhoneMicStatus.interrupted || bytes.isEmpty) return;
     if (bytes.length.isOdd) {
-      _fail(current, CaptureProblem.microphone);
+      _recover(current);
       return;
     }
-    _triedRestart = false;
+    _recoveryAttempts = 0;
     final batchEnd = journal.clock().difference(startedAt!).inMicroseconds / Duration.microsecondsPerSecond;
     for (int offset = 0; offset < bytes.length; offset += LocalAudioJournal.maxFrameBytes) {
       final end = math.min(offset + LocalAudioJournal.maxFrameBytes, bytes.length);
       final view = Uint8List.sublistView(bytes, offset, end);
       final activePreview = preview;
+      final firstAudio = !hasSavedAudio;
       final frame = activePreview == null ? view : Uint8List.fromList(view);
       // add() snapshots and counts bytes synchronously before its serialized disk flush.
       unawaited(
         current
             .add(
               frame,
-              afterPersisted: activePreview == null
-                  ? null
-                  : () => activePreview.addPersisted(
-                      current.recordingId,
-                      current.source,
-                      current.codec,
-                      frame,
-                      startSeconds: math.max(
-                        0,
-                        current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
-                      ),
-                      elapsedSeconds: batchEnd - (bytes.length - offset) / 32000,
-                    ),
+              afterPersisted: () {
+                activePreview?.addPersisted(
+                  current.recordingId,
+                  current.source,
+                  current.codec,
+                  frame,
+                  startSeconds: math.max(
+                    0,
+                    current.audioSeconds - LocalAudioRecording.packetMicroseconds(current.codec, frame) / 1000000,
+                  ),
+                  elapsedSeconds: batchEnd - (bytes.length - offset) / 32000,
+                );
+                if (firstAudio && _acceptsAudio(current)) notifyListeners();
+              },
             )
             .catchError((Object _) => _fail(current, CaptureProblem.storage)),
       );
@@ -296,10 +333,15 @@ class NextPhoneCapture extends ChangeNotifier {
     _watchdog?.cancel();
     problem = reason;
     // A recorder can report a failure from inside start() before it has returned.
-    scheduleMicrotask(stop);
+    scheduleMicrotask(close);
   }
 
-  Future<void> stop() => _stopping ??= _stop().whenComplete(() => _stopping = null);
+  Future<void> stop() {
+    final sealed = close();
+    return Future.wait([sealed, _saveResume(false)]);
+  }
+
+  Future<void> close() => _stopping ??= _stop().whenComplete(() => _stopping = null);
 
   Future<void> _stop() async {
     _stopRequested = true;

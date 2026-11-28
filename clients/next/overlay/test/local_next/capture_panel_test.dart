@@ -12,6 +12,7 @@ import 'package:omi/local_next/capture_panel.dart';
 import 'package:omi/local_next/cv1_capture.dart';
 import 'package:omi/local_next/cv1_gain_calibration.dart';
 import 'package:omi/local_next/cv1_gain_calibration_card.dart';
+import 'package:omi/local_next/cv1_sync_progress.dart';
 import 'package:omi/local_next/cv1_transport.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/live_preview.dart';
@@ -91,6 +92,14 @@ class _Wire extends Stream<Cv1TransportEvent> implements Cv1Transport, Cv1Diagno
   }
 }
 
+class _MeasuredArchiveInputs extends NextCaptureInputs {
+  _MeasuredArchiveInputs(super.phone, super.transport);
+
+  @override
+  ({double bytesPerSecond, Duration remaining})? get transferEstimate =>
+      (bytesPerSecond: 12 * 1024, remaining: const Duration(minutes: 2, seconds: 30));
+}
+
 class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   _ArchiveWire({this.records = 32 * 32 + 12, this.interrupt = false});
 
@@ -98,6 +107,7 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
   final bool interrupt;
   int oldest = 0;
   int reads = 0;
+  Future<void> Function(int)? beforeRead;
   final starts = <(int, int)>[];
   static const target = 'test-cv1';
 
@@ -136,6 +146,7 @@ class _ArchiveWire extends _Wire implements Cv1ArchiveTransport {
     expect(expectedStart, oldest);
     expect(selected.generation, generation);
     starts.add((generation, expectedStart));
+    await beforeRead?.call(reads);
     final partial = interrupt && reads == 1;
     final count = partial ? 10 : maxRecords;
     final bytes = Uint8List(count * 444);
@@ -224,7 +235,7 @@ class _Microphone implements NextPhoneMicrophone {
   @override
   Future<void> start(void Function(Uint8List) onSamples, void Function() onFailure) async => recording = true;
   @override
-  Future<void> stop() async => recording = false;
+  Future<void> stop({bool reopening = false}) async => recording = false;
 }
 
 class _GainDecoder implements Cv1GainDecoder {
@@ -555,6 +566,71 @@ void main() {
     }
   });
 
+  test('CV1 sync estimates from saved bytes and resets the rate after a reconnect', () {
+    final progress = Cv1SyncProgress(start: 100, end: 196, elapsed: Duration.zero);
+    expect(progress.estimate(Duration.zero), isNull);
+
+    progress.savedThrough(132, const Duration(seconds: 2));
+    expect(progress.estimate(const Duration(seconds: 2)), (
+      bytesPerSecond: 7104.0,
+      remaining: const Duration(seconds: 4),
+    ));
+    expect(progress.estimate(const Duration(seconds: 14)), isNull);
+
+    progress.resume(8, const Duration(seconds: 30));
+    expect(progress.remainingRecords, 56);
+    progress.savedThrough(140, const Duration(seconds: 31));
+    expect(progress.estimate(const Duration(seconds: 31)), isNull);
+    progress.savedThrough(168, const Duration(seconds: 32));
+    expect(progress.estimate(const Duration(seconds: 32)), (
+      bytesPerSecond: 6216.0,
+      remaining: const Duration(seconds: 2),
+    ));
+    progress.savedThrough(196, const Duration(seconds: 34));
+    expect(progress.estimate(const Duration(seconds: 34)), isNull);
+  });
+
+  testWidgets('CV1 sync settings put transfer speed, ETA and saved dates first', (tester) async {
+    final journal = _Journal();
+    final wire = _Wire();
+    final mic = _Microphone();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43);
+    final inputs = _MeasuredArchiveInputs(NextPhoneCapture(journal, 'fixture', mic), wire)
+      ..archiveMessage = 'nextImportProgress'
+      ..importWindows = 32
+      ..importedRecords = 32
+      ..importedTimes = (first: DateTime(2026, 11, 26, 12), last: DateTime(2026, 11, 27, 14));
+    final controls = LocalNextCaptureControls(inputs: inputs, library: pair);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) =>
+                TextButton(onPressed: () => controls.openSettings(context, pair), child: const Text('Open settings')),
+          ),
+        ),
+      );
+      wire.ready();
+      await tester.tap(find.text('Open settings'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Import oldest CV1 audio'), 160);
+      expect(
+        find.textContaining(RegExp(r'12\.0 KiB/s · Estimated: 2m 30s remaining\nSaved audio · .*Nov 26.*Nov 27')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Records saved'), findsNothing);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      await mic.audioSession.close();
+    }
+  });
+
   test('full CV1 sync queues audio beyond 32 BLE reads and ends at the initial archive boundary', () async {
     final folder = await Directory.systemTemp.createTemp('next-cv1-full-sync-');
     final journal = LocalAudioJournal(
@@ -568,14 +644,26 @@ void main() {
       await journal.initialize();
       wire.emit(const Cv1TransportState(Cv1LinkPhase.ready, 1, codec: 20, deviceId: _ArchiveWire.target));
       await wire.sampleDiagnostics();
+      wire.beforeRead = (read) async {
+        if (read == 1) {
+          expect(inputs.transferEstimate?.bytesPerSecond, greaterThan(0));
+          expect(inputs.transferEstimate?.remaining, greaterThan(Duration.zero));
+          expect(inputs.importedTimes?.first, DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true));
+        }
+      };
       final target = inputs.connection.importTarget!;
       await inputs.importOldest(target, windows: null);
+      expect(inputs.transferEstimate, isNull);
       await journal.drain();
       expect(wire.reads, 33);
       expect(wire.wakeChanges, [true, false]);
       expect(wire.oldest, wire.records);
       expect(inputs.importedRecords, wire.records);
       expect(inputs.importedAudio, const Duration(milliseconds: 20720));
+      expect(inputs.importedTimes, (
+        first: DateTime.fromMillisecondsSinceEpoch(1700000000000, isUtc: true),
+        last: DateTime.fromMillisecondsSinceEpoch(1700000020000, isUtc: true),
+      ));
       expect(inputs.archiveMessage, 'nextImportAllSaved');
       expect(journal.pendingParts, 2);
       expect(inputs.connection.importingStorage, isFalse);
@@ -847,9 +935,13 @@ void main() {
     }
   });
 
-  testWidgets('CV1 elapsed time and mute stay available in Live, and silence saves for the next recording', (
+  testWidgets('CV1 Live groups Finish, Stop and mute, and uses the cutoff for the current conversation', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     SharedPreferences.setMockInitialValues({});
     var now = DateTime.utc(2026);
     final boundary = ValueNotifier<int?>(60);
@@ -886,9 +978,15 @@ void main() {
       await inputs.startCv1();
       await tester.pumpAndSettle();
       final strip = find.byKey(const ValueKey('next-live-strip'));
-      expect(find.descendant(of: strip, matching: find.text('CV1 · 00:00')), findsOneWidget);
+      final cv1Stop = find.byKey(const ValueKey('next-cv1-capture'));
+      final phoneMic = find.byKey(const ValueKey('next-phone-capture'));
+      final finishControl = find.byTooltip('Finish this conversation and keep recording');
+      expect(find.descendant(of: cv1Stop, matching: find.text('Stop · CV1 · 00:00')), findsOneWidget);
+      expect(find.descendant(of: strip, matching: find.byKey(const ValueKey('next-recording-time'))), findsNothing);
+      expect(tester.getRect(phoneMic).center.dy, tester.getRect(cv1Stop).center.dy);
+      expect(tester.getBottomLeft(cv1Stop).dy, lessThanOrEqualTo(tester.getTopLeft(finishControl).dy));
+      expect(tester.getBottomLeft(finishControl).dy, lessThanOrEqualTo(tester.getTopLeft(strip).dy));
       expect(find.descendant(of: strip, matching: find.text('Waiting for CV1 audio')), findsOneWidget);
-      expect(find.byTooltip('Finish conversation and keep listening'), findsOneWidget);
       await tester.tap(strip);
       await tester.pumpAndSettle();
       expect(find.text('CV1 · 00:00'), findsOneWidget);
@@ -905,12 +1003,12 @@ void main() {
         inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
       }
       await tester.pump();
-      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
-      expect(find.text('Stop after silence'), findsOneWidget);
+      expect(find.text('Split conversations after silence'), findsOneWidget);
       expect(find.textContaining('Applies to the next recording.'), findsOneWidget);
-      await tester.tap(find.text('Stop after silence'));
+      await tester.tap(find.text('Split conversations after silence'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('30s'));
       await tester.pumpAndSettle();
@@ -919,15 +1017,32 @@ void main() {
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
+      final actions = find.byKey(const ValueKey('next-live-actions'));
+      final finish = find.descendant(of: actions, matching: find.text('Finish & keep recording'));
+      final stop = find.descendant(of: actions, matching: find.text('Stop Recording'));
+      expect(find.descendant(of: actions, matching: find.byTooltip('Mute')), findsOneWidget);
+      final subscriptions = List<bool>.of(wire.subscriptions);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.sealing, isTrue);
+      expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
+      expect(wire.subscriptions, subscriptions);
+      for (final counter in [2, 3]) {
+        inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      }
+      await tester.pump();
+      expect(journal.recordings, 2);
+      expect(find.text('Silence cutoff: 30 s'), findsOneWidget);
       journal.seal.complete();
-      await tester.tap(find.text('Stop'));
+      await tester.tap(stop);
       await tester.pumpAndSettle();
       expect(inputs.cv1.active, isFalse);
-      expect(find.text('Silence threshold · 60\u00a0s'), findsNothing);
+      expect(inputs.cv1.intent, Cv1CaptureIntent.stopped);
+      expect(actions, findsNothing);
       await tester.tap(find.text('Live Transcript'));
       await tester.pumpAndSettle();
-      expect(find.text('Silence threshold · 30\u00a0s'), findsOneWidget);
+      expect(find.text('Silence cutoff: 30 s'), findsOneWidget);
     } finally {
       if (!journal.seal.isCompleted) journal.seal.complete();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -940,85 +1055,78 @@ void main() {
     }
   });
 
-  for (final keepListening in [false, true]) {
-    testWidgets('Live follows CV1 silence with continued listening set to $keepListening', (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var now = DateTime.utc(2026);
-      final threshold = ValueNotifier<int?>(60);
-      final journal = _Journal(clock: () => now, groupSilence: () => threshold.value);
-      final mic = _Microphone();
-      final wire = _Wire();
-      final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
-      final preview = NextLivePreview(
-        'fixture',
-        (owner, source, codec, {silence}) async => throw const SocketException('offline'),
-      );
-      final inputs = NextCaptureInputs(
-        NextPhoneCapture(journal, 'fixture', mic, preview: preview, keepListeningAfterSilence: () => keepListening),
-        wire,
-      );
-      try {
-        await tester.pumpWidget(
-          MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: LocalNextCaptureControls(
-                inputs: inputs,
-                library: pair,
-                serverLabel: 'Test server',
-                groupSilence: threshold,
-              ),
+  testWidgets('CV1 silence finishes the conversation and keeps the input active', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var now = DateTime.utc(2026);
+    final threshold = ValueNotifier<int?>(60);
+    final journal = _Journal(clock: () => now, groupSilence: () => threshold.value);
+    final mic = _Microphone();
+    final wire = _Wire();
+    final pair = PairedLibrary('100.64.0.1', 'A' * 43)..conversationGroups = true;
+    final preview = NextLivePreview(
+      'fixture',
+      (owner, source, codec, {silence}) async => throw const SocketException('offline'),
+    );
+    final inputs = NextCaptureInputs(NextPhoneCapture(journal, 'fixture', mic, preview: preview), wire);
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: LocalNextCaptureControls(
+              inputs: inputs,
+              library: pair,
+              serverLabel: 'Test server',
+              groupSilence: threshold,
             ),
           ),
-        );
-        wire.ready();
-        await inputs.startCv1();
-        void packet(int counter) =>
-            inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
-        packet(0);
-        packet(1);
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('next-live-strip')));
-        await tester.pumpAndSettle();
-        expect(find.text('Silence threshold · 60\u00a0s'), findsOneWidget);
+        ),
+      );
+      wire.ready();
+      await inputs.startCv1();
+      void packet(int counter) =>
+          inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      packet(0);
+      packet(1);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('next-live-strip')));
+      await tester.pumpAndSettle();
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
 
-        now = now.add(const Duration(seconds: 59));
-        await tester.pump(const Duration(seconds: 59));
-        expect(inputs.cv1.active, isTrue);
-        packet(2);
-        await tester.pump();
-        now = now.add(const Duration(seconds: 59));
-        await tester.pump(const Duration(seconds: 59));
-        expect(inputs.cv1.active, isTrue);
-        now = now.add(const Duration(seconds: 1));
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pumpAndSettle();
-        expect(inputs.cv1.sealing, isTrue);
-        expect(inputs.cv1.active, keepListening);
-        expect(find.textContaining('Test server'), keepListening ? findsOneWidget : findsNothing);
-        expect(wire.subscriptions, keepListening ? [true] : [true, false]);
-        expect(journal.recordings, 1);
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      packet(2);
+      await tester.pump();
+      now = now.add(const Duration(seconds: 59));
+      await tester.pump(const Duration(seconds: 59));
+      expect(inputs.cv1.active, isTrue);
+      now = now.add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.sealing, isTrue);
+      expect(inputs.cv1.active, isTrue);
+      expect(find.textContaining('Test server'), findsOneWidget);
+      expect(wire.subscriptions, [true]);
+      expect(journal.recordings, 1);
 
-        if (keepListening) {
-          packet(3);
-          packet(4);
-          await tester.pumpAndSettle();
-          expect(journal.recordings, 2);
-          expect(find.textContaining('Test server'), findsOneWidget);
-        }
-      } finally {
-        journal.seal.complete();
-        await tester.pumpWidget(const SizedBox.shrink());
-        await inputs.close();
-        inputs.dispose();
-        pair.close();
-        journal.dispose();
-        threshold.dispose();
-        await mic.audioSession.close();
-      }
-    });
-  }
+      packet(3);
+      packet(4);
+      await tester.pumpAndSettle();
+      expect(journal.recordings, 2);
+      expect(find.textContaining('Test server'), findsOneWidget);
+    } finally {
+      journal.seal.complete();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await inputs.close();
+      inputs.dispose();
+      pair.close();
+      journal.dispose();
+      threshold.dispose();
+      await mic.audioSession.close();
+    }
+  });
 
   testWidgets('pairing waits for native readiness, retries a timeout once and shows the BLE code', (tester) async {
     final journal = _Journal();
@@ -1219,7 +1327,7 @@ void main() {
       await tester.tap(phoneButton);
       await tester.pumpAndSettle();
       expect(mic.recording, isTrue);
-      final time = find.text('Phone · 00:00');
+      final time = find.descendant(of: phoneButton, matching: find.text('Stop · Phone · 00:00'));
       expect(time, findsOneWidget);
       expect(find.textContaining('Audio on phone'), findsNothing);
       final pending = find.byKey(const ValueKey('next-delivery-warning'));
@@ -1237,7 +1345,7 @@ void main() {
       await tester.pumpAndSettle();
       now = now.add(const Duration(seconds: 9));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('Phone · 00:09'), findsOneWidget);
+      expect(find.descendant(of: phoneButton, matching: find.text('Stop · Phone · 00:09')), findsOneWidget);
       expect(ownerChange.tryHold(), isFalse);
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();

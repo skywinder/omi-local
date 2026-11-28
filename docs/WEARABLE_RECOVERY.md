@@ -5,10 +5,17 @@ diagnostics → Import oldest CV1 audio after stopping capture. Choose one
 fragment (up to 32 records), a series of up to 32 fragments, or **Sync entire
 CV1**. Full sync reads up to the archive's end at the start of the run and
 publishes each series to the phone queue while reading the next one. The app
-keeps the screen awake while in the foreground and shows the number of new
-records received. A Bluetooth interruption saves the complete records already
-received and pauses full sync. Next resumes when the same CV1 reconnects and
-reports its archive. It compares repeated records with the saved checkpoint and
+keeps the screen awake while in the foreground. Once enough data arrives to
+measure throughput, the import row shows the CV1-to-phone speed and estimated
+time remaining for the selected transfer. The estimate resets after reconnect
+and excludes delivery from the phone to the server. The saved audio range uses
+the earliest and latest timestamps reported by received records, shown in the
+phone's time zone. The range can contain gaps, and the firmware provides no
+dates for unread records before transfer.
+
+A Bluetooth interruption saves the complete records already received and
+pauses full sync. Next resumes when the same CV1 reconnects and reports its
+archive. It compares repeated records with the saved checkpoint and
 reports any missing range if the firmware advanced past the last saved record.
 Stop saves the current request and ends the run or cancels the wait. Firmware
 3.0.21 can release records before the phone writes them. After app termination,
