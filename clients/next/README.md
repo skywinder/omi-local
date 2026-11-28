@@ -148,11 +148,11 @@ uses the model name or hardware model code when the name is unavailable.
 
 In Conversations, the battery indicator opens the connected CV1. To pair a new device, open the gear and select Omi CV1. Phone and CV1 recording controls share one row.
 The Live Transcript card shows the active input and elapsed time.
-The Live Transcript screen shows the active silence threshold below the text.
+The top of Live Transcript shows the speaker limit and silence cutoff.
 The microphone status reports when audio has been saved on the phone, even
 while the Live transcript is waiting for text. Live stays open when silence
 ends a conversation. The selected input keeps
-listening for the next conversation. Tap **Stop** to end recording and clear
+listening for the next conversation. Tap **Stop Recording** to end recording and clear
 its automatic resume request. **Phone upload queue** shows the open part and
 sealed parts awaiting a durable server receipt. Delivery problems also appear
 beside the recording buttons.
@@ -555,15 +555,18 @@ device** clears this selection.
 
 While recording, the card above the archive filters shows the current input,
 elapsed time, recognition status, and the latest line or a short input notice.
-CV1 mute and **Finish & listen** are available on this card and in the full
+CV1 mute and **Finish & keep recording** are available on this card and in the full
 Live transcript. Tap the card header to open Live. The last session remains
 accessible after recording stops.
 
 Open Live while recording with the phone or CV1. The screen uses the original
 Omi transcript list and shows where live processing runs. Translation can use
 one target or two languages selected for the paired server. The Live screen
-shows the current input and elapsed time. For CV1 it also offers Mute, Unmute,
-and Finish conversation and keep listening. Stop is available for either input.
+shows the current input and elapsed time. The controls below the transcript include
+**Stop Recording** for either input. With CV1, **Finish & keep recording**
+closes the current conversation and keeps the input active for the next one.
+CV1 mute is in the same group. The speaker limit reflects the current stream
+once confirmed, and shows the saved configuration while confirmation is pending.
 
 Next sends a frame to the paired `/v4/listen` preview socket after the journal
 flushes it to disk. The separate part upload owns retention and durable
@@ -1057,7 +1060,7 @@ server can match the original capture. Failed capture rows show the saved proces
 error class and attempt count. The active recording timer uses the start of the current
 capture, including intervals when audio frames pause.
 
-While CV1 is recording, **Finish conversation and keep listening** seals the current
+While CV1 is recording, **Finish & keep recording** seals the current
 conversation and clears its Live transcript. CV1 stays subscribed. The next complete
 Opus packet starts a new recording, with its own timer and delivery receipts. **Stop**
 ends listening as well.

@@ -128,6 +128,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Test Server · Connected'), findsOneWidget);
     expect(find.text('No active recording'), findsOneWidget);
+    expect(find.text('Speaker limit: 2'), findsOneWidget);
     expect(find.text('Off'), findsNothing);
     library.connection.value = NextServerConnection.unreachable;
     await tester.pump();
@@ -200,7 +201,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Previous wording · unconfirmed'), findsNothing);
     expect(find.text('Conversation audio saved'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Stop Recording'), findsOneWidget);
     expect(capture.value, isTrue);
     await tester.tap(find.text('Conversation audio saved'));
     await tester.pumpAndSettle();
@@ -263,12 +264,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     expect(find.text(warning), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Stop'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Stop Recording'), findsOneWidget);
   });
 
   testWidgets('saving a speaker limit requires confirmation and leaves the current stream status intact', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     SharedPreferences.setMockInitialValues({});
     final socket = _Socket();
     final library = _TuningPair();
@@ -286,6 +291,7 @@ void main() {
             preview: preview,
             capture: recording,
             isRecording: () => recording.value,
+            silenceThreshold: () => 120,
             serverLabel: 'fixture.local',
             library: library,
             onStop: () async {
@@ -299,6 +305,7 @@ void main() {
     preview.begin('fixture', 'phone', 'pcm16');
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
+    expect(find.text('Speaker limit: 2 (configured)'), findsOneWidget);
     socket.send({
       'type': 'service_status',
       'provider': 'local_live_tuning',
@@ -314,7 +321,10 @@ void main() {
       'max_speakers': 1,
     });
     await tester.pump();
-    expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
+    final speaker = find.text('Speaker limit: 2');
+    final cutoff = find.text('Silence cutoff: 120 s');
+    expect(tester.getTopLeft(speaker).dy, tester.getTopLeft(cutoff).dy);
+    expect(tester.getBottomLeft(cutoff).dy, lessThan(tester.getTopLeft(find.textContaining('fixture.local')).dy));
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Live speaker limit'));
@@ -344,10 +354,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('Speaker limit in this stream: 2'), findsOneWidget);
-    await tester.tap(find.text('Stop'));
+    expect(find.text('Speaker limit: 2'), findsOneWidget);
+    preview.end('fixture');
+    await tester.pump();
+    expect(find.text('Speaker limit: 4 (configured)'), findsOneWidget);
+    await tester.tap(find.text('Stop Recording'));
     await tester.pumpAndSettle();
-    expect(find.text('Speaker limit in this stream: 2'), findsNothing);
+    expect(find.text('Speaker limit: 2'), findsNothing);
+    await tester.tap(find.text('Live Transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('Speaker limit: 4'), findsOneWidget);
   });
 
   testWidgets('paired live transcript keeps a translation through a correction and Stop remains available', (
@@ -390,11 +406,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
     expect(find.text('fixture.local'), findsOneWidget);
-    expect(find.text('Stop'), findsOneWidget);
+    expect(find.text('Stop Recording'), findsOneWidget);
     muted.value = true;
     await tester.pump();
     expect(find.text('Muted'), findsOneWidget);
-    expect(find.text('Stop'), findsOneWidget);
+    expect(find.text('Stop Recording'), findsOneWidget);
     muted.value = false;
     socket.snapshot(1, 'Old sentence', translation: 'Первый перевод', draft: true);
     await tester.pumpAndSettle();
@@ -469,10 +485,10 @@ void main() {
     expect(latest.overflow, TextOverflow.ellipsis);
     await tester.tap(find.byKey(const ValueKey('next-live-strip')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Stop'));
+    await tester.tap(find.text('Stop Recording'));
     await tester.pumpAndSettle();
     expect(stops, 1);
-    expect(find.text('Stop'), findsNothing);
+    expect(find.text('Stop Recording'), findsNothing);
     expect(find.text('fixture.local'), findsNothing);
     await tester.tap(find.text('Live Transcript'));
     await tester.pumpAndSettle();

@@ -935,9 +935,13 @@ void main() {
     }
   });
 
-  testWidgets('CV1 elapsed time and mute stay available in Live, and silence saves for the next recording', (
+  testWidgets('CV1 Live groups Finish, Stop and mute, and uses the cutoff for the current conversation', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     SharedPreferences.setMockInitialValues({});
     var now = DateTime.utc(2026);
     final boundary = ValueNotifier<int?>(60);
@@ -976,7 +980,7 @@ void main() {
       final strip = find.byKey(const ValueKey('next-live-strip'));
       expect(find.descendant(of: strip, matching: find.text('CV1 · 00:00')), findsOneWidget);
       expect(find.descendant(of: strip, matching: find.text('Waiting for CV1 audio')), findsOneWidget);
-      expect(find.byTooltip('Finish conversation and keep listening'), findsOneWidget);
+      expect(find.byTooltip('Finish this conversation and keep recording'), findsOneWidget);
       await tester.tap(strip);
       await tester.pumpAndSettle();
       expect(find.text('CV1 · 00:00'), findsOneWidget);
@@ -993,7 +997,7 @@ void main() {
         inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
       }
       await tester.pump();
-      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.text('Split conversations after silence'), findsOneWidget);
@@ -1007,15 +1011,32 @@ void main() {
       expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
+      final actions = find.byKey(const ValueKey('next-live-actions'));
+      final finish = find.descendant(of: actions, matching: find.text('Finish & keep recording'));
+      final stop = find.descendant(of: actions, matching: find.text('Stop Recording'));
+      expect(find.descendant(of: actions, matching: find.byTooltip('Mute')), findsOneWidget);
+      final subscriptions = List<bool>.of(wire.subscriptions);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(inputs.cv1.sealing, isTrue);
+      expect(inputs.cv1.intent, Cv1CaptureIntent.recording);
+      expect(wire.subscriptions, subscriptions);
+      for (final counter in [2, 3]) {
+        inputs.cv1.handle(Cv1Audio(wire.generation, Uint8List.fromList([counter, 0, 0, 0xf8, 0xff, 0xfe])));
+      }
+      await tester.pump();
+      expect(journal.recordings, 2);
+      expect(find.text('Silence cutoff: 30 s'), findsOneWidget);
       journal.seal.complete();
-      await tester.tap(find.text('Stop'));
+      await tester.tap(stop);
       await tester.pumpAndSettle();
       expect(inputs.cv1.active, isFalse);
-      expect(find.text('Split conversations after 60 seconds of silence'), findsNothing);
+      expect(inputs.cv1.intent, Cv1CaptureIntent.stopped);
+      expect(actions, findsNothing);
       await tester.tap(find.text('Live Transcript'));
       await tester.pumpAndSettle();
-      expect(find.text('Split conversations after 30 seconds of silence'), findsOneWidget);
+      expect(find.text('Silence cutoff: 30 s'), findsOneWidget);
     } finally {
       if (!journal.seal.isCompleted) journal.seal.complete();
       await tester.pumpWidget(const SizedBox.shrink());
@@ -1065,7 +1086,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('next-live-strip')));
       await tester.pumpAndSettle();
-      expect(find.text('Split conversations after 60 seconds of silence'), findsOneWidget);
+      expect(find.text('Silence cutoff: 60 s'), findsOneWidget);
 
       now = now.add(const Duration(seconds: 59));
       await tester.pump(const Duration(seconds: 59));

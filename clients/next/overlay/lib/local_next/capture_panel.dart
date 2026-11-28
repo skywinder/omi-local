@@ -614,7 +614,7 @@ class LocalNextCaptureControls extends StatelessWidget {
     key: const ValueKey('next-cv1-finish'),
     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
     icon: const Icon(Icons.skip_next),
-    label: Text(pairedSettingsLabel(context, 'nextFinishShort'), maxLines: 1, overflow: TextOverflow.ellipsis),
+    label: Text(pairedSettingsLabel(context, 'nextFinishShort')),
     onPressed: inputs.switching || !inputs.cv1.canFinish ? null : inputs.cv1.finishConversation,
   );
 
@@ -644,15 +644,12 @@ class LocalNextCaptureControls extends StatelessWidget {
     return null;
   }
 
-  Widget _liveControls(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
-    children: [
-      Flexible(
-        child: Tooltip(message: pairedSettingsLabel(context, 'nextFinishContinue'), child: _finish(context)),
-      ),
+  List<Widget> _liveControls(BuildContext context) => [
+    if (inputs.cv1.active) ...[
+      Tooltip(message: pairedSettingsLabel(context, 'nextFinishContinue'), child: _finish(context)),
       _mute(context),
     ],
-  );
+  ];
 
   Future<void> _importPendant(BuildContext context, Cv1Connection link) async {
     final target = link.importTarget;
@@ -1065,7 +1062,6 @@ class LocalNextCaptureControls extends StatelessWidget {
               onStop: inputs.stopRecording,
               inputNotice: _inputNotice,
               recordingTime: _time,
-              hasCaptureControls: () => cv1.active,
               captureControls: _liveControls,
               captureSettings: library?.conversationGroups == true && groupSilence != null && onGroupSilence != null
                   ? (_) => _boundaries(library!)
@@ -1084,7 +1080,12 @@ class LocalNextCaptureControls extends StatelessWidget {
           else ...[
             if (_time(context) case final time?) time,
             if (_inputNotice(context) case final notice?) Text(notice),
-            if (cv1.active) _liveControls(context),
+            if (cv1.active)
+              Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: _liveControls(context),
+              ),
           ],
         ],
       ),
