@@ -18,6 +18,8 @@ from time import monotonic
 
 import httpx
 
+from .local_providers import SettingsError
+
 from . import local_diarization, local_provider_http as transport, stt_install
 
 DIARIZATION_END_TOLERANCE_SECONDS = 1.0
@@ -364,7 +366,7 @@ def summarize_text(snapshot, key, text, folder, write, *, deadline=None, sourced
             **({'template_name': template['name']} if template else {})} if include_model else summaries[0]
 
 
-def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
+def execute(engine, audio, folder, manifest, transcribe, local_speakers, write, *, keep_transcript=False):
     """Resume successful stages without ever selecting another provider."""
     pipeline = engine.pipeline
     processing = {}
@@ -441,6 +443,11 @@ def execute(engine, audio, folder, manifest, transcribe, local_speakers, write):
             if summary['kind'] != 'openai-compatible':
                 raise PipelineError('Unsupported summary provider', code='configuration')
             return summarize(summary, engine.provider_key('summary'), raw, folder, write)
-        structured = stage('summary', folder / 'summary.json', summarize_recording)
-        raw = {**raw, 'structured': structured}
+        try:
+            structured = stage('summary', folder / 'summary.json', summarize_recording)
+        except (PipelineError, SettingsError):
+            if not keep_transcript:
+                raise
+        else:
+            raw = {**raw, 'structured': structured}
     return {**raw, 'processing': processing}

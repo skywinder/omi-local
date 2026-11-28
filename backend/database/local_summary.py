@@ -107,6 +107,29 @@ def recording(uid, conversation_id):
     return raw
 
 
+def needs_backfill(raw):
+    try:
+        _check(raw)
+    except SummaryUnavailable:
+        return False
+    local = (raw.get('external_data') or {}).get('local_transcript')
+    if not isinstance(local, dict) or not local or raw.get('local_summary_publication'):
+        return False
+    structured = raw.get('structured') or {}
+    stage = (local.get('stages') or {}).get('summary') or {}
+    return (isinstance(structured, dict) and not structured.get('overview') and not structured.get('sections')
+            and stage.get('status') in {None, 'disabled', 'failed'})
+
+
+def backfill_candidates(uid):
+    collection = _ref(uid, 'unused').parent
+    fields = ('status', 'deleted', 'is_locked', 'local_chat_deleting', 'local_summary_publication.request_id',
+              'structured.overview', 'structured.sections', 'external_data.local_transcript.version',
+              'external_data.local_transcript.stages.summary.status')
+    return [doc.id for doc in collection.select(fields).stream(retry=None, timeout=30)
+            if needs_backfill(doc.to_dict())]
+
+
 def source(raw, uid, *, background=False) -> SummarySource:
     transcript, segment_ids = _transcript(raw, uid, background=background)
     return SummarySource(transcript, _revision(raw, transcript, segment_ids), segment_ids)
@@ -134,13 +157,15 @@ def replay(raw, request_id, fingerprint):
 
 
 @firestore.transactional
-def _publish(transaction, uid, conversation_id, revision, candidate, publication, background=False):
+def _publish(transaction, uid, conversation_id, revision, candidate, publication, background=False, only_missing=False):
     ref = _ref(uid, conversation_id)
     raw = ref.get(transaction=transaction, timeout=6).to_dict()
     _check(raw)
     previous = replay(raw, publication['request_id'], publication['fingerprint'])
     if previous is not None:
         return previous
+    if only_missing and not needs_backfill(raw):
+        raise SummaryChanged()
     snapshot = source(raw, uid, background=background)
     if snapshot.revision != revision:
         raise SummaryChanged()
@@ -162,8 +187,8 @@ def _publish(transaction, uid, conversation_id, revision, candidate, publication
     return publication
 
 
-def publish(uid, conversation_id, revision, candidate, publication, *, background=False):
-    return run_transactional(db, _publish, uid, conversation_id, revision, candidate, publication, background)
+def publish(uid, conversation_id, revision, candidate, publication, *, background=False, only_missing=False):
+    return run_transactional(db, _publish, uid, conversation_id, revision, candidate, publication, background, only_missing)
 
 
 def _classification_status(raw):

@@ -20,6 +20,13 @@ from .local_stt import atomic_json
 
 INFERENCE_BUDGET_SECONDS = 6 * 3600
 PROGRESS_PHASES = ('waiting', 'reading', 'sections', 'combining', 'saving')
+BACKFILL_RETRY_NS = 60 * 1_000_000_000
+
+
+def retryable_backfill(job):
+    return (job.get('state') == 'failed'
+            and job.get('error') in {'connection', 'timeout', 'database_failure', 'http_408', 'http_429',
+                                     'http_500', 'http_502', 'http_503', 'http_504'})
 
 
 def backend(cfg, operation, **body):
@@ -93,6 +100,12 @@ class SummaryJobs:
         job = max(self.records(body), key=lambda job: job['created_at'], default=None)
         return {'job': self.public(job) if job else None}
 
+    def backfill_status(self, handle):
+        job = read_json(self.file(handle), {})
+        if retryable_backfill(job):
+            return 'retry' if time_ns() - job['finished_at'] >= BACKFILL_RETRY_NS else 'waiting'
+        return job.get('state', 'missing')
+
     def web(self, recording_id, body=None):
         source = backend(self.cfg, 'describe', recording_id=recording_id)
         handle = {'recording_id': recording_id, 'scope': source['scope']}
@@ -101,19 +114,24 @@ class SummaryJobs:
         return {**local_summary_regeneration.options(self.registry), 'source_revision': source['revision'],
                 **self.latest(handle), 'overview': source['overview'], 'published': source.get('published')}
 
-    def submit(self, body, *, expected_revision=None):
+    def submit(self, body, *, expected_revision=None, only_missing=False):
         file = self.file(body)
         fields = ('scope', 'recording_id', 'request_id', 'source_revision', 'provider_binding',
                   'template_id', 'template_digest', 'prompt')
         request = {k: body[k] for k in fields}
-        fingerprint = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+        fingerprint = hashlib.sha256(json.dumps(
+            {**request, 'only_missing': True} if only_missing else request, sort_keys=True,
+        ).encode()).hexdigest()
         with self.lock():
             if job := read_json(file):
-                if job['fingerprint'] != fingerprint:
+                retry = only_missing and job.get('only_missing') and retryable_backfill(job) and (
+                    time_ns() - job['finished_at'] >= BACKFILL_RETRY_NS)
+                if job['fingerprint'] != fingerprint and not retry:
                     raise SettingsError('Summary request changed.', status=409)
                 if job['state'] == 'queued':
                     self.schedule(file)
-                return self.public(job)
+                if not retry:
+                    return self.public(job)
             if expected_revision is not None and request['source_revision'] != expected_revision:
                 raise SettingsError('Summary source changed.', status=409)
             if any(read_json(existing, {}).get('state') == 'queued' for existing in file.parent.parent.glob('*/job.json')):
@@ -124,6 +142,8 @@ class SummaryJobs:
             job.update(state='queued', progress={'phase': 'waiting'}, fingerprint=fingerprint,
                        snapshot=snapshot, created_at=time_ns(),
                        model=snapshot['settings']['model'], template_name=snapshot['template']['name'])
+            if only_missing:
+                job['only_missing'] = True
             file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             atomic_json(file, job)
             self.schedule(file)
@@ -156,6 +176,8 @@ class SummaryJobs:
             if job.get('state') != 'queued':
                 return
             source_args = dict(recording_id=job['recording_id'], scope=job['scope'], revision=job['source_revision'])
+            if job.get('only_missing'):
+                source_args['only_missing'] = True
             if 'candidate' not in job:
                 self.update_progress(file, job, 'reading')
                 source = backend(self.cfg, 'source', **source_args)
@@ -187,6 +209,8 @@ class SummaryJobs:
         finally:
             with self.lock():
                 if job.get('request_id') and job['state'] in {'ready', 'failed'}:
+                    if job.get('only_missing'):
+                        job['finished_at'] = time_ns()
                     job.pop('snapshot', None)
                     job.pop('candidate', None)
                     job.pop('progress', None)

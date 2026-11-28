@@ -117,6 +117,7 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
   const state = {data: null, draft: null, busy: false, models: [], checks: new Map(), loaded: false, generation: 0};
   const unavailableUntil = new Map();
   let availability, updateAvailabilityRows = [];
+  let backfill, updateBackfill;
   let feedback, editor, draftKey, clearKey, fieldInputs = new Map(), disabledControls = new WeakMap();
   function message(text = '', tone = '') {
     if (!feedback) return;
@@ -154,11 +155,15 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     message(progress);
     try { await action(); if (success) message(success, 'success'); }
     catch (error) { fail(error); }
-    finally { busy(false); }
+    finally {
+      busy(false);
+      updateBackfill?.();
+    }
   }
   async function load() {
     await operation(async () => {
       state.data = await request('', undefined, 'GET');
+      backfill = state.data.summary_backfill;
       state.loaded = true;
       render();
     });
@@ -355,6 +360,39 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     return panel;
   }
 
+  function backfillControls() {
+    const panel = el('div', 'summary-setting');
+    const copy = el('div');
+    const status = el('p', 'settings-description');
+    status.setAttribute('role', 'status');
+    const actions = el('div', 'provider-toolbar');
+    const change = body => operation(async () => {
+      backfill = await request('/summary-backfill', body);
+    });
+    const run = button('Backfill missing summaries', () => change({run: true}));
+    const automatic = button('', () => change({automatic: !backfill.automatic}));
+    updateBackfill = () => {
+      const phase = {
+        checking: 'Checking for recordings with missing summaries.',
+        running: 'Backfill is running.',
+        waiting_for_model: 'Waiting for the active summary model.',
+        waiting_for_retry: 'Waiting to retry a summary.',
+        unavailable: 'Backfill status is temporarily unavailable. The server will try again.',
+      }[backfill.state];
+      status.textContent = [phase, backfill.failed ? `${backfill.failed} recordings could not be summarized.` : '']
+        .filter(Boolean).join(' ');
+      automatic.textContent = backfill.automatic ? 'Turn off automatic backfill' : 'Turn on automatic backfill';
+      automatic.setAttribute('aria-pressed', String(backfill.automatic));
+      run.disabled = backfill.requested;
+    };
+    copy.append(el('p', 'summary-setting-state', 'Summary backfill'),
+      el('p', 'settings-description', 'Use the active model to summarize saved transcripts with missing summaries. Automatic backfill resumes when the model is ready.'), status);
+    actions.append(run, automatic);
+    panel.append(copy, actions);
+    updateBackfill();
+    return panel;
+  }
+
   function renderCategory(stageId, stage, form) {
     const section = el('section', 'provider-category');
     const title = el('h3', '', stage.title);
@@ -374,6 +412,7 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     const profiles = state.data.profiles.filter(profile => profile.stage === stageId);
     const summary = stageId === 'summary';
     if (summary) section.append(summarySwitch(effective, profiles));
+    if (summary && backfill) section.append(backfillControls());
     const current = el('div', 'provider-category-current');
     if ((!summary || effective) && !profiles.some(profile => profileMatches(profile, effective))) {
       const nameLabel = effective ? 'Active provider · ' + profileLabel(effective) : 'Stage off';
@@ -468,6 +507,7 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
     feedback.hidden = true;
     fragment.append(feedback);
     updateAvailabilityRows = [];
+    updateBackfill = undefined;
     if (state.data) {
       const intro = el('div', 'provider-list-heading');
       intro.append(el('p', 'settings-description', 'Test connection checks reachability from Omi without sending recordings.'),
@@ -480,7 +520,11 @@ export function mountSettings(root, {request = settingsRequest, openTemplates} =
   }
   render();
   return {load, show: () => { if (!state.loaded && !state.busy) return load(); },
-    updateAvailability(report) {
+    updateAvailability(report, backfillReport) {
+      if (backfillReport && !state.busy && JSON.stringify(backfillReport) !== JSON.stringify(backfill)) {
+        backfill = backfillReport;
+        updateBackfill?.();
+      }
       if (JSON.stringify(availability) === JSON.stringify(report)) return;
       availability = report;
       updateAvailabilityRows.forEach(update => update());
