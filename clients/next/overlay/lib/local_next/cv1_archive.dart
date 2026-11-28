@@ -39,7 +39,8 @@ class Cv1Archive {
     final deviceKey = const Uuid().v5(Namespace.url.value, '$owner/$deviceId/$codec');
     Future<File> newWindowFile(int first, Uint8List data) async {
       final id = const Uuid().v5(Namespace.url.value, '$owner/$deviceId/$first/${sha256.convert(data)}');
-      return File('${journal.directory.path}/$id.$codec.$deviceKey.$first.cv1').create(exclusive: true);
+      final mode = journal.filtersNewAudio ? '.speech' : '.raw';
+      return File('${journal.directory.path}/$id.$codec.$deviceKey.$first$mode.cv1').create(exclusive: true);
     }
 
     final hashes = _recordHashes(bytes);
@@ -166,6 +167,8 @@ class Cv1Archive {
 
   Future<int> publish(File file) async {
     final fields = file.uri.pathSegments.last.split('.');
+    final tagged = fields.length == 6 && {'speech', 'raw'}.contains(fields[4]);
+    final reviewSpeech = tagged ? fields.removeAt(4) == 'speech' : false;
     if ((fields.length != 3 && fields.length != 5) ||
         (fields.length == 5 &&
             (!RegExp(r'^[a-f0-9-]{36}$').hasMatch(fields[2]) || (int.tryParse(fields[3]) ?? -1) < 0)) ||
@@ -217,6 +220,7 @@ class Cv1Archive {
         codec: codec,
         startedAt: DateTime.fromMillisecondsSinceEpoch(group.epoch * 1000, isUtc: true),
         packets: group.packets,
+        reviewSpeech: reviewSpeech,
       );
     }
     if (fields.length == 5) await _rememberTail(fields[2], int.parse(fields[3]), raw);

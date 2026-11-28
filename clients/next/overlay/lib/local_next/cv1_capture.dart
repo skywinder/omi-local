@@ -104,7 +104,7 @@ class NextCv1Capture extends ChangeNotifier {
   void rearmSilenceDeadline() {
     _silenceDeadline?.cancel();
     _silenceDeadline = null;
-    final seconds = _recording?.silenceSeconds ?? 0;
+    final seconds = _recording?.silenceSeconds ?? (_recording?.reviewSpeech == true ? 2 : 0);
     final last = _lastAcceptedAt;
     if (!wantsAudio || seconds == 0 || last == null) return;
     final remaining = last.add(Duration(seconds: seconds)).difference(journal.clock());
@@ -158,9 +158,27 @@ class NextCv1Capture extends ChangeNotifier {
     }
   }
 
-  void start() {
+  void Function(bool)? requestHardwareMute;
+  bool? hardwareMuteConfirmed;
+
+  void suspendForUnconfirmedMute() {
+    if (_closed) return;
+    _intent = Cv1CaptureIntent.muted;
+    notifyListeners();
+  }
+
+  void restoreHardwareMute() {
+    if (_closed) return;
+    _intent = Cv1CaptureIntent.muted;
+    hardwareMuteConfirmed = true;
+    unawaited(_remember(Cv1ResumeMode.muted));
+    notifyListeners();
+  }
+
+  void start({bool explicit = true}) {
     if (_closed || active || !canStart()) return;
     _cancelButtonStart();
+    if (explicit) requestHardwareMute?.call(false);
     _attempt++;
     startedAt = journal.clock();
     _intent = Cv1CaptureIntent.recording;
@@ -169,10 +187,11 @@ class NextCv1Capture extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> stop() {
+  Future<void> stop({bool explicit = true}) {
     if (_closed) return _sealed;
     _cancelButtonStart();
-    final remembered = _remember(Cv1ResumeMode.stopped);
+    if (explicit) requestHardwareMute?.call(true);
+    final remembered = explicit ? _remember(Cv1ResumeMode.stopped) : Future<void>.value();
     _stopCapture();
     return Future.wait<void>([_sealed, remembered]);
   }
@@ -201,6 +220,7 @@ class NextCv1Capture extends ChangeNotifier {
   void toggleMute() {
     if (_closed || !active) return;
     _intent = _intent == Cv1CaptureIntent.muted ? Cv1CaptureIntent.recording : Cv1CaptureIntent.muted;
+    requestHardwareMute?.call(_intent == Cv1CaptureIntent.muted);
     unawaited(_remember(_intent == Cv1CaptureIntent.muted ? Cv1ResumeMode.muted : Cv1ResumeMode.armed));
     if (_intent == Cv1CaptureIntent.recording) startedAt ??= journal.clock();
     if (_intent == Cv1CaptureIntent.muted) {
@@ -235,7 +255,7 @@ class NextCv1Capture extends ChangeNotifier {
     if (_closed || active || sealing || !codecSupported || !canStart()) return;
     switch (resumeSettings?.mode) {
       case Cv1ResumeMode.armed || Cv1ResumeMode.manualRecording:
-        start();
+        start(explicit: false);
       case Cv1ResumeMode.muted || Cv1ResumeMode.manualMuted:
         _intent = Cv1CaptureIntent.muted;
         notifyListeners();
@@ -269,7 +289,7 @@ class NextCv1Capture extends ChangeNotifier {
 
   void _accept(Uint8List raw) {
     if (_silenceDeadline != null) {
-      final seconds = _recording!.silenceSeconds!;
+      final seconds = _recording!.silenceSeconds ?? 2;
       if (journal.clock().difference(_lastAcceptedAt!) >= Duration(seconds: seconds)) {
         rearmSilenceDeadline();
         if (!wantsAudio) return;
@@ -291,7 +311,7 @@ class NextCv1Capture extends ChangeNotifier {
     final current = _recording ??= journal.beginForServer(source: 'omi', codec: _codec!, serverId: owner);
     final acceptedAt = journal.clock();
     final elapsed = acceptedAt.difference(startedAt!).inMicroseconds / Duration.microsecondsPerSecond;
-    if ((current.silenceSeconds ?? 0) > 0) {
+    if ((current.silenceSeconds ?? (current.reviewSpeech ? 2 : 0)) > 0) {
       _lastAcceptedAt = acceptedAt;
       if (_silenceDeadline == null) rearmSilenceDeadline();
     }

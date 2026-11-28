@@ -244,6 +244,11 @@ def test_cv1_legacy_import_validates_window_and_preserves_received_prefix(tmp_pa
       precondition(CV1LegacyRead(info: info(95), maxRecords: 33) == nil)
       precondition(CV1LegacyRead(info: info(0), maxRecords: 32) == nil && CV1LegacyRead(info: info(101), maxRecords: 32) == nil)
       precondition(CV1LegacyRead(info: info(2) + Data(repeating: 0, count: 10), maxRecords: 32) == nil)
+      let identity = word(UInt64(0x1234))
+      let modern = info(2) + Data([0x0d, 1]) + identity
+      let window = CV1LegacyRead(info: modern, maxRecords: 1)!
+      precondition(window.ring == identity && window.start == start && window.count == 1)
+      precondition(CV1LegacyRead(info: info(2) + Data([1, 1]) + identity, maxRecords: 1) == nil)
       let data = Data((0..<888).map { UInt8($0 % 251) })
       let read = CV1LegacyRead(info: info(2), maxRecords: 32)!
       precondition(read.receive(begin(2)) == .more)

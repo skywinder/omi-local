@@ -552,6 +552,31 @@ muted, and selecting the phone microphone suspends CV1 capture.
 Android remembers a CV1 after a successful audio-service handshake; **Forget
 device** clears this selection.
 
+### Detect speech on this phone
+
+**Settings and diagnostics → Detect speech on this phone** is opt-in for each pairing.
+Next runs the bundled Silero model on the phone for CV1 audio, an explicitly started phone
+microphone, and imported CV1 audio. Live sends audio after speech onset with up to about
+320 ms of preceding sound and 480 ms of trailing sound. The archive keeps short pauses
+inside a clip. Two seconds of silence ends a clip by default. A selected silence interval
+overrides this duration. Stopping CV1 packets also closes the current draft on its timer.
+The phone microphone starts only from its own control.
+
+Speech filtering runs offline. A sealed draft produces independent speech clips within
+that part's time range. A five-minute limit, Stop, or a connection checkpoint can also
+end a part. Fully quiet drafts produce no upload. Ambiguous drafts remain on the phone
+for manual retry. An unavailable detector also keeps its drafts locally. Switching the
+filter during CV1 listening starts a fresh draft. Finish a phone-microphone recording
+or a storage transfer before changing the switch. The switch governs new audio.
+Disabling it restores continuous Live and the server's existing archive grouping.
+
+On a saved CV1 link in automatic listening mode, Next checks the stored microphone mute
+and imports the initial unread archive before subscribing to live audio when the
+firmware supports receiver acknowledgements. Legacy archive import remains manual. A compatible
+pendant confirms a persistent mute by readback. With older firmware, the phone stops
+receiving audio and shows hardware mute as unconfirmed. A powered-off or unreachable
+pendant can acknowledge a new hardware mute only after it reconnects.
+
 ## Live transcript
 
 While recording, the card above the archive filters shows the recognition status

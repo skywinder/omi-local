@@ -39,6 +39,8 @@ as well as reconnects; the local capture sink uses that source to select WAV cap
 Paired audio is journaled before live send and retained until an exact durable
 part receipt. Socket send is not proof of server storage. Saved pairings may start
 phone journaling offline; capability and socket requests must not delay capture.
+With phone VAD enabled in Next, keep unclassified drafts local. Only classified speech
+may enter Live or the durable upload queue. Preserve the capture's filter setting across retries.
 Verify server delivery capability before upload or the preview-only protocol.
 Network loss must not interrupt or restart the input. Reachability recovery,
 successful route changes and foreground return checkpoint active parts for delivery;

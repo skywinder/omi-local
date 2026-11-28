@@ -6,6 +6,7 @@ import 'package:omi/services/devices/ring_protocol.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'cv1_capture.dart';
+import 'cv1_resume.dart';
 import 'cv1_history.dart';
 
 export 'cv1_history.dart';
@@ -75,6 +76,7 @@ class Cv1Diagnostics {
     this.battery,
     this.storage,
     this.storageInfo,
+    this.ringId,
     this.rssi,
     this.led,
     this.gain,
@@ -87,6 +89,7 @@ class Cv1Diagnostics {
   final int? battery, rssi, led, gain;
   final Cv1StorageStatus? storage;
   final Cv1StorageInfo? storageInfo;
+  final int? ringId;
   final bool? charging;
   final bool ledWritable, gainWritable;
 
@@ -151,6 +154,9 @@ class Cv1Diagnostics {
       battery: number('battery', 0, 100),
       storage: _storageStatus(values['storageStatus']),
       storageInfo: _storageInfo(values['storageInfo']),
+      ringId: values['storageInfo'] is Uint8List
+          ? RingProtocol.parseInfoNotification(values['storageInfo'])?.ringId
+          : null,
       rssi: number('rssi', -127, -1),
       led: number('led', 0, 100),
       gain: number('gain', 0, 100),
@@ -219,7 +225,15 @@ typedef Cv1ArchiveBatch = ({Uint8List bytes, int start, bool complete});
 
 abstract interface class Cv1ArchiveTransport {
   Future<void> setArchiveAwake(bool enabled);
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords);
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords, {int? ringId});
+}
+
+abstract interface class Cv1MuteTransport {
+  Future<bool?> captureMute(int generation, bool? value);
+}
+
+abstract interface class Cv1AcknowledgedArchiveTransport {
+  Future<bool> advanceArchive(Cv1StorageTarget target, int end);
 }
 
 abstract interface class Cv1StorageTransport {
@@ -234,7 +248,14 @@ abstract interface class Cv1DiagnosticsTransport {
 
 class Cv1PermissionDenied implements Exception {}
 
-class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1StorageTransport, Cv1ArchiveTransport {
+class ChannelCv1Transport
+    implements
+        Cv1Transport,
+        Cv1DiagnosticsTransport,
+        Cv1StorageTransport,
+        Cv1ArchiveTransport,
+        Cv1AcknowledgedArchiveTransport,
+        Cv1MuteTransport {
   static const _methods = MethodChannel('org.omilocal.next/cv1');
   static const _events = EventChannel('org.omilocal.next/cv1.events');
 
@@ -274,9 +295,10 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
   Future<void> setArchiveAwake(bool enabled) => _methods.invokeMethod<void>('setArchiveAwake', {'enabled': enabled});
 
   @override
-  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords) async {
+  Future<Cv1ArchiveBatch> readOldest(Cv1StorageTarget target, int expectedStart, int maxRecords, {int? ringId}) async {
     final reply = await _methods.invokeMapMethod<String, dynamic>('readOldest', {
       'expectedStart': expectedStart,
+      if (ringId != null) 'ringId': ringId,
       'maxRecords': maxRecords,
       'generation': target.generation,
       'deviceId': target.deviceId,
@@ -286,6 +308,19 @@ class ChannelCv1Transport implements Cv1Transport, Cv1DiagnosticsTransport, Cv1S
     }
     return (bytes: reply!['bytes'] as Uint8List, start: reply['start'] as int, complete: reply['complete'] as bool);
   }
+
+  @override
+  Future<bool?> captureMute(int generation, bool? value) =>
+      _methods.invokeMethod<bool>('captureMute', {'generation': generation, 'muted': value});
+
+  @override
+  Future<bool> advanceArchive(Cv1StorageTarget target, int end) async =>
+      await _methods.invokeMethod<bool>('advanceArchive', {
+        'generation': target.generation,
+        'deviceId': target.deviceId,
+        'end': end,
+      }) ==
+      true;
 
   @override
   Future<bool> clearStorage(Cv1StorageTarget target) async =>
@@ -344,8 +379,70 @@ class UnavailableCv1Transport implements Cv1Transport {
 class Cv1Connection extends ChangeNotifier {
   Cv1Connection(this._transport, this._capture, {Cv1History? history, this.makeAudioRetry = Timer.new})
     : history = history ?? Cv1History() {
+    if (_transport is Cv1MuteTransport) _capture.requestHardwareMute = _requestMute;
     _capture.addListener(_demandChanged);
     _subscription = _transport.events.listen(_onEvent, onError: (Object _) => _linkEnded(), onDone: _linkEnded);
+  }
+
+  Future<void> Function()? prepareArchive;
+  int? _preparing;
+  bool get preparingLink => _preparing != null;
+  Future<void> _muteWrites = Future.value();
+  int _muteRevision = 0;
+
+  void _requestMute(bool value) {
+    final rev = ++_muteRevision;
+    final gen = _generation;
+    _capture.hardwareMuteConfirmed = false;
+    if (phase != Cv1LinkPhase.ready) return;
+    _muteWrites = _muteWrites.then((_) async {
+      if (_closing || gen != _generation || rev != _muteRevision) return;
+      bool confirmed = false;
+      try {
+        confirmed =
+            await (_transport as Cv1MuteTransport).captureMute(gen, value).timeout(const Duration(seconds: 5)) == value;
+      } catch (_) {
+        /* Keep the device status unconfirmed. */
+      }
+      if (!_closing && gen == _generation && rev == _muteRevision) {
+        _capture.hardwareMuteConfirmed = confirmed;
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> _prepareLink(int gen, int format) async {
+    _preparing = gen;
+    final rev = _muteRevision;
+    bool current() => !_closing && gen == _generation && phase == Cv1LinkPhase.ready;
+    try {
+      if (_transport case final Cv1MuteTransport mute) {
+        final mode = _capture.resumeSettings?.mode;
+        final stopped = mode == Cv1ResumeMode.stopped || mode == Cv1ResumeMode.muted;
+        final state = await mute.captureMute(gen, stopped ? true : null).timeout(const Duration(seconds: 5));
+        if (!current()) return;
+        if (rev == _muteRevision) {
+          if (stopped) _capture.hardwareMuteConfirmed = state == true;
+          if (!stopped && state == true) _capture.restoreHardwareMute();
+        }
+      }
+      if (current() && _capture.resumeSettings?.mode == Cv1ResumeMode.armed) {
+        await prepareArchive?.call();
+      }
+    } catch (_) {
+      if (current()) {
+        _capture.hardwareMuteConfirmed = false;
+        // A read error cannot establish that this device permits unattended capture.
+        if (_capture.resumeSettings?.mode == Cv1ResumeMode.armed) _capture.suspendForUnconfirmedMute();
+      }
+    } finally {
+      if (current()) {
+        _preparing = null;
+        _capture.handle(Cv1LinkReady(gen, format));
+        _demandChanged();
+        notifyListeners();
+      }
+    }
   }
 
   final Cv1Transport _transport;
@@ -458,7 +555,9 @@ class Cv1Connection extends ChangeNotifier {
       _transport is Cv1ArchiveTransport &&
           !clearingStorage &&
           !importingStorage &&
-          diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy
+          (diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.legacy ||
+              (diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.receiverAcknowledgement &&
+                  _transport is Cv1AcknowledgedArchiveTransport))
       ? storageTarget
       : null;
 
@@ -482,6 +581,8 @@ class Cv1Connection extends ChangeNotifier {
     }
     final reader = transport as Cv1ArchiveTransport;
     final originalCodec = codec;
+    final ringId = diagnostics!.ringId;
+    final protocol = diagnostics!.storageInfo!.protocol;
     var activeTarget = target;
     var next = diagnostics!.storageInfo!.oldest;
     final availableThrough = next + diagnostics!.storageInfo!.unreadPackets;
@@ -501,6 +602,7 @@ class Cv1Connection extends ChangeNotifier {
             next,
             availableThrough,
             previousStart,
+            ringId,
             shouldStop,
             beforeRead,
           );
@@ -513,6 +615,10 @@ class Cv1Connection extends ChangeNotifier {
           final end = batch.start + batch.bytes.length ~/ RingProtocol.recordSize;
           if (end > next) next = end;
           if (batch.complete && batch.bytes.isNotEmpty) {
+            if (protocol == Cv1StorageProtocol.receiverAcknowledgement &&
+                !await (transport as Cv1AcknowledgedArchiveTransport).advanceArchive(activeTarget, end)) {
+              throw PlatformException(code: 'cursor_changed');
+            }
             previousStart = batch.start;
             completeWindows++;
             if (next < availableThrough && (windows == null || completeWindows < windows) && !shouldStop()) {
@@ -527,7 +633,7 @@ class Cv1Connection extends ChangeNotifier {
         // its complete records before waiting for a new generation.
         if (next >= availableThrough) return;
         await onReconnectWait?.call();
-        final resumed = await _waitForArchiveLink(activeTarget, originalCodec, shouldStop);
+        final resumed = await _waitForArchiveLink(activeTarget, originalCodec, protocol, ringId, shouldStop);
         if (resumed == null) return;
         final info = diagnostics!.storageInfo!;
         if (info.oldest + info.unreadPackets < availableThrough || info.oldest < next - 32) {
@@ -558,6 +664,7 @@ class Cv1Connection extends ChangeNotifier {
     int next,
     int end,
     int? previousStart,
+    int? ringId,
     bool Function() shouldStop,
     void Function()? beforeRead,
   ) async {
@@ -571,7 +678,8 @@ class Cv1Connection extends ChangeNotifier {
         throw PlatformException(code: 'link_changed');
       }
       final info = diagnostics?.storageInfo;
-      if (info != null && (info.oldest > next || info.protocol != Cv1StorageProtocol.legacy)) {
+      if (info != null &&
+          (diagnostics!.ringId != ringId || info.oldest > next || info.protocol == Cv1StorageProtocol.unconfirmed)) {
         throw PlatformException(code: 'cursor_changed');
       }
       // Legacy DONE can arrive before the last BLE transmit callbacks advance
@@ -579,7 +687,7 @@ class Cv1Connection extends ChangeNotifier {
       if (info != null && (previousStart == null || info.oldest > previousStart)) {
         beforeRead?.call();
         try {
-          return await reader.readOldest(target, info.oldest, (end - info.oldest).clamp(1, 32));
+          return await reader.readOldest(target, info.oldest, (end - info.oldest).clamp(1, 32), ringId: ringId);
         } on PlatformException catch (error) {
           // Only storage_busy guarantees the native side never issued READ.
           if (error.code != 'storage_busy') rethrow;
@@ -598,6 +706,8 @@ class Cv1Connection extends ChangeNotifier {
   Future<Cv1StorageTarget?> _waitForArchiveLink(
     Cv1StorageTarget previous,
     int? originalCodec,
+    Cv1StorageProtocol protocol,
+    int? ringId,
     bool Function() shouldStop,
   ) async {
     final wait = Stopwatch()..start();
@@ -608,7 +718,9 @@ class Cv1Connection extends ChangeNotifier {
           throw PlatformException(code: 'cursor_changed');
         }
         if (diagnostics?.storageInfo case final info?) {
-          if (info.protocol != Cv1StorageProtocol.legacy) throw PlatformException(code: 'cursor_changed');
+          if (info.protocol != protocol || diagnostics!.ringId != ringId) {
+            throw PlatformException(code: 'cursor_changed');
+          }
           return (generation: _generation, deviceId: previous.deviceId);
         }
         if (wait.elapsedMilliseconds >= refreshAt) {
@@ -630,7 +742,7 @@ class Cv1Connection extends ChangeNotifier {
         phase != Cv1LinkPhase.ready ||
         id == null ||
         calibrating ||
-        _capture.active ||
+        (_capture.active && !preparingLink) ||
         _capture.sealing ||
         diagnostics?.storageInfo == null ||
         diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.unconfirmed ||
@@ -799,7 +911,11 @@ class Cv1Connection extends ChangeNotifier {
             _wantsAudio = false;
             audioFailed = false;
           }
-          _capture.handle(Cv1LinkReady(_generation, event.codec!));
+          if (!wasReady && (prepareArchive != null || _transport is Cv1MuteTransport)) {
+            unawaited(_prepareLink(_generation, event.codec!));
+          } else if (_preparing == null) {
+            _capture.handle(Cv1LinkReady(_generation, event.codec!));
+          }
           if (!wasReady) unawaited(sampleDiagnostics());
         } else {
           connectedAt = null;
@@ -809,6 +925,8 @@ class Cv1Connection extends ChangeNotifier {
           diagnostics = null;
           _nativeSubscription = null;
           audioFailed = false;
+          _preparing = null;
+          if (_capture.hardwareMuteConfirmed != null) _capture.hardwareMuteConfirmed = false;
           _capture.handle(Cv1LinkLost(_generation));
         }
         _demandChanged();
@@ -871,7 +989,7 @@ class Cv1Connection extends ChangeNotifier {
   void _demandChanged() {
     if (_closing) return;
     _updateCaptureService(_capture.intent == Cv1CaptureIntent.recording);
-    final wants = phase == Cv1LinkPhase.ready && (_capture.wantsAudio || calibrating);
+    final wants = !preparingLink && phase == Cv1LinkPhase.ready && (_capture.wantsAudio || calibrating);
     if (!wants) {
       _audioRetry?.cancel();
       _audioRetry = null;

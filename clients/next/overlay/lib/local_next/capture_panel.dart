@@ -19,6 +19,7 @@ import 'cv1_capture.dart';
 import 'cv1_archive.dart';
 import 'cv1_resume.dart';
 import 'cv1_sync_progress.dart';
+import 'speech_filter.dart';
 import 'cv1_transport.dart';
 import 'device_diagnostics_page.dart';
 import 'live_preview.dart';
@@ -67,6 +68,8 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
   bool _storageFailed = false;
   bool _closed = false;
   final _groupSilence = ValueNotifier<int?>(null);
+  final _speechMode = ValueNotifier(false);
+  String get _speechKey => 'next.capture.speechFilter.${widget.library.audioOwnerId}';
   Cv1DoubleTapAction _doubleTap = Cv1DoubleTapAction.checkpoint;
   static const _doubleTapKey = 'next.cv1.doubleTap';
   SharedPreferences? _groupPrefs;
@@ -92,6 +95,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
         _groupPrefs = await SharedPreferences.getInstance();
         final value = _groupPrefs?.getInt(_groupPrefKey);
         if (LocalAudioJournal.groupSilenceChoices.contains(value)) _groupSilence.value = value;
+        _speechMode.value = _groupPrefs?.getBool(_speechKey) ?? false;
         final gesture = _groupPrefs?.getString(_doubleTapKey);
         _doubleTap =
             Cv1DoubleTapAction.values.where((action) => action.name == gesture).firstOrNull ??
@@ -103,6 +107,8 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
       late final NextLivePreview preview;
       final journal = _journal = LocalAudioJournal(
         directory: Directory('${documents.path}/outbox/${library.audioOwnerId}'),
+        speechMode: () => _speechMode.value,
+        filterSpeech: SpeechActivity.intervals,
         groupSilence: () => library.conversationGroups ? _groupSilence.value : null,
         onConversationBoundary: (id, sample) {
           if (!_closed) preview.confirmConversationBoundary(id, sample);
@@ -123,6 +129,8 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
       preview = NextLivePreview(
         library.audioOwnerId,
         library.connectPreview,
+        speechMode: journal.filtersRecording,
+        onSpeechBoundary: journal.checkpointSpeech,
         onReconnect: () {
           if (!_closed) unawaited(journal.recoverConnection());
         },
@@ -197,6 +205,7 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     _closed = true;
     _diagnosticPoll?.cancel();
     _groupSilence.dispose();
+    _speechMode.dispose();
     WidgetsBinding.instance.removeObserver(this);
     widget.library.ownerChange.detachCapture(_captureBusy);
     _previousRelease = _release();
@@ -243,9 +252,32 @@ class NextCapturePanelState extends State<LocalNextCapturePanel> with WidgetsBin
     library: widget.library,
     groupSilence: _groupSilence,
     onGroupSilence: _groupPrefs == null ? null : _setGroupSilence,
+    speechMode: _speechMode,
+    onSpeechMode: _groupPrefs == null ? null : _setSpeechMode,
     doubleTap: _doubleTap,
     onDoubleTap: _groupPrefs == null ? null : _setDoubleTap,
   );
+
+  bool _savingSpeech = false;
+  Future<bool> _setSpeechMode(bool value) async {
+    final inputs = _inputs;
+    if (inputs == null || !inputs.canChangeSpeechMode || _savingSpeech) return false;
+    _savingSpeech = true;
+    try {
+      if (await _groupPrefs!.setBool(_speechKey, value) && mounted) {
+        _speechMode.value = value;
+        // New CV1 packets now enter a fresh journal with the new policy. Already
+        // accepted files keep their original review requirement across restarts.
+        await inputs.cv1.finishConversation();
+        return true;
+      }
+    } catch (_) {
+      // Keep the confirmed preference when storage fails.
+    } finally {
+      _savingSpeech = false;
+    }
+    return false;
+  }
 
   Future<bool> _setDoubleTap(Cv1DoubleTapAction action) async {
     final prefs = _groupPrefs;
@@ -305,6 +337,7 @@ class NextCaptureInputs extends ChangeNotifier {
       preview: phone.preview,
     );
     connection = Cv1Connection(transport, cv1, history: diagnosticsHistory);
+    if (resumeSettings != null && transport is Cv1ArchiveTransport) connection.prepareArchive = _syncBeforeListening;
   }
 
   final NextPhoneCapture phone;
@@ -317,6 +350,13 @@ class NextCaptureInputs extends ChangeNotifier {
   bool get switching => _transition != null;
   bool get isRecording => phone.active || phone.busy || cv1.active;
   bool get hasCaptureInProgress => switching || isRecording || cv1.sealing || connection.calibrating;
+  bool get canChangeSpeechMode =>
+      permitsNewRecording &&
+      !switching &&
+      !phone.active &&
+      !phone.busy &&
+      !connection.preparingLink &&
+      !connection.importingStorage;
   bool get permitsNewRecording => !_closed && !connection.calibrating && (ownerChange?.permitsCapture ?? true);
   NextLivePreview? get preview => phone.preview;
 
@@ -350,6 +390,33 @@ class NextCaptureInputs extends ChangeNotifier {
     });
   }
 
+  Future<void> _syncBeforeListening() async {
+    final generation = connection.linkState?.generation;
+    await _transition;
+    final limit = Stopwatch()..start();
+    bool available() =>
+        !_closed &&
+        !switching &&
+        !phone.active &&
+        !phone.busy &&
+        !_phoneOwns &&
+        permitsNewRecording &&
+        cv1.resumeSettings?.mode == Cv1ResumeMode.armed &&
+        connection.phase == Cv1LinkPhase.ready &&
+        connection.linkState?.generation == generation;
+    // INFO arrives asynchronously after the native diagnostics read. A pendant
+    // without storage must still start listening when discovery completes.
+    while (available() && connection.diagnostics?.storageInfo == null && limit.elapsed < const Duration(seconds: 2)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    final target = connection.importTarget;
+    if (available() &&
+        target != null &&
+        connection.diagnostics?.storageInfo?.protocol == Cv1StorageProtocol.receiverAcknowledgement) {
+      await importOldest(target, windows: null, automatic: true);
+    }
+  }
+
   int importWindows = 0;
   int importedRecords = 0;
   int importMissingRecords = 0;
@@ -361,11 +428,18 @@ class NextCaptureInputs extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> importOldest(Cv1StorageTarget target, {required int? windows}) async {
-    if (hasCaptureInProgress || !permitsNewRecording || connection.importTarget != target) return;
+  Future<void> importOldest(Cv1StorageTarget target, {required int? windows, bool automatic = false}) async {
+    if ((!automatic && hasCaptureInProgress) ||
+        switching ||
+        !permitsNewRecording ||
+        connection.importTarget != target) {
+      return;
+    }
     final codec = connection.codec!;
     final journal = phone.journal;
     final storage = connection.diagnostics!.storageInfo!;
+    final ringId = connection.diagnostics!.ringId;
+    final sourceKey = ringId == null ? target.deviceId : '${target.deviceId}/$ringId';
     final unread = storage.unreadPackets;
     final possibleWindows = (unread / Cv1Archive.maxRecords).ceil().clamp(1, Cv1Archive.maxWindows);
     final limit = windows?.clamp(1, possibleWindows);
@@ -403,7 +477,13 @@ class NextCaptureInputs extends ChangeNotifier {
         await connection.readArchive(
           target,
           windows: limit,
-          shouldStop: () => stoppingImport || _closed,
+          shouldStop: () =>
+              stoppingImport ||
+              _closed ||
+              (automatic &&
+                  (cv1.resumeSettings?.mode != Cv1ResumeMode.armed ||
+                      connection.linkState?.generation != target.generation ||
+                      connection.phase != Cv1LinkPhase.ready)),
           onRange: (start, end) {
             verifiedEnd = start;
             _syncProgress = Cv1SyncProgress(start: start, end: end, elapsed: _importClock.elapsed);
@@ -431,7 +511,7 @@ class NextCaptureInputs extends ChangeNotifier {
               final previousRecords = archive.records;
               final micros = await archive.append(
                 batch.bytes,
-                target.deviceId,
+                sourceKey,
                 batch.start,
                 codec,
                 verifyThrough: verifiedEnd,
@@ -541,6 +621,10 @@ class NextCaptureInputs extends ChangeNotifier {
   }
 
   Future<void> stopRecording() async {
+    if (connection.preparingLink) {
+      stopImport();
+      await cv1.stop();
+    }
     await _transition;
     await _change(() async {
       if (phone.active || phone.busy || phone.resumeRequested) {
@@ -581,6 +665,8 @@ class LocalNextCaptureControls extends StatelessWidget {
     this.library,
     this.groupSilence,
     this.onGroupSilence,
+    this.speechMode,
+    this.onSpeechMode,
     this.doubleTap = Cv1DoubleTapAction.checkpoint,
     this.onDoubleTap,
     this.openServers,
@@ -592,6 +678,8 @@ class LocalNextCaptureControls extends StatelessWidget {
   final PairedLibrary? library;
   final ValueListenable<int?>? groupSilence;
   final Future<bool> Function(int?)? onGroupSilence;
+  final ValueListenable<bool>? speechMode;
+  final Future<bool> Function(bool)? onSpeechMode;
   final Cv1DoubleTapAction doubleTap;
   final Future<bool> Function(Cv1DoubleTapAction)? onDoubleTap;
   final VoidCallback? openServers;
@@ -750,6 +838,29 @@ class LocalNextCaptureControls extends StatelessWidget {
                 listenable: Listenable.merge([capture, link, journal]),
                 builder: (context, _) => ListView(
                   children: [
+                    if (speechMode case final mode?)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: mode,
+                        builder: (context, enabled, _) => SwitchListTile(
+                          title: Text(pairedSettingsLabel(context, 'nextSpeechMode')),
+                          subtitle: Text(
+                            pairedSettingsLabel(
+                              context,
+                              !inputs.canChangeSpeechMode ? 'nextSpeechModeBusy' : 'nextSpeechModeHint',
+                            ),
+                          ),
+                          value: enabled,
+                          onChanged: !inputs.canChangeSpeechMode || onSpeechMode == null
+                              ? null
+                              : (value) async {
+                                  if (!await onSpeechMode!(value) && context.mounted) {
+                                    ScaffoldMessenger.of(
+                                      context,
+                                    ).showSnackBar(SnackBar(content: Text(l.failedToSaveCheckConnection)));
+                                  }
+                                },
+                        ),
+                      ),
                     if (hasCv1) ...[
                       ListTile(
                         leading: cv1DeviceIcon(link),
@@ -878,7 +989,7 @@ class LocalNextCaptureControls extends StatelessWidget {
                         ].join('\n'),
                       ),
                       trailing: journal.deliveryFailed
-                          ? TextButton(onPressed: journal.retry, child: Text(l.retry))
+                          ? TextButton(onPressed: journal.retrySpeechReview, child: Text(l.retry))
                           : null,
                     ),
                     if (library.conversationGroups && groupSilence != null && onGroupSilence != null)
@@ -967,6 +1078,12 @@ class LocalNextCaptureControls extends StatelessWidget {
           phoneStopping ? capture.startedAt : null,
         ),
       ),
+      if (inputs.connection.preparingLink && !cv1.linked)
+        OutlinedButton.icon(
+          onPressed: inputs.stopRecording,
+          icon: const Icon(Icons.stop),
+          label: Text('${l.stop} · CV1'),
+        ),
       if (cv1.linked || cv1.active)
         OutlinedButton.icon(
           key: const ValueKey('next-cv1-capture'),
@@ -1018,7 +1135,7 @@ class LocalNextCaptureControls extends StatelessWidget {
           ].join('\n\n'),
         ),
         actions: [
-          if (journal.deliveryFailed) TextButton(onPressed: journal.retry, child: Text(context.l10n.retry)),
+          if (journal.deliveryFailed) TextButton(onPressed: journal.retrySpeechReview, child: Text(context.l10n.retry)),
           TextButton(onPressed: () => Navigator.pop(context), child: Text(context.l10n.ok)),
         ],
       ),
@@ -1055,6 +1172,10 @@ class LocalNextCaptureControls extends StatelessWidget {
             })
           else if (link.audioFailed)
             Text(l.captureRecordingError(l.bluetooth)),
+          if (cv1.hardwareMuteConfirmed == false && !cv1.wantsAudio)
+            Text(pairedSettingsLabel(context, 'nextHardwareMuteUnknown')),
+          if (cv1.hardwareMuteConfirmed == true && !cv1.wantsAudio)
+            Text(pairedSettingsLabel(context, 'nextHardwareMuteConfirmed')),
           if (capture.problem != null)
             Text(switch (capture.problem!) {
               CaptureProblem.permission => l.onboardingMicrophoneRequired,

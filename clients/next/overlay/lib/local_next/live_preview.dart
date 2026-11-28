@@ -7,6 +7,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:omi/utils/hard_secret_detector.dart';
 
+import 'speech_filter.dart';
+
 bool _supported(String source, String codec) =>
     source == 'phone' && codec == 'pcm16' || source == 'omi' && (codec == 'opus' || codec == 'opus_fs320');
 
@@ -154,8 +156,21 @@ typedef PreviewConnector =
     Future<WebSocket> Function(String owner, String source, String codec, {PreviewSilence? silence});
 
 class NextLivePreview extends ChangeNotifier {
-  NextLivePreview(this.owner, this._connect, {this.retryDelay = const Duration(seconds: 1), this.onReconnect});
+  NextLivePreview(
+    this.owner,
+    this._connect, {
+    this.retryDelay = const Duration(seconds: 1),
+    this.onReconnect,
+    this.speechMode,
+    this.onSpeechBoundary,
+    this.openSpeechScorer = SileroSpeechScorer.open,
+  });
 
+  final bool Function(String recordingId)? speechMode;
+  final void Function(String id)? onSpeechBoundary;
+  final OpenSpeechScorer openSpeechScorer;
+  SpeechPreviewGate? _gate;
+  final _openingSpeech = <SpeechPreviewFrame>[];
   final String owner;
   final PreviewConnector _connect;
   final Duration retryDelay;
@@ -218,13 +233,46 @@ class NextLivePreview extends ChangeNotifier {
     _silence = onSilence != null && silenceSeconds != null && silenceSeconds > 0
         ? (recordingId: recordingId, seconds: silenceSeconds)
         : null;
+    _gate?.close();
+    _openingSpeech.clear();
+    _gate = speechMode?.call(recordingId) == true
+        ? SpeechPreviewGate(
+            codec,
+            silenceSeconds ?? 2,
+            (frame) {
+              if (_outgoing == null) {
+                if (_openingSpeech.isEmpty && _retry?.isActive != true) unawaited(_open());
+                _openingSpeech.add(frame);
+                if (_openingSpeech.length > 100) _openingSpeech.removeAt(0);
+              } else {
+                _sendFrame(frame);
+              }
+            },
+            () {
+              _openingSpeech.clear();
+              _detach();
+              _phase = NextPreviewPhase.idle;
+              _reason = null;
+              notifyListeners();
+            },
+            () {
+              if (onSilence != null) {
+                onSilence();
+              } else {
+                onSpeechBoundary?.call(recordingId);
+              }
+            },
+            openSpeechScorer,
+          )
+        : null;
+    if (_gate != null) _silence = null;
     _recording = _shownRecording = recordingId;
     _source = source;
     _codec = codec;
     _retries = 0;
     _awaitingRecovery = false;
     _reason = null;
-    unawaited(_open());
+    if (_gate == null) unawaited(_open());
   }
 
   // WLK may extend one speaker turn across a silence cut. Its words have no
@@ -245,6 +293,9 @@ class NextLivePreview extends ChangeNotifier {
 
   void end(String recordingId) {
     if (_recording != recordingId) return;
+    _gate?.close();
+    _gate = null;
+    _openingSpeech.clear();
     _recording = null;
     _detach();
     _phase = NextPreviewPhase.idle;
@@ -252,8 +303,12 @@ class NextLivePreview extends ChangeNotifier {
     notifyListeners();
   }
 
+  int? _openingEpoch;
+
   Future<void> _open() async {
     final epoch = _epoch;
+    if (_openingEpoch == epoch || _socket != null) return;
+    _openingEpoch = epoch;
     _phase = NextPreviewPhase.connecting;
     _translationStatus = null;
     notifyListeners();
@@ -288,6 +343,10 @@ class NextLivePreview extends ChangeNotifier {
         cancelOnError: true,
       );
       if (_target.isNotEmpty) _sendTranslation();
+      for (final frame in _openingSpeech) {
+        _sendFrame(frame);
+      }
+      _openingSpeech.clear();
     } catch (error) {
       final status = error is WebSocketException ? error.httpStatusCode : null;
       final terminal = status != null && status < 500 && status != 408 && status != 429;
@@ -360,14 +419,24 @@ class NextLivePreview extends ChangeNotifier {
         startSeconds < 0) {
       return;
     }
-    final offset = (elapsedSeconds ?? startSeconds) - startSeconds;
+    final frame = (bytes: bytes, start: startSeconds, elapsed: elapsedSeconds ?? startSeconds);
+    if (_gate case final gate?) {
+      gate.add(frame);
+      return;
+    }
+    _sendFrame(frame);
+  }
+
+  void _sendFrame(SpeechPreviewFrame frame) {
+    final startSeconds = frame.start;
+    final offset = frame.elapsed - startSeconds;
     // Keep missing capture time without stretching timestamps for packet jitter.
     if (offset.isFinite && offset > (_captureGaps.lastOrNull?.offset ?? 0) + 0.75) {
       _captureGaps.add((audio: startSeconds, offset: offset));
     }
     if (_outgoing == null) return;
     _offset ??= startSeconds;
-    _send(Uint8List.fromList(bytes));
+    _send(Uint8List.fromList(frame.bytes));
   }
 
   double _elapsedAt(double audio, {bool isEnd = false}) {
@@ -600,6 +669,9 @@ class NextLivePreview extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _gate?.close();
+    _gate = null;
+    _openingSpeech.clear();
     _recording = null;
     _detach();
     super.dispose();
