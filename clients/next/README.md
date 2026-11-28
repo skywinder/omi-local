@@ -134,6 +134,10 @@ CV1 archive sync shows the transfer speed to the phone and the estimated time
 remaining after the first saved batch. The recording dates cover audio received
 so far. See [CV1 archive recovery](../../docs/WEARABLE_RECOVERY.md).
 
+Tap the connected server name above the archive to see service health in the
+server list. The Summary row shows the model name when the server reports it as
+ready.
+
 In **Conversations → More options → About Omi Next**, check the installed app
 version, build number and Local Git commit. Version and build number come from
 the pinned Flutter package, so use the commit to distinguish Local builds of the

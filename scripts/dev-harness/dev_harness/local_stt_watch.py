@@ -207,7 +207,7 @@ class Worker:
                 engine = local_stt.EngineConfig.load(self.cfg, profile=profile)
                 job['profile'] = engine.profile()
                 stage = None  # The newest stage checkpoint now owns the stage.
-                result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine)
+                result = local_stt.transcribe(self.cfg, str(paths[key] / 'audio.wav'), engine=engine, keep_transcript=True)
                 if result != 0:
                     raise local_stt.TranscriptionError('Local transcription failed')
             except local_stt.NoSpeechDetected:

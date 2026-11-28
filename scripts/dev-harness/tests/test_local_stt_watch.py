@@ -199,7 +199,7 @@ def test_retry_after_runtime_upgrade_records_actual_version_and_keeps_model_sett
     (cfg.layout.state_root / 'stt-engine.json').write_text(json.dumps({
         'runtime_revision': 'new', 'python': '/new/python', 'batch_size': 2, 'diarization_model': 'none'}))
     used = []
-    monkeypatch.setattr(local_stt, 'transcribe', lambda *a, engine: used.append(engine) or 0)
+    monkeypatch.setattr(local_stt, 'transcribe', lambda *a, engine, **kw: used.append(engine) or 0)
     worker.tick(61)
     assert used[0].python == '/new/python'
     assert used[0].runtime_revision == 'new'

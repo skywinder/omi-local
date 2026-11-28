@@ -10,10 +10,22 @@ import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
 import 'package:omi/local_next/server_catalog.dart';
 import 'package:omi/local_next/server_session.dart';
+import 'package:omi/services/local_runtime_status_model.dart';
 
 class _Pair extends PairedLibrary {
   _Pair(super.address, super.appKey, this.probe);
   final Future<void> Function(String host) probe;
+
+  @override
+  Future<LocalRuntimeStatus?> readRuntimeStatus() async => const LocalRuntimeStatus(
+    captureState: LocalCaptureState.idle,
+    audioSeconds: 0,
+    framesReceived: 0,
+    liveTranscriptState: LocalLiveTranscriptState.ready,
+    transcriptUpdates: 0,
+    stages: {'summary': LocalStageStatus(state: LocalStageState.ready, name: 'test-summary-model')},
+  );
+
   @override
   Future<void> verify() async {
     await probe(origin.host);
@@ -137,6 +149,12 @@ void main() {
       final rejectedOld = old.onKeyRejected!;
       await tester.tap(find.byKey(const ValueKey('archive-servers')));
       await tester.pumpAndSettle();
+      expect(find.text('Model Ready (test-summary-model)'), findsOneWidget);
+      expect(find.byKey(ValueKey('server-entry-${office.id}')), findsOneWidget);
+      await _click(tester, 'server-entry-${home.id}');
+      expect(find.byKey(const ValueKey('next-server-stage-summary')), findsNothing);
+      await _click(tester, 'server-entry-${home.id}');
+      expect(find.byKey(const ValueKey('next-server-stage-summary')), findsOneWidget);
       await _click(tester, 'server-entry-${office.id}');
       waiting = Completer<void>();
       await tester.tap(find.byKey(const ValueKey('server-connect')));

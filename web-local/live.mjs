@@ -122,7 +122,7 @@ export function mountLiveMonitor(root, {refreshControls = () => {}, controls = n
     fields.final.value.textContent = final.provider || 'Final STT';
     fields.final.detail.textContent = `${states[final.state] || 'Unavailable'}${final.jobs?.pending ? ` · queued: ${final.jobs.pending}` : ''}${final.jobs?.failed ? ` · failed: ${final.jobs.failed}` : ''}`;
     const report = data.backend === 'ready' ? data.stages : null;
-    onStages(report);
+    onStages(report, data.summary_backfill);
     for (const {id, name, item} of stages) {
       const stage = report?.stale === false ? report[id] : null;
       const state = stage?.status ?? 'unknown';

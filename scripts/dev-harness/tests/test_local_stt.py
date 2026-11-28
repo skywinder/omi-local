@@ -691,6 +691,27 @@ def test_selected_pipeline_retries_only_failed_stage_and_pins_routes(tmp_path, m
                                                         'synthetic-summary-private', 'external-person-a', 'embedding'))
 
 
+def test_automatic_transcription_keeps_the_transcript_when_summary_fails(tmp_path, monkeypatch):
+    from dev_harness import local_pipeline
+
+    engine = local_stt.EngineConfig(pipeline={'diarization': None, 'summary': {
+        'kind': 'openai-compatible', 'name': 'Fixture', 'settings': {'model': 'test'},
+    }})
+    expected = {'segments': [{'start': 0, 'end': 1, 'text': 'Test transcript.'}]}
+    monkeypatch.setattr(local_stt.EngineConfig, 'provider_key', lambda *_: '')
+
+    def model_offline(*_):
+        raise local_pipeline.PipelineError('Summary unavailable', code='http_503')
+
+    monkeypatch.setattr(local_pipeline, 'summarize', model_offline)
+    result = local_pipeline.execute(engine, tmp_path / 'audio.wav', tmp_path, {'duration_seconds': 1},
+                                    lambda *_: expected, None, local_stt.atomic_json, keep_transcript=True)
+    assert result['segments'] == expected['segments']
+    assert 'structured' not in result
+    assert result['processing']['summary']['status'] == 'failed'
+    assert result['processing']['summary']['error_code'] == 'http_503'
+
+
 def test_chunked_summary_covers_all_text_and_reuses_completed_parts(tmp_path, monkeypatch):
     import httpx
     from dev_harness import local_pipeline, local_provider_http
