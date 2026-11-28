@@ -91,6 +91,8 @@ Blank API-key edits preserve the saved key; changed server identity requires a n
 Never retry a settings write automatically. After an uncertain result, refresh before another
 write; discard pending responses and close the editor when the authenticated pairing changes.
 Local runtime status uses authenticated `/v1/local/status`, not the public health probe.
+Next shows the same diagnostics inline under the connected server in the server list.
+Collapsing that row stops its polling.
 Keep Mac reachability, received-audio counters and live-ASR readiness distinct; errors
 must clear stale successful status. Poll only on the visible foreground screen.
 The status card starts collapsed; keep confirmed values during an in-flight poll,
