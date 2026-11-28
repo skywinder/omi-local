@@ -40,6 +40,7 @@ class FakeSnapshot:
         self.id = path[-1]
         self._data = deepcopy(data)
         self.exists = data is not None
+        self.update_time = (data or {}).get('updated_at')
         self.reference = FakeRef(database, path)
 
     def to_dict(self):
@@ -345,6 +346,40 @@ def test_goal_lifecycle_retain_keeps_historical_relationships(fake_db):
 
     assert fake_db.rows[('users', 'u1', 'action_items', 't1')]['goal_id'] == 'g1'
     assert goals_db.get_goal_by_id('u1', 'g1', firestore_client=fake_db)['status'] == 'achieved'
+
+
+def test_paired_goal_lifecycle_checks_revision_replays_and_keeps_relationships(fake_db):
+    seed_control(fake_db)
+    create_goal(fake_db, 'g1')
+    seed_task(fake_db, 't1', goal_id='g1')
+    path = ('users', 'u1', 'goals', 'g1')
+
+    def transition(status, key, revision):
+        return goals_db.transition_goal_lifecycle(
+            'u1', 'g1',
+            status=status,
+            relationship_disposition=GoalRelationshipDisposition.retain,
+            idempotency_key=key,
+            account_generation=3,
+            firestore_client=fake_db,
+            paired_expected_revision=revision,
+        )
+
+    initial = fake_db.rows[path]['updated_at'].isoformat()
+    paused = transition(GoalStatus.paused, 'local-pause', initial)
+    assert paused['status'] == 'paused'
+    assert transition(GoalStatus.paused, 'local-pause', initial) == paused
+    with pytest.raises(goals_db.GoalConflictError, match='stale goal revision'):
+        transition(GoalStatus.achieved, 'local-stale-end', initial)
+
+    current = fake_db.rows[path]['updated_at'].isoformat()
+    assert transition(GoalStatus.background, 'local-resume', current)['status'] == 'background'
+    current = fake_db.rows[path]['updated_at'].isoformat()
+    assert transition(GoalStatus.achieved, 'local-end', current)['status'] == 'achieved'
+    current = fake_db.rows[path]['updated_at'].isoformat()
+    with pytest.raises(goals_db.GoalConflictError):
+        transition(GoalStatus.background, 'local-ended-resume', current)
+    assert fake_db.rows[('users', 'u1', 'action_items', 't1')]['goal_id'] == 'g1'
 
 
 def test_task_relationship_validation_and_goal_detach_share_the_write_transaction(fake_db):

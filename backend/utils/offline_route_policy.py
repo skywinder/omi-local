@@ -84,8 +84,8 @@ def is_offline_http_route_allowed(method: str, path: str) -> bool:
     ):
         return True
     if method.upper() == 'POST' and (
-        path == '/v1/local/goals/{goal_id}/progress'
-        or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}/progress', path)
+        path in {'/v1/local/goals/{goal_id}/progress', '/v1/local/goals/{goal_id}/lifecycle'}
+        or re.fullmatch(r'/v1/local/goals/[A-Za-z0-9_-]{1,128}/(?:progress|lifecycle)', path)
     ):
         return True
     if method.upper() in {'GET', 'POST'} and (

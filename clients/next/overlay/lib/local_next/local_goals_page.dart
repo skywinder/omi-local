@@ -58,7 +58,12 @@ class _LocalGoalsState extends State<LocalGoalsPage> {
               for (final row in visible)
                 ListTile(
                   title: Text(row.title),
-                  subtitle: row.metric == null ? null : Text(_metricText(row.metric!)),
+                  subtitle: Text(
+                    [
+                      pairedSettingsLabel(context, localGoalStatusLabel(row.status)),
+                      if (row.metric case final metric?) _metricText(metric),
+                    ].join(' · '),
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _open(
                     _GoalDetailPage(library: widget.library, id: row.id, conversationId: widget.conversationId),
@@ -95,6 +100,59 @@ class _GoalDetailPage extends StatefulWidget {
 class _GoalDetailState extends State<_GoalDetailPage> {
   late Future<LocalGoalDetail> _detail = widget.library.readGoal(widget.id);
 
+  bool _savingStatus = false;
+  String? _statusError;
+  ({String revision, LocalGoalTransition transition, String requestId})? _statusRequest;
+
+  Future<void> _changeStatus(LocalGoalDetail detail, LocalGoalTransition action) async {
+    if (_savingStatus) return;
+    final l = context.l10n;
+    final actionLabel = pairedSettingsLabel(context, action.label);
+    if (action == LocalGoalTransition.achieve || action == LocalGoalTransition.abandon) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(actionLabel),
+          content: Text(pairedSettingsLabel(context, 'localGoalEndHint')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.confirm)),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+    }
+    var request = _statusRequest;
+    if (request == null || request.revision != detail.revision || request.transition != action) {
+      request = (revision: detail.revision, transition: action, requestId: const Uuid().v4());
+    }
+    _statusRequest = request;
+    setState(() {
+      _savingStatus = true;
+      _statusError = null;
+    });
+    try {
+      await widget.library.changeGoalStatus(
+        detail.goal.id,
+        action,
+        revision: request.revision,
+        requestId: request.requestId,
+      );
+      if (mounted) _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      if (error == LocalGoalFailure.conflict) {
+        _statusRequest = null;
+        _refresh();
+        _statusError = pairedSettingsLabel(context, 'localGoalStatusConflict');
+      } else {
+        _statusError = pairedSettingsLabel(context, 'localGoalStatusUnavailable');
+      }
+    } finally {
+      if (mounted) setState(() => _savingStatus = false);
+    }
+  }
+
   void _refresh() {
     setState(() {
       _detail = widget.library.readGoal(widget.id);
@@ -112,7 +170,30 @@ class _GoalDetailState extends State<_GoalDetailPage> {
         return Scaffold(
           appBar: AppBar(
             title: Text(detail?.goal.title ?? l.goals),
-            actions: [IconButton(tooltip: l.refresh, onPressed: _refresh, icon: const Icon(Icons.refresh))],
+            actions: [
+              IconButton(
+                tooltip: l.refresh,
+                onPressed: _savingStatus ? null : _refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+              if (widget.library.goalLifecycleAvailable &&
+                  widget.conversationId == null &&
+                  detail != null &&
+                  (detail.acceptsProgress || detail.goal.status == 'paused'))
+                PopupMenuButton<LocalGoalTransition>(
+                  tooltip: pairedSettingsLabel(context, 'localGoalActions'),
+                  enabled: !_savingStatus && snapshot.connectionState == ConnectionState.done,
+                  onSelected: (action) => _changeStatus(detail, action),
+                  itemBuilder: (_) => [
+                    for (final action in [
+                      if (detail.goal.status == 'paused') LocalGoalTransition.resume else LocalGoalTransition.pause,
+                      LocalGoalTransition.achieve,
+                      LocalGoalTransition.abandon,
+                    ])
+                      PopupMenuItem(value: action, child: Text(pairedSettingsLabel(context, action.label))),
+                  ],
+                ),
+            ],
           ),
           body: snapshot.connectionState != ConnectionState.done
               ? const Center(child: CircularProgressIndicator())
@@ -121,21 +202,26 @@ class _GoalDetailState extends State<_GoalDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(OmiSpacing.md),
                   children: [
+                    if (_savingStatus) const LinearProgressIndicator(),
+                    if (_statusError case final error?) Text(error),
+                    Text(pairedSettingsLabel(context, localGoalStatusLabel(detail.goal.status))),
                     if (detail.goal.metric case final metric?) Text(_metricText(metric)),
                     if (detail.acceptsProgress)
                       FilledButton(
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => _GoalEntryPage(
-                                library: widget.library,
-                                detail: detail,
-                                conversationId: widget.conversationId,
-                              ),
-                            ),
-                          );
-                          if (mounted) _refresh();
-                        },
+                        onPressed: _savingStatus
+                            ? null
+                            : () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => _GoalEntryPage(
+                                      library: widget.library,
+                                      detail: detail,
+                                      conversationId: widget.conversationId,
+                                    ),
+                                  ),
+                                );
+                                if (mounted) _refresh();
+                              },
                         child: Text(pairedSettingsLabel(context, 'localGoalLog')),
                       ),
                     for (final event in detail.events) ...[

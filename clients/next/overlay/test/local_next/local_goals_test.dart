@@ -5,6 +5,7 @@ import 'package:omi/backend/schema/gen/goals_wire.g.dart';
 import 'package:omi/backend/schema/gen/task_intelligence_wire.g.dart' show GeneratedGoalProgressEvent;
 import 'package:omi/l10n/app_localizations.dart';
 import 'package:omi/local_next/local_goal.dart';
+import 'package:omi/local_next/local_goals_page.dart';
 import 'package:omi/local_next/local_next_app.dart';
 import 'package:omi/local_next/paired_library.dart';
 
@@ -19,6 +20,24 @@ class _GoalLibrary extends PairedLibrary {
 
   Map<String, Object?>? created;
   Map<String, Object?>? progress;
+  String status = 'background';
+  bool conflict = false;
+  final transitions = <LocalGoalTransition>[];
+  @override
+  Future<void> changeGoalStatus(
+    String id,
+    LocalGoalTransition transition, {
+    required String revision,
+    required String requestId,
+  }) async {
+    expect(id, goal.id);
+    expect(revision, 'fixture-revision');
+    expect(requestId, isNotEmpty);
+    if (conflict) throw LocalGoalFailure.conflict;
+    transitions.add(transition);
+    status = transition.status;
+  }
+
   final now = DateTime.utc(2026, 11, 25);
 
   GeneratedGoalResponse get goal => GeneratedGoalResponse(
@@ -26,7 +45,7 @@ class _GoalLibrary extends PairedLibrary {
     goalId: 'goal_fixture',
     title: 'Read 12 books',
     desiredOutcome: 'Read 12 books',
-    status: 'background',
+    status: status,
     source: 'user',
     isActive: true,
     createdAt: now,
@@ -100,6 +119,51 @@ class _GoalLibrary extends PairedLibrary {
 }
 
 void main() {
+  testWidgets('pause, resume and confirm completion on a compatible server', (tester) async {
+    final library = _GoalLibrary()..created = {};
+    addTearDown(library.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LocalGoalsPage(library: library),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Read 12 books'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Goal actions'), findsNothing);
+
+    library.goalLifecycleAvailable = true;
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    Future<void> select(String label) async {
+      await tester.tap(find.byTooltip('Goal actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+    }
+
+    library.conflict = true;
+    await select('Pause goal');
+    expect(find.textContaining('goal changed elsewhere'), findsOneWidget);
+    expect(library.transitions, isEmpty);
+    library.conflict = false;
+    await select('Pause goal');
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('Log progress'), findsNothing);
+    await select('Resume goal');
+    expect(find.text('Active'), findsOneWidget);
+    expect(find.text('Log progress'), findsOneWidget);
+    await select('Mark as achieved');
+    expect(library.transitions, [LocalGoalTransition.pause, LocalGoalTransition.resume]);
+    await tester.tap(find.text('Confirm'));
+    await tester.pumpAndSettle();
+    expect(find.text('Achieved'), findsOneWidget);
+    expect(find.byTooltip('Goal actions'), findsNothing);
+    expect(library.transitions.last, LocalGoalTransition.achieve);
+  });
+
   testWidgets('create a local goal and log progress with the recording as evidence', (tester) async {
     final library = _GoalLibrary();
     await tester.pumpWidget(

@@ -108,6 +108,7 @@ class PairedLibrary {
   bool summaryJobsAvailable = false;
   bool dailyRecapsAvailable = false;
   bool goalsAvailable = false;
+  bool goalLifecycleAvailable = false;
   bool foldersAvailable = false;
   bool folderManagementAvailable = false;
   final ownerChange = NextOwnerChangeGate();
@@ -157,6 +158,7 @@ class PairedLibrary {
     summaryJobsAvailable = false;
     dailyRecapsAvailable = false;
     goalsAvailable = false;
+    goalLifecycleAvailable = false;
     foldersAvailable = false;
     folderManagementAvailable = false;
     for (final client in _clients) {
@@ -542,6 +544,7 @@ class PairedLibrary {
     summaryJobsAvailable = data['local_summary_jobs_version'] == 1;
     dailyRecapsAvailable = data['local_daily_recaps_version'] == 1;
     goalsAvailable = data['local_goals_version'] == 1;
+    goalLifecycleAvailable = goalsAvailable && data['local_goal_lifecycle_version'] == 1;
     folderManagementAvailable = data['local_folders_version'] == 2;
     foldersAvailable = folderManagementAvailable || data['local_folders_version'] == 1;
   }
@@ -906,6 +909,19 @@ class PairedLibrary {
 
   Future<void> logGoalProgress(String id, Map<String, Object?> body) async {
     await _goalRequest('${_goalPath(id)}/progress', body: body);
+  }
+
+  Future<void> changeGoalStatus(
+    String id,
+    LocalGoalTransition transition, {
+    required String revision,
+    required String requestId,
+  }) async {
+    if (!goalLifecycleAvailable) throw LocalGoalFailure.unavailable;
+    await _goalRequest(
+      '${_goalPath(id)}/lifecycle',
+      body: {'status': transition.status, 'request_id': requestId, 'expected_revision': revision},
+    );
   }
 
   String _goalPath(String id) {

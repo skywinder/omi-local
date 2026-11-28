@@ -167,6 +167,13 @@ can add a goal and append a manual progress event with an optional metric and
 recording link. Replays return the same event. A conflicting revision or an
 unavailable source is rejected before changing the goal.
 
+The separate `local_goal_lifecycle_version` capability enables
+`POST /v1/local/goals/{goal_id}/lifecycle`. The paired client sends the last
+goal revision and a stable request ID. It can pause an active goal, resume
+a paused goal, or end it as achieved or abandoned. The canonical transaction
+retains progress history and links to tasks and workstreams. Existing clients
+continue to use `local_goals_version` for reading and logging progress.
+
 The test server enabled both capabilities on November 26. An isolated owner verified
 generation through the applied model, listing the saved recap, creating a
 goal, and checking a replayed progress event with a recording reference.
